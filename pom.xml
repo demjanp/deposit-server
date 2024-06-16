@@ -55,13 +55,6 @@
 
     <build>
         <plugins>
-            <!-- jgitver plugin configuration -->
-            <plugin>
-                <groupId>fr.brouillard.oss</groupId>
-                <artifactId>jgitver-maven-plugin</artifactId>
-                <version>1.8.0</version>
-            </plugin>
-
             <!-- Maven Git Commit ID Plugin -->
             <plugin>
                 <groupId>pl.project13.maven</groupId>
@@ -100,6 +93,16 @@
                     </execution>
                 </executions>
             </plugin>
+			
+			<!-- Maven Jar Plugin to name the JAR with the dynamic version -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>3.4.0</version>
+				<configuration>
+					<finalName>${project.artifactId}-${project.version}</finalName>
+				</configuration>
+			</plugin>
         </plugins>
     </build>
 </project>

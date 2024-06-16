@@ -1,0 +1,8 @@
+<!-- .mvn/extensions.xml -->
+<extensions>
+    <extension>
+        <groupId>fr.brouillard.oss</groupId>
+        <artifactId>jgitver-maven-plugin</artifactId>
+        <version>1.8.0</version>
+    </extension>
+</extensions>
