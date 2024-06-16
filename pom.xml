@@ -60,16 +60,6 @@
                 <groupId>fr.brouillard.oss</groupId>
                 <artifactId>jgitver-maven-plugin</artifactId>
                 <version>1.8.0</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>attach-git-data</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <!-- Optional configuration can be added here -->
-                </configuration>
             </plugin>
 
             <!-- Maven Git Commit ID Plugin -->
