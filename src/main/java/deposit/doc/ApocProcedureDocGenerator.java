@@ -13,7 +13,7 @@ public class ApocProcedureDocGenerator {
 
     public static void main(String[] args) {
         String directoryPath = "src/main/java/deposit/";
-        String outputFilePath = "doc/apoc_procedures_documentation.html";
+        String outputFilePath = "doc/apoc_procedures.md";
         generateDocumentation(directoryPath, outputFilePath);
     }
 
@@ -21,11 +21,8 @@ public class ApocProcedureDocGenerator {
         File directory = new File(directoryPath);
         if (directory.exists() && directory.isDirectory()) {
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputFilePath))) {
-                writer.write("<html><head><title>APOC Procedures Documentation</title>");
-                writer.write("<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"></head><body>\n");
-                writer.write("<h1>APOC Procedures Documentation</h1>\n");
+                writer.write("# Deposit server APOC procedures\n\n");
                 processDirectory(directory, writer);
-                writer.write("</body></html>");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -84,40 +81,39 @@ public class ApocProcedureDocGenerator {
     private static void processJavadocComment(String comment, String procedureName, BufferedWriter writer) throws IOException {
         Pattern paramPattern = Pattern.compile("@param ([^ ]+) (.+)");
         Pattern throwsPattern = Pattern.compile("@throws ([^ ]+) (.+)");
-        Pattern descriptionPattern = Pattern.compile("/\\*\\*\\s*(.*?)\\s*\\*/", Pattern.DOTALL);
+        Pattern descriptionPattern = Pattern.compile("/\\*\\*\\s*(.*?)\\s*(?=@param|@throws|\\*/)", Pattern.DOTALL);
 
         Matcher descriptionMatcher = descriptionPattern.matcher(comment);
         String description = "";
         if (descriptionMatcher.find()) {
             description = descriptionMatcher.group(1).replaceAll("\\s*\\*\\s*", " ").trim();
             description = description.replaceAll("\\n+", "\n"); // Ensure single line breaks
-            description = description.replaceAll("\\n", "<br>\n"); // Convert line breaks to <br>
         }
 
         if (procedureName != null) {
-            writer.write("<div class='procedure'>\n");
-            writer.write("<h2>" + procedureName + "</h2>\n");
-            writer.write("<p>" + description + "</p>\n");
+            writer.write("## " + procedureName + "\n\n");
+            writer.write(description + "\n\n");
 
-            writer.write("<div class='parameters'><h3>Parameters:</h3><ul>\n");
             Matcher paramMatcher = paramPattern.matcher(comment);
-            while (paramMatcher.find()) {
-                writer.write("<li><strong>" + paramMatcher.group(1) + "</strong>: " + paramMatcher.group(2) + "</li>\n");
+            if (paramMatcher.find()) {
+                writer.write("### Parameters:\n\n");
+                do {
+                    writer.write("- **" + paramMatcher.group(1) + "**: " + paramMatcher.group(2) + "\n");
+                } while (paramMatcher.find());
+                writer.write("\n");
             }
-            writer.write("</ul></div>\n");
 
-            writer.write("<div class='throws'><h3>Throws:</h3><ul>\n");
             Matcher throwsMatcher = throwsPattern.matcher(comment);
-            while (throwsMatcher.find()) {
-                writer.write("<li><strong>" + throwsMatcher.group(1) + "</strong>: " + throwsMatcher.group(2) + "</li>\n");
+            if (throwsMatcher.find()) {
+                writer.write("### Throws:\n\n");
+                do {
+                    writer.write("- **" + throwsMatcher.group(1) + "**: " + throwsMatcher.group(2) + "\n");
+                } while (throwsMatcher.find());
+                writer.write("\n");
             }
-            writer.write("</ul></div>\n");
 
-            writer.write("<div class='usage'><h3>Usage:</h3>\n");
-            writer.write("<pre>CALL " + procedureName + "(parameters)</pre>\n");
-            writer.write("</div>\n");
-
-            writer.write("</div>\n");
+            writer.write("### Usage:\n\n");
+            writer.write("```cypher\nCALL " + procedureName + "(parameters)\n```\n\n");
         }
     }
 }

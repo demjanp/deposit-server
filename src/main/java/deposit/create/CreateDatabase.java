@@ -8,9 +8,6 @@ import org.neo4j.logging.Log;
 import java.util.Collections;
 import java.util.Map;
 
-/**
- * This class contains procedures for creating a new database and adding metadata.
- */
 public class CreateDatabase {
 	
 	@Context
