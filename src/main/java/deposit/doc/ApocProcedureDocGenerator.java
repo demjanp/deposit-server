@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 public class ApocProcedureDocGenerator {
 
     public static void main(String[] args) {
-        String directoryPath = "src/main/java/deposit/";
+        String directoryPath = "src/main/java/deposit/api/";
         String outputFilePath = "doc/apoc_procedures.md";
         generateDocumentation(directoryPath, outputFilePath);
     }
@@ -50,49 +50,65 @@ public class ApocProcedureDocGenerator {
             boolean inProcedureComment = false;
             StringBuilder commentBuilder = new StringBuilder();
             String procedureName = null;
-            String procedureAnnotationPattern = "@Procedure\\(name = \"([^\"]+)\"";
+            String description = null;
 
             while ((line = br.readLine()) != null) {
-                if (line.contains("/**")) {
+                line = line.trim();
+
+                if (line.startsWith("/**")) {
                     inProcedureComment = true;
-                    commentBuilder.setLength(0); // Clear the builder
+                    commentBuilder.setLength(0);
                 }
 
                 if (inProcedureComment) {
                     commentBuilder.append(line).append("\n");
-                    if (line.contains("*/")) {
-                        inProcedureComment = false;
+                }
+
+                if (line.endsWith("*/")) {
+                    inProcedureComment = false;
+                }
+
+                if (line.startsWith("@Procedure")) {
+                    Pattern procedurePattern = Pattern.compile("name\\s*=\\s*\"([^\"]+)\"");
+                    Matcher procedureMatcher = procedurePattern.matcher(line);
+                    if (procedureMatcher.find()) {
+                        procedureName = procedureMatcher.group(1);
                     }
-                } else if (line.contains("@Procedure(")) {
-                    // Capture the procedure name
-                    Pattern pattern = Pattern.compile(procedureAnnotationPattern);
-                    Matcher matcher = pattern.matcher(line);
-                    if (matcher.find()) {
-                        procedureName = matcher.group(1);
+                }
+
+                if (line.startsWith("@Description")) {
+                    Pattern descriptionPattern = Pattern.compile("@Description\\(\"([^\"]+)\"\\)");
+                    Matcher descriptionMatcher = descriptionPattern.matcher(line);
+                    if (descriptionMatcher.find()) {
+                        description = descriptionMatcher.group(1);
                     }
-                } else if (procedureName != null) {
-                    processJavadocComment(commentBuilder.toString(), procedureName, writer);
+                }
+
+                if (!inProcedureComment && procedureName != null) {
+                    processJavadocComment(commentBuilder.toString(), procedureName, description, writer);
                     procedureName = null; // Reset for next procedure
+                    description = null; // Reset for next procedure
                 }
             }
         }
     }
 
-    private static void processJavadocComment(String comment, String procedureName, BufferedWriter writer) throws IOException {
+    private static void processJavadocComment(String comment, String procedureName, String description, BufferedWriter writer) throws IOException {
         Pattern paramPattern = Pattern.compile("@param ([^ ]+) (.+)");
         Pattern throwsPattern = Pattern.compile("@throws ([^ ]+) (.+)");
-        Pattern descriptionPattern = Pattern.compile("/\\*\\*\\s*(.*?)\\s*(?=@param|@throws|\\*/)", Pattern.DOTALL);
+        Pattern javadocDescriptionPattern = Pattern.compile("/\\*\\*\\s*(.*?)\\s*(?=@param|@throws|\\*/)", Pattern.DOTALL);
 
-        Matcher descriptionMatcher = descriptionPattern.matcher(comment);
-        String description = "";
-        if (descriptionMatcher.find()) {
-            description = descriptionMatcher.group(1).replaceAll("\\s*\\*\\s*", " ").trim();
-            description = description.replaceAll("\\n+", "\n"); // Ensure single line breaks
+        Matcher javadocDescriptionMatcher = javadocDescriptionPattern.matcher(comment);
+        String javadocDescription = "";
+
+        if (javadocDescriptionMatcher.find()) {
+            javadocDescription = javadocDescriptionMatcher.group(1).replaceAll("\\s*\\*\\s*", " ").trim();
+            javadocDescription = javadocDescription.replaceAll("\\n+", "\\n"); // Ensure single line breaks
         }
 
         if (procedureName != null) {
             writer.write("## " + procedureName + "\n\n");
-            writer.write(description + "\n\n");
+            writer.write(javadocDescription + "\n\n");
 
             Matcher paramMatcher = paramPattern.matcher(comment);
             if (paramMatcher.find()) {
@@ -113,7 +129,11 @@ public class ApocProcedureDocGenerator {
             }
 
             writer.write("### Usage:\n\n");
-            writer.write("```cypher\nCALL " + procedureName + "(parameters)\n```\n\n");
+            if (description != null && !description.isEmpty()) {
+                writer.write("```cypher\n" + description + "\n```\n\n");
+            } else {
+                writer.write("```cypher\nCALL " + procedureName + "(parameters)\n```\n\n");
+            }
         }
     }
 }
