@@ -1,9 +1,9 @@
-package deposit.utils;
+package deposit.core;
 
 import java.util.Arrays;
 import java.util.List;
 
-public class ValidationUtils {
+public class Validation {
 
 	private static final List<String> VALID_TYPES = Arrays.asList(
 			"String", "Integer", "Float", "Boolean", "Date", "Time", "LocalTime", "DateTime", "LocalDateTime",

@@ -17,79 +17,8 @@ public class CreateRepository {
 		this.db = db;
 		this.log = log;
 	}
-
-	public void createClassDescriptor(ZonedDateTime timeStamp, String className, String name, String type, Long order, String comment) {
-		String createDescriptorQuery = """
-			CALL dbms.security.showCurrentUser() YIELD username
-			WITH username
-			MATCH (a:Class {name: $className})
-			MERGE (d:Descriptor {name: $name})
-			ON CREATE SET d.createdAt = $timeStamp,
-						  d.createdBy = username
-			MERGE (a)-[:HAS_DESCRIPTOR]->(d)
-			SET d.type = $type,
-				d.order = $order,
-				d.comment = $comment,
-				d.updatedAt = $timeStamp,
-				d.updatedBy = username
-		""";
-
-		Map<String, Object> params = Map.of(
-				"timeStamp", timeStamp,
-				"className", className,
-				"name", name,
-				"type", type,
-				"order", order,
-				"comment", comment
-		);
-
-		try (Transaction tx = db.beginTx()) {
-			tx.execute(createDescriptorQuery, params);
-			tx.commit();
-		} catch (Exception e) {
-			log.error("Error setting descriptor for Class node: " + className, e);
-			throw new RuntimeException("Failed to set descriptor for Class node: " + e.getMessage(), e);
-		}
-	}
-
-	public Node createClass(ZonedDateTime timeStamp, String name, Long order, List<Double> position, String comment) {
-		try (Transaction tx = db.beginTx()) {
-			String createClassQuery = """
-				CALL dbms.security.showCurrentUser() YIELD username
-				WITH username
-				MERGE (a:Class {name: $name})
-				ON CREATE SET d.createdAt = $timeStamp,
-						  	  d.createdBy = username
-				SET a.order = $order,
-					a.position = $position,
-					a.comment = $comment,
-					a.updatedAt = $timeStamp,
-					a.updatedBy = username
-				RETURN a
-			""";
-
-			Map<String, Object> params = Map.of(
-					"timeStamp", timeStamp,
-					"name", name,
-					"order", order,
-					"position", position,
-					"comment", comment
-			);
-
-			Result result = tx.execute(createClassQuery, params);
-			tx.commit();
-
-			if (result.hasNext()) {
-				return (Node) result.next().get("a");
-			} else {
-				throw new RuntimeException("Failed to create Class node: No node returned");
-			}
-		} catch (Exception e) {
-			log.error("Error creating Class node: " + name, e);
-			throw new RuntimeException("Failed to create Class node: " + e.getMessage(), e);
-		}
-	}
-
+	
+	
 	public void createDatabase(ZonedDateTime timeStamp, String databaseName) {
 		try (Transaction tx = db.beginTx()) {
 			String createDbQuery = String.format("CREATE DATABASE `%s`", databaseName);
@@ -126,5 +55,100 @@ public class CreateRepository {
 			log.error("Error creating database: " + databaseName, e);
 			throw new RuntimeException("Failed to create database: " + e.getMessage(), e);
 		}
+	}
+
+	public Node createClass(ZonedDateTime timeStamp, String name, Long order, List<Double> position, String comment) {
+		try (Transaction tx = db.beginTx()) {
+			String createClassQuery = """
+						CALL dbms.security.showCurrentUser() YIELD username
+						WITH username
+						MERGE (a:Class {name: $name})
+						ON CREATE SET d.createdAt = $timeStamp,
+								  	  d.createdBy = username
+						SET a.order = $order,
+							a.position = $position,
+							a.comment = $comment,
+							a.updatedAt = $timeStamp,
+							a.updatedBy = username
+						RETURN a
+					""";
+
+			Map<String, Object> params = Map.of(
+					"timeStamp", timeStamp,
+					"name", name,
+					"order", order,
+					"position", position,
+					"comment", comment
+			);
+
+			Result result = tx.execute(createClassQuery, params);
+			tx.commit();
+
+			if (result.hasNext()) {
+				return (Node) result.next().get("a");
+			} else {
+				throw new RuntimeException("Failed to create Class node: No node returned");
+			}
+		} catch (Exception e) {
+			log.error("Error creating Class node: " + name, e);
+			throw new RuntimeException("Failed to create Class node: " + e.getMessage(), e);
+		}
+	}
+	
+	public Node createObject(ZonedDateTime timeStamp, String objectName, String objectType, Map<String, Object> properties) {
+		// TODO: Implement
+        return null;
+    }
+	
+	public void createDescriptor(ZonedDateTime timeStamp, String descriptorName, String descriptorType, Long order, String comment) {
+		// TODO: Implement
+	}
+	
+	public void createClassDescriptor(ZonedDateTime timeStamp, String className, String name, String type, Long order, String comment) {
+		String createDescriptorQuery = """
+			CALL dbms.security.showCurrentUser() YIELD username
+			WITH username
+			MATCH (a:Class {name: $className})
+			MERGE (d:Descriptor {name: $name})
+			ON CREATE SET d.createdAt = $timeStamp,
+						  d.createdBy = username
+			MERGE (a)-[:HAS_DESCRIPTOR]->(d)
+			SET d.type = $type,
+				d.order = $order,
+				d.comment = $comment,
+				d.updatedAt = $timeStamp,
+				d.updatedBy = username
+		""";
+
+		Map<String, Object> params = Map.of(
+				"timeStamp", timeStamp,
+				"className", className,
+				"name", name,
+				"type", type,
+				"order", order,
+				"comment", comment
+		);
+
+		try (Transaction tx = db.beginTx()) {
+			tx.execute(createDescriptorQuery, params);
+			tx.commit();
+		} catch (Exception e) {
+			log.error("Error setting descriptor for Class node: " + className, e);
+			throw new RuntimeException("Failed to set descriptor for Class node: " + e.getMessage(), e);
+		}
+	}
+	
+	public Relationship createRelationship(ZonedDateTime timeStamp, String startNode, String endNode, String relationshipType, Map<String, Object> properties) {
+		// TODO: Implement
+        return null;
+    }
+	
+	public Relationship createClassRelationship(ZonedDateTime timeStamp, String startClass, String endClass, String relationshipType, Map<String, Object> properties) {
+		// TODO: Implement
+        return null;
+    }
+	
+	public void createUserTool(ZonedDateTime timeStamp, String toolName, String toolType, String description, String author) {
+		// TODO: Implement
 	}
 }
