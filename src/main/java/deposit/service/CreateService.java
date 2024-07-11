@@ -8,6 +8,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.logging.Log;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -29,8 +30,9 @@ public class CreateService {
 		String escapedClassName = className.replace("/", "\\/");
         String escapedDescriptorName = descriptorName.replace("/", "\\/");
         String name = escapedClassName + "/" + escapedDescriptorName;
+		ZonedDateTime timeStamp = ZonedDateTime.now();
 
-        createRepository.createClassDescriptor(className, name, type, order, comment);
+        createRepository.createClassDescriptor(timeStamp, className, name, type, order, comment);
     }
 
 	public Stream<ClassNodeResult> createClass(
@@ -41,9 +43,11 @@ public class CreateService {
 
 		// Validate descriptors
 		ValidationUtils.validateClassDescriptors(descriptors);
-		
+
+		ZonedDateTime timeStamp = ZonedDateTime.now();
+
 		// Delegate to repository
-		Node classNode = createRepository.createClass(name, order, position, comment);
+		Node classNode = createRepository.createClass(timeStamp, name, order, position, comment);
 
 		// Create descriptors
 		for (int i = 0; i < descriptors.size(); i++) {
@@ -65,7 +69,9 @@ public class CreateService {
 			throw new RuntimeException("Database name cannot end with '_archive'");
 		}
 
+		ZonedDateTime timeStamp = ZonedDateTime.now();
+
 		// Delegate to repository
-		createRepository.createDatabase(databaseName);
+		createRepository.createDatabase(timeStamp, databaseName);
 	}
 }

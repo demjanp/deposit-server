@@ -4,7 +4,7 @@ import deposit.core.*;
 import org.neo4j.graphdb.*;
 import org.neo4j.logging.Log;
 
-import java.util.Collections;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.List;
 
@@ -18,44 +18,58 @@ public class CreateRepository {
 		this.log = log;
 	}
 
-	public void createClassDescriptor(String className, String name, String type, Long order, String comment) {
-        String createDescriptorQuery = """
-            MATCH (a:Class {name: $className})
-            MERGE (d:Descriptor {name: $name})
-            MERGE (a)-[:HAS_DESCRIPTOR]->(d)
-            SET d.type = $type
-            SET d.order = $order
-            SET d.comment = $comment
-        """;
+	public void createClassDescriptor(ZonedDateTime timeStamp, String className, String name, String type, Long order, String comment) {
+		String createDescriptorQuery = """
+			CALL dbms.security.showCurrentUser() YIELD username
+			WITH username
+			MATCH (a:Class {name: $className})
+			MERGE (d:Descriptor {name: $name})
+			ON CREATE SET d.createdAt = $timeStamp,
+						  d.createdBy = username
+			MERGE (a)-[:HAS_DESCRIPTOR]->(d)
+			SET d.type = $type,
+				d.order = $order,
+				d.comment = $comment,
+				d.updatedAt = $timeStamp,
+				d.updatedBy = username
+		""";
 
-        Map<String, Object> params = Map.of(
-                "className", className,
-                "name", name,
-                "type", type,
-                "order", order,
-                "comment", comment
-        );
+		Map<String, Object> params = Map.of(
+				"timeStamp", timeStamp,
+				"className", className,
+				"name", name,
+				"type", type,
+				"order", order,
+				"comment", comment
+		);
 
-        try (Transaction tx = db.beginTx()) {
-            tx.execute(createDescriptorQuery, params);
-            tx.commit();
-        } catch (Exception e) {
-            log.error("Error setting descriptor for Class node: " + className, e);
-            throw new RuntimeException("Failed to set descriptor for Class node: " + e.getMessage(), e);
-        }
-    }
+		try (Transaction tx = db.beginTx()) {
+			tx.execute(createDescriptorQuery, params);
+			tx.commit();
+		} catch (Exception e) {
+			log.error("Error setting descriptor for Class node: " + className, e);
+			throw new RuntimeException("Failed to set descriptor for Class node: " + e.getMessage(), e);
+		}
+	}
 
-	public Node createClass(String name, Long order, List<Double> position, String comment) {
+	public Node createClass(ZonedDateTime timeStamp, String name, Long order, List<Double> position, String comment) {
 		try (Transaction tx = db.beginTx()) {
 			String createClassQuery = """
+				CALL dbms.security.showCurrentUser() YIELD username
+				WITH username
 				MERGE (a:Class {name: $name})
-				SET a.order = $order
-				SET a.position = $position
-				SET a.comment = $comment
+				ON CREATE SET d.createdAt = $timeStamp,
+						  	  d.createdBy = username
+				SET a.order = $order,
+					a.position = $position,
+					a.comment = $comment,
+					a.updatedAt = $timeStamp,
+					a.updatedBy = username
 				RETURN a
 			""";
 
 			Map<String, Object> params = Map.of(
+					"timeStamp", timeStamp,
 					"name", name,
 					"order", order,
 					"position", position,
@@ -76,7 +90,7 @@ public class CreateRepository {
 		}
 	}
 
-	public void createDatabase(String databaseName) {
+	public void createDatabase(ZonedDateTime timeStamp, String databaseName) {
 		try (Transaction tx = db.beginTx()) {
 			String createDbQuery = String.format("CREATE DATABASE `%s`", databaseName);
 			db.executeTransactionally(createDbQuery);
@@ -92,14 +106,19 @@ public class CreateRepository {
 				CREATE (m:Metadata {
 					depositVersion: $depositVersion,
 					versioningType: null,
+					description: '',
+					createdAt: $timeStamp,
 					createdBy: username,
-					createdAt: datetime(),
-					updatedAt: datetime(),
-					description: ''
+					updatedAt: $timeStamp,
+					updatedBy: username,
+					restored: null
 				})
 			""";
 
-			Map<String, Object> params = Collections.singletonMap("depositVersion", depositVersion);
+			Map<String, Object> params = Map.of(
+					"depositVersion", depositVersion,
+					"timeStamp", timeStamp
+			);
 			db.executeTransactionally(createMetadataQuery, params);
 
 			tx.commit();
