@@ -1,8 +1,8 @@
 package deposit.service;
 
 import deposit.repository.CreateRepository;
-import deposit.core.Validation;
-import deposit.core.Versioning;
+import deposit.utils.Validation;
+import deposit.utils.Versioning;
 
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;

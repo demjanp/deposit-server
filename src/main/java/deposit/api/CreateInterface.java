@@ -26,6 +26,9 @@ public class CreateInterface {
         return createService;
     }
 
+	public void setCreateService(CreateService createService) {
+	   		this.createService = createService;
+	}
 
 
 	/**
@@ -34,14 +37,11 @@ public class CreateInterface {
 	 * @param databaseName the name of the database to create.
 	 * @throws RuntimeException if the database name ends with '_archive' or if there is an error during creation.
 	 */
-   @Procedure(name = "deposit.create.database", mode = Mode.WRITE)
+	@Procedure(name = "deposit.create.database", mode = Mode.WRITE)
 	@Description("CALL deposit.create.database(databaseName)")
-	public void createDatabase(@Name("databaseName") String databaseName) {
-		createService.createDatabase(databaseName);
-	}
-
-	public void setCreateService(CreateService createService) {
-	   		this.createService = createService;
+	public void createDatabase(
+			@Name("databaseName") String databaseName) {
+	   createService.createDatabase(databaseName);
 	}
 
 	/**
@@ -68,7 +68,7 @@ public class CreateInterface {
 	}
 
 	/**
-     * Creates a descriptor for a Class node with specified properties.
+     * Creates a Class Descriptor with specified properties.
      *
      * @param className      the name of the class.
      * @param descriptorName the name of the descriptor.
@@ -86,6 +86,6 @@ public class CreateInterface {
             @Name(value = "order", defaultValue = "0") Long order,
             @Name(value = "comment", defaultValue = "") String comment) {
 
-        createService.createClassDescriptor(className, descriptorName, type, order, comment);
+		createService.createClassDescriptor(className, descriptorName, type, order, comment);
     }
 }

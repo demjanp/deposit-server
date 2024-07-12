@@ -1,5 +1,6 @@
 package deposit.service;
 
+import deposit.utils.DepositInfo;
 import deposit.repository.GetRepository;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -8,6 +9,7 @@ import org.neo4j.logging.Log;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public class GetService {
 
@@ -17,56 +19,78 @@ public class GetService {
 		this.getRepository = new GetRepository(db, log);
 	}
 
-    // Package-private setter for GetRepository to be used in tests
-    void setGetRepository(GetRepository getRepository) {
-        this.getRepository = getRepository;
-    }
-	
-	public List<String> getDatabaseNames() {
-		// TODO: Implement
+	// Package-private setter for GetRepository to be used in tests
+	void setGetRepository(GetRepository getRepository) {
+		this.getRepository = getRepository;
+	}
 
-        return List.of();
-    }
-	
-	public String getVersion() {
-		// TODO: Implement
+	public static class DatabaseNameResult {
+		public String databaseName;
 
-        return "";
-    }
+		public DatabaseNameResult(String databaseName) {
+			this.databaseName = databaseName;
+		}
+	}
+
+	public Stream<DatabaseNameResult> getDatabaseNames() {
+		List<String> databaseNames = getRepository.getDatabaseNames();
+		return databaseNames.stream().map(DatabaseNameResult::new);
+	}
+
+	public static class VersionResult {
+		public String version;
+
+		public VersionResult(String version) {
+			this.version = version;
+		}
+	}
+
+	public Stream<VersionResult> getVersion() {
+		String version = DepositInfo.version;
+		return Stream.of(new VersionResult(version));
+	}
 	
 	public String getVersioningType() {
 		// TODO: Implement
 
-        return "";
-    }
+		return "";
+	}
 	
 	public String getCreatedBy() {
 		// TODO: Implement
 
-        return "";
-    }
+		return "";
+	}
 	
 	public ZonedDateTime getCreatedAt() {
 		// TODO: Implement
 
-        return null;
-    }
+		return null;
+	}
 	
 	public ZonedDateTime getUpdatedAt() {
 		// TODO: Implement
 
-        return null;
-    }
+		return null;
+	}
 	
 	public String getDatabaseDescription() {
 		// TODO: Implement
 
-        return "";
-    }
-	
-	public List<Node> getClass(String name) {
-		// TODO: Implement
-		return getRepository.getClass(name);
+		return "";
+	}
+
+	public static class ClassNodeResult {
+		public Node node;
+
+		public ClassNodeResult(Node node) {
+			this.node = node;
+		}
+	}
+
+	public Stream<ClassNodeResult> getClass(String name) {
+		List<Node> classNodes = getRepository.getClass(name);
+		return classNodes.stream().map(ClassNodeResult::new);
 	}
 	
 	public List<Node> getObjectClasses(Node objectNode) {

@@ -1,4 +1,4 @@
-package deposit.core;
+package deposit.utils;
 
 import java.time.ZonedDateTime;
 

@@ -1,6 +1,6 @@
 package deposit.repository;
 
-import deposit.core.*;
+import deposit.utils.DepositInfo;
 import org.neo4j.graphdb.*;
 import org.neo4j.logging.Log;
 
