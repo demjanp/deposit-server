@@ -15,11 +15,11 @@ public class PosResult {
 		this.y = y;
 	}
 
-	public String getX() {
+	public float getX() {
 		return x;
 	}
 
-	public String getY() {
+	public float getY() {
 		return y;
 	}
 

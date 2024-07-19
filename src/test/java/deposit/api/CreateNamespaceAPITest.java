@@ -24,7 +24,7 @@ public class CreateNamespaceAPITest extends BaseNeo4jTest {
 			String description = "This is a test namespace.";
 			String versioningType = "persistent";
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.createNamespace($name, $description, $versioningType)",
+				tx.run("CALL deposit.create.namespace($name, $description, $versioningType)",
 						Map.of("name", name, "description", description, "versioningType", versioningType));
 				tx.commit();
 				return null;
@@ -39,14 +39,14 @@ public class CreateNamespaceAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String name = "DuplicateNamespace";
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.createNamespace($name, '', '')", Map.of("name", name));
+				tx.run("CALL deposit.create.namespace($name, '', '')", Map.of("name", name));
 				tx.commit();
 				return null;
 			});
 			// Try to create the same namespace again, which should throw an exception
 			try {
 				session.writeTransaction(tx -> {
-					tx.run("CALL deposit.createNamespace($name, '', '')", Map.of("name", name));
+					tx.run("CALL deposit.create.namespace($name, '', '')", Map.of("name", name));
 					tx.commit();
 					return null;
 				});
@@ -62,7 +62,7 @@ public class CreateNamespaceAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String name = "DefaultNamespace";
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.createNamespace($name)", Map.of("name", name));
+				tx.run("CALL deposit.create.namespace($name)", Map.of("name", name));
 				tx.commit();
 				return null;
 			});
