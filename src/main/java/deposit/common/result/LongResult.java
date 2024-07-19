@@ -1,4 +1,4 @@
-package deposit.common;
+package deposit.common.result;
 
 public class LongResult {
 	public long value;

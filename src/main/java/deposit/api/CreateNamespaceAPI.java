@@ -1,7 +1,7 @@
 package deposit.api;
 
 import deposit.service.CreateNamespaceService;
-import deposit.common.NodeResult;
+import deposit.common.result.NodeResult;
 
 import org.neo4j.procedure.Context;
 import org.neo4j.procedure.Description;
