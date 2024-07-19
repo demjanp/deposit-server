@@ -26,8 +26,8 @@ public class CreateNamespaceAPI {
 	 * @return the created Namespace node.
 	 * @throws RuntimeException if a namespace with that name already exists or if there is an error during creation.
 	 */
-	@Procedure(name = "deposit.createNamespace", mode = Mode.WRITE)
-	@Description("Creates a node with label 'Person' and returns it using Cypher")
+	@Procedure(name = "deposit.create.namespace", mode = Mode.WRITE)
+	@Description("CALL deposit.create.namespace(name) YIELD node")
 	public Stream<NodeResult> createNamespace(
 			@Name("name") String name,
 			@Name(value = "description", defaultValue = "") String description,

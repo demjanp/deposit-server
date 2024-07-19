@@ -48,6 +48,7 @@ public class ApocProcedureDocGenerator {
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
             String line;
             boolean inProcedureComment = false;
+            boolean checkedDescription = false;
             StringBuilder commentBuilder = new StringBuilder();
             String procedureName = null;
             String description = null;
@@ -76,15 +77,16 @@ public class ApocProcedureDocGenerator {
                     }
                 }
 
-                if (line.startsWith("@Description")) {
-                    Pattern descriptionPattern = Pattern.compile("@Description\\(\"([^\"]+)\"\\)");
-                    Matcher descriptionMatcher = descriptionPattern.matcher(line);
-                    if (descriptionMatcher.find()) {
-                        description = descriptionMatcher.group(1);
-                    }
-                }
-
-                if (!inProcedureComment && procedureName != null) {
+				if (line.startsWith("@Description")) {
+					Pattern descriptionPattern = Pattern.compile("@Description\\(\"([^\"]+)\"\\)");
+					Matcher descriptionMatcher = descriptionPattern.matcher(line);
+					if (descriptionMatcher.find()) {
+						description = descriptionMatcher.group(1);
+					}
+					checkedDescription = true;
+				}
+				
+                if (checkedDescription && !inProcedureComment && procedureName != null) {
                     processJavadocComment(commentBuilder.toString(), procedureName, description, writer);
                     procedureName = null; // Reset for next procedure
                     description = null; // Reset for next procedure
@@ -94,6 +96,7 @@ public class ApocProcedureDocGenerator {
     }
 
     private static void processJavadocComment(String comment, String procedureName, String description, BufferedWriter writer) throws IOException {
+        
         Pattern paramPattern = Pattern.compile("@param ([^ ]+) (.+)");
         Pattern throwsPattern = Pattern.compile("@throws ([^ ]+) (.+)");
         Pattern javadocDescriptionPattern = Pattern.compile("/\\*\\*\\s*(.*?)\\s*(?=@param|@throws|\\*/)", Pattern.DOTALL);
@@ -127,7 +130,7 @@ public class ApocProcedureDocGenerator {
                 } while (throwsMatcher.find());
                 writer.write("\n");
             }
-
+			
             writer.write("### Usage:\n\n");
             if (description != null && !description.isEmpty()) {
                 writer.write("```cypher\n" + description + "\n```\n\n");
