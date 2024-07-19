@@ -1,4 +1,4 @@
-package deposit.utils;
+package deposit.common;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,7 +27,6 @@ public class DepositInfo {
                     Properties prop = new Properties();
                     prop.load(input);
                     version = prop.getProperty("git.commit.id.describe", "unknown-version");
-                    System.out.println("Loaded properties file from " + url + ", version is " + version);
                 }
             }
         } catch (IOException ex) {
