@@ -38,8 +38,8 @@ public class SetActiveNamespaceAPITest extends BaseNeo4jTest {
             // Verify that the active namespace is set in the session context using the helper procedure
             var result = session.run("CALL deposit.get.activeNamespace()");
             assertTrue(result.hasNext());
-            var record = result.next();
-            assertEquals(name, record.get("value").asString());
+            var node = result.next().get("node").asNode();
+            assertEquals(name, node.get("name").asString());
         }
     }
 
