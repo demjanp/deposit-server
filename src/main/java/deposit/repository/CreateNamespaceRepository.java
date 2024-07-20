@@ -32,12 +32,13 @@ public class CreateNamespaceRepository extends BaseRepository<CreateNamespaceRep
 				description: $description,
 				depositVersion: $depositVersion,
 				versioningType: $versioningType,
-				restored: null,
+				restored: NULL,
 				createdAt: $timeStamp,
 				createdBy: $username,
 				updatedAt: $timeStamp,
 				updatedBy: $username
 			})
+			CREATE (namespace)-[:CONTAINS]->(:Archive)
 			RETURN namespace
 		""";
 
