@@ -9,12 +9,15 @@ import java.util.Map;
 
 public class CreateNamespaceRepository extends BaseRepository<CreateNamespaceRepository> {
 
-	CreateNamespaceRepository() { // Package-private constructor to allow access by BaseRepository
-		// Prevent direct instantiation
-	}
+	private static CreateNamespaceRepository instance;
 
-	public static CreateNamespaceRepository getInstance() {
-		return (CreateNamespaceRepository) BaseRepository.getInstance(CreateNamespaceRepository.class);
+	private CreateNamespaceRepository() {}
+
+	public static synchronized CreateNamespaceRepository getInstance() {
+		if (instance == null) {
+			instance = new CreateNamespaceRepository();
+		}
+		return instance;
 	}
 
 	public Node createNamespace(Transaction tx, ZonedDateTime timeStamp, String depositVersion, String username, String name, String description, String versioningType) {
@@ -66,6 +69,6 @@ public class CreateNamespaceRepository extends BaseRepository<CreateNamespaceRep
 		} catch (Exception e) {
 			throwException("Error creating Namespace with name: " + name, e);
 		}
-		return null; // This line is unreachable but needed to satisfy return type
+		return null;
 	}
 }
