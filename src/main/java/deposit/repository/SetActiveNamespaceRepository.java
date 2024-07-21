@@ -1,7 +1,10 @@
 package deposit.repository;
 
+import deposit.common.Versioning;
+
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Result;
+import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
 import java.util.Map;
@@ -19,32 +22,43 @@ public class SetActiveNamespaceRepository extends BaseRepository<SetActiveNamesp
 		return instance;
 	}
 
-	public boolean setActiveNamespace(Transaction tx, ZonedDateTime timeStamp, String username, String name) {
-		String validateNameQuery = """
+	public Node setActiveNamespace(Transaction tx, ZonedDateTime timeStamp, String username, String name) {
+		String queryMatch = """
 			MATCH (namespace:Namespace {name: $name}) RETURN namespace
 		""";
-		/*
-		TODO
-		if Namespace exists:
-			if versioningType is 'transient' delete the archive subtree, leaving only the Archive node
-			if versioningType is not '' check if the archive subtree exists and if not, create it by cloning all elements from the Namespace and placing them under the Archive node
-			return the Namespace node
-		else:
-			return null
-		*/
-
+		
+		String versioningType = "";
+		Node namespace = null;
+		
 		try {
-			Result result = tx.execute(validateNameQuery, Map.of("name", name));
+			Result result = tx.execute(queryMatch, Map.of("name", name));
 			
 			if (result.hasNext()) {
-				return true;
+				namespace = (Node) result.next().get("namespace");
+				versioningType = (String) namespace.getProperty("versioningType");
 			} else {
 				throwException("Transaction failed: Namespace " + name + " doesn't exist");
-				return false;
 			}
 		} catch (Exception e) {
 			throwException("Error executing transaction", e);
 		}
-		return false;
+		
+		try {
+			String queryUpdate = """
+				MATCH (namespace:Namespace {name: $name})
+			""";
+			queryUpdate += Versioning.getNamespaceUpdateCode(versioningType);
+			Map<String, Object> params = Map.of(
+				"name", name,
+				"timeStamp", timeStamp,
+				"username", username
+			);
+			tx.execute(queryUpdate, params);
+			return namespace;
+		} catch (Exception e) {
+			throwException("Error executing transaction", e);
+		}
+		
+		return null;
 	}
 }

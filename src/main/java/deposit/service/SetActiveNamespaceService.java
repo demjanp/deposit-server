@@ -29,8 +29,11 @@ public class SetActiveNamespaceService {
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = SessionContext.getActiveUsername();
 		
-		if (setActiveNamespaceRepository.setActiveNamespace(tx, timeStamp, username, name)) {
+		Node namespace = setActiveNamespaceRepository.setActiveNamespace(tx, timeStamp, username, name);
+		if (namespace != null) {
+			String versioningType = (String) namespace.getProperty("versioningType");
 			SessionContext.setActiveNamespace(name);
+			SessionContext.setVersioningType(versioningType);
 		}
 	}
 }

@@ -16,7 +16,12 @@
 		<dependency>
 			<groupId>org.neo4j</groupId>
 			<artifactId>neo4j</artifactId>
-			<version>5.21.2</version>
+			<version>5.21.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.neo4j.procedure</groupId>
+			<artifactId>apoc-core</artifactId>
+			<version>5.21.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.neo4j.procedure</groupId>
@@ -27,7 +32,7 @@
 		<dependency>
 			<groupId>org.neo4j.test</groupId>
 			<artifactId>neo4j-harness</artifactId>
-			<version>5.21.2</version>
+			<version>5.21.0</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

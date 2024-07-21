@@ -1,6 +1,7 @@
 package deposit.doc;
 
 import deposit.common.Versioning;
+import deposit.common.SessionContext;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -14,11 +15,12 @@ public class VersioningCodeGenerator {
 			"Object", "Class", "Descriptor", "ClassDescriptor",
 			"Membership", "Relationship", "ClassRelationship"
 		);
-		String versioningType = "permanent";
+		
+		SessionContext.setVersioningType("permanent");
 		Boolean deletion = false;
 
 		for (String elementType : elementTypes) {
-			String versioningCode = Versioning.getVersioningCode(elementType, versioningType, deletion);
+			String versioningCode = Versioning.getElementUpdateCode(elementType, deletion);
 			saveToFile(elementType, versioningCode);
 		}
 	}
