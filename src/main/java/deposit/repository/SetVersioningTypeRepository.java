@@ -4,7 +4,6 @@ import deposit.common.Versioning;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Result;
-import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
 import java.util.Map;

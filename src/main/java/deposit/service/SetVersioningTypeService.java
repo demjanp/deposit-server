@@ -33,7 +33,7 @@ public class SetVersioningTypeService extends BaseService {
 		String username = SessionContext.getActiveUsername();
 		String namespaceName = SessionContext.getActiveNamespace();
 		if (namespaceName == null) {
-			throwException("Cannot set versioning type. No active Namespace set.");
+			throwException("Cannot set versioning type without an active Namespace.");
 		}
 		
 		setVersioningTypeRepository.setVersioningType(tx, timeStamp, username, namespaceName, versioningType);

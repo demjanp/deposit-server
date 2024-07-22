@@ -29,8 +29,7 @@ public class GetActiveNamespaceRepository extends BaseRepository {
 			Result result = tx.execute(validateNameQuery, Map.of("name", name));
 			
 			if (result.hasNext()) {
-				Node node = (Node) result.next().get("namespace");
-				return node;
+				return (Node) result.next().get("namespace");
 			} else {
 				throwException("Transaction failed: Namespace " + name + " doesn't exist");
 			}

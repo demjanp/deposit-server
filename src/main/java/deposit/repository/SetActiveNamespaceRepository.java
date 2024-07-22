@@ -64,8 +64,7 @@ public class SetActiveNamespaceRepository extends BaseRepository {
 		try {
 			Result result = tx.execute(queryUpdate, params);
 			if (result.hasNext()) {
-				Node node = (Node) result.next().get("namespace");
-				return node;
+				return (Node) result.next().get("namespace");
 			} else {
 				throwException("Namespace update failed: No result returned");
 			}

@@ -26,7 +26,9 @@ public class CreateNamespaceService extends BaseService {
 	}
 
 	public Node createNamespace(Transaction tx, String name, String description, String versioningType) {
-
+		
+		validateName(name);
+		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = SessionContext.getActiveUsername();
 		String depositVersion = DepositInfo.version;

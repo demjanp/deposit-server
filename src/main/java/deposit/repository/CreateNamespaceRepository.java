@@ -26,7 +26,15 @@ public class CreateNamespaceRepository extends BaseRepository {
 		String validateNameQuery = """
 			MATCH (namespace:Namespace {name: $name}) RETURN namespace
 		""";
-
+		try {
+			Result validation = tx.execute(validateNameQuery, Map.of("name", name));
+			if (validation.hasNext()) {
+				throwException("Error creating Namespace. A namespace with the name: " + name + " already exists.");
+			}
+		} catch (Exception e) {
+			throwException("Error creating Namespace with name: " + name, e);
+		}
+		
 		String createNamespaceQuery = """
 			CREATE (namespace:Namespace {
 				id: randomUUID(),
@@ -43,6 +51,8 @@ public class CreateNamespaceRepository extends BaseRepository {
 			CREATE (namespace)-[:CONTAINS]->(archive:Archive)
 			WITH namespace, archive
 		""";
+		createNamespaceQuery += Versioning.getCreateArchiveCode(versioningType);
+		createNamespaceQuery += "RETURN namespace";
 
 		Map<String, Object> params = Map.of(
 			"timeStamp", timeStamp,
@@ -54,21 +64,10 @@ public class CreateNamespaceRepository extends BaseRepository {
 		);
 
 		try {
-			// Execute validation query
-			Result validation = tx.execute(validateNameQuery, Map.of("name", name));
-			if (validation.hasNext()) {
-				throwException("Error creating Namespace. A namespace with the name: " + name + " already exists.");
-			}
-			
-			createNamespaceQuery += Versioning.getCreateArchiveCode(versioningType);
-			createNamespaceQuery += "RETURN namespace";
-			
-			// Execute namespace creation
 			Result result = tx.execute(createNamespaceQuery, params);
 
 			if (result.hasNext()) {
-				Node node = (Node) result.next().get("namespace");
-				return node;
+				return (Node) result.next().get("namespace");
 			} else {
 				throwException("Namespace creation failed: No result returned");
 			}
