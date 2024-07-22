@@ -7,7 +7,7 @@ import org.neo4j.graphdb.Result;
 import java.time.ZonedDateTime;
 import java.util.Map;
 
-public class GetActiveNamespaceRepository extends BaseRepository<GetActiveNamespaceRepository> {
+public class GetActiveNamespaceRepository extends BaseRepository {
 
 	private static GetActiveNamespaceRepository instance;
 

@@ -6,10 +6,14 @@ public class Versioning {
 	
 	/**
 	 * Generates Cypher code to append to a query used to create or update a Deposit element to handle versioning.
-	 * Assumes that the existing query provides the namespace node and further elements depending on elementType.
+	 * Assumes that the existing query ends with a specific statement depending on elementType:
+	 *  Object / Class: 'WITH namespace, updated'
+	 *	Descriptor / ClassDescriptor: 'WITH namespace, parent, updated'
+	 *	Membership / Relationship / ClassRelationship: 'WITH namespace, source, target, updated'
 	 * Assumes that the following parameters are passed to the query:
 	 *	$timeStamp: ZonedDateTime, the current timestamp.
 	 *	$username: String, the username of the active user.
+	 * Ends with a 'WITH updated' statement so needs to be closed with a RETURN statement for the query to be valid.
 	 *
 	 * @param elementType type of Deposit element that is being updated. Defined as String. Possible values are Object, Class, Descriptor, ClassDescriptor, Membership, Relationship, ClassRelationship.
 	 * @param deletion set to true if the operation is a deletion. Defined as boolean.
@@ -166,18 +170,19 @@ public class Versioning {
 				// Re-create relationships to the new version
 				queryString += """
 					// Proceed if a previous version exists
-					WITH prev, newVersion WHERE prev IS NOT NULL
+					WITH prev, newVersion, updated WHERE prev IS NOT NULL
 					
 					// Collect all incoming and outgoing relationships from prev
 					OPTIONAL MATCH (prev)-[r]->(target)
-					WITH prev, newVersion, COLLECT('{'r:r, target:target'}') as outgoingRels
+					WITH prev, newVersion, updated, COLLECT('{'r:r, target:target'}') as outgoingRels
 					OPTIONAL MATCH (source)-[r]->(prev)
-					WITH prev, newVersion, outgoingRels, COLLECT('{'r:r, source:source'}') as incomingRels
+					WITH prev, newVersion, updated, outgoingRels, COLLECT('{'r:r, source:source'}') as incomingRels
 					
 					// Re-create the relationships
 					UNWIND outgoingRels as rel
 						CREATE (newVersion)-[newR:TYPE(rel.r)]->(rel.target)
 						SET newR += properties(rel.r)
+					WITH prev, newVersion, updated, incomingRels
 					UNWIND incomingRels as rel
 						CREATE (rel.source)-[newR:TYPE(rel.r)]->(newVersion)
 						SET newR += properties(rel.r)
@@ -186,7 +191,7 @@ public class Versioning {
 		}
 		
 		queryString += """
-			RETURN {0}
+			WITH updated
 		""";
 		
 		queryString = MessageFormat.format(queryString, updated, deleted);
@@ -195,83 +200,77 @@ public class Versioning {
 	}
 	
 	/**
-	 * Generates Cypher code to append to a query used to match a Namespace when setting the active Namespace to handle versioning.
-	 * Assumes that the existing query provides the namespace node.
+	 * Generates Cypher code to append to a query manipulating the Namespace to create the Archive
+	 * Assumes that the existing query ends with the statement: 'WITH namespace, archive'.
 	 * Assumes that the following parameters are passed to the query:
 	 *	$timeStamp: ZonedDateTime, the current timestamp.
 	 *	$username: String, the username of the active user.
+	 * Ends with a 'WITH namespace, archive' statement so needs to be closed with a RETURN statement for the query to be valid.
 	 *
 	 * @return the query string to be appended to handle the versioning logic.
 	 */
-	public static String getNamespaceUpdateCode(String versioningType) {
+	public static String getCreateArchiveCode(String versioningType) {
 		
-		String queryString = """
-			MERGE (namespace)-[:CONTAINS]->(archive:Archive)
-			WITH namespace, archive
-		""";
+		String queryString = "";
 		
-		if (versioningType.equals("transient")) {
-			// Delete the archive subtree, leaving only the Archive node.
-			// TODO this should only be called with setActiveNamespace, not setVersioningType
-			queryString += """
-				CALL {
-					WITH namespace, archive
-					OPTIONAL MATCH (archive)-[:CONTAINS]->(node)
-					WITH namespace, archive, node
-					OPTIONAL MATCH (node)-[:CONTAINS*0..]->(subNode)
-					WITH namespace, archive, node, subNode
-					WHERE node IS NOT NULL
-					DETACH DELETE node
-					WITH namespace, archive, subNode
-					WHERE subNode IS NOT NULL
-					DETACH DELETE subNode
-					WITH namespace, archive
-					RETURN count(*) as _
-				}
-				WITH namespace, archive
-			""";
-		}
-
 		if (!versioningType.isEmpty()) {
 			// Check if the archive subtree exists and if not, create it by cloning all elements from the Namespace and placing them under the Archive node
-			// TODO this should also be called with setVersioningType
+			// 1. If archive is empty:
+			//	a. Check if archive is empty
+			// 	b. Find all nodes and relationships linked to the namespace by CONTAINS, excluding the archive node
+			// 	c. Clone the subgraph
+			// 	d. Attach the cloned nodes to the archive
+			// 2. Create a new Version node
 			queryString += """
-				CALL {
+				CALL {// 1
 					WITH namespace, archive
-					
-					// If archive is empty
-					OPTIONAL MATCH (archive)-[:CONTAINS]->(node)
+					OPTIONAL MATCH (archive)-[:CONTAINS]->(node) // 1a
 					WITH namespace, archive, node
 					WHERE node IS NULL
-					
-					// Find all nodes and relationships linked to the namespace by CONTAINS, excluding the archive node
-					MATCH (namespace)-[:CONTAINS]->(n)
+					MATCH (namespace)-[:CONTAINS]->(n) // 1b
 					WHERE n <> archive
 					WITH namespace, archive, collect(n) AS nodesToClone
-					
-					// Clone the subgraph
-					CALL apoc.refactor.cloneSubgraph(nodesToClone, []) YIELD input, output
-					
-					// Attach the cloned nodes to the archive
-					WITH namespace, archive, output
+					CALL apoc.refactor.cloneSubgraph(nodesToClone, []) YIELD input, output // 1c
+					WITH namespace, archive, output // 1d
 					MERGE (archive)-[:CONTAINS]->(output)
 					SET output.deleted = false
 					WITH namespace, archive
 					RETURN count(*) as _
 				}
-				WITH namespace, archive
-				
-				// Create a new Version node
-				WITH namespace, archive
+				WITH namespace, archive // 2
 				CREATE (archive)-[:CONTAINS]->(version:Version {updatedAt: $timeStamp, updatedBy: $username, tag: NULL })
-				WITH namespace
+				WITH namespace, archive
 			""";
 		}
-
-		queryString += """
-			RETURN namespace
-		""";
-
+		
 		return queryString;
+	}
+	
+	/**
+	 * Generates Cypher code to append to a query manipulating the Namespace to clear the Archive
+	 * Assumes that the existing query ends with the statement: 'WITH namespace, archive'.
+	 * Ends with a 'WITH namespace, archive' statement so needs to be closed with a RETURN statement for the query to be valid.
+	 *
+	 * @return the query string to be appended to handle the versioning logic.
+	 */
+	public static String getClearArchiveCode() {
+		// Delete the archive subtree, leaving only the Archive node.
+		return """
+			CALL {
+				WITH namespace, archive
+				OPTIONAL MATCH (archive)-[:CONTAINS]->(node)
+				WITH namespace, archive, node
+				OPTIONAL MATCH (node)-[:CONTAINS*0..]->(subNode)
+				WITH namespace, archive, node, subNode
+				WHERE node IS NOT NULL
+				DETACH DELETE node
+				WITH namespace, archive, subNode
+				WHERE subNode IS NOT NULL
+				DETACH DELETE subNode
+				WITH namespace, archive
+				RETURN count(*) as _
+			}
+			WITH namespace, archive			
+		""";
 	}
 }

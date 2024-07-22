@@ -9,7 +9,7 @@ import org.neo4j.graphdb.Node;
 import java.time.ZonedDateTime;
 import java.util.Map;
 
-public class SetActiveNamespaceRepository extends BaseRepository<SetActiveNamespaceRepository> {
+public class SetActiveNamespaceRepository extends BaseRepository {
 
 	private static SetActiveNamespaceRepository instance;
 
@@ -43,18 +43,32 @@ public class SetActiveNamespaceRepository extends BaseRepository<SetActiveNamesp
 			throwException("Error executing transaction", e);
 		}
 		
+		String queryUpdate = """
+			MATCH (namespace:Namespace {name: $name})
+			MERGE (namespace)-[:CONTAINS]->(archive:Archive)
+			WITH namespace, archive
+		""";
+		
+		if (versioningType.equals("transient")) {
+			queryUpdate += Versioning.getClearArchiveCode();
+		}
+		queryUpdate += Versioning.getCreateArchiveCode(versioningType);
+		queryUpdate += "RETURN namespace";
+		
+		Map<String, Object> params = Map.of(
+			"name", name,
+			"timeStamp", timeStamp,
+			"username", username
+		);
+
 		try {
-			String queryUpdate = """
-				MATCH (namespace:Namespace {name: $name})
-			""";
-			queryUpdate += Versioning.getNamespaceUpdateCode(versioningType);
-			Map<String, Object> params = Map.of(
-				"name", name,
-				"timeStamp", timeStamp,
-				"username", username
-			);
-			tx.execute(queryUpdate, params);
-			return namespace;
+			Result result = tx.execute(queryUpdate, params);
+			if (result.hasNext()) {
+				Node node = (Node) result.next().get("namespace");
+				return node;
+			} else {
+				throwException("Namespace update failed: No result returned");
+			}
 		} catch (Exception e) {
 			throwException("Error executing transaction", e);
 		}

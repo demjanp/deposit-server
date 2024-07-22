@@ -2,9 +2,8 @@ package deposit.repository;
 
 import java.util.logging.Logger;
 
-public abstract class BaseRepository<T> {
+public abstract class BaseRepository {
 
-	private static BaseRepository<?> instance;
 	protected final Logger logger;
 
 	protected BaseRepository() {

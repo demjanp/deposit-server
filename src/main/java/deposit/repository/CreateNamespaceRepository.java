@@ -1,13 +1,15 @@
 package deposit.repository;
 
+import deposit.common.Versioning;
+
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Result;
+import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
 import java.util.Map;
 
-public class CreateNamespaceRepository extends BaseRepository<CreateNamespaceRepository> {
+public class CreateNamespaceRepository extends BaseRepository {
 
 	private static CreateNamespaceRepository instance;
 
@@ -38,8 +40,8 @@ public class CreateNamespaceRepository extends BaseRepository<CreateNamespaceRep
 				updatedAt: $timeStamp,
 				updatedBy: $username
 			})
-			CREATE (namespace)-[:CONTAINS]->(:Archive)
-			RETURN namespace
+			CREATE (namespace)-[:CONTAINS]->(archive:Archive)
+			WITH namespace, archive
 		""";
 
 		Map<String, Object> params = Map.of(
@@ -57,7 +59,10 @@ public class CreateNamespaceRepository extends BaseRepository<CreateNamespaceRep
 			if (validation.hasNext()) {
 				throwException("Error creating Namespace. A namespace with the name: " + name + " already exists.");
 			}
-
+			
+			createNamespaceQuery += Versioning.getCreateArchiveCode(versioningType);
+			createNamespaceQuery += "RETURN namespace";
+			
 			// Execute namespace creation
 			Result result = tx.execute(createNamespaceQuery, params);
 

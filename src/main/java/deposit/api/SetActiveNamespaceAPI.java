@@ -9,7 +9,7 @@ import org.neo4j.procedure.Procedure;
 import org.neo4j.procedure.Name;
 import org.neo4j.graphdb.Transaction;
 
-public class SetActiveNamespaceAPI {
+public class SetActiveNamespaceAPI extends BaseAPI {
 
 	@Context
 	public Transaction tx;

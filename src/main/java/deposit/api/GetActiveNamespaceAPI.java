@@ -12,12 +12,12 @@ import org.neo4j.graphdb.Node;
 
 import java.util.stream.Stream;
 
-public class GetActiveNamespaceAPI {
+public class GetActiveNamespaceAPI extends BaseAPI {
 
 	@Context
 	public Transaction tx;
 	/**
-	 * Brief description.
+	 * Returns the active Namespace node.
 	 *
 	 * @return the active Namespace node or null if none is set.
 	 */

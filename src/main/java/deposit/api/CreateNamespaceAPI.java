@@ -13,7 +13,7 @@ import org.neo4j.graphdb.Node;
 
 import java.util.stream.Stream;
 
-public class CreateNamespaceAPI {
+public class CreateNamespaceAPI extends BaseAPI {
 
 	@Context
 	public Transaction tx;
@@ -27,7 +27,7 @@ public class CreateNamespaceAPI {
 	 * @throws RuntimeException if a namespace with that name already exists or if there is an error during creation.
 	 */
 	@Procedure(name = "deposit.create.namespace", mode = Mode.WRITE)
-	@Description("CALL deposit.create.namespace(name) YIELD node")
+	@Description("CALL deposit.create.namespace(name, description, versioningType) YIELD node AS namespace")
 	public Stream<NodeResult> createNamespace(
 			@Name("name") String name,
 			@Name(value = "description", defaultValue = "") String description,

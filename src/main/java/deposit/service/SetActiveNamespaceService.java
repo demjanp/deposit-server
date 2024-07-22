@@ -8,7 +8,7 @@ import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
 
-public class SetActiveNamespaceService {
+public class SetActiveNamespaceService extends BaseService {
 
 	private static SetActiveNamespaceService instance;
 	private final SetActiveNamespaceRepository setActiveNamespaceRepository;

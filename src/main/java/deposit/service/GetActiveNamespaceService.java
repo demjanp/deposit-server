@@ -7,7 +7,7 @@ import deposit.repository.GetActiveNamespaceRepository;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
-public class GetActiveNamespaceService {
+public class GetActiveNamespaceService extends BaseService {
 
 	private static GetActiveNamespaceService instance;
 	private final GetActiveNamespaceRepository getActiveNamespaceRepository;

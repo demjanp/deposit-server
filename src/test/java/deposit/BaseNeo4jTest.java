@@ -9,8 +9,6 @@ import org.neo4j.harness.Neo4j;
 import org.neo4j.harness.Neo4jBuilder;
 import org.neo4j.harness.Neo4jBuilders;
 import apoc.refactor.GraphRefactoring;
-import apoc.create.Create;
-import apoc.map.Maps;
 import apoc.util.Util;  // Make sure this import is included
 
 public abstract class BaseNeo4jTest {
@@ -25,9 +23,6 @@ public abstract class BaseNeo4jTest {
             builder = builder.withProcedure(procedureClass);
         }
         builder = builder.withProcedure(GraphRefactoring.class);
-        builder = builder.withProcedure(Create.class);
-        builder = builder.withProcedure(Maps.class);
-        builder = builder.withFunction(Maps.class);
         builder = builder.withProcedure(Util.class);
         embeddedDatabaseServer = builder.build();
         driver = GraphDatabase.driver(embeddedDatabaseServer.boltURI(), AuthTokens.none());

@@ -9,7 +9,7 @@ import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
 
-public class CreateNamespaceService {
+public class CreateNamespaceService extends BaseService {
 
 	private static CreateNamespaceService instance;
 	private final CreateNamespaceRepository createNamespaceRepository;
