@@ -1,7 +1,7 @@
 package deposit.service;
 
 import deposit.repository.CreateClassDescriptorRepository;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
@@ -31,8 +31,8 @@ public class CreateClassDescriptorService extends BaseService {
 		validateDescriptorTypeName(type);
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = SessionContext.getActiveUsername();
-		String namespaceName = SessionContext.getActiveNamespace();
+		String username = ServerContext.getActiveUsername(tx);
+		String namespaceName = ServerContext.getActiveNamespace();
 		if (namespaceName == null) {
 			throwException("Cannot create Class Descriptor without an active Namespace.");
 		}

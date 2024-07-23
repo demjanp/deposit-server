@@ -1,7 +1,7 @@
 package deposit.service;
 
 import deposit.repository.CreateNamespaceRepository;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 import deposit.common.DepositInfo;
 
 import org.neo4j.graphdb.Transaction;
@@ -30,7 +30,7 @@ public class CreateNamespaceService extends BaseService {
 		validateName(name);
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = SessionContext.getActiveUsername();
+		String username = ServerContext.getActiveUsername(tx);
 		String depositVersion = DepositInfo.version;
 		
 		return createNamespaceRepository.createNamespace(tx, timeStamp, depositVersion, username, name, description, versioningType);

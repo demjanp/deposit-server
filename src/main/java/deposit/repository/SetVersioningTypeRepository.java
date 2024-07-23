@@ -25,6 +25,7 @@ public class SetVersioningTypeRepository extends BaseRepository {
 		
 		String queryUpdate = """
 			MATCH (namespace:Namespace {name: $name})
+			SET namespace.versioningType = $versioningType
 			WITH namespace
 			MATCH (namespace)-[:CONTAINS]->(archive:Archive)
 			WITH namespace, archive
@@ -36,7 +37,8 @@ public class SetVersioningTypeRepository extends BaseRepository {
 		Map<String, Object> params = Map.of(
 			"timeStamp", timeStamp,
 			"username", username,
-			"name", namespaceName
+			"name", namespaceName,
+			"versioningType", versioningType
 		);
 		
 		try {

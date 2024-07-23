@@ -42,17 +42,20 @@ public class CreateClassDescriptorRepository extends BaseRepository {
 		}
 		
 		String createQuery = """
+			CREATE (updated:Descriptor {
+				id: randomUUID(),
+				name: $name,
+				order: $order,
+				comment: $comment,
+				createdAt: $timeStamp,
+				createdBy: $username,
+				updatedAt: $timeStamp,
+				updatedBy: $username
+			})
+			WITH updated
 			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Class {name: $className})
-			WITH namespace, parent
-			CREATE (parent)-[:HAS_DESCRIPTOR]->(updated)
-			SET	updated.id = randomUUID(),
-				updated.name = $name,
-				updated.order = $order,
-				updated.comment = $comment,
-				updated.createdAt = $timeStamp,
-				updated.createdBy = $username,
-				updated.updatedAt = $timeStamp,
-				updated.updatedBy = $username
+			WITH namespace, parent, updated
+			MERGE (parent)-[:HAS_DESCRIPTOR]->(updated)
 			WITH namespace, parent, updated
 		""";
 		createQuery += Versioning.getElementUpdateCode("ClassDescriptor", false);

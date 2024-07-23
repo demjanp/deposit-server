@@ -42,22 +42,25 @@ public class CreateClassRepository extends BaseRepository {
 		}
 		
 		String createQuery = """
+			CREATE (updated:Class {
+				id: randomUUID(),
+				name: $name,
+				order: $order,
+				position: $position,
+				comment: $comment,
+				createdAt: $timeStamp,
+				createdBy: $username,
+				updatedAt: $timeStamp,
+				updatedBy: $username
+			})
+			WITH updated
 			MATCH (namespace:Namespace {name: $namespaceName})
-			WITH namespace
-			CREATE (namespace)-[:CONTAINS]->(updated:Class)
-			SET	updated.id = randomUUID(),
-				updated.name = $name,
-				updated.order = $order,
-				updated.position = $position,
-				updated.comment = $comment,
-				updated.createdAt = $timeStamp,
-				updated.createdBy = $username,
-				updated.updatedAt = $timeStamp,
-				updated.updatedBy = $username
+			WITH namespace, updated
+			MERGE (namespace)-[:CONTAINS]->(updated)
 			WITH namespace, updated
 		""";
 		createQuery += Versioning.getElementUpdateCode("Class", false);
-		createQuery += "RETURN updated";
+		createQuery += "	RETURN updated";
 		params = Map.of(
 			"timeStamp", timeStamp,
 			"username", username,
@@ -67,6 +70,7 @@ public class CreateClassRepository extends BaseRepository {
 			"position", position,
 			"comment", comment
 		);
+
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {

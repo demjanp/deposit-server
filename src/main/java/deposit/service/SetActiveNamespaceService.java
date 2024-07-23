@@ -1,7 +1,7 @@
 package deposit.service;
 
 import deposit.repository.SetActiveNamespaceRepository;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
@@ -27,13 +27,13 @@ public class SetActiveNamespaceService extends BaseService {
 	public void setActiveNamespace(Transaction tx, String name) {
 
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = SessionContext.getActiveUsername();
+		String username = ServerContext.getActiveUsername(tx);
 		
 		Node namespace = setActiveNamespaceRepository.setActiveNamespace(tx, timeStamp, username, name);
 		if (namespace != null) {
 			String versioningType = (String) namespace.getProperty("versioningType");
-			SessionContext.setActiveNamespace(name);
-			SessionContext.setVersioningType(versioningType);
+			ServerContext.setActiveNamespace(name);
+			ServerContext.setVersioningType(versioningType);
 		}
 	}
 }

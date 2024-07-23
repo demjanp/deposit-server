@@ -14,8 +14,6 @@ import static org.junit.Assert.fail;
 
 public class SetActiveNamespaceAPITest extends BaseNeo4jTest {
 
-    private boolean apocAvailable;
-
     @Override
     protected Class<?>[] getProcedureClasses() {
         return new Class<?>[]{SetActiveNamespaceAPI.class, GetActiveNamespaceAPI.class};

@@ -9,7 +9,9 @@ import org.neo4j.harness.Neo4j;
 import org.neo4j.harness.Neo4jBuilder;
 import org.neo4j.harness.Neo4jBuilders;
 import apoc.refactor.GraphRefactoring;
-import apoc.util.Util;  // Make sure this import is included
+import apoc.create.Create;
+import apoc.util.Util;
+import org.neo4j.server.security.auth.AuthProcedures;
 
 public abstract class BaseNeo4jTest {
 
@@ -24,6 +26,8 @@ public abstract class BaseNeo4jTest {
         }
         builder = builder.withProcedure(GraphRefactoring.class);
         builder = builder.withProcedure(Util.class);
+        builder = builder.withProcedure(Create.class);
+        builder = builder.withProcedure(AuthProcedures.class);
         embeddedDatabaseServer = builder.build();
         driver = GraphDatabase.driver(embeddedDatabaseServer.boltURI(), AuthTokens.none());
     }

@@ -1,7 +1,7 @@
 package deposit.doc;
 
 import deposit.common.Versioning;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -16,7 +16,7 @@ public class VersioningCodeGenerator {
 			"Membership", "Relationship", "ClassRelationship"
 		);
 		
-		SessionContext.setVersioningType("permanent");
+		ServerContext.setVersioningType("permanent");
 		Boolean deletion = false;
 
 		for (String elementType : elementTypes) {

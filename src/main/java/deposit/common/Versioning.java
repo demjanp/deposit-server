@@ -22,7 +22,7 @@ public class Versioning {
 	 */
 	public static String getElementUpdateCode(String elementType, Boolean deletion) {
 		
-		String versioningType = SessionContext.getVersioningType();
+		String versioningType = ServerContext.getVersioningType();
 		
 		String updated = "";
 		switch (elementType) {
@@ -43,7 +43,6 @@ public class Versioning {
 
 		// Update the Namespace node
 		String queryString = """
-			WITH namespace, {0}
 			SET namespace.updatedAt = $timeStamp, namespace.updatedBy = $username
 		""";
 		
@@ -52,24 +51,17 @@ public class Versioning {
 			queryString += """
 				WITH namespace, {0}
 				MATCH (namespace)-[:CONTAINS]->(archive:Archive)
+				WITH archive, {0}
 				
 				// Check if archive has been restored and clean up if necessary
 				CALL '{'
-					WITH archive, {0}
-					WHERE archive.restored IS NOT NULL
-					OPTIONAL MATCH (archive)-[:CONTAINS]->(node)
-					WHERE node.updatedAt >= archive.restored
-					WITH archive, {0}, node
-					OPTIONAL MATCH (node)-[:CONTAINS*0..]->(subNode)
-					WITH archive, {0}, node, subNode
-					WHERE node IS NOT NULL
-					DETACH DELETE node
-					WITH archive, {0}, subNode
-					WHERE subNode IS NOT NULL
-					DETACH DELETE subNode
-					WITH archive, {0}
+					WITH archive
+					MATCH (archive)-[:CONTAINS]->(node)
+					WHERE archive.restored IS NOT NULL AND node.updatedAt >= archive.restored
+					OPTIONAL MATCH (node)-[*0..]->(subNode)
+					DETACH DELETE node, subNode
 					SET archive.restored = NULL
-					RETURN count(*) as _
+					RETURN count(*) AS count
 				'}'
 				WITH archive, {0}
 				
@@ -77,22 +69,17 @@ public class Versioning {
 				OPTIONAL MATCH (latest:Version)-[:NEXT*0..]->(v:Version)
 				WHERE (archive)-[:CONTAINS]->(latest) AND NOT (v)-[:NEXT]->()
 				WITH archive, latest, {0}
-				
+
 				// Create the new Version node
-				CREATE (newVersionNode:Version '{'updatedAt: $timeStamp, updatedBy: $username, tag: NULL '}')
-				CALL '{'
-					WITH archive, latest, newVersionNode, {0}
-					WHERE latest IS NULL
+				CREATE (newVersionNode:Version '{'updatedAt: $timeStamp, updatedBy: $username, tag: NULL'}')
+				FOREACH (_ IN CASE WHEN latest IS NULL THEN [1] ELSE [] END |
 					MERGE (archive)-[:CONTAINS]->(newVersionNode)
-					RETURN count(*) as _
-				'}'
-				CALL '{'
-					WITH archive, latest, newVersionNode, {0}
-					WHERE latest IS NOT NULL
+				)
+				FOREACH (_ IN CASE WHEN latest IS NOT NULL THEN [1] ELSE [] END |
 					MERGE (latest)-[:NEXT]->(newVersionNode)
-					RETURN count(*) as _
-				'}'
+				)
 				WITH archive, {0}
+				
 			""";
 			
 			// Find latest version of the updated node(s) in the archive
@@ -109,7 +96,7 @@ public class Versioning {
 					queryString += """
 						
 						// Find the latest parent
-						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevParent: '{'id: parent.id'}')
+						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevParent '{'id: parent.id'}')
 						WITH prevParent, {0}, archive ORDER BY prevParent.updatedAt DESC LIMIT 1
 					""";
 					break;
@@ -117,11 +104,11 @@ public class Versioning {
 					queryString += """
 						
 						// Find the latest source
-						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevSource: '{'id: source.id'}')
+						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevSource '{'id: source.id'}')
 						WITH prevSource, {0}, archive ORDER BY prevSource.updatedAt DESC LIMIT 1
 						
 						// Find the latest target
-						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevTarget: '{'id: target.id'}')
+						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevTarget '{'id: target.id'}')
 						WITH prevSource, prevTarget, {0}, archive ORDER BY prevTarget.updatedAt DESC LIMIT 1
 					""";
 					break;
@@ -169,23 +156,34 @@ public class Versioning {
 			if (elementType.equals("Object") || elementType.equals("Class")) {
 				// Re-create relationships to the new version
 				queryString += """
+					WITH prev, newVersion, updated
+					
 					// Proceed if a previous version exists
-					WITH prev, newVersion, updated WHERE prev IS NOT NULL
-					
-					// Collect all incoming and outgoing relationships from prev
-					OPTIONAL MATCH (prev)-[r]->(target)
-					WITH prev, newVersion, updated, COLLECT('{'r:r, target:target'}') as outgoingRels
-					OPTIONAL MATCH (source)-[r]->(prev)
-					WITH prev, newVersion, updated, outgoingRels, COLLECT('{'r:r, source:source'}') as incomingRels
-					
-					// Re-create the relationships
-					UNWIND outgoingRels as rel
-						CREATE (newVersion)-[newR:TYPE(rel.r)]->(rel.target)
-						SET newR += properties(rel.r)
-					WITH prev, newVersion, updated, incomingRels
-					UNWIND incomingRels as rel
-						CREATE (rel.source)-[newR:TYPE(rel.r)]->(newVersion)
-						SET newR += properties(rel.r)
+					CALL '{'
+						WITH prev, newVersion, updated
+						WITH prev, newVersion, updated
+						WHERE prev IS NOT NULL
+						// Collect all incoming and outgoing relationships from prev
+						OPTIONAL MATCH (prev)-[r]->(target)
+						WITH prev, newVersion, updated, COLLECT('{'r:r, target:target'}') AS outgoingRels
+						OPTIONAL MATCH (source)-[r]->(prev)
+						WITH prev, newVersion, updated, outgoingRels, COLLECT('{'r:r, source:source'}') AS incomingRels
+						// Re-create the relationships
+						CALL '{'
+							WITH newVersion, outgoingRels
+							UNWIND outgoingRels AS rel
+							CALL apoc.create.relationship(newVersion, type(rel.r), properties(rel.r), rel.target) YIELD rel AS newR
+							RETURN count(*) AS count
+						'}'
+						WITH newVersion, updated, incomingRels
+						CALL '{'
+							WITH newVersion, incomingRels
+							UNWIND incomingRels AS rel
+							CALL apoc.create.relationship(rel.source, type(rel.r), properties(rel.r), newVersion) YIELD rel AS newR
+							RETURN count(*) AS count
+						'}'
+						RETURN count(*) AS count
+					'}'
 				""";
 			}
 		}
@@ -195,8 +193,8 @@ public class Versioning {
 		""";
 		
 		queryString = MessageFormat.format(queryString, updated, deleted);
-		
-		return queryString;
+
+		return queryString;		
 	}
 	
 	/**
@@ -226,9 +224,8 @@ public class Versioning {
 					WITH namespace, archive
 					OPTIONAL MATCH (archive)-[:CONTAINS]->(node) // 1a
 					WITH namespace, archive, node
-					WHERE node IS NULL
 					MATCH (namespace)-[:CONTAINS]->(n) // 1b
-					WHERE n <> archive
+					WHERE node IS NULL AND n <> archive
 					WITH namespace, archive, collect(n) AS nodesToClone
 					CALL apoc.refactor.cloneSubgraph(nodesToClone, []) YIELD input, output // 1c
 					WITH namespace, archive, output // 1d
@@ -260,12 +257,10 @@ public class Versioning {
 				WITH namespace, archive
 				OPTIONAL MATCH (archive)-[:CONTAINS]->(node)
 				WITH namespace, archive, node
-				OPTIONAL MATCH (node)-[:CONTAINS*0..]->(subNode)
+				OPTIONAL MATCH (node)-[*0..]->(subNode)
 				WITH namespace, archive, node, subNode
-				WHERE node IS NOT NULL
 				DETACH DELETE node
 				WITH namespace, archive, subNode
-				WHERE subNode IS NOT NULL
 				DETACH DELETE subNode
 				WITH namespace, archive
 				RETURN count(*) as _
@@ -273,4 +268,5 @@ public class Versioning {
 			WITH namespace, archive			
 		""";
 	}
+
 }

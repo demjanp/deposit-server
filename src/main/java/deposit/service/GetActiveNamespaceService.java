@@ -1,9 +1,8 @@
 package deposit.service;
 
 import deposit.repository.GetActiveNamespaceRepository;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 
-import deposit.repository.GetActiveNamespaceRepository;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
@@ -24,7 +23,7 @@ public class GetActiveNamespaceService extends BaseService {
 	}
 
 	public Node getActiveNamespace(Transaction tx) {
-		String name = SessionContext.getActiveNamespace();
+		String name = ServerContext.getActiveNamespace();
 		if (name == null) {
 			return null;
 		} else {

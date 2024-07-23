@@ -1,7 +1,7 @@
 package deposit.service;
 
 import deposit.repository.CreateClassRepository;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
@@ -34,8 +34,8 @@ public class CreateClassService extends BaseService {
 		position = validatePosition(position);
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = SessionContext.getActiveUsername();
-		String namespaceName = SessionContext.getActiveNamespace();
+		String username = ServerContext.getActiveUsername(tx);
+		String namespaceName = ServerContext.getActiveNamespace();
 		if (namespaceName == null) {
 			throwException("Cannot create Class without an active Namespace.");
 		}

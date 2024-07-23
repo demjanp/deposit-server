@@ -1,7 +1,7 @@
 package deposit.service;
 
 import deposit.repository.SetVersioningTypeRepository;
-import deposit.common.SessionContext;
+import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
 
@@ -25,18 +25,18 @@ public class SetVersioningTypeService extends BaseService {
 
 	public void setVersioningType(Transaction tx, String versioningType) {
 		
-		if (versioningType.equals(SessionContext.getVersioningType())) {
+		if (versioningType.equals(ServerContext.getVersioningType())) {
 			return;
 		}
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = SessionContext.getActiveUsername();
-		String namespaceName = SessionContext.getActiveNamespace();
+		String username = ServerContext.getActiveUsername(tx);
+		String namespaceName = ServerContext.getActiveNamespace();
 		if (namespaceName == null) {
 			throwException("Cannot set versioning type without an active Namespace.");
 		}
 		
 		setVersioningTypeRepository.setVersioningType(tx, timeStamp, username, namespaceName, versioningType);
-		SessionContext.setVersioningType(versioningType);
+		ServerContext.setVersioningType(versioningType);
 	}
 }

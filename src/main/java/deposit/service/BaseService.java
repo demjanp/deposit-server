@@ -12,7 +12,7 @@ public abstract class BaseService {
 			"String", "Integer", "Float", "Boolean", "Date", "Time", "LocalTime", "DateTime", "LocalDateTime",
 			"Duration", "Point", "List", "DDict", "DGeometry", "DResource"
 	);
-	private static final String NAME_PATTERN = "^[\\p{L}\\p{N}\\-_.~]+$";
+	private static final String NAME_PATTERN = "^[\\p{L}\\p{N}\\-_.~ ]+$";
 	private static final Pattern pattern = Pattern.compile(NAME_PATTERN);
 	
 	protected final Logger logger;
