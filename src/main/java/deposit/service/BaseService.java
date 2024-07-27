@@ -1,5 +1,8 @@
 package deposit.service;
 
+import deposit.common.ExceptionHandler;
+import deposit.common.ServerContext;
+
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
@@ -24,16 +27,20 @@ public abstract class BaseService {
 
 	// Method to log the error message and throw a runtime exception
 	protected void throwException(String errorMsg) {
-		logger.severe(errorMsg);
-		throw new RuntimeException(errorMsg);
+		 ExceptionHandler.throwException(errorMsg);
 	}
 
 	// Overloaded method to log the error message and exception, then throw a runtime exception
 	protected void throwException(String errorMsg, Exception e) {
-		logger.severe(errorMsg);
-		throw new RuntimeException(errorMsg, e);
+		ExceptionHandler.throwException(errorMsg, e);
 	}
 	
+	
+	protected void validateToken(String token) {
+		if (!ServerContext.validateToken(token)) {
+			throwException("Invalid token");
+		}
+	}
 	
 	protected void validateName(String name) {
 		Matcher matcher = pattern.matcher(name);

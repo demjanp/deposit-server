@@ -24,16 +24,17 @@ public class SetActiveNamespaceService extends BaseService {
 		return instance;
 	}
 
-	public void setActiveNamespace(Transaction tx, String name) {
-
+	public void setActiveNamespace(Transaction tx, String name, String token) {
+		
+		validateToken(token);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = ServerContext.getActiveUsername(tx);
+		String username = ServerContext.getActiveUsername(token);
 		
 		Node namespace = setActiveNamespaceRepository.setActiveNamespace(tx, timeStamp, username, name);
 		if (namespace != null) {
 			String versioningType = (String) namespace.getProperty("versioningType");
-			ServerContext.setActiveNamespace(name);
-			ServerContext.setVersioningType(versioningType);
+			ServerContext.setActiveNamespace(name, token);
+			ServerContext.setVersioningType(versioningType, token);
 		}
 	}
 }

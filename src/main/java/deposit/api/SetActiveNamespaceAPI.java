@@ -17,13 +17,15 @@ public class SetActiveNamespaceAPI extends BaseAPI {
 	 * Sets the active Namespace.
 	 *
 	 * @param name name of the Namespace.
+	 * @param token authentication token.
 	 * @throws RuntimeException if Namespace doesn't exist.
 	 */
 	@Procedure(name = "deposit.set.activeNamespace", mode = Mode.WRITE)
-	@Description("CALL deposit.set.activeNamespace(name)")
+	@Description("CALL deposit.set.activeNamespace(name, token)")
 	public void setActiveNamespace(
-			@Name("name") String name) {
+			@Name("name") String name,
+			@Name(value = "token", defaultValue = "") String token) {
 		SetActiveNamespaceService service = SetActiveNamespaceService.getInstance();
-		service.setActiveNamespace(tx, name);
+		service.setActiveNamespace(tx, name, token);
 	}
 }

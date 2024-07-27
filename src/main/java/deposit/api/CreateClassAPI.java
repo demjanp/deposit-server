@@ -26,17 +26,19 @@ public class CreateClassAPI extends BaseAPI {
 	 * @param position position of the node in a hierarchical graph layout defined as [x, y], default is [].
 	 * @param comment annotation to provide additional information about the Class, default is an empty string.
 	 * @param descriptors Descriptors of the Class defined as a list of lists [[<name>, <type>] or [<name>, <type>, <comment>], ...], where <name> is the name of the Descriptor, <type> is any Neo4j or Deposit type and comment is an annotation. Default is [].
+	 * @param token authentication token.
 	 * @return the created Class node.
 	 * @throws RuntimeException if a Class with that name already exists or if there is an error during the creation.
 	 */
 	@Procedure(name = "deposit.create.class", mode = Mode.WRITE)
-	@Description("CALL deposit.create.class(name, order, position, comment, descriptors) YIELD node AS class")
+	@Description("CALL deposit.create.class(name, order, position, comment, descriptors, token) YIELD node AS class")
 	public Stream<NodeResult> createClass(
 			@Name("name") String name,
 			@Name(value = "order", defaultValue = "-1") Long order,
 			@Name(value = "position", defaultValue = "[]") List<Double> position,
 			@Name(value = "comment", defaultValue = "") String comment,
-			@Name(value = "descriptors", defaultValue = "[]") List<List<String>> descriptors) {
+			@Name(value = "descriptors", defaultValue = "[]") List<List<String>> descriptors,
+			@Name(value = "token", defaultValue = "") String token) {
 		
 		if (position == null) {
 			position = List.of();  // Default to an empty list if 'position' is null
@@ -47,7 +49,7 @@ public class CreateClassAPI extends BaseAPI {
 		}
 		
 		CreateClassService service = CreateClassService.getInstance();
-		Node node = service.createClass(tx, name, order, position, comment, descriptors);
+		Node node = service.createClass(tx, name, order, position, comment, descriptors, token);
 		return Stream.of(new NodeResult(node));
 	}
 }

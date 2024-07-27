@@ -1,5 +1,7 @@
 package deposit.repository;
 
+import deposit.common.ExceptionHandler;
+
 import java.util.logging.Logger;
 
 public abstract class BaseRepository {
@@ -13,13 +15,11 @@ public abstract class BaseRepository {
 
 	// Method to log the error message and throw a runtime exception
 	protected void throwException(String errorMsg) {
-		logger.severe(errorMsg);
-		throw new RuntimeException(errorMsg);
+		ExceptionHandler.throwException(errorMsg);
 	}
 
 	// Overloaded method to log the error message and exception, then throw a runtime exception
 	protected void throwException(String errorMsg, Exception e) {
-		logger.severe(errorMsg);
-		throw new RuntimeException(errorMsg, e);
+		ExceptionHandler.throwException(errorMsg, e);
 	}
 }

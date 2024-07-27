@@ -20,10 +20,8 @@ public class Versioning {
 	 * @return the query string to be appended to handle the versioning logic.
 	 * @throws RuntimeException if an invalid element type is specified.
 	 */
-	public static String getElementUpdateCode(String elementType, Boolean deletion) {
-		
-		String versioningType = ServerContext.getVersioningType();
-		
+	public static String getElementUpdateCode(String elementType, Boolean deletion, String versioningType) {
+
 		String updated = "";
 		switch (elementType) {
 			case "Object", "Class":

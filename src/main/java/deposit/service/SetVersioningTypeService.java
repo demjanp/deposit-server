@@ -23,20 +23,21 @@ public class SetVersioningTypeService extends BaseService {
 		return instance;
 	}
 
-	public void setVersioningType(Transaction tx, String versioningType) {
+	public void setVersioningType(Transaction tx, String versioningType, String token) {
 		
-		if (versioningType.equals(ServerContext.getVersioningType())) {
+		if (versioningType.equals(ServerContext.getVersioningType(token))) {
 			return;
 		}
 		
+		validateToken(token);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = ServerContext.getActiveUsername(tx);
-		String namespaceName = ServerContext.getActiveNamespace();
+		String username = ServerContext.getActiveUsername(token);
+		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot set versioning type without an active Namespace.");
 		}
 		
 		setVersioningTypeRepository.setVersioningType(tx, timeStamp, username, namespaceName, versioningType);
-		ServerContext.setVersioningType(versioningType);
+		ServerContext.setVersioningType(versioningType, token);
 	}
 }

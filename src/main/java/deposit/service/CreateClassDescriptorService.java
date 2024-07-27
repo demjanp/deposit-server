@@ -24,18 +24,20 @@ public class CreateClassDescriptorService extends BaseService {
 		return instance;
 	}
 
-	public Node createClassDescriptor(Transaction tx, String className, String name, String type, Long order, String comment) {
+	public Node createClassDescriptor(Transaction tx, String className, String name, String type, Long order, String comment, String token) {
 		
+		validateToken(token);
 		validateName(className);
 		validateName(name);
 		validateDescriptorTypeName(type);
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = ServerContext.getActiveUsername(tx);
-		String namespaceName = ServerContext.getActiveNamespace();
+		String username = ServerContext.getActiveUsername(token);
+		String namespaceName = ServerContext.getActiveNamespace(token);
+		String versioningType = ServerContext.getVersioningType(token);
 		if (namespaceName == null) {
 			throwException("Cannot create Class Descriptor without an active Namespace.");
 		}
-		return createClassDescriptorRepository.createClassDescriptor(tx, timeStamp, username, namespaceName, className, name, type, order, comment);
+		return createClassDescriptorRepository.createClassDescriptor(tx, versioningType, timeStamp, username, namespaceName, className, name, type, order, comment);
 	}
 }

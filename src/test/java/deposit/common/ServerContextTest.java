@@ -1,17 +1,99 @@
 package deposit.common;
 
+import org.junit.Before;
 import org.junit.Test;
+import org.neo4j.graphdb.GraphDatabaseService;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
 
 public class ServerContextTest {
 
+	private ServerContext serverContext;
+
+	@Before
+	public void setUp() {
+		serverContext = ServerContext.getInstance();
+	}
+
 	@Test
 	public void testSetAndGetActiveNamespace() {
-		assertNull(ServerContext.getActiveNamespace());
-		
-		ServerContext.setActiveNamespace("testNamespace");
-		assertEquals("testNamespace", ServerContext.getActiveNamespace());
+		String token = serverContext.generateToken("testUser");
+
+		assertNull(ServerContext.getActiveNamespace(token));
+
+		ServerContext.setActiveNamespace("testNamespace", token);
+		assertEquals("testNamespace", ServerContext.getActiveNamespace(token));
+	}
+
+	@Test
+	public void testTokenGenerationAndValidation() {
+		String token = serverContext.generateToken("testUser");
+		assertNotNull(token);
+		assertTrue(ServerContext.validateToken(token));
+
+		ServerContext.deactivateToken(token);
+		assertFalse(ServerContext.validateToken(token));
+	}
+
+	@Test
+	public void testExtractUsername() {
+		String token = serverContext.generateToken("testUser");
+		String username = ServerContext.extractUsername(token);
+		assertEquals("testUser", username);
+	}
+
+	@Test
+	public void testDeactivateUser() {
+		String token1 = serverContext.generateToken("testUser1");
+		String token2 = serverContext.generateToken("testUser2");
+		assertTrue(ServerContext.validateToken(token1));
+		assertTrue(ServerContext.validateToken(token2));
+
+		serverContext.deactivateUser("testUser1");
+		assertFalse(ServerContext.validateToken(token1));
+		assertTrue(ServerContext.validateToken(token2));
+	}
+
+	@Test
+	public void testSetAndGetVersioningType() {
+		String token = serverContext.generateToken("testUser");
+
+		assertNull(ServerContext.getVersioningType(token));
+
+		ServerContext.setVersioningType("type1", token);
+		assertEquals("type1", ServerContext.getVersioningType(token));
+	}
+
+	@Test(expected = IllegalStateException.class)
+	public void testInitializeGraphDatabaseServiceTwice() {
+		GraphDatabaseService mockGraphDbService = mock(GraphDatabaseService.class);
+		serverContext.initialize(mockGraphDbService);
+		serverContext.initialize(mockGraphDbService); // This should throw an exception
+	}
+
+	@Test
+	public void testGetActiveUsernameWithToken() {
+		String token = serverContext.generateToken("testUser");
+		assertEquals("testUser", ServerContext.getActiveUsername(token));
+	}
+
+	@Test
+	public void testGetActiveUsernameWithoutToken() {
+		assertEquals("neo4j", ServerContext.getActiveUsername(""));
+	}
+
+	@Test
+	public void testSetAndGetActiveNamespaceWithoutToken() {
+		String token = "";  // No token provided
+		ServerContext.setActiveNamespace("defaultNamespace", token);
+		assertEquals("defaultNamespace", ServerContext.getActiveNamespace(token));
+	}
+
+	@Test
+	public void testSetAndGetVersioningTypeWithoutToken() {
+		String token = "";  // No token provided
+		ServerContext.setVersioningType("defaultType", token);
+		assertEquals("defaultType", ServerContext.getVersioningType(token));
 	}
 }

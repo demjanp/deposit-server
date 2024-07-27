@@ -23,7 +23,7 @@ public class CreateClassRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Node createClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String name, Long order, List<Double> position, String comment) {
+	public Node createClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String name, Long order, List<Double> position, String comment) {
 		String validateNameQuery = """
 			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(existing:Class {name: $name}) RETURN existing
 		""";
@@ -59,7 +59,7 @@ public class CreateClassRepository extends BaseRepository {
 			MERGE (namespace)-[:CONTAINS]->(updated)
 			WITH namespace, updated
 		""";
-		createQuery += Versioning.getElementUpdateCode("Class", false);
+		createQuery += Versioning.getElementUpdateCode("Class", false, versioningType);
 		createQuery += "	RETURN updated";
 		params = Map.of(
 			"timeStamp", timeStamp,

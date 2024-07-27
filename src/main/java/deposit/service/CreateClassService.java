@@ -27,15 +27,17 @@ public class CreateClassService extends BaseService {
 		return instance;
 	}
 
-	public Node createClass(Transaction tx, String name, Long order, List<Double> position, String comment, List<List<String>> descriptors) {
+	public Node createClass(Transaction tx, String name, Long order, List<Double> position, String comment, List<List<String>> descriptors, String token) {
 		
+		validateToken(token);
 		validateName(name);
 		validateClassDescriptors(descriptors);
 		position = validatePosition(position);
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-		String username = ServerContext.getActiveUsername(tx);
-		String namespaceName = ServerContext.getActiveNamespace();
+		String username = ServerContext.getActiveUsername(token);
+		String namespaceName = ServerContext.getActiveNamespace(token);
+		String versioningType = ServerContext.getVersioningType(token);
 		if (namespaceName == null) {
 			throwException("Cannot create Class without an active Namespace.");
 		}
@@ -44,12 +46,12 @@ public class CreateClassService extends BaseService {
 				throwException("Invalid format of Descriptor list.");
 			}
 		}
-		Node node = createClassRepository.createClass(tx, timeStamp, username, namespaceName, name, order, position, comment);
+		Node node = createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, name, order, position, comment);
 		for (List<String> descriptorList : descriptors) {
 			String descriptorName = descriptorList.get(0);
 			String type = descriptorList.get(1);
 			String descriptorComment = (descriptorList.size() == 3) ? descriptorList.get(2) : "";
-			createClassDescriptorService.createClassDescriptor(tx, name, descriptorName, type, (long) -1, descriptorComment);
+			createClassDescriptorService.createClassDescriptor(tx, name, descriptorName, type, (long) -1, descriptorComment, token);
 		}
 		return node;
 	}

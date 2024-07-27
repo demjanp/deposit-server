@@ -22,8 +22,8 @@ public class GetActiveNamespaceService extends BaseService {
 		return instance;
 	}
 
-	public Node getActiveNamespace(Transaction tx) {
-		String name = ServerContext.getActiveNamespace();
+	public Node getActiveNamespace(Transaction tx, String token) {
+		String name = ServerContext.getActiveNamespace(token);
 		if (name == null) {
 			return null;
 		} else {

@@ -23,17 +23,19 @@ public class CreateNamespaceAPI extends BaseAPI {
 	 * @param name the name of the Namespace to create.
 	 * @param description annotation to provide additional information about the Namespace, default is an empty string.
 	 * @param versioningType type of versioning to use. Can be empty, 'transient' or 'persistent', default is an empty string.
+	 * @param token authentication token.
 	 * @return the created Namespace node.
 	 * @throws RuntimeException if a namespace with that name already exists or if there is an error during creation.
 	 */
 	@Procedure(name = "deposit.create.namespace", mode = Mode.WRITE)
-	@Description("CALL deposit.create.namespace(name, description, versioningType) YIELD node AS namespace")
+	@Description("CALL deposit.create.namespace(name, description, versioningType, token) YIELD node AS namespace")
 	public Stream<NodeResult> createNamespace(
 			@Name("name") String name,
 			@Name(value = "description", defaultValue = "") String description,
-			@Name(value = "versioningType", defaultValue = "") String versioningType) {
+			@Name(value = "versioningType", defaultValue = "") String versioningType,
+			@Name(value = "token", defaultValue = "") String token) {
 		CreateNamespaceService service = CreateNamespaceService.getInstance();
-		Node node = service.createNamespace(tx, name, description, versioningType);
+		Node node = service.createNamespace(tx, name, description, versioningType, token);
 		return Stream.of(new NodeResult(node));
 	}
 }
