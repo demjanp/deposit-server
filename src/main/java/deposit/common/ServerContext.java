@@ -1,7 +1,5 @@
 package deposit.common;
 
-import org.neo4j.graphdb.GraphDatabaseService;
-
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.security.Keys;
@@ -9,7 +7,6 @@ import io.jsonwebtoken.security.Keys;
 import javax.crypto.SecretKey;
 import java.security.SecureRandom;
 import java.util.concurrent.ConcurrentHashMap;
-
 
 public class ServerContext {
 
@@ -19,7 +16,6 @@ public class ServerContext {
 	private static ServerContext instance;
 
 	private static SecretKey secretKey;
-	private static GraphDatabaseService graphDb;
 	private static final ConcurrentHashMap<String, String> store = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<String, String> activeTokens = new ConcurrentHashMap<>();
 
@@ -32,35 +28,33 @@ public class ServerContext {
 		return instance;
 	}
 
-	public synchronized void initialize(GraphDatabaseService graphDatabaseService) {
-		if (this.graphDb == null) {
-			this.graphDb = graphDatabaseService;
-		} else {
-			throw new IllegalStateException("GraphDatabaseService is already initialized");
-		}
+	// Method to clear all data for testing purposes
+	public void clearAll() {
+		store.clear();
+		activeTokens.clear();
+		secretKey = null;  // Ensure secret key is regenerated
 	}
-
 
 	// Authentication
 
 	private static void generateSecretKey() {
 		// Generate the secret key the first time it's needed
 		if (secretKey == null) {
-			byte[] keyBytes = new byte[32];
+			byte[] keyBytes = new byte[KEY_LENGTH];
 			new SecureRandom().nextBytes(keyBytes);
 			secretKey = Keys.hmacShaKeyFor(keyBytes);
 		}
 	}
 
-	private static void setDefaultUsername(String username) {
+	public static void setDefaultUsername(String username) {
 		defaultUsername = username;
 	}
 
-	private static String getDefaultUsername() {
+	public static String getDefaultUsername() {
 		return defaultUsername;
 	}
 
-	public String generateToken(String username) {
+	public static String generateToken(String username) {
 		generateSecretKey();
 		String token = Jwts.builder()
 				.subject(username)
@@ -71,14 +65,13 @@ public class ServerContext {
 	}
 
 	public static boolean validateToken(String token) {
-		if (!token.isEmpty()) {
-			return activeTokens.containsKey(token);
-		}
-		return true;
+		return (token == null) || token.isEmpty() || activeTokens.containsKey(token);
 	}
 
 	public static void deactivateToken(String token) {
-		activeTokens.remove(token);
+		if (token != null) {
+			activeTokens.remove(token);
+		}
 	}
 
 	public void deactivateUser(String username) {
@@ -101,12 +94,12 @@ public class ServerContext {
 	}
 
 	public static String getActiveUsername(String token) {
-		if (token.isEmpty()) {
+		if (token == null || token.isEmpty()) {
 			return defaultUsername;
 		}
-		return extractUsername(token);
+		String username = extractUsername(token);
+		return username != null ? username : defaultUsername;
 	}
-
 
 	// Namespace
 
@@ -119,7 +112,6 @@ public class ServerContext {
 		String username = getActiveUsername(token);
 		return store.getOrDefault(username + ":namespace", "");
 	}
-
 
 	// Versioning
 

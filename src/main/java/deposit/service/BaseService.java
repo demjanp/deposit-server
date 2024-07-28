@@ -26,7 +26,7 @@ public abstract class BaseService {
 	}
 
 	// Method to log the error message and throw a runtime exception
-	protected void throwException(String errorMsg) {
+	protected static void throwException(String errorMsg) {
 		 ExceptionHandler.throwException(errorMsg);
 	}
 
@@ -46,7 +46,7 @@ public abstract class BaseService {
 		Matcher matcher = pattern.matcher(name);
 		if (!matcher.matches()) {
 			throwException("Invalid name: " + name + 
-				". Allowed characters are Unicode letters, digits, hyphens, underscores, dots, and tildes.");
+				". Allowed characters are Unicode letters, digits, spaces, hyphens, underscores, dots, and tildes.");
 		}
 	}
 	

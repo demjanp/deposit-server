@@ -2,10 +2,8 @@ package deposit.common;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.neo4j.graphdb.GraphDatabaseService;
 
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.mock;
 
 public class ServerContextTest {
 
@@ -14,13 +12,14 @@ public class ServerContextTest {
 	@Before
 	public void setUp() {
 		serverContext = ServerContext.getInstance();
+		serverContext.clearAll();  // Clear the state before each test
 	}
 
 	@Test
 	public void testSetAndGetActiveNamespace() {
 		String token = serverContext.generateToken("testUser");
 
-		assertNull(ServerContext.getActiveNamespace(token));
+		assertEquals("", ServerContext.getActiveNamespace(token));
 
 		ServerContext.setActiveNamespace("testNamespace", token);
 		assertEquals("testNamespace", ServerContext.getActiveNamespace(token));
@@ -58,18 +57,9 @@ public class ServerContextTest {
 	@Test
 	public void testSetAndGetVersioningType() {
 		String token = serverContext.generateToken("testUser");
-
-		assertNull(ServerContext.getVersioningType(token));
-
+		assertEquals("", ServerContext.getVersioningType(token));
 		ServerContext.setVersioningType("type1", token);
 		assertEquals("type1", ServerContext.getVersioningType(token));
-	}
-
-	@Test(expected = IllegalStateException.class)
-	public void testInitializeGraphDatabaseServiceTwice() {
-		GraphDatabaseService mockGraphDbService = mock(GraphDatabaseService.class);
-		serverContext.initialize(mockGraphDbService);
-		serverContext.initialize(mockGraphDbService); // This should throw an exception
 	}
 
 	@Test
