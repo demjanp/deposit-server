@@ -22,29 +22,29 @@ public class CreateClassDescriptorRepository extends BaseRepository {
 		return instance;
 	}
 	
-    public Node createClassDescriptor(Transaction tx, String versioningType, ZonedDateTime timeStamp, String username, String namespaceName, String className, String name, String type, Long order, String comment) {
+    public Node createClassDescriptor(Transaction tx, String versioningType, ZonedDateTime timeStamp, String username, String namespaceName, String className, String descriptorName, String type, Long order, String comment) {
 		String validateNameQuery = """
-			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $name}) RETURN existing
+			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $descriptorName}) RETURN existing
 		""";
 		Map<String, Object> params;
 		params = Map.of(
 			"namespaceName", namespaceName,
 			"className", className,
-			"name", name
+			"descriptorName", descriptorName
 		);
 		try {
 			Result validation = tx.execute(validateNameQuery, params);
 			if (validation.hasNext()) {
-				throwException("Error creating Class Descriptor. A Descriptor with the name: " + name + " already exists for Class" + className + ".");
+				throwException("Error creating Class Descriptor. A Descriptor with the name: " + descriptorName + " already exists for Class" + className + ".");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Class Descriptor with name: " + name, e);
+			throwException("Error creating Class Descriptor with name: " + descriptorName, e);
 		}
 		
 		String createQuery = """
 			CREATE (updated:Descriptor {
 				id: randomUUID(),
-				name: $name,
+				name: $descriptorName,
 				order: $order,
 				comment: $comment,
 				createdAt: $timeStamp,
@@ -65,7 +65,7 @@ public class CreateClassDescriptorRepository extends BaseRepository {
 			"username", username,
 			"namespaceName", namespaceName,
 			"className", className,
-			"name", name,
+			"descriptorName", descriptorName,
 			"type", type,
 			"order", order,
 			"comment", comment
@@ -78,7 +78,7 @@ public class CreateClassDescriptorRepository extends BaseRepository {
 				throwException("Class Descriptor creation failed: No result returned");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Class Descriptor with name: " + name, e);
+			throwException("Error creating Class Descriptor with name: " + descriptorName, e);
 		}
 		return null;
     }

@@ -16,16 +16,16 @@ public class SetActiveNamespaceAPI extends BaseAPI {
 	/**
 	 * Sets the active Namespace.
 	 *
-	 * @param name name of the Namespace.
+	 * @param namespaceName name of the Namespace.
 	 * @param token authentication token.
 	 * @throws RuntimeException if Namespace doesn't exist.
 	 */
 	@Procedure(name = "deposit.set.activeNamespace", mode = Mode.WRITE)
-	@Description("CALL deposit.set.activeNamespace(name, token)")
+	@Description("CALL deposit.set.activeNamespace(namespaceName, token)")
 	public void setActiveNamespace(
-			@Name("name") String name,
+			@Name("namespaceName") String namespaceName,
 			@Name(value = "token", defaultValue = "") String token) {
 		SetActiveNamespaceService service = SetActiveNamespaceService.getInstance();
-		service.setActiveNamespace(tx, name, token);
+		service.setActiveNamespace(tx, namespaceName, token);
 	}
 }

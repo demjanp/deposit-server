@@ -21,7 +21,7 @@ public class CreateClassAPI extends BaseAPI {
 	/**
 	 * Create a Class.
 	 *
-	 * @param name the name of the Class to create.
+	 * @param className the name of the Class to create.
 	 * @param order an order of the Class when represented in a list, default is -1.
 	 * @param position position of the node in a hierarchical graph layout defined as [x, y], default is [].
 	 * @param comment annotation to provide additional information about the Class, default is an empty string.
@@ -31,9 +31,9 @@ public class CreateClassAPI extends BaseAPI {
 	 * @throws RuntimeException if a Class with that name already exists or if there is an error during the creation.
 	 */
 	@Procedure(name = "deposit.create.class", mode = Mode.WRITE)
-	@Description("CALL deposit.create.class(name, order, position, comment, descriptors, token) YIELD node AS class")
+	@Description("CALL deposit.create.class(className, order, position, comment, descriptors, token) YIELD node AS class")
 	public Stream<NodeResult> createClass(
-			@Name("name") String name,
+			@Name("className") String className,
 			@Name(value = "order", defaultValue = "-1") Long order,
 			@Name(value = "position", defaultValue = "[]") List<Double> position,
 			@Name(value = "comment", defaultValue = "") String comment,
@@ -49,7 +49,7 @@ public class CreateClassAPI extends BaseAPI {
 		}
 		
 		CreateClassService service = CreateClassService.getInstance();
-		Node node = service.createClass(tx, name, order, position, comment, descriptors, token);
+		Node node = service.createClass(tx, className, order, position, comment, descriptors, token);
 		return Stream.of(new NodeResult(node));
 	}
 }

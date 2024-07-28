@@ -26,7 +26,7 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             String namespaceName = "TestNamespace";
             String versioningType = "transient";
             session.writeTransaction(tx -> {
-                tx.run("CALL deposit.create.namespace($name, '', $versioningType)", Map.of("name", namespaceName, "versioningType", versioningType));
+                tx.run("CALL deposit.create.namespace($namespaceName, '', $versioningType)", Map.of("namespaceName", namespaceName, "versioningType", versioningType));
                 tx.commit();
                 return null;
             });
@@ -40,24 +40,24 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             List<List<String>> descriptors = List.of(List.of("descriptor1", "String"));
 
             session.writeTransaction(tx -> {
-                tx.run("CALL deposit.set.activeNamespace($name)", Map.of("name", namespaceName));
-                tx.run("CALL deposit.create.class($name, $order, $position, $comment, $descriptors)",
+                tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+                tx.run("CALL deposit.create.class($className, $order, $position, $comment, $descriptors)",
                         Map.of(
-                                "name", className1,
+                                "className", className1,
                                 "order", order,
                                 "position", position,
                                 "comment", comment,
                                 "descriptors", descriptors
                         ));
-                tx.run("CALL deposit.create.class($name)", Map.of("name", className2));
+                tx.run("CALL deposit.create.class($className)", Map.of("className", className2));
                 tx.commit();
                 return null;
             });
 
             // Verify: Class nodes were created
-            var result1 = session.run("MATCH (c:Class {name: $name}) RETURN c", Map.of("name", className1));
+            var result1 = session.run("MATCH (c:Class {name: $className}) RETURN c", Map.of("className", className1));
             assertTrue(result1.hasNext());
-            var result2 = session.run("MATCH (c:Class {name: $name}) RETURN c", Map.of("name", className2));
+            var result2 = session.run("MATCH (c:Class {name: $className}) RETURN c", Map.of("className", className2));
             assertTrue(result2.hasNext());
         }
     }
@@ -69,10 +69,10 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             String namespaceName = "TestNamespace";
             String className = "DuplicateClass";
             session.writeTransaction(tx -> {
-                tx.run("CALL deposit.create.namespace($name, '', '')", Map.of("name", namespaceName));
-                tx.run("CALL deposit.set.activeNamespace($name)", Map.of("name", namespaceName));
-                tx.run("CALL deposit.create.class($name, -1, [], '', [])",
-                        Map.of("name", className));
+                tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
+                tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+                tx.run("CALL deposit.create.class($className, -1, [], '', [])",
+                        Map.of("className", className));
                 tx.commit();
                 return null;
             });
@@ -80,8 +80,8 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             // Try to create the same Class again, which should throw an exception
             try {
                 session.writeTransaction(tx -> {
-                    tx.run("CALL deposit.create.class($name, -1, [], '', [])",
-                            Map.of("name", className));
+                    tx.run("CALL deposit.create.class($className, -1, [], '', [])",
+                            Map.of("className", className));
                     tx.commit();
                     return null;
                 });
@@ -98,8 +98,8 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             // Setup: Create a Namespace to contain the Class
             String namespaceName = "TestNamespace";
             session.writeTransaction(tx -> {
-                tx.run("CALL deposit.create.namespace($name, '', '')", Map.of("name", namespaceName));
-                tx.run("CALL deposit.set.activeNamespace($name)", Map.of("name", namespaceName));
+                tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
+                tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
                 tx.commit();
                 return null;
             });
@@ -107,13 +107,13 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             // Test: Create a Class with default values
             String className = "DefaultClass";
             session.writeTransaction(tx -> {
-                tx.run("CALL deposit.create.class($name)", Map.of("name", className));
+                tx.run("CALL deposit.create.class($className)", Map.of("className", className));
                 tx.commit();
                 return null;
             });
 
             // Verify: Class node was created with default values
-            var result = session.run("MATCH (c:Class {name: $name}) RETURN c.order as order, c.position as position, c.comment as comment", Map.of("name", className));
+            var result = session.run("MATCH (c:Class {name: $className}) RETURN c.order as order, c.position as position, c.comment as comment", Map.of("className", className));
             assertTrue(result.hasNext());
             var record = result.next();
             assertEquals(-1L, record.get("order").asLong());

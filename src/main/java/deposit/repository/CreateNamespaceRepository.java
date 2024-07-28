@@ -22,23 +22,23 @@ public class CreateNamespaceRepository extends BaseRepository {
 		return instance;
 	}
 
-	public Node createNamespace(Transaction tx, ZonedDateTime timeStamp, String depositVersion, String username, String name, String description, String versioningType) {
+	public Node createNamespace(Transaction tx, ZonedDateTime timeStamp, String depositVersion, String username, String namespaceName, String description, String versioningType) {
 		String validateNameQuery = """
-			MATCH (namespace:Namespace {name: $name}) RETURN namespace
+			MATCH (namespace:Namespace {name: $namespaceName}) RETURN namespace
 		""";
 		try {
-			Result validation = tx.execute(validateNameQuery, Map.of("name", name));
+			Result validation = tx.execute(validateNameQuery, Map.of("namespaceName", namespaceName));
 			if (validation.hasNext()) {
-				throwException("Error creating Namespace. A namespace with the name: " + name + " already exists.");
+				throwException("Error creating Namespace. A namespace with the name: " + namespaceName + " already exists.");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Namespace with name: " + name, e);
+			throwException("Error creating Namespace with name: " + namespaceName, e);
 		}
 		
 		String createNamespaceQuery = """
 			CREATE (namespace:Namespace {
 				id: randomUUID(),
-				name: $name,
+				name: $namespaceName,
 				description: $description,
 				depositVersion: $depositVersion,
 				versioningType: $versioningType,
@@ -58,7 +58,7 @@ public class CreateNamespaceRepository extends BaseRepository {
 			"timeStamp", timeStamp,
 			"depositVersion", depositVersion,
 			"username", username,
-			"name", name,
+			"namespaceName", namespaceName,
 			"description", description,
 			"versioningType", versioningType
 		);
@@ -72,7 +72,7 @@ public class CreateNamespaceRepository extends BaseRepository {
 				throwException("Namespace creation failed: No result returned");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Namespace with name: " + name, e);
+			throwException("Error creating Namespace with name: " + namespaceName, e);
 		}
 		return null;
 	}

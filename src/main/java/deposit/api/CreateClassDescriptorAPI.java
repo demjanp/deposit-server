@@ -21,7 +21,7 @@ public class CreateClassDescriptorAPI extends BaseAPI {
 	 * Create a Class Descriptor.
 	 *
 	 * @param className
-	 * @param name
+	 * @param descriptorName
 	 * @param type
 	 * @param order
 	 * @param comment
@@ -30,16 +30,16 @@ public class CreateClassDescriptorAPI extends BaseAPI {
 	 * @throws RuntimeException if a Descriptor with that name already exists for the Class or if there is an error during the creation.
 	 */
 	@Procedure(name = "deposit.create.classDescriptor", mode = Mode.WRITE)
-	@Description("CALL deposit.create.classDescriptor(className, name, type, order, comment, token) YIELD node AS descriptor")
+	@Description("CALL deposit.create.classDescriptor(className, descriptorName, type, order, comment, token) YIELD node AS descriptor")
 	public Stream<NodeResult> createClassDescriptor(
 			@Name("className") String className,
-			@Name("name") String name,
+			@Name("descriptorName") String descriptorName,
 			@Name("type") String type,
 			@Name(value = "order", defaultValue = "-1") Long order,
 			@Name(value = "comment", defaultValue = "") String comment,
 			@Name(value = "token", defaultValue = "") String token) {
 		CreateClassDescriptorService service = CreateClassDescriptorService.getInstance();
-		Node node = service.createClassDescriptor(tx, className, name, type, order, comment, token);
+		Node node = service.createClassDescriptor(tx, className, descriptorName, type, order, comment, token);
 		return Stream.of(new NodeResult(node));
 	}
 }

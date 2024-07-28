@@ -23,11 +23,11 @@ public class GetActiveNamespaceService extends BaseService {
 	}
 
 	public Node getActiveNamespace(Transaction tx, String token) {
-		String name = ServerContext.getActiveNamespace(token);
-		if (name == null) {
+		String namespaceName = ServerContext.getActiveNamespace(token);
+		if (namespaceName == null) {
 			return null;
 		} else {
-			return getActiveNamespaceRepository.getActiveNamespace(tx, name);
+			return getActiveNamespaceRepository.getActiveNamespace(tx, namespaceName);
 		}
 	}
 }

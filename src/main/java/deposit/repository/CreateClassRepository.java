@@ -23,28 +23,28 @@ public class CreateClassRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Node createClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String name, Long order, List<Double> position, String comment) {
+	public Node createClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className, Long order, List<Double> position, String comment) {
 		String validateNameQuery = """
-			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(existing:Class {name: $name}) RETURN existing
+			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(existing:Class {name: $className}) RETURN existing
 		""";
 		Map<String, Object> params;
 		params = Map.of(
 			"namespaceName", namespaceName,
-			"name", name
+			"className", className
 		);
 		try {
 			Result validation = tx.execute(validateNameQuery, params);
 			if (validation.hasNext()) {
-				throwException("Error creating Class. A Class with the name: " + name + " already exists in Namespace" + namespaceName + ".");
+				throwException("Error creating Class. A Class with the name: " + className + " already exists in Namespace" + namespaceName + ".");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Class with name: " + name, e);
+			throwException("Error creating Class with name: " + className, e);
 		}
 		
 		String createQuery = """
 			CREATE (updated:Class {
 				id: randomUUID(),
-				name: $name,
+				name: $className,
 				order: $order,
 				position: $position,
 				comment: $comment,
@@ -65,7 +65,7 @@ public class CreateClassRepository extends BaseRepository {
 			"timeStamp", timeStamp,
 			"username", username,
 			"namespaceName", namespaceName,
-			"name", name,
+			"className", className,
 			"order", order,
 			"position", position,
 			"comment", comment
@@ -79,7 +79,7 @@ public class CreateClassRepository extends BaseRepository {
 				throwException("Class creation failed: No result returned");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Class with name: " + name, e);
+			throwException("Error creating Class with name: " + className, e);
 		}
 		return null;
 	}

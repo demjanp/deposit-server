@@ -24,7 +24,7 @@ public class UtilsLoginAPI extends BaseAPI {
 	 * @return the value.
 	 * @throws RuntimeException if error condition is fulfilled.
 	 */
-	@Procedure(name = "deposit.utils.login", mode = Mode.WRITE)
+	@Procedure(name = "deposit.utils.login", mode = Mode.READ)
 	@Description("CALL deposit.utils.login(username, password) YIELD value AS token")
 	public Stream<StringResult> utilsLogin(
 			@Name(value = "username", defaultValue = "") String username,

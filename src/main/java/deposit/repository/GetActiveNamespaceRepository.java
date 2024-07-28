@@ -20,18 +20,18 @@ public class GetActiveNamespaceRepository extends BaseRepository {
 		return instance;
 	}
 
-	public Node getActiveNamespace(Transaction tx, String name) {
+	public Node getActiveNamespace(Transaction tx, String namespaceName) {
 		String validateNameQuery = """
-			MATCH (namespace:Namespace {name: $name}) RETURN namespace
+			MATCH (namespace:Namespace {name: $namespaceName}) RETURN namespace
 		""";
 
 		try {
-			Result result = tx.execute(validateNameQuery, Map.of("name", name));
+			Result result = tx.execute(validateNameQuery, Map.of("namespaceName", namespaceName));
 			
 			if (result.hasNext()) {
 				return (Node) result.next().get("namespace");
 			} else {
-				throwException("Transaction failed: Namespace " + name + " doesn't exist");
+				throwException("Transaction failed: Namespace " + namespaceName + " doesn't exist");
 			}
 		} catch (Exception e) {
 			throwException("Error executing transaction", e);

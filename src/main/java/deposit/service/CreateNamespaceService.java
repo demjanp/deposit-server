@@ -25,15 +25,15 @@ public class CreateNamespaceService extends BaseService {
 		return instance;
 	}
 
-	public Node createNamespace(Transaction tx, String name, String description, String versioningType, String token) {
+	public Node createNamespace(Transaction tx, String namespaceName, String description, String versioningType, String token) {
 		
 		validateToken(token);
-		validateName(name);
+		validateName(namespaceName);
 		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String depositVersion = DepositInfo.version;
 		
-		return createNamespaceRepository.createNamespace(tx, timeStamp, depositVersion, username, name, description, versioningType);
+		return createNamespaceRepository.createNamespace(tx, timeStamp, depositVersion, username, namespaceName, description, versioningType);
 	}
 }
