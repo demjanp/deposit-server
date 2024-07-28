@@ -20,11 +20,11 @@ public class CreateClassDescriptorAPI extends BaseAPI {
 	/**
 	 * Create a Class Descriptor.
 	 *
-	 * @param className
-	 * @param descriptorName
-	 * @param type
-	 * @param order
-	 * @param comment
+	 * @param className the name of the Class
+	 * @param descriptorName the name of the Descriptor to create
+	 * @param type can be the name of any Neo4j or Deposit type
+	 * @param order an order of the Descriptor when represented in a list, default is -1.
+	 * @param comment annotation to provide additional information about the Descriptor, default is an empty string.
 	 * @param token authentication token.
 	 * @return the created Class Descriptor node.
 	 * @throws RuntimeException if a Descriptor with that name already exists for the Class or if there is an error during the creation.
