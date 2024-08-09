@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 public class CreateClassRepository extends BaseRepository {
-
+	
 	private static CreateClassRepository instance;
 	
 	private CreateClassRepository() {}
@@ -70,7 +70,7 @@ public class CreateClassRepository extends BaseRepository {
 			"position", position,
 			"comment", comment
 		);
-
+		
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {

@@ -1,7 +1,6 @@
-package deposit.utils;
+package deposit.api;
 
 import deposit.BaseNeo4jTest;
-import deposit.api.UtilsLoginAPI;
 import deposit.service.UtilsLoginService;
 import org.junit.Before;
 import org.junit.Test;

@@ -2,12 +2,20 @@ package deposit.service;
 
 import deposit.common.ExceptionHandler;
 import deposit.common.ServerContext;
+import deposit.common.DResource;
+import deposit.common.DGeometry;
+import deposit.common.DDict;
 
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.time.*;
+
+import org.neo4j.values.storable.PointValue;
+import org.neo4j.values.storable.DurationValue;
 
 public abstract class BaseService {
 	
@@ -50,6 +58,14 @@ public abstract class BaseService {
 		}
 	}
 	
+	protected void validateId(String uuid) {
+		try {
+			UUID.fromString(uuid);
+		} catch (IllegalArgumentException e) {
+			throwException("Invalid ID: " + uuid + ". The ID must be in the format xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx.");
+		}
+	}
+	
 	protected void validateDescriptorTypeName(String typeName) {
 		if (!VALID_TYPES.contains(typeName)) {
 			throwException("Invalid type: " + typeName + ". Must be one of: " + VALID_TYPES);
@@ -78,7 +94,6 @@ public abstract class BaseService {
 	}
 	
 	protected void validateClassDescriptors(List<List<String>> descriptors) {
-		// Validate descriptors
 		if (descriptors == null) {
 			throwException("Descriptors must be a list of lists.");
 		}
@@ -87,10 +102,67 @@ public abstract class BaseService {
 			if (descriptor.size() < 2 || descriptor.size() > 3) {
 				throwException("Descriptor must be a list of two or three elements.");
 			}
-
+			
+			String name = descriptor.get(0);
+			validateName(name);
+			
 			String type = descriptor.get(1);
 			validateDescriptorTypeName(type);
 		}
 	}
 	
+	protected void validateValue(Object value) {
+		if (value instanceof DDict ||
+			value instanceof DGeometry ||
+			value instanceof DResource ||
+			value instanceof String ||
+			value instanceof Integer ||
+			value instanceof Long ||
+			value instanceof Float ||
+			value instanceof Double ||
+			value instanceof Boolean ||
+			value instanceof java.time.LocalTime ||
+			value instanceof java.time.LocalDate ||
+			value instanceof java.time.LocalDateTime ||
+			value instanceof java.time.ZonedDateTime ||
+			value instanceof DurationValue ||
+			value instanceof PointValue) {
+			// Valid single values that Neo4j supports directly
+		} else if (value instanceof List<?>) {
+			// Validate that all elements in the list are of the same type and are valid Neo4j types
+			List<?> list = (List<?>) value;
+			if (!list.isEmpty()) {
+				Class<?> elementType = null;
+				for (Object item : list) {
+					if (elementType == null) {
+						elementType = item.getClass();
+					} else if (!elementType.equals(item.getClass())) {
+						throw new IllegalArgumentException("Invalid list: all elements must be of the same type.");
+					}
+					validateValue(item);  // Recursive validation of each list item
+				}
+			}
+		} else {
+			throw new IllegalArgumentException("Invalid value type: " + value.getClass().getName() +
+				". The value must be one of the supported Neo4j types.");
+		}
+	}
+
+	protected void validateDescriptors(List<List<String>> descriptors) {
+		if (descriptors == null) {
+			throwException("Descriptors must be a list of lists.");
+		}
+
+		for (List<String> descriptor : descriptors) {
+			if (descriptor.size() != 2) {
+				throwException("Descriptor must be a list of two elements.");
+			}
+			
+			String name = descriptor.get(0);
+			validateName(name);
+			
+			String value = descriptor.get(1);
+			validateValue(value);
+		}
+	}
 }

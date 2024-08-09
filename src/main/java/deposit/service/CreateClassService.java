@@ -41,11 +41,6 @@ public class CreateClassService extends BaseService {
 		if (namespaceName == null) {
 			throwException("Cannot create Class without an active Namespace.");
 		}
-		for (List<String> descriptorList : descriptors) {
-			if (descriptorList.size() > 3) {
-				throwException("Invalid format of Descriptor list.");
-			}
-		}
 		Node node = createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, order, position, comment);
 		for (List<String> descriptorList : descriptors) {
 			String descriptorName = descriptorList.get(0);
