@@ -38,6 +38,6 @@ public class CreateClassDescriptorService extends BaseService {
 		if (namespaceName == null) {
 			throwException("Cannot create Class Descriptor without an active Namespace.");
 		}
-		return createClassDescriptorRepository.createClassDescriptor(tx, versioningType, timeStamp, username, namespaceName, className, descriptorName, type, order, comment);
+		return createClassDescriptorRepository.createClassDescriptor(tx, timeStamp, username, namespaceName, versioningType, className, descriptorName, type, order, comment);
 	}
 }

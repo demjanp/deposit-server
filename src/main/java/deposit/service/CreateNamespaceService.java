@@ -34,6 +34,6 @@ public class CreateNamespaceService extends BaseService {
 		String username = ServerContext.getActiveUsername(token);
 		String depositVersion = DepositInfo.version;
 		
-		return createNamespaceRepository.createNamespace(tx, timeStamp, depositVersion, username, namespaceName, description, versioningType);
+		return createNamespaceRepository.createNamespace(tx, timeStamp, depositVersion, username, namespaceName, versioningType, description);
 	}
 }

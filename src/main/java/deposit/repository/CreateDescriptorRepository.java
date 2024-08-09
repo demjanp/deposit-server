@@ -22,7 +22,7 @@ public class CreateDescriptorRepository extends BaseRepository {
 		return instance;
 	}
 	
-    public Node createDescriptor(Transaction tx, String versioningType, ZonedDateTime timeStamp, String username, String namespaceName, String objectId, String descriptorName, Object value) {
+    public Node createDescriptor(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String objectId, String descriptorName, Object value) {
 		String validateIdQuery = """
 			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $objectId})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $descriptorName}) RETURN existing
 		""";

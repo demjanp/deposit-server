@@ -22,7 +22,7 @@ public class CreateNamespaceRepository extends BaseRepository {
 		return instance;
 	}
 
-	public Node createNamespace(Transaction tx, ZonedDateTime timeStamp, String depositVersion, String username, String namespaceName, String description, String versioningType) {
+	public Node createNamespace(Transaction tx, ZonedDateTime timeStamp, String depositVersion, String username, String namespaceName, String versioningType, String description) {
 		String validateNameQuery = """
 			MATCH (namespace:Namespace {name: $namespaceName}) RETURN namespace
 		""";

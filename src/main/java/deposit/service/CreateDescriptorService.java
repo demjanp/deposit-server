@@ -39,6 +39,6 @@ public class CreateDescriptorService extends BaseService {
 		
 		// TODO : If value is a resource, the file is moved from the 'loaded_resources' directory to the permanent file storage directory. The filename remains in the format `<filename>-<uuid>.<ext>`, where `uuid` is generated when the file is uploaded to the server via the deposit.resource procedure.
 		
-		return createDescriptorRepository.createDescriptor(tx, versioningType, timeStamp, username, namespaceName, objectId, descriptorName, value);
+		return createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value);
 	}
 }

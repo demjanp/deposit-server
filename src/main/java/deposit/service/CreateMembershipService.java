@@ -40,6 +40,6 @@ public class CreateMembershipService extends BaseService {
 		}
 
 		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className, token);
-		return createMembershipRepository.createMembership(tx, versioningType, timeStamp, username, namespaceName, className, objectId);
+		return createMembershipRepository.createMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
 	}
 }

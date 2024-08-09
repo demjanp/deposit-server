@@ -22,7 +22,7 @@ public class CreateMembershipRepository extends BaseRepository {
 		return instance;
 	}
 
-	public Relationship createMembership(Transaction tx, String versioningType, ZonedDateTime timeStamp, String username, String namespaceName, String className, String objectId) {
+	public Relationship createMembership(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className, String objectId) {
 		String validateMembershipQuery = """
 			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object {id: $objectId}),
 				  (n)-[:CONTAINS]->(c:Class {name: $className})

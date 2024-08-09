@@ -22,7 +22,7 @@ public class CreateClassDescriptorRepository extends BaseRepository {
 		return instance;
 	}
 	
-    public Node createClassDescriptor(Transaction tx, String versioningType, ZonedDateTime timeStamp, String username, String namespaceName, String className, String descriptorName, String type, Long order, String comment) {
+    public Node createClassDescriptor(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className, String descriptorName, String type, Long order, String comment) {
 		String validateNameQuery = """
 			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $descriptorName}) RETURN existing
 		""";
