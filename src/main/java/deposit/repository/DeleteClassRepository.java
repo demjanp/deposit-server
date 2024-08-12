@@ -32,7 +32,7 @@ public class DeleteClassRepository extends BaseRepository {
 		try {
 			Result validation = tx.execute(validateNameQuery, params);
 			if (!validation.hasNext()) {
-				return;
+				throwException("Error deleting Class " + className + ". It does not exist.");
 			}
 		} catch (Exception e) {
 			throwException("Error creating Class with name: " + className, e);
@@ -54,7 +54,7 @@ public class DeleteClassRepository extends BaseRepository {
 		try {
 			tx.execute(deleteQuery, params);
 		} catch (Exception e) {
-			throwException("Error deleting Namespace with name: " + namespaceName, e);
+			throwException("Error deleting Class with name: " + className, e);
 		}
 	}
 }

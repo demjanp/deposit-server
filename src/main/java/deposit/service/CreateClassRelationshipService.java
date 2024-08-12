@@ -34,12 +34,13 @@ public class CreateClassRelationshipService extends BaseService {
 		validateToken(token);
 		validateName(startClassName);
 		validateName(endClassName);
+		validateName(label);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		String versioningType = ServerContext.getVersioningType(token);
 		if (namespaceName == null) {
-			throwException("Cannot create Class Relationship without an active Namespace.");
+			throwException("Cannot create a Class Relationship without an active Namespace.");
 		}
 		
 		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, startClassName, token);

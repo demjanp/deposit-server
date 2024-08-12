@@ -70,11 +70,15 @@ public class ServerContext {
 
 	public static void deactivateToken(String token) {
 		if (token != null) {
-			activeTokens.remove(token);
+			String username = activeTokens.remove(token);
+			if (username != null) {
+				store.remove(username + ":namespace");
+				store.remove(username + ":versioningType");
+			}
 		}
 	}
 
-	public void deactivateUser(String username) {
+	public static void deactivateUser(String username) {
 		activeTokens.entrySet().removeIf(entry -> entry.getValue().equals(username));
 	}
 

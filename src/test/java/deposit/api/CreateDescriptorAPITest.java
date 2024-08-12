@@ -37,9 +37,8 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
 
     private String createNamespaceAndObject(Session session, String namespaceName, List<String> classes) {
         return session.writeTransaction(tx -> {
-            tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-            ServerContext.setActiveNamespace(namespaceName, token);
-            tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+            tx.run("CALL deposit.create.namespace($namespaceName, '', '', $token)", Map.of("namespaceName", namespaceName, "token", token));
+            tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 
             Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
                                    Map.of("classes", classes, "token", token));
@@ -89,13 +88,19 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
             valueTests.put("BooleanListDescriptor", List.of(true, false, true));
 
             valueTests.forEach((descriptorName, value) -> {
+                // Create each descriptor in a separate transaction
                 createDescriptor(session, objectId, descriptorName, value);
 
                 // Verify: Descriptor node was created
-                Result result = session.run("MATCH (d:Descriptor {name: $descriptorName, value: $value}) RETURN d",
-                                            Map.of("descriptorName", descriptorName, "value", value));
-                assertTrue("Descriptor node should exist with correct value", result.hasNext());
+                session.writeTransaction(tx -> {
+                    Result result = tx.run("MATCH (d:Descriptor {name: $descriptorName, value: $value}) RETURN d",
+                                           Map.of("descriptorName", descriptorName, "value", value));
+                    assertTrue("Descriptor node should exist with correct value", result.hasNext());
+                    tx.commit();
+                    return null;
+                });
             });
         }
     }
+
 }

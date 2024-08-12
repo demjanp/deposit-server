@@ -13,7 +13,7 @@ public class Versioning {
 	 * Assumes that the following parameters are passed to the query:
 	 *	$timeStamp: ZonedDateTime, the current timestamp.
 	 *	$username: String, the username of the active user.
-	 * Ends with a 'WITH updated' statement so needs to be closed with a RETURN statement for the query to be valid.
+	 * Ends with a 'WITH updated' or 'WITH parent, updated' or 'WITH source, target, updated' statement so needs to be closed with a RETURN statement for the query to be valid.
 	 *
 	 * @param elementType type of Deposit element that is being updated. Defined as String. Possible values are Object, Class, Descriptor, ClassDescriptor, Membership, Relationship, ClassRelationship.
 	 * @param deletion set to true if the operation is a deletion. Defined as boolean.
@@ -187,7 +187,7 @@ public class Versioning {
 		}
 		
 		queryString += """
-			WITH updated
+			WITH {0}
 		""";
 		
 		queryString = MessageFormat.format(queryString, updated, deleted);

@@ -35,10 +35,9 @@ public class CreateClassDescriptorAPITest extends BaseNeo4jTest {
 			String namespaceName = "TestNamespace";
 			String className = "TestClass";
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-				ServerContext.setActiveNamespace(namespaceName, token);
-				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className));
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
 				tx.commit();
 				return null;
 			});
@@ -77,10 +76,9 @@ public class CreateClassDescriptorAPITest extends BaseNeo4jTest {
 			String className = "TestClass";
 			String descriptorName = "DuplicateDescriptor";
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-				ServerContext.setActiveNamespace(namespaceName, token);
-				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className));
+				tx.run("CALL deposit.create.namespace($namespaceName, '', '', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
 				tx.run("CALL deposit.create.classDescriptor($className, $descriptorName, 'String', -1, '', $token)",
 						Map.of("className", className, "descriptorName", descriptorName, "token", token));
 				tx.commit();
@@ -109,10 +107,10 @@ public class CreateClassDescriptorAPITest extends BaseNeo4jTest {
 			String namespaceName = "TestNamespace";
 			String className = "TestClass";
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
+				tx.run("CALL deposit.create.namespace($namespaceName, '', '', $token)", Map.of("namespaceName", namespaceName, "token", token));
 				ServerContext.setActiveNamespace(namespaceName, token);
-				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
 				tx.commit();
 				return null;
 			});

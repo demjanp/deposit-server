@@ -37,11 +37,10 @@ public class GetClassAPITest extends BaseNeo4jTest {
 			String className2 = "TestClass2";
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-				ServerContext.setActiveNamespace(namespaceName, token);
-				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className1));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className2));
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className1, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className2, "token", token));
 				tx.commit();
 				return null;
 			});
@@ -64,11 +63,10 @@ public class GetClassAPITest extends BaseNeo4jTest {
 			String className2 = "TestClass2";
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-				ServerContext.setActiveNamespace(namespaceName, token);
-				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className1));
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className2));
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className1, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className2, "token", token));
 				tx.commit();
 				return null;
 			});
@@ -91,9 +89,8 @@ public class GetClassAPITest extends BaseNeo4jTest {
 			String namespaceName = "EmptyNamespace";
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-				ServerContext.setActiveNamespace(namespaceName, token);
-				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 				tx.commit();
 				return null;
 			});

@@ -30,9 +30,8 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 	private void createNamespaceAndClasses(Session session, String namespaceName, String startClassName, String endClassName) {
 		session.writeTransaction(tx -> {
 			// Create the Namespace
-			tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-			ServerContext.setActiveNamespace(namespaceName, token);
-			tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+			tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 
 			// Create the Start Class
 			tx.run("CALL deposit.create.class($className, -1, [], '', [], $token) YIELD node RETURN node.id AS startClassId",

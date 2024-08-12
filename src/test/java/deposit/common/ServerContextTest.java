@@ -1,89 +1,105 @@
 package deposit.common;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-public class ServerContextTest {
+class ServerContextTest {
 
 	private ServerContext serverContext;
 
-	@Before
-	public void setUp() {
+	@BeforeEach
+	void setUp() {
 		serverContext = ServerContext.getInstance();
-		serverContext.clearAll();  // Clear the state before each test
+		serverContext.clearAll();  // Clear all data before each test
 	}
 
 	@Test
-	public void testSetAndGetActiveNamespace() {
-		String token = serverContext.generateToken("testUser");
-
-		assertEquals("", ServerContext.getActiveNamespace(token));
-
-		ServerContext.setActiveNamespace("testNamespace", token);
-		assertEquals("testNamespace", ServerContext.getActiveNamespace(token));
+	void testSingletonInstance() {
+		ServerContext instance1 = ServerContext.getInstance();
+		ServerContext instance2 = ServerContext.getInstance();
+		assertSame(instance1, instance2, "ServerContext should return the same instance");
 	}
 
 	@Test
-	public void testTokenGenerationAndValidation() {
-		String token = serverContext.generateToken("testUser");
-		assertNotNull(token);
-		assertTrue(ServerContext.validateToken(token));
+	void testDefaultUsername() {
+		assertEquals("neo4j", ServerContext.getDefaultUsername(), "Default username should be 'neo4j'");
+
+		ServerContext.setDefaultUsername("testUser");
+		assertEquals("testUser", ServerContext.getDefaultUsername(), "Default username should be 'testUser'");
+	}
+
+	@Test
+	void testGenerateAndValidateToken() {
+		String username = "testUser";
+		String token = ServerContext.generateToken(username);
+
+		assertNotNull(token, "Token should not be null");
+		assertTrue(ServerContext.validateToken(token), "Token should be valid");
 
 		ServerContext.deactivateToken(token);
-		assertFalse(ServerContext.validateToken(token));
+		assertFalse(ServerContext.validateToken(token), "Token should no longer be valid after deactivation");
 	}
 
 	@Test
-	public void testExtractUsername() {
-		String token = serverContext.generateToken("testUser");
-		String username = ServerContext.extractUsername(token);
-		assertEquals("testUser", username);
+	void testExtractUsernameFromToken() {
+		String username = "testUser";
+		String token = ServerContext.generateToken(username);
+
+		String extractedUsername = ServerContext.extractUsername(token);
+		assertEquals(username, extractedUsername, "Extracted username should match the original username");
 	}
 
 	@Test
-	public void testDeactivateUser() {
-		String token1 = serverContext.generateToken("testUser1");
-		String token2 = serverContext.generateToken("testUser2");
-		assertTrue(ServerContext.validateToken(token1));
-		assertTrue(ServerContext.validateToken(token2));
+	void testGetActiveUsername() {
+		String defaultUsername = ServerContext.getDefaultUsername();
+		assertEquals(defaultUsername, ServerContext.getActiveUsername(null), "Active username should default to the default username when token is null");
+		assertEquals(defaultUsername, ServerContext.getActiveUsername(""), "Active username should default to the default username when token is empty");
 
-		serverContext.deactivateUser("testUser1");
-		assertFalse(ServerContext.validateToken(token1));
-		assertTrue(ServerContext.validateToken(token2));
+		String username = "testUser";
+		String token = ServerContext.generateToken(username);
+		assertEquals(username, ServerContext.getActiveUsername(token), "Active username should match the username from the token");
 	}
 
 	@Test
-	public void testSetAndGetVersioningType() {
-		String token = serverContext.generateToken("testUser");
-		assertEquals("", ServerContext.getVersioningType(token));
-		ServerContext.setVersioningType("type1", token);
-		assertEquals("type1", ServerContext.getVersioningType(token));
+	void testNamespaceManagement() {
+		String username = "testUser";
+		String namespace = "TestNamespace";
+		String token = ServerContext.generateToken(username);
+
+		ServerContext.setActiveNamespace(namespace, token);
+		assertEquals(namespace, ServerContext.getActiveNamespace(token), "Active namespace should be correctly set and retrieved");
+
+		ServerContext.deactivateToken(token);
+		assertEquals("", ServerContext.getActiveNamespace(token), "After deactivating the token, active namespace should be an empty string");
 	}
 
 	@Test
-	public void testGetActiveUsernameWithToken() {
-		String token = serverContext.generateToken("testUser");
-		assertEquals("testUser", ServerContext.getActiveUsername(token));
+	void testVersioningTypeManagement() {
+		String username = "testUser";
+		String versioningType = "transient";
+		String token = ServerContext.generateToken(username);
+
+		ServerContext.setVersioningType(versioningType, token);
+		assertEquals(versioningType, ServerContext.getVersioningType(token), "Versioning type should be correctly set and retrieved");
+
+		ServerContext.deactivateToken(token);
+		// Now, after deactivation, the versioning type should be an empty string
+		assertEquals("", ServerContext.getVersioningType(token), "After deactivating the token, versioning type should be an empty string");
 	}
 
 	@Test
-	public void testGetActiveUsernameWithoutToken() {
-		assertEquals("neo4j", ServerContext.getActiveUsername(""));
-	}
+	void testDeactivateUser() {
+		String username1 = "user1";
+		String username2 = "user2";
 
-	@Test
-	public void testSetAndGetActiveNamespaceWithoutToken() {
-		String token = "";  // No token provided
-		ServerContext.setActiveNamespace("defaultNamespace", token);
-		assertEquals("defaultNamespace", ServerContext.getActiveNamespace(token));
-	}
+		String token1 = ServerContext.generateToken(username1);
+		String token2 = ServerContext.generateToken(username2);
 
-	@Test
-	public void testSetAndGetVersioningTypeWithoutToken() {
-		String token = "";  // No token provided
-		ServerContext.setVersioningType("defaultType", token);
-		assertEquals("defaultType", ServerContext.getVersioningType(token));
+		ServerContext.deactivateUser(username1);
+
+		assertFalse(ServerContext.validateToken(token1), "Token for deactivated user should be invalid");
+		assertTrue(ServerContext.validateToken(token2), "Token for non-deactivated user should remain valid");
 	}
 }

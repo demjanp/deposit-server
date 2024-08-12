@@ -10,6 +10,7 @@ import org.neo4j.driver.Value;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -30,13 +31,16 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
+	private String generateUniqueName(String baseName) {
+		return baseName + "_" + UUID.randomUUID().toString();
+	}
+
 	private void createNamespaceAndClass(Session session, String namespaceName, List<String> classNames) {
 		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
-			ServerContext.setActiveNamespace(namespaceName, token);
-			tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+			tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 			for (String className : classNames) {
-				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", className));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
 			}
 			tx.commit();
 			return null;
@@ -46,9 +50,8 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldCreateObjectWithSingleClass() {
 		try (Session session = driver.session()) {
-			String namespaceName = "TestNamespace";
-			String objectId = "TestObject";
-			List<String> classes = List.of("TestClass");
+			String namespaceName = generateUniqueName("TestNamespace");
+			List<String> classes = List.of(generateUniqueName("TestClass"));
 
 			createNamespaceAndClass(session, namespaceName, classes);
 
@@ -63,21 +66,21 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 			Result result = session.run("""
 				MATCH (o:Object)-[r:MEMBER_OF]->(c:Class {name: $className})
 				RETURN o, r, c
-				""", Map.of("className", "TestClass"));
+				""", Map.of("className", classes.get(0)));
 
-			assertTrue("Object node should exist in the database with a MEMBER_OF relationship to TestClass", result.hasNext());
+			assertTrue("Object node should exist in the database with a MEMBER_OF relationship to the class", result.hasNext());
 			var record = result.next();
 			var relationship = record.get("r").asRelationship();
 			assertEquals("MEMBER_OF", relationship.type());
-			assertEquals("TestClass", record.get("c").get("name").asString());
+			assertEquals(classes.get(0), record.get("c").get("name").asString());
 		}
 	}
 
 	@Test
 	public void shouldCreateObjectWithMultipleClasses() {
 		try (Session session = driver.session()) {
-			String namespaceName = "TestNamespace";
-			List<String> classes = List.of("TestClass1", "TestClass2");
+			String namespaceName = generateUniqueName("TestNamespace");
+			List<String> classes = List.of(generateUniqueName("TestClass1"), generateUniqueName("TestClass2"));
 
 			createNamespaceAndClass(session, namespaceName, classes);
 
@@ -90,23 +93,23 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 
 			// Verify: Object node was created and has MEMBER_OF relationships with all specified classes
 			Result result = session.run("""
-				MATCH (o:Object)-[r:MEMBER_OF]->(c:Class)
-				RETURN o, collect(c.name) AS classNames
-				""");
+					MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object)-[r:MEMBER_OF]->(c:Class)
+					RETURN o, collect(DISTINCT c.name) AS classNames
+				""", Map.of("namespaceName", namespaceName));
 
 			assertTrue("Object node should exist in the database with MEMBER_OF relationships to specified classes", result.hasNext());
 			List<String> classNames = result.next().get("classNames").asList(v -> v.asString());
+			System.out.println(classNames);
 			assertEquals(2, classNames.size());
-			assertTrue(classNames.contains("TestClass1"));
-			assertTrue(classNames.contains("TestClass2"));
+			assertTrue(classNames.containsAll(classes));
 		}
 	}
 
 	@Test
 	public void shouldCreateObjectWithDefaultPosition() {
 		try (Session session = driver.session()) {
-			String namespaceName = "TestNamespace";
-			List<String> classes = List.of("TestClass");
+			String namespaceName = generateUniqueName("TestNamespace");
+			List<String> classes = List.of(generateUniqueName("TestClass"));
 
 			createNamespaceAndClass(session, namespaceName, classes);
 
@@ -128,8 +131,8 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldCreateObjectWithSpecifiedPosition() {
 		try (Session session = driver.session()) {
-			String namespaceName = "TestNamespace";
-			List<String> classes = List.of("TestClass");
+			String namespaceName = generateUniqueName("TestNamespace");
+			List<String> classes = List.of(generateUniqueName("TestClass"));
 			List<Double> position = List.of(100.0, 200.0);
 
 			createNamespaceAndClass(session, namespaceName, classes);
@@ -152,7 +155,7 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldThrowExceptionForEmptyClassesList() {
 		try (Session session = driver.session()) {
-			String namespaceName = "TestNamespace";
+			String namespaceName = generateUniqueName("TestNamespace");
 			createNamespaceAndClass(session, namespaceName, List.of());
 
 			RuntimeException exception = assertThrows(RuntimeException.class, () -> {

@@ -10,7 +10,7 @@ import java.time.ZonedDateTime;
 import java.util.Map;
 
 public class CreateClassRelationshipRepository extends BaseRepository {
-
+	
 	private static CreateClassRelationshipRepository instance;
 	
 	private CreateClassRelationshipRepository() {}
@@ -35,7 +35,7 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 			"endClassName", endClassName,
 			"label", label
 		);
-
+		
 		try {
 			Result validation = tx.execute(validateRelationshipQuery, params);
 			if (validation.hasNext()) {
@@ -58,11 +58,11 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 				updated.createdBy = $username,
 				updated.updatedAt = $timeStamp,
 				updated.updatedBy = $username
-			WITH updated
+			WITH source, target, updated
 			MATCH (namespace:Namespace {name: $namespaceName})
-			WITH namespace, updated
+			WITH namespace, source, target, updated
 			MERGE (namespace)-[:CONTAINS]->(updated)
-			WITH namespace, updated
+			WITH namespace, source, target, updated
 		""";
 		createQuery += Versioning.getElementUpdateCode("ClassRelationship", false, versioningType);
 		createQuery += "	RETURN updated";
