@@ -148,20 +148,20 @@ public abstract class BaseService {
 		}
 	}
 
-	protected void validateDescriptors(List<List<String>> descriptors) {
+	protected void validateDescriptors(List<List<Object>> descriptors) {
 		if (descriptors == null) {
 			throwException("Descriptors must be a list of lists.");
 		}
 
-		for (List<String> descriptor : descriptors) {
+		for (List<Object> descriptor : descriptors) {
 			if (descriptor.size() != 2) {
 				throwException("Descriptor must be a list of two elements.");
 			}
 			
-			String name = descriptor.get(0);
+			String name = (String) descriptor.get(0);
 			validateName(name);
 			
-			String value = descriptor.get(1);
+			Object value = descriptor.get(1);
 			validateValue(value);
 		}
 	}

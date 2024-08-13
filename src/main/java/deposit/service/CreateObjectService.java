@@ -29,7 +29,7 @@ public class CreateObjectService extends BaseService {
 		return instance;
 	}
 	
-	public Node createObject(Transaction tx, List<String> classes, List<List<String>> descriptors, List<Double> position, String token) {
+	public Node createObject(Transaction tx, List<String> classes, List<List<Object>> descriptors, List<Double> position, String token) {
 		
 		validateToken(token);
 		if (classes == null || classes.isEmpty()) {
@@ -54,9 +54,9 @@ public class CreateObjectService extends BaseService {
 		for (String className : classes) {
 			createMembershipService.createMembership(tx, className, objectId, token);
 		}
-		for (List<String> descriptorList : descriptors) {
-			String descriptorName = descriptorList.get(0);
-			String value = descriptorList.get(1);
+		for (List<Object> descriptorList : descriptors) {
+			String descriptorName = (String) descriptorList.get(0);
+			Object value = descriptorList.get(1);
 			createDescriptorService.createDescriptor(tx, objectId, descriptorName, value, token);
 		}
 		return node;

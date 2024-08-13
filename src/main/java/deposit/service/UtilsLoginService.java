@@ -18,11 +18,13 @@ public class UtilsLoginService extends BaseService {
 
 	private UtilsLoginService() {
 		this.utilsLoginRepository = UtilsLoginRepository.getInstance();
+		initialize();
 	}
 
 	public static synchronized UtilsLoginService getInstance() {
 		if (instance == null) {
 			instance = new UtilsLoginService();
+			instance.initialize();
 		}
 		return instance;
 	}

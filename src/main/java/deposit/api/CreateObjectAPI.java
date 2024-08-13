@@ -32,7 +32,7 @@ public class CreateObjectAPI extends BaseAPI {
 	@Description("CALL deposit.create.object(classes, descriptors, position, token) YIELD node AS object")
 	public Stream<NodeResult> createObject(
 			@Name("classes") List<String> classes,
-			@Name(value = "descriptors", defaultValue = "[]") List<List<String>> descriptors,
+			@Name(value = "descriptors", defaultValue = "[]") List<List<Object>> descriptors,
 			@Name(value = "position", defaultValue = "[]") List<Double> position,
 			@Name(value = "token", defaultValue = "") String token) {
 		if (position == null) {

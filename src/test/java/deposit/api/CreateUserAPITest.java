@@ -48,6 +48,26 @@ public class CreateUserAPITest extends BaseNeo4jTest {
 	}
 
 	@Test
+	public void shouldCreateUserNodeWithoutToken() {
+		try (Session session = driver.session()) {
+			// Test: Create a User
+			String username = "newUser2";
+			String password = "password123";
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.user($username, $password)",
+						Map.of("username", username, "password", password));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: User node was created
+			Result result = session.run("MATCH (u:User {username: $username}) RETURN u", Map.of("username", username));
+			assertTrue(result.hasNext());
+		}
+	}
+
+	@Test
 	public void shouldThrowExceptionIfUserAlreadyExists() {
 		try (Session session = driver.session()) {
 			// Setup: Create a User
