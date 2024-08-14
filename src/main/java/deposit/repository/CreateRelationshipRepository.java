@@ -57,10 +57,6 @@ public class CreateRelationshipRepository extends BaseRepository {
 				updated.createdBy = $username,
 				updated.updatedAt = $timeStamp,
 				updated.updatedBy = $username
-			WITH source, target, updated
-			MATCH (namespace:Namespace {name: $namespaceName})
-			WITH namespace, source, target, updated
-			MERGE (namespace)-[:CONTAINS]->(updated)
 			WITH namespace, source, target, updated
 		""";
 		createQuery += Versioning.getElementUpdateCode("Relationship", false, versioningType);

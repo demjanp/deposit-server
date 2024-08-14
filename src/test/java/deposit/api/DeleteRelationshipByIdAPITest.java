@@ -78,7 +78,7 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was deleted
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(rel:Relationship {id: $relationshipId}) RETURN rel",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:RS]->(rel:Relationship {id: $relationshipId}) RETURN rel",
 										Map.of("namespaceName", namespaceName, "relationshipId", relationshipId));
 
 			assertFalse("Relationship node should be deleted", result.hasNext());

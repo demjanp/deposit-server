@@ -23,7 +23,7 @@ public class CreateDescriptorRepository extends BaseRepository {
 	}
 	
     public Node createDescriptor(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String objectId, String descriptorName, Object value) {
-		String validateIdQuery = """
+		String validateQuery = """
 			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $objectId})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $descriptorName}) RETURN existing
 		""";
 		Map<String, Object> params;
@@ -33,13 +33,14 @@ public class CreateDescriptorRepository extends BaseRepository {
 			"descriptorName", descriptorName
 		);
 		try {
-			Result validation = tx.execute(validateIdQuery, params);
+			Result validation = tx.execute(validateQuery, params);
 			if (validation.hasNext()) {
 				throwException("Error creating Descriptor. A Descriptor with the name: " + descriptorName + " already exists for Object" + objectId + ".");
 			}
 		} catch (Exception e) {
 			throwException("Error creating Descriptor with name: " + descriptorName, e);
 		}
+		
 		String createQuery = """
 			CREATE (updated:Descriptor {
 				id: randomUUID(),
