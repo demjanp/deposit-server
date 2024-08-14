@@ -46,9 +46,8 @@ public class CreateMembershipRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error validating Membership between Object " + objectId + " and Class " + className, e);
 		}
-
-		String createMembershipQuery = """
-			MATCH (source:Object {id: $objectId}), (target:Class {name: $className}), (namespace:Namespace {name: $namespaceName})
+		String createQuery = """
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $objectId}), (namespace)-[:CONTAINS]->(target:Class {name: $className})
 			CREATE (source)-[updated:MEMBER_OF]->(target)
 			SET updated.id = randomUUID(),
 				updated.createdAt = $timeStamp,
@@ -56,19 +55,18 @@ public class CreateMembershipRepository extends BaseRepository {
 			WITH namespace, source, target, updated
 		""";
 		
-		createMembershipQuery += Versioning.getElementUpdateCode("Membership", false, versioningType);
-		createMembershipQuery += "RETURN updated";
+		createQuery += Versioning.getElementUpdateCode("Membership", false, versioningType);
+		createQuery += "RETURN updated";
 		
 		params = Map.of(
-			"namespaceName", namespaceName,
-			"className", className,
-			"objectId", objectId,
-			"timeStamp", timeStamp,
-			"username", username
+		"namespaceName", namespaceName,
+		"className", className,
+		"objectId", objectId,
+		"timeStamp", timeStamp,
+		"username", username
 		);
-
 		try {
-			Result result = tx.execute(createMembershipQuery, params);
+			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {
 				return (Relationship) result.next().get("updated");
 			} else {

@@ -99,7 +99,6 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 
 			assertTrue("Object node should exist in the database with MEMBER_OF relationships to specified classes", result.hasNext());
 			List<String> classNames = result.next().get("classNames").asList(v -> v.asString());
-			System.out.println(classNames);
 			assertEquals(2, classNames.size());
 			assertTrue(classNames.containsAll(classes));
 		}

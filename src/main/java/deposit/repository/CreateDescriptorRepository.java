@@ -40,7 +40,6 @@ public class CreateDescriptorRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error creating Descriptor with name: " + descriptorName, e);
 		}
-		
 		String createQuery = """
 			CREATE (updated:Descriptor {
 				id: randomUUID(),
@@ -60,12 +59,12 @@ public class CreateDescriptorRepository extends BaseRepository {
 		createQuery += Versioning.getElementUpdateCode("Descriptor", false, versioningType);
 		createQuery += "RETURN updated";
 		params = Map.of(
-			"timeStamp", timeStamp,
-			"username", username,
-			"namespaceName", namespaceName,
-			"objectId", objectId,
-			"descriptorName", descriptorName,
-			"value", value
+		"timeStamp", timeStamp,
+		"username", username,
+		"namespaceName", namespaceName,
+		"objectId", objectId,
+		"descriptorName", descriptorName,
+		"value", value
 		);
 		try {
 			Result result = tx.execute(createQuery, params);

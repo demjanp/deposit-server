@@ -47,9 +47,8 @@ public class CreateRelationshipRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error validating Relationship between Objects " + startObjectId + " and " + endObjectId, e);
 		}
-		
 		String createQuery = """
-			MATCH (source:Object {id: $startObjectId}), (target:Object {id: $endObjectId})
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $startObjectId}), (namespace)-[:CONTAINS]->(target:Object {id: $endObjectId})
 			CREATE (source)-[:RS]->(updated:Relationship)-[:RE]->(target)
 			SET	updated.id = randomUUID(),
 				updated.label = $label,
@@ -67,13 +66,13 @@ public class CreateRelationshipRepository extends BaseRepository {
 		createQuery += Versioning.getElementUpdateCode("Relationship", false, versioningType);
 		createQuery += "	RETURN updated";
 		params = Map.of(
-			"timeStamp", timeStamp,
-			"username", username,
-			"namespaceName", namespaceName,
-			"startObjectId", startObjectId,
-			"endObjectId", endObjectId,
-			"label", label,
-			"weight", weight
+		"timeStamp", timeStamp,
+		"username", username,
+		"namespaceName", namespaceName,
+		"startObjectId", startObjectId,
+		"endObjectId", endObjectId,
+		"label", label,
+		"weight", weight
 		);
 		try {
 			Result result = tx.execute(createQuery, params);

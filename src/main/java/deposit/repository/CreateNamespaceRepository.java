@@ -34,8 +34,7 @@ public class CreateNamespaceRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error creating Namespace with name: " + namespaceName, e);
 		}
-		
-		String createNamespaceQuery = """
+		String createQuery = """
 			CREATE (namespace:Namespace {
 				id: randomUUID(),
 				name: $namespaceName,
@@ -51,20 +50,20 @@ public class CreateNamespaceRepository extends BaseRepository {
 			CREATE (namespace)-[:CONTAINS]->(archive:Archive)
 			WITH namespace, archive
 		""";
-		createNamespaceQuery += Versioning.getCreateArchiveCode(versioningType);
-		createNamespaceQuery += "RETURN namespace";
+
+		createQuery += Versioning.getCreateArchiveCode(versioningType);
+		createQuery += "RETURN namespace";
 
 		Map<String, Object> params = Map.of(
-			"timeStamp", timeStamp,
-			"depositVersion", depositVersion,
-			"username", username,
-			"namespaceName", namespaceName,
-			"description", description,
-			"versioningType", versioningType
+		"timeStamp", timeStamp,
+		"depositVersion", depositVersion,
+		"username", username,
+		"namespaceName", namespaceName,
+		"description", description,
+		"versioningType", versioningType
 		);
-
 		try {
-			Result result = tx.execute(createNamespaceQuery, params);
+			Result result = tx.execute(createQuery, params);
 
 			if (result.hasNext()) {
 				return (Node) result.next().get("namespace");

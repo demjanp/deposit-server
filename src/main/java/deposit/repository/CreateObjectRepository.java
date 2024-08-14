@@ -42,11 +42,12 @@ public class CreateObjectRepository extends BaseRepository {
 		createQuery += Versioning.getElementUpdateCode("Object", false, versioningType);
 		createQuery += "	RETURN updated";
 		Map<String, Object> params = Map.of(
-			"timeStamp", timeStamp,
-			"username", username,
-			"namespaceName", namespaceName,
-			"position", position
+		"timeStamp", timeStamp,
+		"username", username,
+		"namespaceName", namespaceName,
+		"position", position
 		);
+
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {

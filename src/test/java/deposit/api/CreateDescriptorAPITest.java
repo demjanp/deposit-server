@@ -37,7 +37,7 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
 
     private String createNamespaceAndObject(Session session, String namespaceName, List<String> classes) {
         return session.writeTransaction(tx -> {
-            tx.run("CALL deposit.create.namespace($namespaceName, '', '', $token)", Map.of("namespaceName", namespaceName, "token", token));
+            tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
             tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 
             Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",

@@ -40,7 +40,6 @@ public class CreateClassRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error creating Class with name: " + className, e);
 		}
-		
 		String createQuery = """
 			CREATE (updated:Class {
 				id: randomUUID(),
@@ -62,15 +61,14 @@ public class CreateClassRepository extends BaseRepository {
 		createQuery += Versioning.getElementUpdateCode("Class", false, versioningType);
 		createQuery += "	RETURN updated";
 		params = Map.of(
-			"timeStamp", timeStamp,
-			"username", username,
-			"namespaceName", namespaceName,
-			"className", className,
-			"order", order,
-			"position", position,
-			"comment", comment
+		"timeStamp", timeStamp,
+		"username", username,
+		"namespaceName", namespaceName,
+		"className", className,
+		"order", order,
+		"position", position,
+		"comment", comment
 		);
-		
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {

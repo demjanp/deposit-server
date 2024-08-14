@@ -49,7 +49,7 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 		}
 		
 		String createQuery = """
-			MATCH (source:Class {name: $startClassName}), (target:Class {name: $endClassName})
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}), (namespace)-[:CONTAINS]->(target:Class {name: $endClassName})
 			CREATE (source)-[:RS]->(updated:Relationship)-[:RE]->(target)
 			SET	updated.id = randomUUID(),
 				updated.label = $label,

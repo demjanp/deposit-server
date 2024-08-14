@@ -41,8 +41,7 @@ public class DeleteRelationshipByIdRepository extends BaseRepository {
 		}
 		
 		String deleteQuery = """
-			MATCH (source:Object)-[:RS]->(updated:Relationship {id: $relationshipId})-[:RE]->(target:Object)
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(updated)
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object)-[:RS]->(updated:Relationship {id: $relationshipId})-[:RE]->(target:Object)
 			WITH namespace, source, target, updated
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("Relationship", true, versioningType);

@@ -64,8 +64,8 @@ public class Versioning {
 				WITH archive, {0}
 				
 				// Find the latest Version (or none)
-				OPTIONAL MATCH (latest:Version)-[:NEXT*0..]->(v:Version)
-				WHERE (archive)-[:CONTAINS]->(latest) AND NOT (v)-[:NEXT]->()
+				OPTIONAL MATCH (first:Version)-[:NEXT*0..]->(latest:Version)
+				WHERE (archive)-[:CONTAINS]->(first) AND NOT (latest)-[:NEXT]->()
 				WITH archive, latest, {0}
 
 				// Create the new Version node
