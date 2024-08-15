@@ -170,6 +170,7 @@ public class Versioning {
 						CALL '{'
 							WITH newVersion, outgoingRels
 							UNWIND outgoingRels AS rel
+							WITH newVersion, rel WHERE rel.target IS NOT NULL
 							CALL apoc.create.relationship(newVersion, type(rel.r), properties(rel.r), rel.target) YIELD rel AS newR
 							RETURN count(*) AS count
 						'}'
@@ -177,6 +178,7 @@ public class Versioning {
 						CALL '{'
 							WITH newVersion, incomingRels
 							UNWIND incomingRels AS rel
+							WITH newVersion, rel WHERE rel.source IS NOT NULL
 							CALL apoc.create.relationship(rel.source, type(rel.r), properties(rel.r), newVersion) YIELD rel AS newR
 							RETURN count(*) AS count
 						'}'

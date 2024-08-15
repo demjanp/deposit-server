@@ -212,6 +212,102 @@ Delete a Class.
 CALL deposit.delete.class(className, token)
 ```
 
+## deposit.delete.classById
+
+Delete a Class.
+
+### Parameters:
+
+- **classId**: the Id of the Class.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Class doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.classById(classId, token)
+```
+
+## deposit.delete.classDescriptorById
+
+Delete a Class Descriptor.
+
+### Parameters:
+
+- **descriptorId**: the Id of the Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Class Descriptor doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.classDescriptorById(descriptorId, token)
+```
+
+## deposit.delete.classRelationshipById
+
+Delete a Class Relationship.
+
+### Parameters:
+
+- **relationshipId**: the Id of the Class Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Relationship doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.classRelationshipById(relationshipId, token)
+```
+
+## deposit.delete.descriptorById
+
+Delete a Descriptor.
+
+### Parameters:
+
+- **descriptorId**: the Id of the Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Descriptor doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.descriptorById(descriptorId, token)
+```
+
+## deposit.delete.membership
+
+Delete a Class Membership.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **objectId**: the Id of the Object.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Membership doesn't exist or if there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.membership(className, objectId, token)
+```
+
 ## deposit.delete.namespace
 
 Deletes a Namespace.
@@ -229,6 +325,25 @@ Deletes a Namespace.
 
 ```cypher
 CALL deposit.delete.namespace(namespaceName, token)
+```
+
+## deposit.delete.object
+
+Delete an Object.
+
+### Parameters:
+
+- **objectId**: the Id of the Object.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Object doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.object(objectId, token)
 ```
 
 ## deposit.delete.relationshipById
@@ -270,7 +385,7 @@ Get existing Class nodes.
 
 ### Parameters:
 
-- **className**: name of the Class to retrieve or empty for all classes.
+- **className**: name of the Class to retrieve or empty for all Classes.
 - **token**: authentication token.
 
 ### Throws:
@@ -281,6 +396,105 @@ Get existing Class nodes.
 
 ```cypher
 CALL deposit.get.class(className, token) YIELD node AS class
+```
+
+## deposit.get.classById
+
+Get existing Class node.
+
+### Parameters:
+
+- **classId**: Id of the Class to retrieve.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.classById(classId, token) YIELD node AS class
+```
+
+## deposit.get.classDescriptor
+
+Get existing Class Descriptor nodes.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **descriptorName**: name of the Class Descriptor to retrieve or empty for all Descriptors of the Class.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.classDescriptor(className, descriptorName, token) YIELD node AS descriptor
+```
+
+## deposit.get.classMembers
+
+Get Members of a Class.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.classMembers(className, token) YIELD node AS object
+```
+
+## deposit.get.classRelationship
+
+Get existing Class Relationship nodes.
+
+### Parameters:
+
+- **startClassName**: the name of the start Class.
+- **endClassName**: the name of the end Class or empty for all related Classes.
+- **label**: the label of the Class Relationship or empty for all Relationships.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD source, target, relationship
+```
+
+## deposit.get.descriptor
+
+Get existing Descriptor nodes.
+
+### Parameters:
+
+- **objectId**: the Id of the Object.
+- **descriptorName**: name of the Descriptor to retrieve or empty for all Descriptors of the Object.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.descriptor(objectId, descriptorName, token) YIELD node AS descriptor
 ```
 
 ## deposit.get.namespace
@@ -300,6 +514,46 @@ Brief description.
 
 ```cypher
 CALL deposit.get.namespace(namespaceName, token) YIELD node AS namespace
+```
+
+## deposit.get.objectClasses
+
+Get Classes of an Object.
+
+### Parameters:
+
+- **objectId**: the Id of the Object.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.objectClasses(objectId, token) YIELD node AS class
+```
+
+## deposit.get.relationship
+
+Get existing Relationship nodes.
+
+### Parameters:
+
+- **startObjectId**: the Id of the start Object.
+- **endObjectId**: the Id of the end Object or empty for all related Objects.
+- **label**: the label of the Relationship or empty for all Relationships.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD source, target, relationship
 ```
 
 ## deposit.set.activeNamespace

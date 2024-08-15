@@ -43,8 +43,8 @@ public class CreateClassRelationshipService extends BaseService {
 			throwException("Cannot create a Class Relationship without an active Namespace.");
 		}
 		
-		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, startClassName, token);
-		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, endClassName, token);
+		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, startClassName);
+		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, endClassName);
 		return createClassRelationshipRepository.createClassRelationship(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label, comment);
 	}
 }

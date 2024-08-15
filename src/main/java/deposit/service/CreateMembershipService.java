@@ -39,7 +39,7 @@ public class CreateMembershipService extends BaseService {
 			throwException("Cannot create Class Descriptor without an active Namespace.");
 		}
 		
-		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className, token);
+		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className);
 		return createMembershipRepository.createMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
 	}
 }

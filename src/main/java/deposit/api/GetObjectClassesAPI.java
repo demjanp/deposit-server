@@ -21,10 +21,10 @@ public class GetObjectClassesAPI extends BaseAPI {
 	 *
 	 * @param objectId the Id of the Object.
 	 * @param token authentication token.
-	 * @return the created node.
+	 * @return the Class nodes.
 	 * @throws RuntimeException if there was an error retrieving the node(s).
 	 */
-	@Procedure(name = "deposit.get.objectClasses", mode = Mode.WRITE)
+	@Procedure(name = "deposit.get.objectClasses", mode = Mode.READ)
 	@Description("CALL deposit.get.objectClasses(objectId, token) YIELD node AS class")
 	public Stream<NodeResult> getObjectClasses(
 			@Name("objectId") String objectId,

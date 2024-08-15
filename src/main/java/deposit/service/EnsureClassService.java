@@ -1,5 +1,8 @@
 package deposit.service;
 
+import deposit.repository.GetClassRepository;
+import deposit.repository.CreateClassRepository;
+
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
@@ -10,12 +13,12 @@ import java.util.stream.Stream;
 public class EnsureClassService extends BaseService {
 
 	private static EnsureClassService instance;
-	private final GetClassService getClassService;
-	private final CreateClassService createClassService;
+	private final GetClassRepository getClassRepository;
+	private final CreateClassRepository createClassRepository;
 
 	private EnsureClassService() {
-		this.getClassService = GetClassService.getInstance();
-		this.createClassService = CreateClassService.getInstance();
+		this.getClassRepository = GetClassRepository.getInstance();
+		this.createClassRepository = CreateClassRepository.getInstance();
 	}
 
 	public static synchronized EnsureClassService getInstance() {
@@ -25,12 +28,10 @@ public class EnsureClassService extends BaseService {
 		return instance;
 	}
 	
-	public void ensureClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className, String token) {
-		Stream<Node> classStream = getClassService.getClass(tx, className, token);
+	public void ensureClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className) {
+		Stream<Node> classStream = getClassRepository.getClass(tx, namespaceName, className);
 		if (classStream.findAny().isEmpty()) {
-			createClassService.createClass(
-				tx, className, -1L, Collections.emptyList(), "", Collections.emptyList(), token
-			);
+			createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, -1L, Collections.emptyList(), "");
 		}
 	}
 }
