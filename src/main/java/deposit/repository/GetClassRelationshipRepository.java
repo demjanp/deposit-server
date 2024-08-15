@@ -38,7 +38,7 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			);
 		} else if (endClassName.isEmpty()) {
 			matchQuery = """
-				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {id: $startClassName}),
+				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
 					  (n)-[:CONTAINS]->(target:Class)
 				MATCH (source)-[:RS]->(relationship:Relationship {label: $label})-[:RE]->(target)
 				RETURN source, target, relationship
@@ -50,8 +50,8 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			);
 		} else if (label.isEmpty()) {
 			matchQuery = """
-				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {id: $startClassName}),
-					  (n)-[:CONTAINS]->(target:Class {id: $endClassName})
+				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
+					  (n)-[:CONTAINS]->(target:Class {name: $endClassName})
 				MATCH (source)-[:RS]->(relationship:Relationship)-[:RE]->(target)
 				RETURN source, target, relationship
 			""";
@@ -62,8 +62,8 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			);
 		} else {
 			matchQuery = """
-				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {id: $startClassName}),
-					  (n)-[:CONTAINS]->(target:Class {id: $endClassName})
+				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
+					  (n)-[:CONTAINS]->(target:Class {name: $endClassName})
 				MATCH (source)-[:RS]->(relationship:Relationship {label: $label})-[:RE]->(target)
 				RETURN source, target, relationship
 			""";

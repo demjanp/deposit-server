@@ -6,12 +6,14 @@ import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
+import org.neo4j.driver.types.Node;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 
 public class GetRelationshipAPITest extends BaseNeo4jTest {
 
@@ -19,7 +21,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{GetRelationshipAPI.class, CreateRelationshipAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{GetRelationshipAPI.class, CreateRelationshipAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class, GetRelationshipByIdAPI.class};
 	}
 
 	@Before
@@ -56,6 +58,59 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 
 			return Map.of("startObjectId", startObjectId, "endObjectId", endObjectId);
 		});
+	}
+
+	@Test
+	public void shouldGetRelationshipById() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String versioningType = "transient";
+			List<String> startObjectClasses = List.of("ClassA");
+			List<String> endObjectClasses = List.of("ClassB");
+			String label = "RELATES_TO";
+			Double weight = 2.5;
+
+			createNamespace(session, namespaceName, versioningType);
+			Map<String, String> objectIds = createObjects(session, startObjectClasses, endObjectClasses);
+			String startObjectId = objectIds.get("startObjectId");
+			String endObjectId = objectIds.get("endObjectId");
+
+			String relationshipId = session.writeTransaction(tx -> {
+				Result createResult = tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node.id AS relationshipId",
+						Map.of("startObjectId", startObjectId,
+							   "endObjectId", endObjectId,
+							   "label", label,
+							   "weight", weight,
+							   "token", token));
+				return createResult.single().get("relationshipId").asString();
+			});
+
+			// Retrieve and consume the result in a single step
+			Node relationshipNode = session.readTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD source, target, relationship RETURN source, target, relationship",
+						Map.of("relationshipId", relationshipId, "token", token));
+
+				// Ensure the result is consumed immediately
+				return result.hasNext() ? result.next().get("relationship").asNode() : null;
+			});
+
+			assertNotNull("The relationship node should not be null", relationshipNode);
+		}
+	}
+
+
+	@Test
+	public void shouldReturnNullForNonExistentRelationshipById() {
+		try (Session session = driver.session()) {
+			String nonExistentRelationshipId = "non-existent-id";
+
+			// Call the get.relationshipById procedure with a non-existent ID
+			Result result = session.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD source, target, relationship RETURN source, target, relationship",
+					Map.of("relationshipId", nonExistentRelationshipId,
+						   "token", token));
+
+			assertFalse("Should not retrieve any relationship", result.hasNext());
+		}
 	}
 
 	@Test

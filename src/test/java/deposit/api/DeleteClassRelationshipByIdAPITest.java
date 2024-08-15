@@ -20,7 +20,7 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteClassRelationshipByIdAPI.class, CreateClassRelationshipAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{DeleteClassRelationshipByIdAPI.class, DeleteClassRelationshipAPI.class, CreateClassRelationshipAPI.class, CreateRelationshipAPI.class, CreateObjectAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
 	}
 
 	@Before
@@ -87,6 +87,60 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 												"relationshipId", relationshipId));
 
 			assertFalse("Class Relationship node should be deleted", result.hasNext());
+		}
+	}
+
+	@Test
+	public void shouldDeleteClassRelationshipByName() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String startClassName = "StartClass";
+			String endClassName = "EndClass";
+			String label = "RELATES_TO";
+			String comment = "This is a test relationship.";
+
+			// Step 1: Create Namespace, Classes, and Class Relationship
+			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
+			createClassRelationship(session, startClassName, endClassName, label, comment);
+
+			// Step 2: Create Objects for Start and End Classes
+			session.writeTransaction(tx -> {
+				// Create Start Object
+				Result startResult = tx.run("CALL deposit.create.object([$startClassName], [], [], $token) YIELD node RETURN node.id AS startObjectId",
+											Map.of("startClassName", startClassName, "token", token));
+				String startObjectId = startResult.single().get("startObjectId").asString();
+
+				// Create End Object
+				Result endResult = tx.run("CALL deposit.create.object([$endClassName], [], [], $token) YIELD node RETURN node.id AS endObjectId",
+										  Map.of("endClassName", endClassName, "token", token));
+				String endObjectId = endResult.single().get("endObjectId").asString();
+
+				// Step 3: Create Relationship between Objects
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, 1.0, $token) YIELD node RETURN node",
+					   Map.of("startObjectId", startObjectId, "endObjectId", endObjectId, "label", label, "token", token));
+
+				tx.commit();
+				return null;
+			});
+
+			// Step 4: Delete the Class Relationship by Name
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.classRelationship($startClassName, $endClassName, $label, $token)",
+						Map.of("startClassName", startClassName, "endClassName", endClassName, "label", label, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Step 5: Verify that the Class Relationship and Object Relationships are deleted
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[:RS]->(r:Relationship {label: $label})-[:RE]->(:Class {name: $endClassName}) RETURN r",
+										Map.of("namespaceName", namespaceName, "startClassName", startClassName, "endClassName", endClassName, "label", label));
+
+			assertFalse("Class Relationship node should be deleted", result.hasNext());
+
+			Result objectRelResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object)-[:RS]->(r:Relationship {label: $label})-[:RE]->(oEnd:Object) RETURN r",
+										Map.of("namespaceName", namespaceName, "label", label));
+
+			assertFalse("Object Relationship node should be deleted", objectRelResult.hasNext());
 		}
 	}
 

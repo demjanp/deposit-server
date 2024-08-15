@@ -22,6 +22,7 @@ public class DeleteClassByIdAPITest extends BaseNeo4jTest {
 	protected Class<?>[] getProcedureClasses() {
 		return new Class<?>[]{
 			DeleteClassByIdAPI.class,
+			DeleteClassAPI.class,
 			CreateClassAPI.class,
 			CreateNamespaceAPI.class,
 			SetActiveNamespaceAPI.class,
@@ -84,6 +85,30 @@ public class DeleteClassByIdAPITest extends BaseNeo4jTest {
 			// Verify the class node has been deleted within the namespace
 			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {id: $classId}) RETURN c",
 										Map.of("namespaceName", namespaceName, "classId", classId));
+			assertFalse("Class node should be deleted", result.hasNext());
+		}
+	}
+	
+	@Test
+	public void shouldDeleteClassByName() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
+
+			// Create namespace and class
+			createNamespaceAndClasses(session, namespaceName, className, "DummyClass");
+
+			// Delete the class
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.class($className, $token)",
+					   Map.of("className", className, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify the class node has been deleted within the namespace
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className}) RETURN c",
+										Map.of("namespaceName", namespaceName, "className", className));
 			assertFalse("Class node should be deleted", result.hasNext());
 		}
 	}

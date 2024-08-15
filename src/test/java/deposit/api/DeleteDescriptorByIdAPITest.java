@@ -21,7 +21,7 @@ public class DeleteDescriptorByIdAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteDescriptorByIdAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, CreateDescriptorAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{DeleteDescriptorByIdAPI.class, DeleteDescriptorAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, CreateDescriptorAPI.class, SetActiveNamespaceAPI.class};
 	}
 
 	@Before
@@ -74,6 +74,32 @@ public class DeleteDescriptorByIdAPITest extends BaseNeo4jTest {
 			// Verify: Descriptor node was deleted
 			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:HAS_DESCRIPTOR]->(desc:Descriptor {id: $descriptorId}) RETURN desc",
 										Map.of("namespaceName", namespaceName, "descriptorId", descriptorId));
+
+			assertFalse("Descriptor node should be deleted", result.hasNext());
+		}
+	}
+	
+	@Test
+	public void shouldDeleteDescriptorByName() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			List<String> objectClasses = List.of("ClassA");
+			String descriptorName = "TestDescriptor";
+			Object descriptorValue = "TestValue";
+
+			Map<String, String> ids = createNamespaceAndDescriptor(session, namespaceName, objectClasses, descriptorName, descriptorValue);
+			String objectId = ids.get("objectId");
+			
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.descriptor($objectId, $descriptorName, $token)", 
+						Map.of("objectId", objectId, "descriptorName", descriptorName, "token", token));
+				tx.commit();
+				return null;
+			});
+			
+			// Verify: Descriptor node was deleted
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $objectId})-[:HAS_DESCRIPTOR]->(desc:Descriptor {name: $descriptorName}) RETURN desc",
+										Map.of("namespaceName", namespaceName, "objectId", objectId, "descriptorName", descriptorName));
 
 			assertFalse("Descriptor node should be deleted", result.hasNext());
 		}

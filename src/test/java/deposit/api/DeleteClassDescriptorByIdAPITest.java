@@ -20,7 +20,7 @@ public class DeleteClassDescriptorByIdAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteClassDescriptorByIdAPI.class, CreateClassDescriptorAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{DeleteClassDescriptorByIdAPI.class, DeleteClassDescriptorAPI.class, CreateClassDescriptorAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
 	}
 
 	@Before
@@ -74,6 +74,33 @@ public class DeleteClassDescriptorByIdAPITest extends BaseNeo4jTest {
 			// Verify: Class Descriptor node was deleted
 			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class)-[:HAS_DESCRIPTOR]->(desc:Descriptor {id: $descriptorId}) RETURN desc",
 										Map.of("namespaceName", namespaceName, "descriptorId", descriptorId));
+
+			assertFalse("Class Descriptor node should be deleted", result.hasNext());
+		}
+	}
+	
+	@Test
+	public void shouldDeleteClassDescriptorByName() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
+			String descriptorName = "TestDescriptor";
+			String type = "String";
+			long order = 1;
+			String comment = "Test descriptor comment";
+
+			createNamespaceAndClassDescriptor(session, namespaceName, className, descriptorName, type, order, comment);
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.classDescriptor($className, $descriptorName, $token)", 
+						Map.of("className", className, "descriptorName", descriptorName, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Class Descriptor node was deleted
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(desc:Descriptor {name: $descriptorName}) RETURN desc",
+										Map.of("namespaceName", namespaceName, "className", className, "descriptorName", descriptorName));
 
 			assertFalse("Class Descriptor node should be deleted", result.hasNext());
 		}

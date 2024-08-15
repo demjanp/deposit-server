@@ -25,7 +25,7 @@ public class GetClassDescriptorAPI extends BaseAPI {
 	 * @return the Descriptor node(s) or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node(s).
 	 */
-	@Procedure(name = "deposit.get.classDescriptor", mode = Mode.WRITE)
+	@Procedure(name = "deposit.get.classDescriptor", mode = Mode.READ)
 	@Description("CALL deposit.get.classDescriptor(className, descriptorName, token) YIELD node AS descriptor")
 	public Stream<NodeResult> getClassDescriptor(
 			@Name("className") String className,

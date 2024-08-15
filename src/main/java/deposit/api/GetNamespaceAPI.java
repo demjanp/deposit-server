@@ -24,7 +24,7 @@ public class GetNamespaceAPI extends BaseAPI {
 	 * @return the Namespace node(s) or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node(s).
 	 */
-	@Procedure(name = "deposit.get.namespace", mode = Mode.WRITE)
+	@Procedure(name = "deposit.get.namespace", mode = Mode.READ)
 	@Description("CALL deposit.get.namespace(namespaceName, token) YIELD node AS namespace")
 	public Stream<NodeResult> getNamespace(
 			@Name(value = "namespaceName", defaultValue = "") String namespaceName,

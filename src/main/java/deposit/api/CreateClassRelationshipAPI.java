@@ -26,7 +26,7 @@ public class CreateClassRelationshipAPI extends BaseAPI {
 	 * @param comment annotation to provide additional information about the Relationship, default is an empty string.
 	 * @param token authentication token.
 	 * @return the created Relationship node.
-	 * @throws RuntimeException if the Relationship already exists or if there is an error during the creation.
+	 * @throws RuntimeException if the Class Relationship already exists or if there is an error during the creation.
 	 */
 	@Procedure(name = "deposit.create.classRelationship", mode = Mode.WRITE)
 	@Description("CALL deposit.create.classRelationship(startClassName, endClassName, label, comment, token) YIELD node AS relationship")

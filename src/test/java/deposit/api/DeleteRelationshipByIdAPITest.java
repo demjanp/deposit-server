@@ -21,7 +21,7 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteRelationshipByIdAPI.class, CreateRelationshipAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{DeleteRelationshipByIdAPI.class, DeleteRelationshipAPI.class, CreateRelationshipAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
 	}
 
 	@Before
@@ -80,6 +80,33 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 			// Verify: Relationship node was deleted
 			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:RS]->(rel:Relationship {id: $relationshipId}) RETURN rel",
 										Map.of("namespaceName", namespaceName, "relationshipId", relationshipId));
+
+			assertFalse("Relationship node should be deleted", result.hasNext());
+		}
+	}
+	
+	@Test
+	public void shouldDeleteRelationshipByName() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			List<String> startObjectClasses = List.of("ClassA");
+			List<String> endObjectClasses = List.of("ClassB");
+
+			Map<String, String> ids = createNamespaceAndRelationship(session, namespaceName, startObjectClasses, endObjectClasses);
+			String startObjectId = ids.get("startObjectId");
+			String endObjectId = ids.get("endObjectId");
+			String label = "RELATES_TO";
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.relationship($startObjectId, $endObjectId, $label, $token)", 
+						Map.of("startObjectId", startObjectId, "endObjectId", endObjectId, "label", label,"token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Relationship node was deleted
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel",
+										Map.of("namespaceName", namespaceName, "startObjectId", startObjectId, "endObjectId", endObjectId, "label", label));
 
 			assertFalse("Relationship node should be deleted", result.hasNext());
 		}

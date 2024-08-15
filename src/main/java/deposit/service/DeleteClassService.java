@@ -1,6 +1,5 @@
 package deposit.service;
 
-import deposit.repository.DeleteClassRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -10,10 +9,10 @@ import java.time.ZonedDateTime;
 public class DeleteClassService extends BaseService {
 
 	private static DeleteClassService instance;
-	private final DeleteClassRepository deleteClassRepository;
+	private final EnsureClassDeletionService ensureClassDeletionService;
 
 	private DeleteClassService() {
-		this.deleteClassRepository = DeleteClassRepository.getInstance();
+		this.ensureClassDeletionService = EnsureClassDeletionService.getInstance();
 	}
 
 	public static synchronized DeleteClassService getInstance() {
@@ -34,6 +33,6 @@ public class DeleteClassService extends BaseService {
 			throwException("Cannot create Class without an active Namespace.");
 		}
 		
-		deleteClassRepository.deleteClass(tx, timeStamp, username, namespaceName, versioningType, className);
+		ensureClassDeletionService.ensureClassDeletion(tx, timeStamp, username, namespaceName, versioningType, className);
 	}
 }

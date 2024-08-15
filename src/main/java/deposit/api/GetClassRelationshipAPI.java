@@ -26,7 +26,7 @@ public class GetClassRelationshipAPI extends BaseAPI {
 	 * @return the source, target, relationship node(s) or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node(s).
 	 */
-	@Procedure(name = "deposit.get.classRelationship", mode = Mode.WRITE)
+	@Procedure(name = "deposit.get.classRelationship", mode = Mode.READ)
 	@Description("CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD source, target, relationship")
 	public Stream<RelationshipResult> getClassRelationship(
 			@Name("startClassName") String startClassName,

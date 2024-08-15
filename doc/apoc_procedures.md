@@ -60,7 +60,7 @@ Create a Class Relationship.
 
 ### Throws:
 
-- **RuntimeException**: if the Relationship already exists or if there is an error during the creation.
+- **RuntimeException**: if the Class Relationship already exists or if there is an error during the creation.
 
 ### Usage:
 
@@ -231,13 +231,33 @@ Delete a Class.
 CALL deposit.delete.classById(classId, token)
 ```
 
+## deposit.delete.classDescriptor
+
+Delete a Class Descriptor.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **descriptorName**: the name of the Class Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Class Descriptor doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.classDescriptor(className, descriptorName, token)
+```
+
 ## deposit.delete.classDescriptorById
 
 Delete a Class Descriptor.
 
 ### Parameters:
 
-- **descriptorId**: the Id of the Descriptor.
+- **descriptorId**: the Id of the Class Descriptor.
 - **token**: authentication token.
 
 ### Throws:
@@ -248,6 +268,27 @@ Delete a Class Descriptor.
 
 ```cypher
 CALL deposit.delete.classDescriptorById(descriptorId, token)
+```
+
+## deposit.delete.classRelationship
+
+Delete a Class Relationship.
+
+### Parameters:
+
+- **startClassName**: the name of the start Class.
+- **endClassName**: the name of the end Class.
+- **label**: the label of the Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Class Relationship doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.classRelationship(startClassName, endClassName, label, token)
 ```
 
 ## deposit.delete.classRelationshipById
@@ -267,6 +308,26 @@ Delete a Class Relationship.
 
 ```cypher
 CALL deposit.delete.classRelationshipById(relationshipId, token)
+```
+
+## deposit.delete.descriptor
+
+Delete a Descriptor.
+
+### Parameters:
+
+- **objectId**: the Id of the Object.
+- **descriptorName**: the name of the Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Descriptor doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.descriptor(objectId, descriptorName, token)
 ```
 
 ## deposit.delete.descriptorById
@@ -344,6 +405,27 @@ Delete an Object.
 
 ```cypher
 CALL deposit.delete.object(objectId, token)
+```
+
+## deposit.delete.relationship
+
+Delete a Relationship.
+
+### Parameters:
+
+- **startObjectId**: the Id of the start Object.
+- **endObjectId**: the Id of the end Object.
+- **label**: the label of the Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Relationship doesn't exist or there is an error during the deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.relationship(startObjectId, endObjectId, label)
 ```
 
 ## deposit.delete.relationshipById
@@ -437,6 +519,25 @@ Get existing Class Descriptor nodes.
 CALL deposit.get.classDescriptor(className, descriptorName, token) YIELD node AS descriptor
 ```
 
+## deposit.get.classDescriptorById
+
+Get existing Class Descriptor nodes.
+
+### Parameters:
+
+- **descriptorId**: the Id of the Class Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.classDescriptorById(descriptorId, token) YIELD node AS descriptor
+```
+
 ## deposit.get.classMembers
 
 Get Members of a Class.
@@ -477,6 +578,25 @@ Get existing Class Relationship nodes.
 CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD source, target, relationship
 ```
 
+## deposit.get.classRelationshipById
+
+Get existing Class Relationship node.
+
+### Parameters:
+
+- **relationshipId**: the Id of the Class Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the nodes.
+
+### Usage:
+
+```cypher
+CALL deposit.get.classRelationshipById(relationshipId, token) YIELD source, target, relationship
+```
+
 ## deposit.get.descriptor
 
 Get existing Descriptor nodes.
@@ -495,6 +615,25 @@ Get existing Descriptor nodes.
 
 ```cypher
 CALL deposit.get.descriptor(objectId, descriptorName, token) YIELD node AS descriptor
+```
+
+## deposit.get.descriptorById
+
+Get an existing Descriptor node.
+
+### Parameters:
+
+- **descriptorId**: the Id of the Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.descriptorById(descriptorId, token) YIELD node AS descriptor
 ```
 
 ## deposit.get.namespace
@@ -554,6 +693,25 @@ Get existing Relationship nodes.
 
 ```cypher
 CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD source, target, relationship
+```
+
+## deposit.get.relationshipById
+
+Get existing Relationship node.
+
+### Parameters:
+
+- **relationshipId**: the Id of the Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the nodes.
+
+### Usage:
+
+```cypher
+CALL deposit.get.relationshipById(relationshipId, token) YIELD source, target, relationship
 ```
 
 ## deposit.set.activeNamespace

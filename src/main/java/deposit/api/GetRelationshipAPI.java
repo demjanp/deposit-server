@@ -26,7 +26,7 @@ public class GetRelationshipAPI extends BaseAPI {
 	 * @return the source, target, relationship node(s) or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node(s).
 	 */
-	@Procedure(name = "deposit.get.relationship", mode = Mode.WRITE)
+	@Procedure(name = "deposit.get.relationship", mode = Mode.READ)
 	@Description("CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD source, target, relationship")
 	public Stream<RelationshipResult> getRelationship(
 			@Name("startObjectId") String startObjectId,

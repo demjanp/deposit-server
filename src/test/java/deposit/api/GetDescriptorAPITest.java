@@ -18,7 +18,7 @@ public class GetDescriptorAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{GetDescriptorAPI.class, CreateDescriptorAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{GetDescriptorAPI.class, GetDescriptorByIdAPI.class, CreateDescriptorAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
 	}
 
 	@Before
@@ -42,12 +42,14 @@ public class GetDescriptorAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private void createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
+	private String createDescriptor(Session session, String objectId, String descriptorName, Object value) {
+		return session.writeTransaction(tx -> {
+			Result result = tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token) YIELD node RETURN node.id AS descriptorId",
 					Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
+			String descriptorId = result.single().get("descriptorId").asString();
 			tx.commit();
-			return null;
+			
+			return descriptorId;
 		});
 	}
 
@@ -68,6 +70,31 @@ public class GetDescriptorAPITest extends BaseNeo4jTest {
 			session.readTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.descriptor($objectId, $descriptorName, $token) YIELD node RETURN node",
 						Map.of("objectId", objectId, "descriptorName", descriptorName, "token", token));
+
+				assertTrue("Descriptor node should be retrieved", result.hasNext());
+				tx.commit();
+				return null;
+			});
+		}
+	}
+
+	@Test
+	public void shouldGetDescriptorById() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			List<String> classes = List.of("TestClass");
+
+			String objectId = createNamespaceAndObject(session, namespaceName, classes);
+
+			// Create a descriptor
+			String descriptorName = "TestDescriptor";
+			String descriptorValue = "TestValue";
+			String descriptorId = createDescriptor(session, objectId, descriptorName, descriptorValue);
+
+			// Retrieve the descriptor using the procedure
+			session.readTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.descriptorById($descriptorId, $token) YIELD node RETURN node",
+						Map.of("descriptorId", descriptorId, "token", token));
 
 				assertTrue("Descriptor node should be retrieved", result.hasNext());
 				tx.commit();

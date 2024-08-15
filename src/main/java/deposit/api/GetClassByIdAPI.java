@@ -25,14 +25,13 @@ public class GetClassByIdAPI extends BaseAPI {
 	 * @return the Class node or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node.
 	 */
-	@Procedure(name = "deposit.get.classById", mode = Mode.WRITE)
+	@Procedure(name = "deposit.get.classById", mode = Mode.READ)
 	@Description("CALL deposit.get.classById(classId, token) YIELD node AS class")
 	public Stream<NodeResult> getClassById(
 			@Name("classId") String classId,
 			@Name(value = "token", defaultValue = "") String token) {
 		GetClassByIdService service = GetClassByIdService.getInstance();
 		Node node = service.getClassById(tx, classId, token);
-
 		return node != null ? Stream.of(new NodeResult(node)) : Stream.empty();
 	}
 }

@@ -16,7 +16,7 @@ public class DeleteClassDescriptorByIdAPI extends BaseAPI {
 	/**
 	 * Delete a Class Descriptor.
 	 *
-	 * @param descriptorId the Id of the Descriptor.
+	 * @param descriptorId the Id of the Class Descriptor.
 	 * @param token authentication token.
 	 * @throws RuntimeException if the Class Descriptor doesn't exist or there is an error during the deletion.
 	 */

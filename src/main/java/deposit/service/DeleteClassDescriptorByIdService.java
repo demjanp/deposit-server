@@ -32,7 +32,7 @@ public class DeleteClassDescriptorByIdService extends BaseService {
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		String versioningType = ServerContext.getVersioningType(token);
 		if (namespaceName == null) {
-			throwException("Cannot create a Class Descriptor without an active Namespace.");
+			throwException("Cannot delete the Class Descriptor without an active Namespace.");
 		}
 		
 		deleteClassDescriptorByIdRepository.deleteClassDescriptorById(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
