@@ -1,6 +1,8 @@
 package deposit.service;
 
 import deposit.repository.CreateObjectRepository;
+import deposit.repository.CreateMembershipRepository;
+import deposit.repository.CreateDescriptorRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -13,13 +15,15 @@ public class CreateObjectService extends BaseService {
 
 	private static CreateObjectService instance;
 	private final CreateObjectRepository createObjectRepository;
-	private final CreateMembershipService createMembershipService;
-	private final CreateDescriptorService createDescriptorService;
-
+	private final EnsureClassService ensureClassService;
+	private final CreateMembershipRepository createMembershipRepository;
+	private final CreateDescriptorRepository createDescriptorRepository;
+	
 	private CreateObjectService() {
 		this.createObjectRepository = CreateObjectRepository.getInstance();
-		this.createMembershipService = CreateMembershipService.getInstance();
-		this.createDescriptorService = CreateDescriptorService.getInstance();
+		this.ensureClassService = EnsureClassService.getInstance();
+		this.createMembershipRepository = CreateMembershipRepository.getInstance();
+		this.createDescriptorRepository = CreateDescriptorRepository.getInstance();
 	}
 
 	public static synchronized CreateObjectService getInstance() {
@@ -52,12 +56,13 @@ public class CreateObjectService extends BaseService {
 		Node node = createObjectRepository.createObject(tx, timeStamp, username, namespaceName, versioningType, position);
 		String objectId = (String) node.getProperty("id");
 		for (String className : classes) {
-			createMembershipService.createMembership(tx, className, objectId, token);
+			ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className, token);
+			createMembershipRepository.createMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
 		}
 		for (List<Object> descriptorList : descriptors) {
 			String descriptorName = (String) descriptorList.get(0);
 			Object value = descriptorList.get(1);
-			createDescriptorService.createDescriptor(tx, objectId, descriptorName, value, token);
+			createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value);
 		}
 		return node;
 	}

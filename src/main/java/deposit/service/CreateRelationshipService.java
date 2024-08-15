@@ -40,7 +40,8 @@ public class CreateRelationshipService extends BaseService {
 		if (namespaceName == null) {
 			throwException("Cannot create a Relationship without an active Namespace.");
 		}
-		// TODO : If Objects don't share a class, ensure Class Relationships between all Classes of the Objects
+		
+		// TODO : If Objects don't share a class, ensure Class Relationships between all Classes of the Objects (implement in repository layer?)
 		
 		return createRelationshipRepository.createRelationship(tx, timeStamp, username, namespaceName, versioningType, startObjectId, endObjectId, label, weight);
 	}

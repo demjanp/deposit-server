@@ -47,7 +47,6 @@ public class CreateObjectRepository extends BaseRepository {
 		"namespaceName", namespaceName,
 		"position", position
 		);
-
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {

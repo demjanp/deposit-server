@@ -20,7 +20,7 @@ public class GetClassAPI extends BaseAPI {
 	/**
 	 * Get existing Class nodes.
 	 *
-	 * @param className name of the Class to retrieve or empty for all classes.
+	 * @param className name of the Class to retrieve or empty for all Classes.
 	 * @param token authentication token.
 	 * @return the Class node(s) or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node(s).

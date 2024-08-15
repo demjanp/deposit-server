@@ -40,11 +40,11 @@ public class CreateMembershipRepository extends BaseRepository {
 			if (validation.hasNext()) {
 				Map<String, Object> row = validation.next();
 				if (row.get("existing") != null) {
-					throwException("Error creating Membership. The membership between Object " + objectId + " and Class " + className + " already exists.");
+					throwException("Error creating Membership. The membership of Object " + objectId + " in Class " + className + " already exists.");
 				}
 			}
 		} catch (Exception e) {
-			throwException("Error validating Membership between Object " + objectId + " and Class " + className, e);
+			throwException("Error validating Membership of Object " + objectId + " in Class " + className, e);
 		}
 		String createQuery = """
 			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $objectId}), (namespace)-[:CONTAINS]->(target:Class {name: $className})
@@ -73,7 +73,7 @@ public class CreateMembershipRepository extends BaseRepository {
 				throwException("Membership creation failed: No result returned");
 			}
 		} catch (Exception e) {
-			throwException("Error creating Membership between Object " + objectId + " and Class " + className, e);
+			throwException("Error creating Membership of Object " + objectId + " in Class " + className, e);
 		}
 		return null;
 	}

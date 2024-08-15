@@ -23,7 +23,7 @@ public class CreateRelationshipRepository extends BaseRepository {
 	}
 	
     public Node createRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
-		String validateRelationshipQuery = """
+		String validateQuery = """
 			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId}),
 				  (n)-[:CONTAINS]->(oEnd:Object {id: $endObjectId})
 			OPTIONAL MATCH (oStart)-[:RS]->(existing:Relationship {label: $label})-[:RE]->(oEnd)
@@ -37,7 +37,7 @@ public class CreateRelationshipRepository extends BaseRepository {
 		);
 		
 		try {
-			Result validation = tx.execute(validateRelationshipQuery, params);
+			Result validation = tx.execute(validateQuery, params);
 			if (validation.hasNext()) {
 				Map<String, Object> row = validation.next();
 				if (row.get("existing") != null) {
@@ -80,6 +80,7 @@ public class CreateRelationshipRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error creating Relationship", e);
 		}
+		
 		return null;
 	}
 }

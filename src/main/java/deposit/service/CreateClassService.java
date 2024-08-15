@@ -1,6 +1,7 @@
 package deposit.service;
 
 import deposit.repository.CreateClassRepository;
+import deposit.repository.CreateClassDescriptorRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -13,11 +14,11 @@ public class CreateClassService extends BaseService {
 
 	private static CreateClassService instance;
 	private final CreateClassRepository createClassRepository;
-	private final CreateClassDescriptorService createClassDescriptorService;
+	private final CreateClassDescriptorRepository createClassDescriptorRepository;
 
 	private CreateClassService() {
 		this.createClassRepository = CreateClassRepository.getInstance();
-		this.createClassDescriptorService = CreateClassDescriptorService.getInstance();
+		this.createClassDescriptorRepository = CreateClassDescriptorRepository.getInstance();
 	}
 
 	public static synchronized CreateClassService getInstance() {
@@ -46,7 +47,7 @@ public class CreateClassService extends BaseService {
 			String descriptorName = descriptorList.get(0);
 			String type = descriptorList.get(1);
 			String descriptorComment = (descriptorList.size() == 3) ? descriptorList.get(2) : "";
-			createClassDescriptorService.createClassDescriptor(tx, className, descriptorName, type, (long) -1, descriptorComment, token);
+			createClassDescriptorRepository.createClassDescriptor(tx, timeStamp, username, namespaceName, versioningType, className, descriptorName, type, (long) -1, descriptorComment);
 		}
 		return node;
 	}
