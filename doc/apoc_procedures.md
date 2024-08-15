@@ -655,6 +655,25 @@ Brief description.
 CALL deposit.get.namespace(namespaceName, token) YIELD node AS namespace
 ```
 
+## deposit.get.objectById
+
+Get existing Object node.
+
+### Parameters:
+
+- **objectId**: Id of the Object to retrieve.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.objectById(objectId, token) YIELD node AS object
+```
+
 ## deposit.get.objectClasses
 
 Get Classes of an Object.

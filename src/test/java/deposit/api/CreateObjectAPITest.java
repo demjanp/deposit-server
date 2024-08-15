@@ -7,12 +7,14 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Value;
+import org.neo4j.driver.types.Node;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -22,7 +24,7 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 
 	@Override
 	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{CreateObjectAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
+		return new Class<?>[]{CreateObjectAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class, GetObjectByIdAPI.class};
 	}
 
 	@Before
@@ -169,4 +171,49 @@ public class CreateObjectAPITest extends BaseNeo4jTest {
 					   exception.getMessage().contains("Cannot create Object without specifying at least one Class."));
 		}
 	}
+
+	@Test
+	public void shouldRetrieveObjectById() {
+		try (Session session = driver.session()) {
+			String namespaceName = generateUniqueName("TestNamespace");
+			List<String> classes = List.of(generateUniqueName("TestClass"));
+
+			createNamespaceAndClass(session, namespaceName, classes);
+
+			// Create an object and retrieve its ID
+			String objectId = session.writeTransaction(tx -> {
+				Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
+						Map.of("classes", classes, "token", token));
+				return result.single().get("objectId").asString();
+			});
+
+			// Test: Retrieve the object by ID
+			session.readTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.objectById($objectId, $token) YIELD node RETURN node",
+						Map.of("objectId", objectId, "token", token));
+
+				assertTrue("Object node should be retrieved", result.hasNext());
+				Node retrievedNode = result.single().get("node").asNode();
+				assertEquals(objectId, retrievedNode.get("id").asString());
+				return null;
+			});
+		}
+	}
+
+	@Test
+	public void shouldReturnNullForNonExistingObjectId() {
+		try (Session session = driver.session()) {
+			String nonExistingObjectId = UUID.randomUUID().toString();
+
+			// Test: Attempt to retrieve the object by a non-existing ID
+			session.readTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.objectById($objectId, $token) YIELD node RETURN node",
+						Map.of("objectId", nonExistingObjectId, "token", token));
+
+				assertFalse("No object node should be retrieved for a non-existing ID", result.hasNext());
+				return null;
+			});
+		}
+	}
+
 }
