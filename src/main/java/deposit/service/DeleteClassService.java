@@ -30,7 +30,7 @@ public class DeleteClassService extends BaseService {
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		String versioningType = ServerContext.getVersioningType(token);
 		if (namespaceName == null) {
-			throwException("Cannot create Class without an active Namespace.");
+			throwException("Cannot create a Class without an active Namespace.");
 		}
 		
 		ensureClassDeletionService.ensureClassDeletion(tx, timeStamp, username, namespaceName, versioningType, className);

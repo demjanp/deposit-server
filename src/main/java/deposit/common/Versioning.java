@@ -7,7 +7,7 @@ public class Versioning {
 	/**
 	 * Generates Cypher code to append to a query used to create or update a Deposit element to handle versioning.
 	 * Assumes that the existing query ends with a specific statement depending on elementType:
-	 *  Object / Class: 'WITH namespace, updated'
+	 *  Object / Class / UserTool: 'WITH namespace, updated'
 	 *	Descriptor / ClassDescriptor: 'WITH namespace, parent, updated'
 	 *	Membership / Relationship / ClassRelationship: 'WITH namespace, source, target, updated'
 	 * Assumes that the following parameters are passed to the query:
@@ -15,7 +15,7 @@ public class Versioning {
 	 *	$username: String, the username of the active user.
 	 * Ends with a 'WITH updated' or 'WITH parent, updated' or 'WITH source, target, updated' statement so needs to be closed with a RETURN statement for the query to be valid.
 	 *
-	 * @param elementType type of Deposit element that is being updated. Defined as String. Possible values are Object, Class, Descriptor, ClassDescriptor, Membership, Relationship, ClassRelationship.
+	 * @param elementType type of Deposit element that is being updated. Defined as String. Possible values are Object, Class, Descriptor, ClassDescriptor, Membership, Relationship, ClassRelationship, UserTool.
 	 * @param deletion set to true if the operation is a deletion. Defined as boolean.
 	 * @return the query string to be appended to handle the versioning logic.
 	 * @throws RuntimeException if an invalid element type is specified.
@@ -24,7 +24,7 @@ public class Versioning {
 
 		String updated = "";
 		switch (elementType) {
-			case "Object", "Class":
+			case "Object", "Class", "UserTool":
 				updated = "updated";
 				break;
 			case "Descriptor", "ClassDescriptor":
@@ -82,7 +82,7 @@ public class Versioning {
 			
 			// Find latest version of the updated node(s) in the archive
 			switch (elementType) {
-				case "Object", "Class":
+				case "Object", "Class", "UserTool":
 					queryString += """
 						
 						// Find the latest version of the node in the Archive
@@ -122,6 +122,11 @@ public class Versioning {
 				case "Class":
 					queryString += """
 						CREATE (archive)-[:CONTAINS]->(newVersion:Class)
+					""";
+					break;
+				case "UserTool":
+					queryString += """
+						CREATE (archive)-[:CONTAINS]->(newVersion:UserTool)
 					""";
 					break;
 				case "Descriptor":

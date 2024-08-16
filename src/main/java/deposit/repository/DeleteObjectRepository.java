@@ -45,8 +45,7 @@ public class DeleteObjectRepository extends BaseRepository {
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("Object", true, versioningType);
 		deleteQuery += """
-			MATCH (namespace:Namespace {name: $namespaceName})-[rel:CONTAINS]->(updated)
-			DELETE rel, updated
+			DETACH DELETE updated
 			RETURN updated
 		""";
 		params = Map.of(

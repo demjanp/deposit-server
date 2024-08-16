@@ -27,8 +27,7 @@ public class DeleteClassRepository extends BaseRepository {
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("Class", true, versioningType);
 		deleteQuery += """
-			MATCH (namespace:Namespace {name: $namespaceName})-[rel:CONTAINS]->(updated)
-			DELETE rel, updated
+			DETACH DELETE updated
 			RETURN updated
 		""";
 		Map<String, Object> params = Map.of(
@@ -40,7 +39,7 @@ public class DeleteClassRepository extends BaseRepository {
 		try {
 			tx.execute(deleteQuery, params);
 		} catch (Exception e) {
-			throwException("Error deleting Class " + className, e);
+			throwException("Error deleting the Class " + className, e);
 		}
 	}
 }

@@ -18,7 +18,7 @@ public class CreateUserAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Brief description.
+	 * Create a User node.
 	 *
 	 * @param username new username to create.
 	 * @param password password (unhashed).

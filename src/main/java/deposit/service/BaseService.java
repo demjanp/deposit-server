@@ -16,6 +16,7 @@ import java.time.*;
 
 import org.neo4j.values.storable.PointValue;
 import org.neo4j.values.storable.DurationValue;
+import org.json.JSONObject;
 
 public abstract class BaseService {
 	
@@ -32,7 +33,7 @@ public abstract class BaseService {
 		// Initialize logger with the subclass's name
 		this.logger = Logger.getLogger(this.getClass().getName());
 	}
-
+	
 	// Method to log the error message and throw a runtime exception
 	protected static void throwException(String errorMsg) {
 		 ExceptionHandler.throwException(errorMsg);
@@ -163,6 +164,14 @@ public abstract class BaseService {
 			
 			Object value = descriptor.get(1);
 			validateValue(value);
+		}
+	}
+	
+	protected void validateJSONString(String data) {
+		try {
+			JSONObject jsonObject = new JSONObject(data);
+		} catch (Exception e) {
+			throwException("Invalid JSON data: " + data + ". The data must be a valid JSON encoded dictionary.");
 		}
 	}
 }

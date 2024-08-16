@@ -45,8 +45,7 @@ public class DeleteDescriptorByIdRepository extends BaseRepository {
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("Descriptor", true, versioningType);
 		deleteQuery += """
-			MATCH (parent)-[r:HAS_DESCRIPTOR]->(updated)
-			DELETE r, updated
+			DETACH DELETE updated
 			RETURN updated
 		""";
 		params = Map.of(

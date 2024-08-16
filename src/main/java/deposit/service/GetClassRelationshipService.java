@@ -26,7 +26,7 @@ public class GetClassRelationshipService extends BaseService {
 
 	public Stream<Node[]> getClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String token) {
 		
-		if (startClassName == endClassName) {
+		if (startClassName.equals(endClassName)) {
 			throwException("Cannot retrieve a Relationship of a Class with itself.");
 		}
 		validateToken(token);

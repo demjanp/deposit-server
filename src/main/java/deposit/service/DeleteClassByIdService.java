@@ -39,10 +39,10 @@ public class DeleteClassByIdService extends BaseService {
 			throwException("Cannot delete a Class without an active Namespace.");
 		}
 
-		// Get Class name
+		// Get the Class name
 		Node classNode = getClassByIdRepository.getClassById(tx, namespaceName, classId);
 		if (classNode == null) {
-			throwException("Error deleting Class " + classId + ". It does not exist.");
+			throwException("Error deleting the Class " + classId + ". It does not exist.");
 		}
 		String className = (String) classNode.getProperty("name");
 		

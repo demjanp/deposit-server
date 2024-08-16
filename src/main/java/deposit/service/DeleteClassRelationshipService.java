@@ -24,7 +24,7 @@ public class DeleteClassRelationshipService extends BaseService {
 
 	public void deleteClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String token) {
 		
-		if (startClassName == endClassName) {
+		if (startClassName.equals(endClassName)) {
 			throwException("Cannot delete a Class Relationship within the same Class.");
 		}
 		validateToken(token);

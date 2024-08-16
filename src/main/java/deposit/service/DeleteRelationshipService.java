@@ -31,7 +31,7 @@ public class DeleteRelationshipService extends BaseService {
 
 	public void deleteRelationship(Transaction tx, String startObjectId, String endObjectId, String label, String token) {
 		
-		if (startObjectId == endObjectId) {
+		if (startObjectId.equals(endObjectId)) {
 			throwException("Cannot delete a Relationship of an Object with itself.");
 		}
 		validateToken(token);

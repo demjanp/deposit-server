@@ -27,7 +27,7 @@ public class GetClassByIdService extends BaseService {
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
-			throwException("Cannot retrieve Class without an active Namespace.");
+			throwException("Cannot retrieve a Class without an active Namespace.");
 		}
 		
 		return getClassByIdRepository.getClassById(tx, namespaceName, classId);

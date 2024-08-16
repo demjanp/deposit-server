@@ -48,9 +48,7 @@ public class DeleteClassRelationshipRepository extends BaseRepository {
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("ClassRelationship", true, versioningType);
 		deleteQuery += """
-			MATCH (source)-[rs:RS]->(updated:Relationship)-[re:RE]->(target)
-			WITH updated, rs, re
-			DELETE rs, re, updated
+			DETACH DELETE updated
 			RETURN updated
 		""";
 		params = Map.of(

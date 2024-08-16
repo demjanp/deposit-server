@@ -26,7 +26,7 @@ public class GetRelationshipService extends BaseService {
 
 	public Stream<Node[]> getRelationship(Transaction tx, String startObjectId, String endObjectId, String label, String token) {
 		
-		if (startObjectId == endObjectId) {
+		if (startObjectId.equals(endObjectId)) {
 			throwException("Cannot retrieve a Relationship of an Object with itself.");
 		}
 		validateToken(token);

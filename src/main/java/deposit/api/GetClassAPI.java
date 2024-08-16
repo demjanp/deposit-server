@@ -16,7 +16,6 @@ public class GetClassAPI extends BaseAPI {
 
 	@Context
 	public Transaction tx;
-
 	/**
 	 * Get existing Class nodes.
 	 *

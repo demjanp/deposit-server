@@ -187,7 +187,7 @@ public class DeleteClassByIdAPITest extends BaseNeo4jTest {
 				});
 			});
 
-			String expectedMessage = "Error deleting Class " + nonExistentClassId + ". It does not exist.";
+			String expectedMessage = "Error deleting the Class " + nonExistentClassId + ". It does not exist.";
 			String actualMessage = exception.getMessage();
 
 			assertTrue("Exception message should indicate that the class does not exist",

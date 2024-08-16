@@ -29,7 +29,6 @@ public class CreateNamespaceService extends BaseService {
 		
 		validateToken(token);
 		validateName(namespaceName);
-		
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String depositVersion = DepositInfo.version;
