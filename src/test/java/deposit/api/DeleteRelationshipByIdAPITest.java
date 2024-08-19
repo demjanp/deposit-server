@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,11 +19,6 @@ import static org.junit.Assert.assertThrows;
 public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteRelationshipByIdAPI.class, DeleteRelationshipAPI.class, CreateRelationshipAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
-	}
 
 	@Before
 	public void setUp() {

@@ -8,6 +8,7 @@ import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
@@ -15,11 +16,6 @@ import static org.junit.Assert.fail;
 import static org.junit.Assert.assertEquals;
 
 public class UtilsLoginAPITest extends BaseNeo4jTest {
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{UtilsLoginAPI.class};
-	}
 
 	@Before
 	public void setUp() {

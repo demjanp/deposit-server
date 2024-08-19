@@ -6,6 +6,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
+
+import java.io.IOException;
 import java.util.UUID;
 
 import java.util.Map;
@@ -15,11 +17,6 @@ import static org.junit.Assert.*;
 public class UserToolAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{CreateUserToolAPI.class, GetUserToolAPI.class, DeleteUserToolAPI.class, GetUserToolByIdAPI.class, DeleteUserToolByIdAPI.class, CreateNamespaceAPI.class, SetActiveNamespaceAPI.class};
-	}
 
 	@Before
 	public void setUp() {

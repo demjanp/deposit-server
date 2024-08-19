@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
@@ -18,11 +19,6 @@ import static org.junit.Assert.assertEquals;
 public class UserAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{CreateUserAPI.class, DeleteUserAPI.class, GetUserAPI.class, GetUserByIdAPI.class};
-	}
 
 	@Before
 	public void setUp() {

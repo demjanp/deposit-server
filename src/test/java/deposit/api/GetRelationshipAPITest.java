@@ -8,6 +8,7 @@ import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.types.Node;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -18,11 +19,6 @@ import static org.junit.Assert.assertFalse;
 public class GetRelationshipAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{GetRelationshipAPI.class, CreateRelationshipAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class, GetRelationshipByIdAPI.class};
-	}
 
 	@Before
 	public void setUp() {

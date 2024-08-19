@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -16,22 +17,6 @@ import static org.junit.Assert.assertTrue;
 public class DeleteAllAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{
-			CreateNamespaceAPI.class,
-			SetActiveNamespaceAPI.class,
-			CreateClassAPI.class,
-			CreateObjectAPI.class,
-			CreateDescriptorAPI.class,
-			CreateClassDescriptorAPI.class,
-			CreateRelationshipAPI.class,
-			CreateClassRelationshipAPI.class,
-			CreateUserToolAPI.class,
-			DeleteAllAPI.class
-		};
-	}
 
 	@Before
 	public void setUp() {

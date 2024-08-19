@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
@@ -14,11 +15,6 @@ import static org.junit.Assert.assertTrue;
 public class GetClassDescriptorAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{GetClassDescriptorAPI.class, GetClassDescriptorByIdAPI.class, CreateClassDescriptorAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
-	}
 
 	@Before
 	public void setUp() {

@@ -10,11 +10,6 @@ import static org.junit.Assert.assertFalse;
 
 public class DeleteNamespaceAPITest extends BaseNeo4jTest {
 
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteNamespaceAPI.class, CreateNamespaceAPI.class};
-	}
-
 	@Test
 	public void shouldDeleteNamespaceNode() {
 		try (Session session = driver.session()) {

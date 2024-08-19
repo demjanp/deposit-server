@@ -14,11 +14,6 @@ import static org.junit.Assert.fail;
 
 public class CreateClassAPITest extends BaseNeo4jTest {
 
-    @Override
-    protected Class<?>[] getProcedureClasses() {
-        return new Class<?>[]{CreateClassAPI.class, CreateNamespaceAPI.class, SetActiveNamespaceAPI.class};
-    }
-
     @Test
     public void shouldCreateClassNode() {
         try (Session session = driver.session()) {

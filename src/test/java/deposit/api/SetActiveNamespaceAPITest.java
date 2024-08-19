@@ -1,10 +1,8 @@
 package deposit.api;
 
 import deposit.BaseNeo4jTest;
-import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.driver.Session;
-import org.neo4j.driver.Result;
 
 import java.util.Map;
 
@@ -13,11 +11,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class SetActiveNamespaceAPITest extends BaseNeo4jTest {
-
-    @Override
-    protected Class<?>[] getProcedureClasses() {
-        return new Class<?>[]{SetActiveNamespaceAPI.class, GetActiveNamespaceAPI.class};
-    }
 
     @Test
     public void shouldSetActiveNamespace() {

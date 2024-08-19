@@ -9,6 +9,7 @@ import org.neo4j.driver.Result;
 import org.neo4j.driver.Value;
 import org.neo4j.driver.types.Node;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,11 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class CreateObjectAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{CreateObjectAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class, GetObjectByIdAPI.class};
-	}
 
 	@Before
 	public void setUp() {

@@ -13,11 +13,6 @@ import static org.junit.Assert.assertEquals;
 
 public class GetNamespaceAPITest extends BaseNeo4jTest {
 
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{GetNamespaceAPI.class, CreateNamespaceAPI.class};
-	}
-
 	@Test
 	public void shouldRetrieveSpecificNamespaceNode() {
 		try (Session session = driver.session()) {

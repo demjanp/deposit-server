@@ -9,6 +9,7 @@ import org.neo4j.driver.Result;
 import org.neo4j.driver.Values;
 import org.neo4j.driver.Value;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -23,11 +24,6 @@ import static org.junit.Assert.assertTrue;
 public class CreateDescriptorAPITest extends BaseNeo4jTest {
 
     private String token;
-
-    @Override
-    protected Class<?>[] getProcedureClasses() {
-        return new Class<?>[]{CreateDescriptorAPI.class, CreateNamespaceAPI.class, CreateObjectAPI.class, SetActiveNamespaceAPI.class};
-    }
 
     @Before
     public void setUp() {

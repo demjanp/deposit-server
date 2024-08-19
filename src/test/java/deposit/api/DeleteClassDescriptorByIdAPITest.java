@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -17,11 +18,6 @@ import static org.junit.Assert.assertThrows;
 public class DeleteClassDescriptorByIdAPITest extends BaseNeo4jTest {
 
 	private String token;
-
-	@Override
-	protected Class<?>[] getProcedureClasses() {
-		return new Class<?>[]{DeleteClassDescriptorByIdAPI.class, DeleteClassDescriptorAPI.class, CreateClassDescriptorAPI.class, CreateNamespaceAPI.class, CreateClassAPI.class, SetActiveNamespaceAPI.class};
-	}
 
 	@Before
 	public void setUp() {
