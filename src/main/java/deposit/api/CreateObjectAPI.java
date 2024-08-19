@@ -22,7 +22,7 @@ public class CreateObjectAPI extends BaseAPI {
 	 * Create an Object.
 	 *
 	 * @param classes a list of Class names, needs to contain at least one item.
-	 * @param descriptors Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j or Deposit type. Default is [].
+	 * @param descriptors Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type or a resource or geometry node. Default is [].
 	 * @param position position of the node in a hierarchical graph layout defined as [x, y], default is [].
 	 * @param token authentication token.
 	 * @return the created Object node.

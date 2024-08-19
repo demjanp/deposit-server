@@ -93,8 +93,8 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
 
                 // Verify: Descriptor node was created
                 session.writeTransaction(tx -> {
-                    Result result = tx.run("MATCH (d:Descriptor {name: $descriptorName, value: $value}) RETURN d",
-                                           Map.of("descriptorName", descriptorName, "value", value));
+                    Result result = tx.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: $descriptorName, value: $value}) RETURN d",
+                                           Map.of("namespaceName", namespaceName, "descriptorName", descriptorName, "value", value));
                     assertTrue("Descriptor node should exist with correct value", result.hasNext());
                     tx.commit();
                     return null;

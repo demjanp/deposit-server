@@ -18,7 +18,7 @@ public class GetClassByIdAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get existing Class node.
+	 * Get an existing Class node.
 	 *
 	 * @param classId Id of the Class to retrieve.
 	 * @param token authentication token.

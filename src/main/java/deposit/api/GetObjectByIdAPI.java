@@ -18,7 +18,7 @@ public class GetObjectByIdAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get existing Object node.
+	 * Get an existing Object node.
 	 *
 	 * @param objectId Id of the Object to retrieve.
 	 * @param token authentication token.

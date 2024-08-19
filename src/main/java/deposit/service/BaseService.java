@@ -3,8 +3,6 @@ package deposit.service;
 import deposit.common.ExceptionHandler;
 import deposit.common.ServerContext;
 import deposit.common.DResource;
-import deposit.common.DGeometry;
-import deposit.common.DDict;
 
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -16,22 +14,25 @@ import java.time.*;
 
 import org.neo4j.values.storable.PointValue;
 import org.neo4j.values.storable.DurationValue;
-import org.json.JSONObject;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 public abstract class BaseService {
 	
 	private static final List<String> VALID_TYPES = Arrays.asList(
 			"String", "Integer", "Float", "Boolean", "Date", "Time", "LocalTime", "DateTime", "LocalDateTime",
-			"Duration", "Point", "List", "DDict", "DGeometry", "DResource"
+			"Duration", "Point", "List", "DResource"
 	);
 	private static final String NAME_PATTERN = "^[\\p{L}\\p{N}\\-_.~ ]+$";
 	private static final Pattern pattern = Pattern.compile(NAME_PATTERN);
+	private static ObjectMapper objectMapper;
 	
 	protected final Logger logger;
 	
 	protected BaseService() {
 		// Initialize logger with the subclass's name
 		this.logger = Logger.getLogger(this.getClass().getName());
+		this.objectMapper = new ObjectMapper();
 	}
 	
 	// Method to log the error message and throw a runtime exception
@@ -113,9 +114,7 @@ public abstract class BaseService {
 	}
 	
 	protected void validateValue(Object value) {
-		if (value instanceof DDict ||
-			value instanceof DGeometry ||
-			value instanceof DResource ||
+		if (value instanceof DResource ||
 			value instanceof String ||
 			value instanceof Integer ||
 			value instanceof Long ||
@@ -169,8 +168,8 @@ public abstract class BaseService {
 	
 	protected void validateJSONString(String data) {
 		try {
-			JSONObject jsonObject = new JSONObject(data);
-		} catch (Exception e) {
+			objectMapper.readTree(data);
+		} catch (JsonProcessingException e) {
 			throwException("Invalid JSON data: " + data + ". The data must be a valid JSON encoded dictionary.");
 		}
 	}
