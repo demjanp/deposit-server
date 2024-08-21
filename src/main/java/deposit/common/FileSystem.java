@@ -9,36 +9,38 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class FileSystem {
-
+	
+	private static int TIMEOUT = 60; // seconds
+	
+	private static FileSystem instance;
+	
 	private static FileObject transientStorage;
 	private static FileObject permanentStorage;
 	private static FileObject archiveStorage;
-	private static final ConcurrentMap<String, ReentrantLock> fileLocks = new ConcurrentHashMap<>();
+	
+	private static final ReentrantLock lock = new ReentrantLock(true);
 
-	private static volatile FileSystem instance;
-
-	public static FileSystem getInstance() {
+	public static synchronized FileSystem getInstance() throws FileSystemException {
 		if (instance == null) {
-			synchronized (FileSystem.class) {
-				if (instance == null) {
-					try {
-						instance = new FileSystem();
-					} catch (FileSystemException e) {
-						ExceptionHandler.throwException("Failed to initialize FileSystem", e);
-					}
-				}
-			}
+			instance = new FileSystem();
 		}
 		return instance;
 	}
 
-	private FileSystem() throws FileSystemException {
+	static {
+		try {
+			initializeFileSystem();
+		} catch (FileSystemException e) {
+			ExceptionHandler.throwException("Failed to initialize FileSystem", e);
+		}
+	}
+
+	private static void initializeFileSystem() throws FileSystemException {
 		FileSystemManager fsManager = VFS.getManager();
 
 		String userHome = System.getProperty("user.home");
@@ -59,23 +61,15 @@ public class FileSystem {
 			ExceptionHandler.throwException("Failed to initialize storage directories", e);
 		}
 	}
-
-	private void executeWithFileLock(String filename, Runnable operation) {
-		ReentrantLock lock = fileLocks.computeIfAbsent(filename, k -> new ReentrantLock());
-		lock.lock();
-		try {
-			operation.run();
-		} finally {
-			lock.unlock();
-			fileLocks.remove(filename); // Clean up to avoid memory leaks
-		}
+	
+	public static void setTimeout(int timeout) {
+		TIMEOUT = timeout;
 	}
-
+	
 	// Stores a stream (base64 encoded string) as a file in the transient storage and returns the generated filename
-	public String storeFile(String base64Content, String originalFilename) {
-		return executeWithFileLockAndReturn(originalFilename, () -> {
-			String sanitizedFilename = sanitizeFilename(originalFilename);
-			String generatedFilename = generateFilename(sanitizedFilename, null);
+	public static String storeFile(String base64Content, String originalFilename) {
+		return executeWithLock(() -> {
+			String generatedFilename = generateFilename(sanitizeFilename(originalFilename));
 			try {
 				byte[] data = Base64.getDecoder().decode(base64Content);
 				FileObject file = transientStorage.resolveFile(generatedFilename);
@@ -90,20 +84,20 @@ public class FileSystem {
 	}
 
 	// Creates a packaged database (GraphSON + specified files in a zipped directory) based on a GraphSON string and resource filenames and returns a base64 encoded string
-	public String packageData(String graphSONData, List resoures) {
+	public static String packageData(String graphSONData, List resoures) {
 		// TODO implement
 		return null;
 	}
 
 	// Unpacks a packages database and returns the data as `{nodes: <Nodes>, relationships: <Relationships>, resources: [<local filename of the resource>, ...]}`
-	public HashMap<String, Object> unpackData(String filename) {
+	public static HashMap<String, Object> unpackData(String filename) {
 		// TODO implement
 		return null;
 	}
 
 	// Retrieves a file from the transient storage and returns its contents as a base64 encoded string
-	public String readFromTransient(String filename) {
-		return executeWithFileLockAndReturn(filename, () -> {
+	public static String readFromTransient(String filename) {
+		return executeWithLock(() -> {
 			try {
 				FileObject file = transientStorage.resolveFile(filename);
 				try (InputStream is = file.getContent().getInputStream()) {
@@ -118,10 +112,15 @@ public class FileSystem {
 	}
 
 	// Retrieves a file from the permanent storage based on its filename (automatically derives the subdir)
-	public String readFromPermanent(String filename) {
-		return executeWithFileLockAndReturn(filename, () -> {
+	public static String readFromPermanent(String filename) {
+		return executeWithLock(() -> {
 			try {
 				FileObject file = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
+				
+				if (!file.exists()) {
+					ExceptionHandler.throwException("File does not exist: " + file.getName().getURI());
+				}
+				
 				try (InputStream is = file.getContent().getInputStream()) {
 					byte[] data = is.readAllBytes();
 					return Base64.getEncoder().encodeToString(data);
@@ -134,25 +133,24 @@ public class FileSystem {
 	}
 
 	// Moves a file from the transient to the permanent storage (auto generates a subdir using hash-based sharding strategy)
-	public void moveToPermanent(String filename) {
-		executeWithFileLock(filename, () -> {
+	public static String moveToPermanent(String filename) {
+		return executeWithLock(() -> {
 			try {
 				String subdir = generateHashBasedSubdir(filename);
 				FileObject sourceFile = transientStorage.resolveFile(filename);
 				FileObject destFile = permanentStorage.resolveFile(subdir + "/" + filename);
 
 				if (!sourceFile.exists()) {
-					throw new FileSystemException("Source file does not exist: " + sourceFile.getName().getURI());
+					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
 				}
 
 				if (destFile.exists()) {
-					throw new FileSystemException("Destination file already exists: " + destFile.getName().getURI());
+					ExceptionHandler.throwException("Destination file already exists: " + destFile.getName().getURI());
 				}
 
 				try {
 					sourceFile.moveTo(destFile);
 				} catch (FileSystemException e) {
-					System.err.println("Move failed, attempting copy and delete as fallback: " + e.getMessage());
 					try {
 						destFile.copyFrom(sourceFile, Selectors.SELECT_SELF);
 						sourceFile.delete();
@@ -163,30 +161,30 @@ public class FileSystem {
 
 			} catch (FileSystemException e) {
 				ExceptionHandler.throwException("Failed to move file to permanent storage", e);
+				return null;
 			}
+			return filename;
 		});
 	}
 
 	// Moves a file to the archive storage with a timestamp appended to the filename and returns the new filename
-	public String moveToArchive(String filename, ZonedDateTime timeStamp) {
-		return executeWithFileLockAndReturn(filename, () -> {
-			String newFilename = generateFilename(filename, timeStamp);
+	public static String moveToArchive(String filename, ZonedDateTime timeStamp) {
+		return executeWithLock(() -> {
+			String newFilename = addTimeStamp(filename, timeStamp);
 			try {
 				FileObject sourceFile = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
-				FileObject destFile = archiveStorage.resolveFile(newFilename);
-
-				if (!sourceFile.exists()) {
-					throw new FileSystemException("Source file does not exist: " + sourceFile.getName().getURI());
-				}
-
+				FileObject destFile = archiveStorage.resolveFile(generateHashBasedSubdir(newFilename) + "/" + newFilename);
+				
 				if (destFile.exists()) {
-					throw new FileSystemException("Destination file already exists: " + destFile.getName().getURI());
+					// File has already been moved to the archive by another transaction
+					return newFilename;
+				} else if (!sourceFile.exists()) {
+					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
 				}
 
 				try {
 					sourceFile.moveTo(destFile);
 				} catch (FileSystemException e) {
-					System.err.println("Move failed, attempting copy and delete as fallback: " + e.getMessage());
 					try {
 						destFile.copyFrom(sourceFile, Selectors.SELECT_SELF);
 						sourceFile.delete();
@@ -196,25 +194,25 @@ public class FileSystem {
 				}
 			} catch (IOException e) {
 				ExceptionHandler.throwException("Failed to move file to archive storage", e);
+				return null;
 			}
 			return newFilename;
 		});
 	}
 
 	// Restores a file from the archive to the permanent storage and returns the restored filename
-	public String restoreFromArchive(String archivedFilename) {
-		return executeWithFileLockAndReturn(archivedFilename, () -> {
+	public static String restoreFromArchive(String archivedFilename) {
+		return executeWithLock(() -> {
 			String originalFilename = removeTimestampFromFilename(archivedFilename);
 			try {
-				String subdir = generateHashBasedSubdir(originalFilename);
-				FileObject sourceFile = archiveStorage.resolveFile(archivedFilename);
-				FileObject destFile = permanentStorage.resolveFile(subdir + "/" + originalFilename);
-				if (!sourceFile.exists()) {
-					throw new FileSystemException("Source file does not exist: " + sourceFile.getName().getURI());
-				}
-
+				FileObject sourceFile = archiveStorage.resolveFile(generateHashBasedSubdir(archivedFilename) + "/" + archivedFilename);
+				FileObject destFile = permanentStorage.resolveFile(generateHashBasedSubdir(originalFilename) + "/" + originalFilename);
+				
 				if (destFile.exists()) {
-					throw new FileSystemException("Destination file already exists: " + destFile.getName().getURI());
+					// File has already been restored
+					return originalFilename;
+				} else if (!sourceFile.exists()) {
+					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
 				}
 				destFile.copyFrom(sourceFile, Selectors.SELECT_SELF);
 			} catch (IOException e) {
@@ -223,71 +221,85 @@ public class FileSystem {
 			return originalFilename;
 		});
 	}
-
-	public void deleteFromPermanent(String filename) {
-		executeWithFileLock(filename, () -> {
+	
+	// Deletes a file from the permanent storage
+	public static String deleteFromPermanent(String filename) {
+		return executeWithLock(() -> {
 			try {
-				String subdir = generateHashBasedSubdir(filename);
-				FileObject file = permanentStorage.resolveFile(subdir + "/" + filename);
+				FileObject file = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
 				if (file.exists()) {
 					file.delete();
-				} else {
-					ExceptionHandler.throwException("File not found in permanent storage: " + filename);
 				}
+				return null;
 			} catch (FileSystemException e) {
 				ExceptionHandler.throwException("Failed to delete file from permanent storage", e);
+				return null;
 			}
 		});
 	}
-
-	public void deleteFromArchive(String filename) {
-		executeWithFileLock(filename, () -> {
+	
+	// Deletes a file from the archive storage
+	public static String deleteFromArchive(String filename) {
+		return executeWithLock(() -> {
 			try {
-				FileObject file = archiveStorage.resolveFile(filename);
+				FileObject file = archiveStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
 				if (file.exists()) {
 					file.delete();
-				} else {
-					ExceptionHandler.throwException("File not found in archive storage: " + filename);
 				}
+				return null;
 			} catch (FileSystemException e) {
 				ExceptionHandler.throwException("Failed to delete file from archive storage", e);
+				return null;
 			}
 		});
 	}
-
-	public void clearTransient() {
-		executeWithFileLock("clearTransient", () -> {
+	
+	// Deletes all files from the transient storage
+	public static String clearTransient() {
+		return executeWithLock(() -> {
 			try {
 				for (FileObject file : transientStorage.getChildren()) {
 					file.delete();
 				}
+				return null;
 			} catch (FileSystemException e) {
 				ExceptionHandler.throwException("Failed to clear transient storage", e);
+				return null;
 			}
 		});
 	}
-
-	// Private method to generate a new filename based on the original one
-	private String generateFilename(String originalFilename, ZonedDateTime timeStamp) {
+	
+	public static String testTimeout(int delay) {
+		return executeWithLock(() -> {
+			try {
+				Thread.sleep(delay);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+			return null;
+		});
+	}
+	
+	private static String generateFilename(String originalFilename) {
 		String uuid = UUID.randomUUID().toString();
 		String baseFilename = originalFilename.substring(0, originalFilename.lastIndexOf('.'));
 		String extension = originalFilename.substring(originalFilename.lastIndexOf('.'));
-
-		if (timeStamp != null) {
-			String formattedTimestamp = timeStamp.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-			return baseFilename + "-" + uuid + "-" + formattedTimestamp + extension;
-		}
 		return baseFilename + "-" + uuid + extension;
 	}
-
-	// Helper to generate hash-based subdirectory
-	private String generateHashBasedSubdir(String filename) {
+	
+	private static String addTimeStamp(String originalFilename, ZonedDateTime timeStamp) {
+		String baseFilename = originalFilename.substring(0, originalFilename.lastIndexOf('.'));
+		String extension = originalFilename.substring(originalFilename.lastIndexOf('.'));
+		String formattedTimestamp = timeStamp.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+		return baseFilename + "-" + formattedTimestamp + extension;
+	}
+	
+	private static String generateHashBasedSubdir(String filename) {
 		int hash = filename.hashCode();
 		return Integer.toHexString(hash).substring(0, 2);  // Using first 2 hex characters
 	}
 
-	// Helper method to remove the timestamp from the filename
-	private String removeTimestampFromFilename(String filename) {
+	private static String removeTimestampFromFilename(String filename) {
 		int lastDashIndex = filename.lastIndexOf('-');
 		int extensionIndex = filename.lastIndexOf('.');
 		if (lastDashIndex != -1 && extensionIndex != -1 && lastDashIndex < extensionIndex) {
@@ -295,9 +307,8 @@ public class FileSystem {
 		}
 		return filename;  // Return the original filename if the format is unexpected
 	}
-
-	// Helper to create directories if they don’t exist
-	private void createDirectoryIfNotExists(FileObject dir) {
+	
+	private static void createDirectoryIfNotExists(FileObject dir) {
 		try {
 			if (!dir.exists()) {
 				dir.createFolder();
@@ -307,20 +318,29 @@ public class FileSystem {
 		}
 	}
 
-	private String sanitizeFilename(String filename) {
+	private static String sanitizeFilename(String filename) {
 		// Replace or remove unsafe characters
 		return filename.replaceAll("[^a-zA-Z0-9.\\-]", "_");
 	}
-
-	// Helper method for operations that return a value
-	private <T> T executeWithFileLockAndReturn(String filename, Supplier<T> operation) {
-		ReentrantLock lock = fileLocks.computeIfAbsent(filename, k -> new ReentrantLock());
-		lock.lock();
+	
+	private static <T> T executeWithLock(Supplier<T> operation) {
+		boolean acquired = false;
+		T result = null;
 		try {
-			return operation.get();
+			acquired = lock.tryLock(TIMEOUT, TimeUnit.SECONDS);
+			if (acquired) {
+				result = operation.get();
+			} else {
+				ExceptionHandler.throwException("Timeout: Could not acquire lock within " + TIMEOUT + " seconds.");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			ExceptionHandler.throwException("Thread was interrupted while waiting to acquire lock", e);
 		} finally {
-			lock.unlock();
-			fileLocks.remove(filename); // Clean up to avoid memory leaks
+			if (acquired) {
+				lock.unlock();
+			}
 		}
+		return result;
 	}
 }

@@ -190,6 +190,21 @@ public class Versioning {
 						RETURN count(*) AS count
 					'}'
 				""";
+			} else if (elementType.equals("Descriptor")) {
+				// Re-create DResource node if it is present
+				queryString += """
+					WITH newVersion, {0}
+					// If a DResource node is linked to updated, re-create it for the archived version
+					CALL '{'
+						WITH newVersion, updated
+						OPTIONAL MATCH (updated)-[:HAS_RESOURCE]->(resource:DResource)
+						WITH newVersion, updated, resource
+						WHERE resource IS NOT NULL
+						CREATE (newVersion)-[:HAS_RESOURCE]->(newResource:DResource)
+						SET newResource += properties(resource)
+						RETURN count(*) AS count
+					'}'
+				""";
 			}
 		}
 		

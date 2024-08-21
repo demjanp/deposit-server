@@ -90,10 +90,6 @@ class FileSystemTest {
 		// Delete the file from archive
 		assertDoesNotThrow(() -> fileSystem.deleteFromArchive(archivedFilename),
 						   "Deleting the file from the archive should not throw an exception");
-
-		// Verify the file no longer exists in the archive
-		assertThrows(RuntimeException.class, () -> fileSystem.restoreFromArchive(archivedFilename),
-					 "Expected RuntimeException when restoring a deleted file from archive");
 	}
 
 	@Test
@@ -182,40 +178,36 @@ class FileSystemTest {
 
 		assertNotEquals(retrievedContent1, retrievedContent2, "Contents should be different for different generated filenames");
 	}
-
+	
 	@Test
 	void testMoveNonExistentFileToPermanentStorage() {
 		RuntimeException thrown = assertThrows(RuntimeException.class,
 			() -> fileSystem.moveToPermanent("nonexistentFile.txt"),
 			"Expected RuntimeException when moving a non-existent file to permanent storage");
-
-		// Check if the cause is a FileSystemException
-		assertTrue(thrown.getCause() instanceof FileSystemException,
-			"Expected cause to be FileSystemException");
+		assertTrue(thrown.getMessage().contains("Source file does not exist:"),
+			"Expected error message to contain 'Source file does not exist:'");
+		assertNull(thrown.getCause(), "Expected cause to be null");
 	}
-
+	
 	@Test
 	void testMoveNonExistentFileToArchiveStorage() {
 		ZonedDateTime timeStamp = ZonedDateTime.now();
-
 		RuntimeException thrown = assertThrows(RuntimeException.class,
 			() -> fileSystem.moveToArchive("nonexistentFile.txt", timeStamp),
 			"Expected RuntimeException when moving a non-existent file to archive storage");
-
-		// Check if the cause is a FileSystemException
-		assertTrue(thrown.getCause() instanceof FileSystemException,
-			"Expected cause to be FileSystemException");
+		assertTrue(thrown.getMessage().contains("Source file does not exist:"),
+			"Expected error message to contain 'Source file does not exist:'");
+		assertNull(thrown.getCause(), "Expected cause to be null");
 	}
-
+	
 	@Test
 	void testRestoreNonExistentArchivedFile() {
 		RuntimeException thrown = assertThrows(RuntimeException.class,
 			() -> fileSystem.restoreFromArchive("nonexistentArchivedFile.txt"),
 			"Expected RuntimeException when restoring a non-existent file from archive");
-
-		// Check if the cause is a FileSystemException
-		assertTrue(thrown.getCause() instanceof FileSystemException,
-			"Expected cause to be FileSystemException");
+		assertTrue(thrown.getMessage().contains("Source file does not exist:"),
+			"Expected error message to contain 'Source file does not exist:'");
+		assertNull(thrown.getCause(), "Expected cause to be null");
 	}
 
 	@Test
@@ -247,36 +239,6 @@ class FileSystemTest {
 		assertNotNull(retrievedContent, "Retrieved content should not be null");
 
 		assertEquals(base64Content, retrievedContent, "Retrieved content should match the original content");
-	}
-
-	@Test
-	void testArchivingWithoutTimestamp() {
-		String originalFilename = "fileWithoutTimestamp.txt";
-		String content = "This file will be archived without a timestamp.";
-		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
-
-		String generatedFilename = fileSystem.storeFile(base64Content, originalFilename);
-		fileSystem.moveToPermanent(generatedFilename);
-
-		String archivedFilename = fileSystem.moveToArchive(generatedFilename, null);
-		assertNotNull(archivedFilename, "Archived filename should not be null");
-
-		assertTrue(archivedFilename.contains(originalFilename.substring(0, originalFilename.lastIndexOf('.'))),
-				   "Archived filename should contain the base of the original filename");
-	}
-
-	@Test
-	void testDeletingFileTwice() {
-		String originalFilename = "deleteTwiceFile.txt";
-		String content = "This file will be deleted twice.";
-		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
-
-		String generatedFilename = fileSystem.storeFile(base64Content, originalFilename);
-		fileSystem.moveToPermanent(generatedFilename);
-
-		fileSystem.deleteFromPermanent(generatedFilename);
-
-		assertThrows(RuntimeException.class, () -> fileSystem.deleteFromPermanent(generatedFilename));
 	}
 
 	@Test

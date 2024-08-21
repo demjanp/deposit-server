@@ -2,7 +2,6 @@ package deposit.service;
 
 import deposit.common.ExceptionHandler;
 import deposit.common.ServerContext;
-import deposit.common.DResource;
 
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -12,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import java.time.*;
 
+import org.neo4j.graphdb.Node;
 import org.neo4j.values.storable.PointValue;
 import org.neo4j.values.storable.DurationValue;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +25,19 @@ public abstract class BaseService {
 	);
 	private static final String NAME_PATTERN = "^[\\p{L}\\p{N}\\-_.~ ]+$";
 	private static final Pattern pattern = Pattern.compile(NAME_PATTERN);
+	
+	// Reserved names in Windows that cannot be used as filenames
+	private static final String[] WINDOWS_RESERVED_NAMES = {
+		"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", 
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+	};
+	
+	// Regular expression to match invalid filename characters across Windows, macOS, and Linux
+	private static final Pattern INVALID_CHARACTERS = Pattern.compile("[<>:\"/\\|?*\0]");
+	
+	// Maximum filename length (for most filesystems, including NTFS and ext4)
+	private static final int MAX_FILENAME_LENGTH = 255;
+	
 	private static ObjectMapper objectMapper;
 	
 	protected final Logger logger;
@@ -114,8 +127,7 @@ public abstract class BaseService {
 	}
 	
 	protected void validateValue(Object value) {
-		if (value instanceof DResource ||
-			value instanceof String ||
+		if (value instanceof String ||
 			value instanceof Integer ||
 			value instanceof Long ||
 			value instanceof Float ||
@@ -126,7 +138,8 @@ public abstract class BaseService {
 			value instanceof java.time.LocalDateTime ||
 			value instanceof java.time.ZonedDateTime ||
 			value instanceof DurationValue ||
-			value instanceof PointValue) {
+			value instanceof PointValue ||
+			value instanceof Node) {
 			// Valid single values that Neo4j supports directly
 		} else if (value instanceof List<?>) {
 			// Validate that all elements in the list are of the same type and are valid Neo4j types
@@ -173,4 +186,30 @@ public abstract class BaseService {
 			throwException("Invalid JSON data: " + data + ". The data must be a valid JSON encoded dictionary.");
 		}
 	}
+	
+	protected void validateFilename(String filename) {
+		
+		if (filename == null || filename.isEmpty()) {
+			throwException("Filename must nod be an empty string.");
+		}
+
+		if (INVALID_CHARACTERS.matcher(filename).find()) {
+			throwException("Filename contains invalid characters: " + filename);
+		}
+
+		for (String reserved : WINDOWS_RESERVED_NAMES) {
+			if (filename.equalsIgnoreCase(reserved)) {
+				throwException("Filename is a reserved name under Windows: " + filename);
+			}
+		}
+
+		if (filename.endsWith(".") || filename.endsWith(" ")) {
+			throwException("Filename must not end with a period or space: " + filename);
+		}
+
+		if (filename.length() > MAX_FILENAME_LENGTH) {
+			throwException("Filename exceeds the maximum length of " + MAX_FILENAME_LENGTH + " characters: " + filename);
+		}
+	}
+
 }

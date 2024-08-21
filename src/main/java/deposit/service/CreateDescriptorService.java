@@ -38,8 +38,6 @@ public class CreateDescriptorService extends BaseService {
 		}
 		
 		// TODO : Ensure that all of the Object's Classes have a Class Descriptor with the same name and type (if not, create it)
-		// TODO : If value is a resource, the file is moved from the 'loaded_resources' directory to the permanent file storage directory. The filename remains in the format `<filename>-<uuid>.<ext>`, where `uuid` is generated when the file is uploaded to the server via the deposit.resource procedure.
-		// (implement in repository layer?)
 		
 		return createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value);
 	}
