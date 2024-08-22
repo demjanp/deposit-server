@@ -10,7 +10,7 @@ Create a Class.
 - **order**: an order of the Class when represented in a list, default is -1.
 - **position**: position of the node in a hierarchical graph layout defined as [x, y], default is [].
 - **comment**: annotation to provide additional information about the Class, default is an empty string.
-- **descriptors**: Descriptors of the Class defined as a list of lists [[<name>, <type>] or [<name>, <type>, <comment>], ...], where <name> is the name of the Descriptor, <type> is any Neo4j or Deposit type and comment is an annotation. Default is [].
+- **descriptors**: Descriptors of the Class defined as a list of lists [[<name>, <type>] or [<name>, <type>, <comment>], ...], where <name> is the name of the Descriptor, <type> is any Neo4j type or DResource and comment is an annotation. Default is [].
 - **token**: authentication token.
 
 ### Throws:
@@ -31,7 +31,7 @@ Create a Class Descriptor.
 
 - **className**: the name of the Class.
 - **descriptorName**: the name of the Descriptor to create.
-- **type**: can be the name of any Neo4j or Deposit type.
+- **type**: can be the name of any Neo4j type or DResource.
 - **order**: an order of the Descriptor when represented in a list, default is -1.
 - **comment**: annotation to provide additional information about the Descriptor, default is an empty string.
 - **token**: authentication token.
@@ -76,7 +76,7 @@ Create a Descriptor.  If the Object is a member of multiple Classes and the desc
 
 - **objectId**: the Id of the Object.
 - **descriptorName**: the name of the Descriptor to create.
-- **value**: can be of any Neo4j or Deposit type.
+- **value**: can be of any Neo4j type or a DResource node.
 - **token**: authentication token.
 
 ### Throws:
@@ -87,26 +87,6 @@ Create a Descriptor.  If the Object is a member of multiple Classes and the desc
 
 ```cypher
 CALL deposit.create.descriptor(objectId, descriptorName, value, token) YIELD node AS descriptor
-```
-
-## deposit.create.membership
-
-Create a Class Membership.
-
-### Parameters:
-
-- **className**: the name of the Class.
-- **objectId**: the Id of the Object.
-- **token**: authentication token.
-
-### Throws:
-
-- **RuntimeException**: if the Membership already exists or if there is an error during the creation.
-
-### Usage:
-
-```cypher
-CALL deposit.create.membership(className, objectId, token) YIELD membership
 ```
 
 ## deposit.create.namespace
@@ -136,8 +116,8 @@ Create an Object.
 
 ### Parameters:
 
-- **classes**: a list of Class names, needs to contain at least one item.
-- **descriptors**: Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j or Deposit type. Default is [].
+- **className**: the name of the Object's Class.
+- **descriptors**: Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type or a resource or geometry node. Default is [].
 - **position**: position of the node in a hierarchical graph layout defined as [x, y], default is [].
 - **token**: authentication token.
 
@@ -148,7 +128,7 @@ Create an Object.
 ### Usage:
 
 ```cypher
-CALL deposit.create.object(classes, descriptors, position, token) YIELD node AS object
+CALL deposit.create.object(className, descriptors, position, token) YIELD node AS object
 ```
 
 ## deposit.create.relationship
@@ -175,7 +155,7 @@ CALL deposit.create.relationship(startObjectId, endObjectId, label, weight, toke
 
 ## deposit.create.user
 
-Brief description.
+Create a User node.
 
 ### Parameters:
 
@@ -191,6 +171,45 @@ Brief description.
 
 ```cypher
 CALL deposit.create.user(username, password, token) YIELD node AS user
+```
+
+## deposit.create.userTool
+
+Create a User Tool.
+
+### Parameters:
+
+- **userToolName**: name of the User Tool.
+- **data**: JSON encoded string representing the definition of the User Tool.
+- **comment**: annotation to provide additional information about the User Tool, default is an empty string.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if User Tool with the same name already exists or there is an error during the creation.
+
+### Usage:
+
+```cypher
+CALL deposit.create.userTool(userToolName, data, comment, token) YIELD node AS userTool
+```
+
+## deposit.delete.all
+
+Delete all nodes from the active Namespace.
+
+### Parameters:
+
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error during deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.all(token)
 ```
 
 ## deposit.delete.class
@@ -349,26 +368,6 @@ Delete a Descriptor.
 CALL deposit.delete.descriptorById(descriptorId, token)
 ```
 
-## deposit.delete.membership
-
-Delete a Class Membership.
-
-### Parameters:
-
-- **className**: the name of the Class.
-- **objectId**: the Id of the Object.
-- **token**: authentication token.
-
-### Throws:
-
-- **RuntimeException**: if the Membership doesn't exist or if there is an error during the deletion.
-
-### Usage:
-
-```cypher
-CALL deposit.delete.membership(className, objectId, token)
-```
-
 ## deposit.delete.namespace
 
 Deletes a Namespace.
@@ -447,6 +446,63 @@ Delete a Relationship.
 CALL deposit.delete.relationshipById(relationshipId, token)
 ```
 
+## deposit.delete.user
+
+Delete a User node.
+
+### Parameters:
+
+- **username**: the username of the User to delete.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error during deletion
+
+### Usage:
+
+```cypher
+CALL deposit.delete.user(username, token)
+```
+
+## deposit.delete.userTool
+
+Delete a User Tool.
+
+### Parameters:
+
+- **userToolName**: the name of the User Tool to delete.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error during deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.userTool(userToolName, token)
+```
+
+## deposit.delete.userToolById
+
+Delete a User Tool.
+
+### Parameters:
+
+- **userToolId**: Id of the User Tool to delete.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error during deletion.
+
+### Usage:
+
+```cypher
+CALL deposit.delete.userToolById(userToolId, token)
+```
+
 ## deposit.get.activeNamespace
 
 Returns the active Namespace node.
@@ -482,7 +538,7 @@ CALL deposit.get.class(className, token) YIELD node AS class
 
 ## deposit.get.classById
 
-Get existing Class node.
+Get an existing Class node.
 
 ### Parameters:
 
@@ -655,9 +711,29 @@ Brief description.
 CALL deposit.get.namespace(namespaceName, token) YIELD node AS namespace
 ```
 
+## deposit.get.object
+
+Get existing Object nodes which match the parameters (all if no parameters are given).
+
+### Parameters:
+
+- **className**: a list of Class names, default is [].
+- **descriptors**: Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type. Default is [].
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.object(className, descriptors, token) YIELD node AS object
+```
+
 ## deposit.get.objectById
 
-Get existing Object node.
+Get an existing Object node.
 
 ### Parameters:
 
@@ -674,7 +750,7 @@ Get existing Object node.
 CALL deposit.get.objectById(objectId, token) YIELD node AS object
 ```
 
-## deposit.get.objectClasses
+## deposit.get.objectClass
 
 Get Classes of an Object.
 
@@ -690,7 +766,46 @@ Get Classes of an Object.
 ### Usage:
 
 ```cypher
-CALL deposit.get.objectClasses(objectId, token) YIELD node AS class
+CALL deposit.get.objectClass(objectId, token) YIELD node AS class
+```
+
+## deposit.get.objectClassDescriptor
+
+Get the ClassDescriptor of the Object's Class.
+
+### Parameters:
+
+- **objectId**: the Id of the Object.
+- **descriptorName**: name of the Descriptor to retrieve or empty for all Descriptors of the Object.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.objectClassDescriptor(objectId, descriptorName, token) YIELD node AS descriptor
+```
+
+## deposit.get.objectClassDescriptorById
+
+Get the corresponding ClassDescriptor to the Descriptor of an Object.
+
+### Parameters:
+
+- **descriptorId**: the Id of the Object's Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.objectClassDescriptorById(descriptorId, token) YIELD node AS descriptor
 ```
 
 ## deposit.get.relationship
@@ -733,6 +848,96 @@ Get existing Relationship node.
 CALL deposit.get.relationshipById(relationshipId, token) YIELD source, target, relationship
 ```
 
+## deposit.get.user
+
+Get existing User node(s).
+
+### Parameters:
+
+- **username**: the username of the User to retrieve or empty for all User nodes.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.user(username, token) YIELD node AS user
+```
+
+## deposit.get.userById
+
+Get an existing User node.
+
+### Parameters:
+
+- **userId**: the Id of the User node to retrieve.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.userById(userId, token) YIELD node AS user
+```
+
+## deposit.get.userTool
+
+Get existing User Tool nodes.
+
+### Parameters:
+
+- **userToolName**: name of the User Tool to retrieve or empty for all User Tools.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node(s).
+
+### Usage:
+
+```cypher
+CALL deposit.get.userTool(userToolName, token) YIELD node AS userTool
+```
+
+## deposit.get.userToolById
+
+Get an existing User Tool node.
+
+### Parameters:
+
+- **userToolId**: Id of the User Tool to retrieve.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the node.
+
+### Usage:
+
+```cypher
+CALL deposit.get.userToolById(userToolId, token) YIELD node AS userTool
+```
+
+## deposit.get.version
+
+Get the version of the Deposit server.  @return the version as a string.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the version.
+
+### Usage:
+
+```cypher
+CALL deposit.get.version() YIELD value AS version
+```
+
 ## deposit.set.activeNamespace
 
 Sets the active Namespace.
@@ -750,6 +955,26 @@ Sets the active Namespace.
 
 ```cypher
 CALL deposit.set.activeNamespace(namespaceName, token)
+```
+
+## deposit.set.membership
+
+Set the Membership of an Object in a Class.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **objectId**: the Id of the Object.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the Membership already exists or if there is an error during the creation.
+
+### Usage:
+
+```cypher
+CALL deposit.set.membership(className, objectId, token) YIELD membership
 ```
 
 ## deposit.set.versioningType
@@ -771,6 +996,44 @@ Sets the versioning type.
 CALL deposit.set.versioningType(versioningType, token)
 ```
 
+## deposit.utils.coordinatesToWKT
+
+Convert a list of coordinates into a WKT.
+
+### Parameters:
+
+- **type**: geometry type.
+- **coordinates**: a list or list of lists of coordinates.
+
+### Throws:
+
+- **RuntimeException**: if there is an error converting the value.
+
+### Usage:
+
+```cypher
+CALL deposit.utils.coordinatesToWKT(type, coordinates) YIELD value AS wkt
+```
+
+## deposit.utils.download
+
+Download a file resource attached to the Descriptor.
+
+### Parameters:
+
+- **descriptor**: the Descriptor with the DResource value. Can be a Descriptor node or Id.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the file resource.
+
+### Usage:
+
+```cypher
+CALL deposit.utils.download(descriptor, token) YIELD stream
+```
+
 ## deposit.utils.login
 
 Brief description.
@@ -788,5 +1051,43 @@ Brief description.
 
 ```cypher
 CALL deposit.utils.login(username, password) YIELD value AS token
+```
+
+## deposit.utils.upload
+
+Upload a file resource to the transient storage on the server and return a DResource node.
+
+### Parameters:
+
+- **stream**: the content of the file as a Base64 encoded string.
+- **filename**: the name of the file.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error uploading the file.
+
+### Usage:
+
+```cypher
+CALL deposit.utils.upload(stream, filename, token) YIELD resource
+```
+
+## deposit.utils.wktToCoordinates
+
+Convert a WKT to a list of coordinates.
+
+### Parameters:
+
+- **wkt**: well-known-text string.
+
+### Throws:
+
+- **RuntimeException**: if there is an error converting the value.
+
+### Usage:
+
+```cypher
+CALL deposit.utils.wktToCoordinates(wkt) YIELD value AS coordinates
 ```
 
