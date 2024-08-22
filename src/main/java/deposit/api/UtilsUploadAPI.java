@@ -18,7 +18,7 @@ public class UtilsUploadAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Store a file resource in transient storage on the server and create a DResource node.
+	 * Upload a file resource to the transient storage on the server and return a DResource node.
 	 *
 	 * @param stream the content of the file as a Base64 encoded string.
 	 * @param filename the name of the file.

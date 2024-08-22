@@ -113,7 +113,6 @@ public class CreateDescriptorRepository extends BaseRepository {
 			rollbackMoveToPermanent(storedFilename);
 			throwException("Error creating Descriptor with name: " + descriptorName, e);
 		}
-		
 		return null;
     }
     
