@@ -957,6 +957,69 @@ Sets the active Namespace.
 CALL deposit.set.activeNamespace(namespaceName, token)
 ```
 
+## deposit.set.classComment
+
+Set comment of a Class.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **comment**: annotation to provide additional information about the Class.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the comment.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classComment(className, comment, token)
+```
+
+## deposit.set.classDescriptorComment
+
+Set comment of a Class Descriptor.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **descriptorName**: the name of the Class Descriptor.
+- **comment**: annotation to provide additional information about the Class Descriptor.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the comment.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classDescriptorComment(className, descriptorName, comment, token)
+```
+
+## deposit.set.classRelationshipComment
+
+Set comment of a Class Relationship.
+
+### Parameters:
+
+- **startClassName**: the name of the start Class.
+- **endClassName**: the name of the end Class.
+- **label**: the label of the Relationship.
+- **comment**: annotation to provide additional information about the Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the comment.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classRelationshipComment(startClassName, endClassName, label, comment, token)
+```
+
 ## deposit.set.membership
 
 Set the Membership of an Object in a Class.
@@ -975,6 +1038,25 @@ Set the Membership of an Object in a Class.
 
 ```cypher
 CALL deposit.set.membership(className, objectId, token) YIELD membership
+```
+
+## deposit.set.namespaceDescription
+
+Set description of the active Namespace.
+
+### Parameters:
+
+- **description**: annotation to provide additional information about the Namespace.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the description.
+
+### Usage:
+
+```cypher
+CALL deposit.set.namespaceDescription(description, token)
 ```
 
 ## deposit.set.versioningType

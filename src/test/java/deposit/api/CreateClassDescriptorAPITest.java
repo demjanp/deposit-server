@@ -129,4 +129,40 @@ public class CreateClassDescriptorAPITest extends BaseNeo4jTest {
 			assertEquals("", record.get("comment").asString());
 		}
 	}
+
+	@Test
+	public void shouldSetClassDescriptorComment() {
+		try (Session session = driver.session()) {
+			// Setup: Create a Namespace, Class, and a Descriptor
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
+			String descriptorName = "TestDescriptor";
+			String initialComment = "Initial comment";
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', '', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
+				tx.run("CALL deposit.create.classDescriptor($className, $descriptorName, 'String', 1, $initialComment, $token)",
+						Map.of("className", className, "descriptorName", descriptorName, "initialComment", initialComment, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Test: Set a new comment for the Descriptor
+			String newComment = "Updated comment";
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.classDescriptorComment($className, $descriptorName, $newComment, $token)",
+						Map.of("className", className, "descriptorName", descriptorName, "newComment", newComment, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: The Descriptor's comment was updated
+			Result result = session.run("MATCH (d:Descriptor {name: $descriptorName}) RETURN d.comment AS comment",
+										Map.of("descriptorName", descriptorName));
+			assertTrue(result.hasNext());
+			assertEquals(newComment, result.next().get("comment").asString());
+		}
+	}
 }

@@ -110,4 +110,53 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 		}
 	}
+
+	@Test
+	public void shouldSetClassRelationshipComment() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String startClassName = "StartClass";
+			String endClassName = "EndClass";
+			String label = "RELATES_TO";
+			String initialComment = "Initial comment.";
+			String updatedComment = "Updated comment.";
+
+			// Step 1: Create Namespace, Classes, and Relationship
+			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+						Map.of("startClassName", startClassName,
+							   "endClassName", endClassName,
+							   "label", label,
+							   "comment", initialComment,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Step 2: Update the Relationship Comment
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.classRelationshipComment($startClassName, $endClassName, $label, $comment, $token)",
+						Map.of("startClassName", startClassName,
+							   "endClassName", endClassName,
+							   "label", label,
+							   "comment", updatedComment,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Step 3: Verify the Relationship Comment was Updated
+			Result result = session.run("MATCH (cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+					Map.of("startClassName", startClassName,
+						   "endClassName", endClassName,
+						   "label", label));
+
+			assertTrue("Relationship comment should be updated", result.hasNext());
+			String returnedComment = result.next().get("comment").asString();
+			assertTrue("The comment should be the updated one", updatedComment.equals(returnedComment));
+		}
+	}
+
 }

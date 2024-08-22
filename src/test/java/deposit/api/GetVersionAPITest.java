@@ -1,7 +1,6 @@
 package deposit.api;
 
 import deposit.BaseNeo4jTest;
-import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
@@ -25,11 +24,11 @@ public class GetVersionAPITest extends BaseNeo4jTest {
 				String version = record.get("version").asString();
 				
 				System.out.println("VER:" + version); // DEBUG
-				
-				// Check that the version is not null or empty
+
 				assertNotNull("Version should not be null", version);
 				assertTrue("Version should not be empty", !version.isEmpty());
-				
+				assertTrue("Version should match the expected format", version.matches("\\d+\\.\\d+\\.\\d+(-[\\w\\d.-]+)?"));
+
 				tx.commit();
 				return null;
 			});

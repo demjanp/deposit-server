@@ -18,7 +18,7 @@ public class DepositInfo {
         if (initialized) return;
 
         try {
-            URL url = DepositInfo.class.getClassLoader().getResource("version.properties");
+            URL url = DepositInfo.class.getClassLoader().getResource("git.properties");
             if (url == null) {
                 version = "unknown-version";
                 System.out.println("Properties file not found, setting version to 'unknown-version'");

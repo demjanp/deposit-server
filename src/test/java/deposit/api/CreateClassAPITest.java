@@ -117,4 +117,37 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             assertEquals("", record.get("comment").asString());
         }
     }
+
+    @Test
+    public void shouldSetClassComment() {
+        try (Session session = driver.session()) {
+            // Setup: Create a Namespace and a Class
+            String namespaceName = "TestNamespace";
+            String className = "TestClass";
+            String initialComment = "Initial comment";
+            String newComment = "Updated comment";
+            session.writeTransaction(tx -> {
+                tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
+                tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+                tx.run("CALL deposit.create.class($className, -1, [], $initialComment, [])",
+                        Map.of("className", className, "initialComment", initialComment));
+                tx.commit();
+                return null;
+            });
+
+            // Test: Update the Class comment
+            session.writeTransaction(tx -> {
+                tx.run("CALL deposit.set.classComment($className, $newComment, '')",
+                        Map.of("className", className, "newComment", newComment));
+                tx.commit();
+                return null;
+            });
+
+            // Verify: Class comment was updated
+            var result = session.run("MATCH (c:Class {name: $className}) RETURN c.comment as comment", Map.of("className", className));
+            assertTrue(result.hasNext());
+            var record = result.next();
+            assertEquals(newComment, record.get("comment").asString());
+        }
+    }
 }

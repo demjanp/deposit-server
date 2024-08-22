@@ -1,6 +1,8 @@
 package deposit.api;
 
 import deposit.BaseNeo4jTest;
+import deposit.common.ServerContext;
+import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 
@@ -11,6 +13,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 public class CreateNamespaceAPITest extends BaseNeo4jTest {
+
+	private String token;
+
+	@Before
+	public void setUp() {
+		super.setUp();
+		token = ServerContext.getInstance().generateToken("testUser");
+	}
 
 	@Test
 	public void shouldCreateNamespaceNode() {
@@ -72,6 +82,39 @@ public class CreateNamespaceAPITest extends BaseNeo4jTest {
 			var record = result.next();
 			assertEquals("", record.get("description").asString());
 			assertEquals("", record.get("versioningType").asString());
+		}
+	}
+
+	@Test
+	public void shouldUpdateNamespaceDescription() {
+		try (Session session = driver.session()) {
+			String namespaceName = "NamespaceToUpdate";
+			String initialDescription = "Initial description";
+			String updatedDescription = "Updated description";
+			String versioningType = "transient";
+
+			// Create the namespace first
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, $description, $versioningType, $token)",
+						Map.of("namespaceName", namespaceName, "description", initialDescription, "versioningType", versioningType, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Update the description
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.namespaceDescription($description, $token)",
+						Map.of("description", updatedDescription, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify the description was updated
+			var result = session.run("MATCH (n:Namespace {name: $namespaceName}) RETURN n.description as description", Map.of("namespaceName", namespaceName));
+			assertTrue(result.hasNext());
+			var record = result.next();
+			assertEquals(updatedDescription, record.get("description").asString());
 		}
 	}
 }

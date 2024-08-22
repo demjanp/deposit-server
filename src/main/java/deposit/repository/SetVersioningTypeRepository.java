@@ -22,7 +22,6 @@ public class SetVersioningTypeRepository extends BaseRepository {
 	}
 	
 	public void setVersioningType(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType) {
-		
 		String queryUpdate = """
 			MATCH (namespace:Namespace {name: $namespaceName})
 			SET namespace.versioningType = $versioningType

@@ -23,80 +23,80 @@ import static org.junit.Assert.assertTrue;
 
 public class CreateDescriptorAPITest extends BaseNeo4jTest {
 
-    private String token;
+	private String token;
 
-    @Before
-    public void setUp() {
-        super.setUp();
-        token = ServerContext.getInstance().generateToken("testUser");
-    }
+	@Before
+	public void setUp() {
+		super.setUp();
+		token = ServerContext.getInstance().generateToken("testUser");
+	}
 
-    private String createNamespaceAndObject(Session session, String namespaceName, String className) {
-        return session.writeTransaction(tx -> {
-            tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
-            tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+	private String createNamespaceAndObject(Session session, String namespaceName, String className) {
+		return session.writeTransaction(tx -> {
+			tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 
-            Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
-                                   Map.of("className", className, "token", token));
-            String objectId = result.single().get("objectId").asString();
+			Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
+								   Map.of("className", className, "token", token));
+			String objectId = result.single().get("objectId").asString();
 
-            tx.commit();
+			tx.commit();
 
-            return objectId;
-        });
-    }
+			return objectId;
+		});
+	}
 
-    private void createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-        session.writeTransaction(tx -> {
-            tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
-                    Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
-            tx.commit();
-            return null;
-        });
-    }
+	private void createDescriptor(Session session, String objectId, String descriptorName, Object value) {
+		session.writeTransaction(tx -> {
+			tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
+					Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
+			tx.commit();
+			return null;
+		});
+	}
 
-    @Test
-    public void shouldCreateDescriptorWithVariousValueTypes() {
-        try (Session session = driver.session()) {
-            String namespaceName = "TestNamespace";
-            String className = "TestClass";
+	@Test
+	public void shouldCreateDescriptorWithVariousValueTypes() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
 
-            String objectId = createNamespaceAndObject(session, namespaceName, className);
+			String objectId = createNamespaceAndObject(session, namespaceName, className);
 
-            // Create a Point using Neo4j's Values.point() method to ensure correct type
-            Value point = Values.point(4326, 40.785091, -73.968285);
+			// Create a Point using Neo4j's Values.point() method to ensure correct type
+			Value point = Values.point(4326, 40.785091, -73.968285);
 
-            Map<String, Object> valueTests = new HashMap<>();
-            valueTests.put("StringDescriptor", "StringValue");
-            valueTests.put("IntegerDescriptor", 123);
-            valueTests.put("LongDescriptor", 123L);
-            valueTests.put("FloatDescriptor", 123.45f);
-            valueTests.put("DoubleDescriptor", 123.45);
-            valueTests.put("BooleanDescriptor", true);
-            valueTests.put("LocalTimeDescriptor", LocalTime.now());
-            valueTests.put("LocalDateDescriptor", LocalDate.now());
-            valueTests.put("LocalDateTimeDescriptor", LocalDateTime.now());
-            valueTests.put("ZonedDateTimeDescriptor", ZonedDateTime.now());
-            valueTests.put("DurationDescriptor", Duration.ofHours(1));
-            valueTests.put("PointDescriptor", point);
-            valueTests.put("StringListDescriptor", List.of("StringItem1", "StringItem2"));
-            valueTests.put("IntegerListDescriptor", List.of(1, 2, 3));
-            valueTests.put("BooleanListDescriptor", List.of(true, false, true));
+			Map<String, Object> valueTests = new HashMap<>();
+			valueTests.put("StringDescriptor", "StringValue");
+			valueTests.put("IntegerDescriptor", 123);
+			valueTests.put("LongDescriptor", 123L);
+			valueTests.put("FloatDescriptor", 123.45f);
+			valueTests.put("DoubleDescriptor", 123.45);
+			valueTests.put("BooleanDescriptor", true);
+			valueTests.put("LocalTimeDescriptor", LocalTime.now());
+			valueTests.put("LocalDateDescriptor", LocalDate.now());
+			valueTests.put("LocalDateTimeDescriptor", LocalDateTime.now());
+			valueTests.put("ZonedDateTimeDescriptor", ZonedDateTime.now());
+			valueTests.put("DurationDescriptor", Duration.ofHours(1));
+			valueTests.put("PointDescriptor", point);
+			valueTests.put("StringListDescriptor", List.of("StringItem1", "StringItem2"));
+			valueTests.put("IntegerListDescriptor", List.of(1, 2, 3));
+			valueTests.put("BooleanListDescriptor", List.of(true, false, true));
 
-            valueTests.forEach((descriptorName, value) -> {
-                // Create each descriptor in a separate transaction
-                createDescriptor(session, objectId, descriptorName, value);
+			valueTests.forEach((descriptorName, value) -> {
+				// Create each descriptor in a separate transaction
+				createDescriptor(session, objectId, descriptorName, value);
 
-                // Verify: Descriptor node was created
-                session.writeTransaction(tx -> {
-                    Result result = tx.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: $descriptorName, value: $value}) RETURN d",
-                                           Map.of("namespaceName", namespaceName, "descriptorName", descriptorName, "value", value));
-                    assertTrue("Descriptor node should exist with correct value", result.hasNext());
-                    tx.commit();
-                    return null;
-                });
-            });
-        }
-    }
+				// Verify: Descriptor node was created
+				session.writeTransaction(tx -> {
+					Result result = tx.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: $descriptorName, value: $value}) RETURN d",
+										   Map.of("namespaceName", namespaceName, "descriptorName", descriptorName, "value", value));
+					assertTrue("Descriptor node should exist with correct value", result.hasNext());
+					tx.commit();
+					return null;
+				});
+			});
+		}
+	}
 
 }
