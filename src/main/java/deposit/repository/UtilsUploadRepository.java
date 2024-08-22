@@ -6,15 +6,15 @@ import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
-public class UtilsResourceRepository extends BaseRepository {
+public class UtilsUploadRepository extends BaseRepository {
 
-	private static UtilsResourceRepository instance;
+	private static UtilsUploadRepository instance;
 	
-	private UtilsResourceRepository() {}
+	private UtilsUploadRepository() {}
 	
-	public static synchronized UtilsResourceRepository getInstance() {
+	public static synchronized UtilsUploadRepository getInstance() {
 		if (instance == null) {
-			instance = new UtilsResourceRepository();
+			instance = new UtilsUploadRepository();
 		}
 		return instance;
 	}

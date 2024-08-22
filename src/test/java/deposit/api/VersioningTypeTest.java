@@ -30,7 +30,7 @@ public class VersioningTypeTest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";  // Set versioning type to 'transient'
-			List<String> objectClasses = List.of("ClassA");
+			String objectClassName = "ClassA";
 
 			session.writeTransaction(tx -> {
 				// Create and set active Namespace with versioning type
@@ -49,8 +49,8 @@ public class VersioningTypeTest extends BaseNeo4jTest {
 
 			// Create an Object
 			session.writeTransaction(tx -> {
-				Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
-						Map.of("classes", objectClasses, "token", token));
+				Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
+						Map.of("className", objectClassName, "token", token));
 
 				String objectId = result.single().get("objectId").asString();
 				assertNotNull("Object ID should not be null", objectId);

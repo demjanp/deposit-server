@@ -21,7 +21,7 @@ public class CreateObjectAPI extends BaseAPI {
 	/**
 	 * Create an Object.
 	 *
-	 * @param classes a list of Class names, needs to contain at least one item.
+	 * @param className the name of the Object's Class.
 	 * @param descriptors Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type or a resource or geometry node. Default is [].
 	 * @param position position of the node in a hierarchical graph layout defined as [x, y], default is [].
 	 * @param token authentication token.
@@ -29,9 +29,9 @@ public class CreateObjectAPI extends BaseAPI {
 	 * @throws RuntimeException if there is an error during the creation.
 	 */
 	@Procedure(name = "deposit.create.object", mode = Mode.WRITE)
-	@Description("CALL deposit.create.object(classes, descriptors, position, token) YIELD node AS object")
+	@Description("CALL deposit.create.object(className, descriptors, position, token) YIELD node AS object")
 	public Stream<NodeResult> createObject(
-			@Name("classes") List<String> classes,
+			@Name("className") String className,
 			@Name(value = "descriptors", defaultValue = "[]") List<List<Object>> descriptors,
 			@Name(value = "position", defaultValue = "[]") List<Double> position,
 			@Name(value = "token", defaultValue = "") String token) {
@@ -44,7 +44,7 @@ public class CreateObjectAPI extends BaseAPI {
 		}
 		
 		CreateObjectService service = CreateObjectService.getInstance();
-		Node node = service.createObject(tx, classes, descriptors, position, token);
+		Node node = service.createObject(tx, className, descriptors, position, token);
 		return Stream.of(new NodeResult(node));
 	}
 }

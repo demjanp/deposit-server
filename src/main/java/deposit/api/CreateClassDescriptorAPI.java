@@ -22,7 +22,7 @@ public class CreateClassDescriptorAPI extends BaseAPI {
 	 *
 	 * @param className the name of the Class.
 	 * @param descriptorName the name of the Descriptor to create.
-	 * @param type can be the name of any Neo4j or Deposit type.
+	 * @param type can be the name of any Neo4j type or DResource.
 	 * @param order an order of the Descriptor when represented in a list, default is -1.
 	 * @param comment annotation to provide additional information about the Descriptor, default is an empty string.
 	 * @param token authentication token.

@@ -1,8 +1,6 @@
 package deposit.service;
 
 import deposit.repository.GetClassMembersRepository;
-import deposit.repository.GetObjectClassesRepository;
-import deposit.repository.DeleteMembershipRepository;
 import deposit.repository.GetClassDescriptorRepository;
 import deposit.repository.DeleteClassDescriptorByIdRepository;
 import deposit.repository.GetClassRelationshipRepository;
@@ -18,8 +16,6 @@ public class EnsureClassDeletionService extends BaseService {
 
 	private static EnsureClassDeletionService instance;
 	private final GetClassMembersRepository getClassMembersRepository;
-	private final GetObjectClassesRepository getObjectClassesRepository;
-	private final DeleteMembershipRepository deleteMembershipRepository;
 	private final EnsureObjectDeletionService ensureObjectDeletionService;
 	private final GetClassDescriptorRepository getClassDescriptorRepository;
 	private final DeleteClassDescriptorByIdRepository deleteClassDescriptorByIdRepository;
@@ -29,8 +25,6 @@ public class EnsureClassDeletionService extends BaseService {
 
 	private EnsureClassDeletionService() {
 		this.getClassMembersRepository = GetClassMembersRepository.getInstance();
-		this.getObjectClassesRepository = GetObjectClassesRepository.getInstance();
-		this.deleteMembershipRepository = DeleteMembershipRepository.getInstance();
 		this.ensureObjectDeletionService = EnsureObjectDeletionService.getInstance();
 		this.getClassDescriptorRepository = GetClassDescriptorRepository.getInstance();
 		this.deleteClassDescriptorByIdRepository = DeleteClassDescriptorByIdRepository.getInstance();
@@ -48,16 +42,11 @@ public class EnsureClassDeletionService extends BaseService {
 
 	public void ensureClassDeletion(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className) {
 		
-		// Delete all Memberships of Objects in this Class and delete all Objects which are members solely of this Class
+		// Delete all Objects which are members of this Class
 		Stream<Node> objects = getClassMembersRepository.getClassMembers(tx, namespaceName, className);
 		objects.forEach(object -> {
 			String objectId = String.valueOf(object.getProperty("id"));
-			Stream<Node> classes = getObjectClassesRepository.getObjectClasses(tx, namespaceName, objectId);
-			if (classes.count() == 1) {
-				ensureObjectDeletionService.ensureObjectDeletion(tx, timeStamp, username, namespaceName, versioningType, objectId);
-			} else {
-				deleteMembershipRepository.deleteMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
-			}
+			ensureObjectDeletionService.ensureObjectDeletion(tx, timeStamp, username, namespaceName, versioningType, objectId);
 		});
 		
 		// Delete all Class Descriptors

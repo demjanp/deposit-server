@@ -16,13 +16,10 @@ class FileSystemTest {
 
 	private FileSystem fileSystem;
 
-	@TempDir
-	Path tempDir; // Temporary directory for test storage
-
 	@BeforeEach
-	void setUp(@TempDir Path tempDir) throws FileSystemException {
-		// Use a separate temporary directory for each test
-		System.setProperty("user.home", tempDir.toString());
+	void setUp() throws FileSystemException {
+		String homeDir = System.getProperty("java.io.tmpdir").toString() + "Deposit_Testing";
+		System.setProperty("user.home", homeDir);
 		fileSystem = FileSystem.getInstance();
 	}
 

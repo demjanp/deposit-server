@@ -1,6 +1,6 @@
 package deposit.api;
 
-import deposit.service.UtilsResourceService;
+import deposit.service.UtilsUploadService;
 import deposit.common.result.NodeResult;
 
 import org.neo4j.procedure.Context;
@@ -13,7 +13,7 @@ import org.neo4j.graphdb.Node;
 
 import java.util.stream.Stream;
 
-public class UtilsResourceAPI extends BaseAPI {
+public class UtilsUploadAPI extends BaseAPI {
 	
 	@Context
 	public Transaction tx;
@@ -26,13 +26,13 @@ public class UtilsResourceAPI extends BaseAPI {
 	 * @return the created DResource node.
 	 * @throws RuntimeException if there was an error uploading the file.
 	 */
-	@Procedure(name = "deposit.utils.resource", mode = Mode.WRITE)
-	@Description("CALL deposit.utils.resource(stream, filename, token) YIELD resource")
+	@Procedure(name = "deposit.utils.upload", mode = Mode.WRITE)
+	@Description("CALL deposit.utils.upload(stream, filename, token) YIELD resource")
 	public Stream<NodeResult> utilsResource(
 			@Name("stream") String stream,
 			@Name("filename") String filename,
 			@Name(value = "token", defaultValue = "") String token) {
-		UtilsResourceService service = UtilsResourceService.getInstance();
+		UtilsUploadService service = UtilsUploadService.getInstance();
 		Node node = service.utilsResource(tx, stream, filename, token);
 		return Stream.of(new NodeResult(node));
 	}

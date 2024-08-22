@@ -24,7 +24,7 @@ public class CreateDescriptorAPI extends BaseAPI {
 	 *
 	 * @param objectId the Id of the Object.
 	 * @param descriptorName the name of the Descriptor to create.
-	 * @param value can be of any Neo4j or Deposit type.
+	 * @param value can be of any Neo4j type or a DResource node.
 	 * @param token authentication token.
 	 * @return the created Descriptor node.
 	 * @throws RuntimeException if a Descriptor with that name already exists for the Object or if there is an error during the creation.

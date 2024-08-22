@@ -7,7 +7,6 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,10 +36,10 @@ public class DeleteObjectAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private Map<String, String> createObjectAndDescriptor(Session session, String namespaceName, List<String> objectClasses, String descriptorName, String descriptorValue) {
+	private Map<String, String> createObjectAndDescriptor(Session session, String namespaceName, String objectClassName, String descriptorName, String descriptorValue) {
 		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
-					Map.of("classes", objectClasses, "token", token));
+			Result result = tx.run("CALL deposit.create.object($objectClassName, [], [], $token) YIELD node RETURN node.id AS objectId",
+					Map.of("objectClassName", objectClassName, "token", token));
 			String objectId = result.single().get("objectId").asString();
 
 			tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
@@ -69,13 +68,13 @@ public class DeleteObjectAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";
-			List<String> objectClasses = List.of("TestClass");
+			String objectClassName = "TestClass";
 
 			createNamespace(session, namespaceName, versioningType);
-			Map<String, String> objectData = createObjectAndDescriptor(session, namespaceName, objectClasses, "TestDescriptor", "TestValue");
+			Map<String, String> objectData = createObjectAndDescriptor(session, namespaceName, objectClassName, "TestDescriptor", "TestValue");
 			String objectId = objectData.get("objectId");
 
-			String endObjectId = createObjectAndDescriptor(session, namespaceName, objectClasses, "EndDescriptor", "EndValue").get("objectId");
+			String endObjectId = createObjectAndDescriptor(session, namespaceName, objectClassName, "EndDescriptor", "EndValue").get("objectId");
 			createRelationship(session, objectId, endObjectId, "RELATES_TO");
 
 			// Call the delete.object procedure
@@ -115,11 +114,11 @@ public class DeleteObjectAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";
-			List<String> objectClasses = List.of("TestClass");
+			String objectClassName = "TestClass";
 
 			createNamespace(session, namespaceName, versioningType);
-			Map<String, String> objectData1 = createObjectAndDescriptor(session, namespaceName, objectClasses, "Descriptor1", "Value1");
-			Map<String, String> objectData2 = createObjectAndDescriptor(session, namespaceName, objectClasses, "Descriptor2", "Value2");
+			Map<String, String> objectData1 = createObjectAndDescriptor(session, namespaceName, objectClassName, "Descriptor1", "Value1");
+			Map<String, String> objectData2 = createObjectAndDescriptor(session, namespaceName, objectClassName, "Descriptor2", "Value2");
 
 			String objectIdToDelete = objectData1.get("objectId");
 			String objectIdToKeep = objectData2.get("objectId");

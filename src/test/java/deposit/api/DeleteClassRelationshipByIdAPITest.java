@@ -102,12 +102,12 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 			// Step 2: Create Objects for Start and End Classes
 			session.writeTransaction(tx -> {
 				// Create Start Object
-				Result startResult = tx.run("CALL deposit.create.object([$startClassName], [], [], $token) YIELD node RETURN node.id AS startObjectId",
+				Result startResult = tx.run("CALL deposit.create.object($startClassName, [], [], $token) YIELD node RETURN node.id AS startObjectId",
 											Map.of("startClassName", startClassName, "token", token));
 				String startObjectId = startResult.single().get("startObjectId").asString();
 
 				// Create End Object
-				Result endResult = tx.run("CALL deposit.create.object([$endClassName], [], [], $token) YIELD node RETURN node.id AS endObjectId",
+				Result endResult = tx.run("CALL deposit.create.object($endClassName, [], [], $token) YIELD node RETURN node.id AS endObjectId",
 										  Map.of("endClassName", endClassName, "token", token));
 				String endObjectId = endResult.single().get("endObjectId").asString();
 

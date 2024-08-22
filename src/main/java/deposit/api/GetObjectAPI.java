@@ -20,19 +20,19 @@ public class GetObjectAPI extends BaseAPI {
 	/**
 	 * Get existing Object nodes which match the parameters (all if no parameters are given).
 	 *
-	 * @param classes a list of Class names, default is [].
-	 * @param descriptors Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j or Deposit type. Default is [].
+	 * @param className a list of Class names, default is [].
+	 * @param descriptors Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type. Default is [].
 	 * @param token authentication token.
 	 * @return the Object node(s) or null if it doesn't exist.
 	 * @throws RuntimeException if there was an error retrieving the node(s).
 	 */
 	@Procedure(name = "deposit.get.object", mode = Mode.READ)
-	@Description("CALL deposit.get.object(classes, descriptors, token) YIELD node AS object")
+	@Description("CALL deposit.get.object(className, descriptors, token) YIELD node AS object")
 	public Stream<NodeResult> getObject(
-			@Name(value = "classes", defaultValue = "[]") List<String> classes,
+			@Name(value = "className", defaultValue = "") String className,
 			@Name(value = "descriptors", defaultValue = "[]") List<List<Object>> descriptors,
 			@Name(value = "token", defaultValue = "") String token) {
 		GetObjectService service = GetObjectService.getInstance();
-		return service.getObject(tx, classes, descriptors, token).map(NodeResult::new);
+		return service.getObject(tx, className, descriptors, token).map(NodeResult::new);
 	}
 }

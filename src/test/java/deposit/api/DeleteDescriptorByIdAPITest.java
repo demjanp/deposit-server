@@ -7,7 +7,6 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,7 +25,7 @@ public class DeleteDescriptorByIdAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
-	private Map<String, String> createNamespaceAndDescriptor(Session session, String namespaceName, List<String> objectClasses, String descriptorName, Object descriptorValue) {
+	private Map<String, String> createNamespaceAndDescriptor(Session session, String namespaceName, String objectClassName, String descriptorName, Object descriptorValue) {
 		return session.writeTransaction(tx -> {
 			// Create and set active Namespace with versioning set to 'transient'
 			tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", 
@@ -35,8 +34,8 @@ public class DeleteDescriptorByIdAPITest extends BaseNeo4jTest {
 					Map.of("namespaceName", namespaceName, "token", token));
 			
 			// Create Object
-			Result objectResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
-										 Map.of("classes", objectClasses, "token", token));
+			Result objectResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
+										 Map.of("className", objectClassName, "token", token));
 			String objectId = objectResult.single().get("objectId").asString();
 
 			// Create Descriptor
@@ -53,11 +52,11 @@ public class DeleteDescriptorByIdAPITest extends BaseNeo4jTest {
 	public void shouldDeleteDescriptorById() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
-			List<String> objectClasses = List.of("ClassA");
+			String objectClassName = "ClassA";
 			String descriptorName = "TestDescriptor";
 			Object descriptorValue = "TestValue";
 
-			Map<String, String> ids = createNamespaceAndDescriptor(session, namespaceName, objectClasses, descriptorName, descriptorValue);
+			Map<String, String> ids = createNamespaceAndDescriptor(session, namespaceName, objectClassName, descriptorName, descriptorValue);
 			String descriptorId = ids.get("descriptorId");
 
 			session.writeTransaction(tx -> {
@@ -79,11 +78,11 @@ public class DeleteDescriptorByIdAPITest extends BaseNeo4jTest {
 	public void shouldDeleteDescriptorByName() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
-			List<String> objectClasses = List.of("ClassA");
+			String objectClassName = "ClassA";
 			String descriptorName = "TestDescriptor";
 			Object descriptorValue = "TestValue";
 
-			Map<String, String> ids = createNamespaceAndDescriptor(session, namespaceName, objectClasses, descriptorName, descriptorValue);
+			Map<String, String> ids = createNamespaceAndDescriptor(session, namespaceName, objectClassName, descriptorName, descriptorValue);
 			String objectId = ids.get("objectId");
 			
 			session.writeTransaction(tx -> {

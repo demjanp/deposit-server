@@ -1,7 +1,7 @@
 package deposit.service;
 
 import deposit.repository.CreateObjectRepository;
-import deposit.repository.CreateMembershipRepository;
+import deposit.repository.SetMembershipRepository;
 import deposit.repository.CreateDescriptorRepository;
 import deposit.common.ServerContext;
 
@@ -16,13 +16,13 @@ public class CreateObjectService extends BaseService {
 	private static CreateObjectService instance;
 	private final CreateObjectRepository createObjectRepository;
 	private final EnsureClassService ensureClassService;
-	private final CreateMembershipRepository createMembershipRepository;
+	private final SetMembershipRepository setMembershipRepository;
 	private final CreateDescriptorRepository createDescriptorRepository;
 	
 	private CreateObjectService() {
 		this.createObjectRepository = CreateObjectRepository.getInstance();
 		this.ensureClassService = EnsureClassService.getInstance();
-		this.createMembershipRepository = CreateMembershipRepository.getInstance();
+		this.setMembershipRepository = SetMembershipRepository.getInstance();
 		this.createDescriptorRepository = CreateDescriptorRepository.getInstance();
 	}
 
@@ -33,15 +33,13 @@ public class CreateObjectService extends BaseService {
 		return instance;
 	}
 	
-	public Node createObject(Transaction tx, List<String> classes, List<List<Object>> descriptors, List<Double> position, String token) {
+	public Node createObject(Transaction tx, String className, List<List<Object>> descriptors, List<Double> position, String token) {
 		
 		validateToken(token);
-		if (classes == null || classes.isEmpty()) {
-			throwException("Cannot create Object without specifying at least one Class.");
+		if (className.isEmpty()) {
+			throwException("Cannot create Object without specifying a Class.");
 		}
-		for (String className : classes) {
-			validateName(className);
-		}
+		validateName(className);
 		validateDescriptors(descriptors);
 		position = validatePosition(position);
 		
@@ -55,10 +53,10 @@ public class CreateObjectService extends BaseService {
 		
 		Node node = createObjectRepository.createObject(tx, timeStamp, username, namespaceName, versioningType, position);
 		String objectId = (String) node.getProperty("id");
-		for (String className : classes) {
-			ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className);
-			createMembershipRepository.createMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
-		}
+		
+		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className);
+		setMembershipRepository.setMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
+		
 		for (List<Object> descriptorList : descriptors) {
 			String descriptorName = (String) descriptorList.get(0);
 			Object value = descriptorList.get(1);

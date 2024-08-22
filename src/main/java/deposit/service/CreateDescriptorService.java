@@ -37,7 +37,8 @@ public class CreateDescriptorService extends BaseService {
 			throwException("Cannot create Descriptor without an active Namespace.");
 		}
 		
-		// TODO : Ensure that all of the Object's Classes have a Class Descriptor with the same name and type (if not, create it)
+		// TODO : If the Object's Class has a Descriptor with the given name, check if the value is of the same type
+		// TODO : If the Object's Class doesn't have a Descriptor with the given name, create it
 		
 		return createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value);
 	}

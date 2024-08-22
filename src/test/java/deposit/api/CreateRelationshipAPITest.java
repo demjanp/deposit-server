@@ -25,7 +25,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
-	private Map<String, String> createNamespaceAndObjects(Session session, String namespaceName, List<String> startObjectClasses, List<String> endObjectClasses, String versioningType) {
+	private Map<String, String> createNamespaceAndObjects(Session session, String namespaceName, String startObjectClassName, String endObjectClassName, String versioningType) {
 		return session.writeTransaction(tx -> {
 			// Create and set active Namespace with versioning type
 			tx.run("CALL deposit.create.namespace($namespaceName, '', $versioningType, $token)",
@@ -35,13 +35,13 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			ServerContext.setActiveNamespace(namespaceName, token);
 
 			// Create Start Object
-			Result startResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS startObjectId",
-										Map.of("classes", startObjectClasses, "token", token));
+			Result startResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS startObjectId",
+										Map.of("className", startObjectClassName, "token", token));
 			String startObjectId = startResult.single().get("startObjectId").asString();
 
 			// Create End Object
-			Result endResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS endObjectId",
-									  Map.of("classes", endObjectClasses, "token", token));
+			Result endResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS endObjectId",
+									  Map.of("className", endObjectClassName, "token", token));
 			String endObjectId = endResult.single().get("endObjectId").asString();
 
 			tx.commit();
@@ -55,12 +55,12 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";  // Set versioning type to 'transient'
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
-			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClasses, endObjectClasses, versioningType);
+			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClassName, endObjectClassName, versioningType);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 
@@ -91,12 +91,12 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";  // Set versioning type to 'transient'
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
-			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClasses, endObjectClasses, versioningType);
+			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClassName, endObjectClassName, versioningType);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 
@@ -130,12 +130,12 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";  // Set versioning type to 'transient'
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 			String label = "RELATES_TO";
 			Double weight = null;  // Weight is null
 
-			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClasses, endObjectClasses, versioningType);
+			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClassName, endObjectClassName, versioningType);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 
@@ -169,11 +169,11 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";  // Set versioning type to 'transient'
-			List<String> objectClasses = List.of("ClassA");
+			String objectClassName = "ClassA";
 			String label = "RELATES_TO";
 			Double weight = 1.0;
 
-			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, objectClasses, objectClasses, versioningType);
+			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, objectClassName, objectClassName, versioningType);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 

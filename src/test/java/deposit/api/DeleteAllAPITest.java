@@ -97,7 +97,7 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 
 	private String createObjectWithClass(Session session, String namespaceName, String className) {
 		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.object([$className], [], [], $token) YIELD node RETURN node.id AS objectId",
+			tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
 					Map.of("className", className, "token", token));
 			tx.commit();
 			return null;

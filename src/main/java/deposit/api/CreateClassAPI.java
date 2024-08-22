@@ -25,7 +25,7 @@ public class CreateClassAPI extends BaseAPI {
 	 * @param order an order of the Class when represented in a list, default is -1.
 	 * @param position position of the node in a hierarchical graph layout defined as [x, y], default is [].
 	 * @param comment annotation to provide additional information about the Class, default is an empty string.
-	 * @param descriptors Descriptors of the Class defined as a list of lists [[<name>, <type>] or [<name>, <type>, <comment>], ...], where <name> is the name of the Descriptor, <type> is any Neo4j or Deposit type and comment is an annotation. Default is [].
+	 * @param descriptors Descriptors of the Class defined as a list of lists [[<name>, <type>] or [<name>, <type>, <comment>], ...], where <name> is the name of the Descriptor, <type> is any Neo4j type or DResource and comment is an annotation. Default is [].
 	 * @param token authentication token.
 	 * @return the created Class node.
 	 * @throws RuntimeException if a Class with that name already exists or if there is an error during the creation.

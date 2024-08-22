@@ -25,7 +25,7 @@ public class GetObjectService extends BaseService {
 		return instance;
 	}
 
-	public Stream<Node> getObject(Transaction tx, List<String> classes, List<List<Object>> descriptors, String token) {
+	public Stream<Node> getObject(Transaction tx, String className, List<List<Object>> descriptors, String token) {
 		
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
@@ -33,6 +33,6 @@ public class GetObjectService extends BaseService {
 			throwException("Cannot retrieve Objects without an active Namespace.");
 		}
 		
-		return getObjectRepository.getObject(tx, namespaceName, classes, descriptors);
+		return getObjectRepository.getObject(tx, namespaceName, className, descriptors);
 	}
 }

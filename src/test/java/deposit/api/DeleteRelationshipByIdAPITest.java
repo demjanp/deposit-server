@@ -7,7 +7,6 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,7 +25,7 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
-	private Map<String, String> createNamespaceAndRelationship(Session session, String namespaceName, List<String> startObjectClasses, List<String> endObjectClasses) {
+	private Map<String, String> createNamespaceAndRelationship(Session session, String namespaceName, String startObjectClassName, String endObjectClassName) {
 		return session.writeTransaction(tx -> {
 			// Create and set active Namespace with versioning set to 'transient'
 			tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", 
@@ -35,13 +34,13 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 					Map.of("namespaceName", namespaceName, "token", token));
 			
 			// Create Start Object
-			Result startResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS startObjectId",
-										Map.of("classes", startObjectClasses, "token", token));
+			Result startResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS startObjectId",
+										Map.of("className", startObjectClassName, "token", token));
 			String startObjectId = startResult.single().get("startObjectId").asString();
 
 			// Create End Object
-			Result endResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS endObjectId",
-									  Map.of("classes", endObjectClasses, "token", token));
+			Result endResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS endObjectId",
+									  Map.of("className", endObjectClassName, "token", token));
 			String endObjectId = endResult.single().get("endObjectId").asString();
 
 			// Create Relationship
@@ -60,10 +59,10 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 	public void shouldDeleteRelationshipById() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 
-			Map<String, String> ids = createNamespaceAndRelationship(session, namespaceName, startObjectClasses, endObjectClasses);
+			Map<String, String> ids = createNamespaceAndRelationship(session, namespaceName, startObjectClassName, endObjectClassName);
 			String relationshipId = ids.get("relationshipId");
 
 			session.writeTransaction(tx -> {
@@ -85,10 +84,10 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 	public void shouldDeleteRelationshipByName() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 
-			Map<String, String> ids = createNamespaceAndRelationship(session, namespaceName, startObjectClasses, endObjectClasses);
+			Map<String, String> ids = createNamespaceAndRelationship(session, namespaceName, startObjectClassName, endObjectClassName);
 			String startObjectId = ids.get("startObjectId");
 			String endObjectId = ids.get("endObjectId");
 			String label = "RELATES_TO";

@@ -7,7 +7,6 @@ import org.junit.Test;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -36,10 +35,10 @@ public class GetObjectAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private String createObject(Session session, List<String> classes) {
+	private String createObject(Session session, String className) {
 		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
-					Map.of("classes", classes, "token", token));
+			Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
+					Map.of("className", className, "token", token));
 			String objectId = result.single().get("objectId").asString();
 			tx.commit();
 			return objectId;
@@ -62,43 +61,43 @@ public class GetObjectAPITest extends BaseNeo4jTest {
 			createNamespace(session, namespaceName, "transient");
 			
 			// Create first object with class "ClassA" and descriptor "DescriptorA" with value "ValueA"
-			List<String> classA = List.of("ClassA");
+			String classA = "ClassA";
 			String objectIdA = createObject(session, classA);
 			createDescriptor(session, objectIdA, "DescriptorA", "ValueA");
 
 			// Create second object with class "ClassB" and descriptor "DescriptorB" with value "ValueB"
-			List<String> classB = List.of("ClassB");
+			String classB = "ClassB";
 			String objectIdB = createObject(session, classB);
 			createDescriptor(session, objectIdB, "DescriptorB", "ValueB");
 
 			// Create third object with class "ClassC" and descriptor "DescriptorC" with value "ValueC"
-			List<String> classC = List.of("ClassC");
+			String classC = "ClassC";
 			String objectIdC = createObject(session, classC);
 			createDescriptor(session, objectIdC, "DescriptorC", "ValueC");
 
 			// Test case: Filter by class "ClassB"
-			Result resultClassB = session.run("CALL deposit.get.object($classes, [], $token) YIELD node RETURN node.id AS objectId",
-					Map.of("classes", classB, "token", token));
+			Result resultClassB = session.run("CALL deposit.get.object($className, [], $token) YIELD node RETURN node.id AS objectId",
+					Map.of("className", classB, "token", token));
 
 			assertTrue("Only one object should be returned when filtering by ClassB", resultClassB.hasNext());
 			assertEquals("Object ID should match the object with ClassB", objectIdB, resultClassB.single().get("objectId").asString());
 
 			// Test case: Filter by descriptor "DescriptorA" with value "ValueA"
-			Result resultDescriptorA = session.run("CALL deposit.get.object([], [['DescriptorA', 'ValueA']], $token) YIELD node RETURN node.id AS objectId",
+			Result resultDescriptorA = session.run("CALL deposit.get.object('', [['DescriptorA', 'ValueA']], $token) YIELD node RETURN node.id AS objectId",
 					Map.of("token", token));
 
 			assertTrue("Only one object should be returned when filtering by DescriptorA and ValueA", resultDescriptorA.hasNext());
 			assertEquals("Object ID should match the object with DescriptorA and ValueA", objectIdA, resultDescriptorA.single().get("objectId").asString());
 
 			// Test case: Filter by class "ClassC" and descriptor "DescriptorC" with value "ValueC"
-			Result resultClassCAndDescriptorC = session.run("CALL deposit.get.object($classes, [['DescriptorC', 'ValueC']], $token) YIELD node RETURN node.id AS objectId",
-					Map.of("classes", classC, "token", token));
+			Result resultClassCAndDescriptorC = session.run("CALL deposit.get.object($className, [['DescriptorC', 'ValueC']], $token) YIELD node RETURN node.id AS objectId",
+					Map.of("className", classC, "token", token));
 
 			assertTrue("Only one object should be returned when filtering by ClassC and DescriptorC with ValueC", resultClassCAndDescriptorC.hasNext());
 			assertEquals("Object ID should match the object with ClassC and DescriptorC with ValueC", objectIdC, resultClassCAndDescriptorC.single().get("objectId").asString());
 
 			// Test case: No object should be returned if class and descriptor do not match
-			Result resultNoMatch = session.run("CALL deposit.get.object(['NonExistingClass'], [['NonExistingDescriptor', 'WrongValue']], $token) YIELD node RETURN node.id AS objectId",
+			Result resultNoMatch = session.run("CALL deposit.get.object('NonExistingClass', [['NonExistingDescriptor', 'WrongValue']], $token) YIELD node RETURN node.id AS objectId",
 					Map.of("token", token));
 
 			assertTrue("No object should be returned when both class and descriptor do not match", !resultNoMatch.hasNext());
@@ -112,22 +111,22 @@ public class GetObjectAPITest extends BaseNeo4jTest {
 			createNamespace(session, namespaceName, "transient");
 
 			// Create first object with class "ClassA" and descriptor "DescriptorA" with value "ValueA"
-			List<String> classA = List.of("ClassA");
+			String classA = "ClassA";
 			String objectIdA = createObject(session, classA);
 			createDescriptor(session, objectIdA, "DescriptorA", "ValueA");
 
 			// Create second object with class "ClassB" and descriptor "DescriptorB" with value "ValueB"
-			List<String> classB = List.of("ClassB");
+			String classB = "ClassB";
 			String objectIdB = createObject(session, classB);
 			createDescriptor(session, objectIdB, "DescriptorB", "ValueB");
 
 			// Create third object with class "ClassC" and descriptor "DescriptorC" with value "ValueC"
-			List<String> classC = List.of("ClassC");
+			String classC = "ClassC";
 			String objectIdC = createObject(session, classC);
 			createDescriptor(session, objectIdC, "DescriptorC", "ValueC");
 
 			// Test case: Return all objects when no parameters are specified
-			Result result = session.run("CALL deposit.get.object([], [], $token) YIELD node RETURN node.id AS objectId",
+			Result result = session.run("CALL deposit.get.object('', [], $token) YIELD node RETURN node.id AS objectId",
 					Map.of("token", token));
 
 			List<String> returnedObjectIds = result.list(r -> r.get("objectId").asString());

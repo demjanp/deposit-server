@@ -15,7 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class FileSystem {
 	
-	private static int TIMEOUT = 60; // seconds
+	private static final int TIMEOUT = 60; // seconds
 	
 	private static FileSystem instance;
 	
@@ -45,9 +45,9 @@ public class FileSystem {
 
 		String userHome = System.getProperty("user.home");
 
-		String transientStoragePath = Paths.get(userHome, "deposit_transient_storage").toString();
-		String permanentStoragePath = Paths.get(userHome, "deposit_permanent_storage").toString();
-		String archiveStoragePath = Paths.get(userHome, "deposit_archive_storage").toString();
+		String transientStoragePath = Paths.get(userHome, "Deposit", "transient_storage").toString();
+		String permanentStoragePath = Paths.get(userHome, "Deposit", "permanent_storage").toString();
+		String archiveStoragePath = Paths.get(userHome, "Deposit", "archive_storage").toString();
 
 		try {
 			transientStorage = fsManager.resolveFile(transientStoragePath);
@@ -60,12 +60,11 @@ public class FileSystem {
 		} catch (FileSystemException e) {
 			ExceptionHandler.throwException("Failed to initialize storage directories", e);
 		}
+
+		clearTransient();
+		// TODO : delete all orphaned files from the permanent and archive storage
 	}
-	
-	public static void setTimeout(int timeout) {
-		TIMEOUT = timeout;
-	}
-	
+
 	// Stores a stream (base64 encoded string) as a file in the transient storage and returns the generated filename
 	public static String storeFile(String base64Content, String originalFilename) {
 		return executeWithLock(() -> {
@@ -174,7 +173,7 @@ public class FileSystem {
 			try {
 				FileObject sourceFile = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
 				FileObject destFile = archiveStorage.resolveFile(generateHashBasedSubdir(newFilename) + "/" + newFilename);
-				
+
 				if (destFile.exists()) {
 					// File has already been moved to the archive by another transaction
 					return newFilename;
@@ -266,17 +265,6 @@ public class FileSystem {
 				ExceptionHandler.throwException("Failed to clear transient storage", e);
 				return null;
 			}
-		});
-	}
-	
-	public static String testTimeout(int delay) {
-		return executeWithLock(() -> {
-			try {
-				Thread.sleep(delay);
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
-			}
-			return null;
 		});
 	}
 	

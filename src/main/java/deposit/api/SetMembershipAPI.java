@@ -1,6 +1,6 @@
 package deposit.api;
 
-import deposit.service.CreateMembershipService;
+import deposit.service.SetMembershipService;
 import deposit.common.result.MembershipResult;
 
 import org.neo4j.procedure.Context;
@@ -13,12 +13,12 @@ import org.neo4j.graphdb.Relationship;
 
 import java.util.stream.Stream;
 
-public class CreateMembershipAPI extends BaseAPI {
+public class SetMembershipAPI extends BaseAPI {
 
 	@Context
 	public Transaction tx;
 	/**
-	 * Create a Class Membership.
+	 * Set the Membership of an Object in a Class.
 	 *
 	 * @param className the name of the Class.
 	 * @param objectId the Id of the Object.
@@ -26,14 +26,14 @@ public class CreateMembershipAPI extends BaseAPI {
 	 * @return the created Membership relationship.
 	 * @throws RuntimeException if the Membership already exists or if there is an error during the creation.
 	 */
-	@Procedure(name = "deposit.create.membership", mode = Mode.WRITE)
-	@Description("CALL deposit.create.membership(className, objectId, token) YIELD membership")
+	@Procedure(name = "deposit.set.membership", mode = Mode.WRITE)
+	@Description("CALL deposit.set.membership(className, objectId, token) YIELD membership")
 	public Stream<MembershipResult> createMembership(
 			@Name("className") String className,
 			@Name("objectId") String objectId,
 			@Name(value = "token", defaultValue = "") String token) {
-		CreateMembershipService service = CreateMembershipService.getInstance();
-		Relationship relationship = service.createMembership(tx, className, objectId, token);
+		SetMembershipService service = SetMembershipService.getInstance();
+		Relationship relationship = service.setMembership(tx, className, objectId, token);
 		return Stream.of(new MembershipResult(relationship));
 	}
 }

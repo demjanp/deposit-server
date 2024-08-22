@@ -8,7 +8,6 @@ import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.types.Node;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -38,16 +37,16 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private Map<String, String> createObjects(Session session, List<String> startObjectClasses, List<String> endObjectClasses) {
+	private Map<String, String> createObjects(Session session, String startObjectClassName, String endObjectClassName) {
 		return session.writeTransaction(tx -> {
 			// Create Start Object
-			Result startResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS startObjectId",
-										Map.of("classes", startObjectClasses, "token", token));
+			Result startResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS startObjectId",
+										Map.of("className", startObjectClassName, "token", token));
 			String startObjectId = startResult.single().get("startObjectId").asString();
 
 			// Create End Object
-			Result endResult = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS endObjectId",
-									  Map.of("classes", endObjectClasses, "token", token));
+			Result endResult = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS endObjectId",
+									  Map.of("className", endObjectClassName, "token", token));
 			String endObjectId = endResult.single().get("endObjectId").asString();
 
 			tx.commit();
@@ -61,13 +60,13 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
 			createNamespace(session, namespaceName, versioningType);
-			Map<String, String> objectIds = createObjects(session, startObjectClasses, endObjectClasses);
+			Map<String, String> objectIds = createObjects(session, startObjectClassName, endObjectClassName);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 
@@ -114,13 +113,13 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
 			createNamespace(session, namespaceName, versioningType);
-			Map<String, String> objectIds = createObjects(session, startObjectClasses, endObjectClasses);
+			Map<String, String> objectIds = createObjects(session, startObjectClassName, endObjectClassName);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 
@@ -152,13 +151,13 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses1 = List.of("ClassB");
-			List<String> endObjectClasses2 = List.of("ClassC");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName1 = "ClassB";
+			String endObjectClassName2 = "ClassC";
 
 			createNamespace(session, namespaceName, versioningType);
-			Map<String, String> objectIds1 = createObjects(session, startObjectClasses, endObjectClasses1);
-			Map<String, String> objectIds2 = createObjects(session, startObjectClasses, endObjectClasses2);
+			Map<String, String> objectIds1 = createObjects(session, startObjectClassName, endObjectClassName1);
+			Map<String, String> objectIds2 = createObjects(session, startObjectClassName, endObjectClassName2);
 			String startObjectId = objectIds1.get("startObjectId");
 			String endObjectId1 = objectIds1.get("endObjectId");
 			String endObjectId2 = objectIds2.get("endObjectId");
@@ -204,13 +203,13 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String versioningType = "transient";
-			List<String> startObjectClasses = List.of("ClassA");
-			List<String> endObjectClasses = List.of("ClassB");
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
 			createNamespace(session, namespaceName, versioningType);
-			Map<String, String> objectIds = createObjects(session, startObjectClasses, endObjectClasses);
+			Map<String, String> objectIds = createObjects(session, startObjectClassName, endObjectClassName);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
 

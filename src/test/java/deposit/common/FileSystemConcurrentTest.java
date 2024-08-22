@@ -1,6 +1,5 @@
 package deposit.common;
 
-import org.apache.commons.vfs2.FileSystemException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,15 +14,15 @@ import java.util.ArrayList;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class FileSystemConcurrentTest {
 
 	private FileSystem fileSystem;
 
 	@BeforeEach
-	void setUp(@TempDir Path tempDir) throws Exception {
-		System.setProperty("user.home", tempDir.toString());
+	void setUp() throws Exception {
+		String homeDir = System.getProperty("java.io.tmpdir").toString() + "Deposit_Testing";
+		System.setProperty("user.home", homeDir);
 		fileSystem = FileSystem.getInstance();
 	}
 
@@ -168,34 +167,6 @@ class FileSystemConcurrentTest {
 		}
 
 		CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-	}
-
-	@Test
-	void testTimeoutMechanism() throws ExecutionException, InterruptedException, FileSystemException {
-		String originalFilename = "testFile.txt";
-		String content = "This is a test file.";
-		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
-
-		FileSystem fileSystem2 = FileSystem.getInstance();
-		String generatedFilename = fileSystem2.storeFile(base64Content, originalFilename);
-		fileSystem2.setTimeout(1);
-
-		// Task 1 will hold the lock for 10 seconds, which is longer than the 5-second timeout
-		CompletableFuture<Void> longRunningTask = CompletableFuture.runAsync(() -> {
-			fileSystem2.testTimeout(3000); // Acquires the lock
-		});
-
-		// Give the first task time to acquire the lock
-		Thread.sleep(500);
-
-		// Task 2 will attempt to acquire the lock, but should time out after 5 seconds
-		CompletableFuture<Void> timeoutTask = CompletableFuture.runAsync(() -> {
-			RuntimeException exception = assertThrows(RuntimeException.class, () -> fileSystem2.readFromPermanent(generatedFilename));
-			assertTrue(exception.getMessage().contains("Timeout: Could not acquire lock within 1 seconds."));
-		});
-
-		// Wait for both tasks to complete
-		CompletableFuture.allOf(longRunningTask, timeoutTask).get();
 	}
 
 	private String createTestFile() {

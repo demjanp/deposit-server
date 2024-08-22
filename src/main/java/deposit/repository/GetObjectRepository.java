@@ -23,7 +23,7 @@ public class GetObjectRepository extends BaseRepository {
 		return instance;
 	}
 
-	public Stream<Node> getObject(Transaction tx, String namespaceName, List<String> classes, List<List<Object>> descriptors) {
+	public Stream<Node> getObject(Transaction tx, String namespaceName, String className, List<List<Object>> descriptors) {
 		StringBuilder matchQuery = new StringBuilder();
 		Map<String, Object> params = new HashMap<>();
 
@@ -31,10 +31,9 @@ public class GetObjectRepository extends BaseRepository {
 		matchQuery.append("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(existing:Object)");
 
 		// Handle classes if provided
-		if (classes != null && !classes.isEmpty()) {
-			matchQuery.append("-[:MEMBER_OF]->(class:Class)");
-			matchQuery.append(" WHERE class.name IN $classNames");
-			params.put("classNames", classes);
+		if (!className.isEmpty()) {
+			matchQuery.append("-[:MEMBER_OF]->(class:Class {name: $className})");
+			params.put("className", className);
 		}
 
 		// Handle descriptors if provided

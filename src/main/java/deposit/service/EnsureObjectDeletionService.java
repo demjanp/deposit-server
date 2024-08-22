@@ -5,7 +5,7 @@ import deposit.repository.GetDescriptorRepository;
 import deposit.repository.DeleteDescriptorByIdRepository;
 import deposit.repository.GetRelationshipRepository;
 import deposit.repository.DeleteRelationshipByIdRepository;
-import deposit.repository.GetObjectClassesRepository;
+import deposit.repository.GetObjectClassRepository;
 import deposit.repository.DeleteMembershipRepository;
 
 import org.neo4j.graphdb.Transaction;
@@ -22,7 +22,7 @@ public class EnsureObjectDeletionService extends BaseService {
 	private final DeleteDescriptorByIdRepository deleteDescriptorByIdRepository;
 	private final GetRelationshipRepository getRelationshipRepository;
 	private final DeleteRelationshipByIdRepository deleteRelationshipByIdRepository;
-	private final GetObjectClassesRepository getObjectClassesRepository;
+	private final GetObjectClassRepository getObjectClassRepository;
 	private final DeleteMembershipRepository deleteMembershipRepository;
 
 	private EnsureObjectDeletionService() {
@@ -31,7 +31,7 @@ public class EnsureObjectDeletionService extends BaseService {
 		this.deleteDescriptorByIdRepository = DeleteDescriptorByIdRepository.getInstance();
 		this.getRelationshipRepository = GetRelationshipRepository.getInstance();
 		this.deleteRelationshipByIdRepository = DeleteRelationshipByIdRepository.getInstance();
-		this.getObjectClassesRepository = GetObjectClassesRepository.getInstance();
+		this.getObjectClassRepository = GetObjectClassRepository.getInstance();
 		this.deleteMembershipRepository = DeleteMembershipRepository.getInstance();
 	}
 
@@ -56,11 +56,9 @@ public class EnsureObjectDeletionService extends BaseService {
 			deleteRelationshipByIdRepository.deleteRelationshipById(tx, timeStamp, username, namespaceName, versioningType, relationshipId);
 		});
 		
-		Stream<Node> classes = getObjectClassesRepository.getObjectClasses(tx, namespaceName, objectId);
-		classes.forEach(classNode -> {
-			String className = String.valueOf(classNode.getProperty("name"));
-			deleteMembershipRepository.deleteMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
-		});
+		Node classNode = getObjectClassRepository.getObjectClass(tx, namespaceName, objectId);
+		String className = String.valueOf(classNode.getProperty("name"));
+		deleteMembershipRepository.deleteMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
 		
 		deleteObjectRepository.deleteObject(tx, timeStamp, username, namespaceName, versioningType, objectId);
 	}

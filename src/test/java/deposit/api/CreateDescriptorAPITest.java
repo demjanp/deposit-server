@@ -31,13 +31,13 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
         token = ServerContext.getInstance().generateToken("testUser");
     }
 
-    private String createNamespaceAndObject(Session session, String namespaceName, List<String> classes) {
+    private String createNamespaceAndObject(Session session, String namespaceName, String className) {
         return session.writeTransaction(tx -> {
             tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
             tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
 
-            Result result = tx.run("CALL deposit.create.object($classes, [], [], $token) YIELD node RETURN node.id AS objectId",
-                                   Map.of("classes", classes, "token", token));
+            Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
+                                   Map.of("className", className, "token", token));
             String objectId = result.single().get("objectId").asString();
 
             tx.commit();
@@ -59,9 +59,9 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
     public void shouldCreateDescriptorWithVariousValueTypes() {
         try (Session session = driver.session()) {
             String namespaceName = "TestNamespace";
-            List<String> classes = List.of("TestClass");
+            String className = "TestClass";
 
-            String objectId = createNamespaceAndObject(session, namespaceName, classes);
+            String objectId = createNamespaceAndObject(session, namespaceName, className);
 
             // Create a Point using Neo4j's Values.point() method to ensure correct type
             Value point = Values.point(4326, 40.785091, -73.968285);
