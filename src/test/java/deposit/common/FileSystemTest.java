@@ -1,14 +1,20 @@
 package deposit.common;
 
-import org.apache.commons.vfs2.FileObject;
 import org.apache.commons.vfs2.FileSystemException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.time.ZonedDateTime;
 import java.util.Base64;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -269,5 +275,113 @@ class FileSystemTest {
 
 		String decodedContent = new String(Base64.getDecoder().decode(retrievedContent));
 		assertEquals(content, decodedContent, "Retrieved content should match the original content");
+	}
+
+	@Test
+	void testStoreFileWithFileLocking() throws Exception {
+		String originalFilename = "lockedFile.txt";
+		String content = "This is a test file.";
+		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
+
+		// Simulate another process locking the file
+		File file = new File(System.getProperty("user.home") + "/Deposit/transient_storage/" + originalFilename);
+		file.getParentFile().mkdirs(); // Ensure the directory exists
+
+		try (RandomAccessFile raFile = new RandomAccessFile(file, "rw");
+			 FileChannel channel = raFile.getChannel();
+			 FileLock lock = channel.lock()) {
+
+			// Start a thread that will attempt to store the file while it's locked
+			ExecutorService executor = Executors.newSingleThreadExecutor();
+			Future<String> future = executor.submit(() -> fileSystem.storeFile(base64Content, originalFilename));
+
+			// Wait for a short time to simulate the lock being held by another process
+			TimeUnit.SECONDS.sleep(2);
+
+			// Unlock the file to allow the file system to proceed
+			lock.release();
+
+			// Ensure that the store operation completes
+			String generatedFilename = future.get();
+			assertNotNull(generatedFilename, "Generated filename should not be null");
+		}
+	}
+
+	@Test
+	void testRetrieveFileWithFileLocking() throws Exception {
+		String originalFilename = "lockedRetrieveFile.txt";
+		String content = "This is a test file.";
+		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
+
+		// Store the file normally
+		String generatedFilename = fileSystem.storeFile(base64Content, originalFilename);
+
+		// Simulate another process locking the file
+		File file = new File(System.getProperty("user.home") + "/Deposit/transient_storage/" + generatedFilename);
+		try (RandomAccessFile raFile = new RandomAccessFile(file, "rw");
+			 FileChannel channel = raFile.getChannel();
+			 FileLock lock = channel.lock()) {
+
+			// Start a thread that will attempt to retrieve the file while it's locked
+			ExecutorService executor = Executors.newSingleThreadExecutor();
+			Future<String> future = executor.submit(() -> fileSystem.readFromTransient(generatedFilename));
+
+			// Wait for a short time to simulate the lock being held by another process
+			TimeUnit.SECONDS.sleep(2);
+
+			// Unlock the file to allow the file system to proceed
+			lock.release();
+
+			// Ensure that the retrieve operation completes and the content matches
+			String retrievedContent = future.get();
+			assertNotNull(retrievedContent, "Retrieved content should not be null");
+
+			String decodedContent = new String(Base64.getDecoder().decode(retrievedContent));
+			assertEquals(content, decodedContent, "Retrieved content should match the original content");
+		}
+	}
+
+	@Test
+	void testDeleteFileWithFileLocking() throws Exception {
+		String originalFilename = "lockedDeleteFile.txt";
+		String content = "This is a test file.";
+		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
+
+		// Store the file normally
+		String generatedFilename = fileSystem.storeFile(base64Content, originalFilename);
+
+		// Simulate another process locking the file
+		File file = new File(System.getProperty("user.home") + "/Deposit/transient_storage/" + generatedFilename);
+		try (RandomAccessFile raFile = new RandomAccessFile(file, "rw");
+			 FileChannel channel = raFile.getChannel()) {
+
+			// Acquire the lock
+			FileLock lock = channel.lock();
+
+			// Start a thread that will attempt to delete the file while it's locked
+			ExecutorService executor = Executors.newSingleThreadExecutor();
+			Future<Void> future = executor.submit(() -> {
+				fileSystem.clearTransient();
+				return null;
+			});
+
+			// Wait for a short time to simulate the lock being held by another process
+			TimeUnit.SECONDS.sleep(2);
+
+			// Release the lock
+			lock.release();
+
+			raFile.close();
+
+			// Ensure that the delete operation completes without throwing an exception
+			future.get();
+
+			// Verify that the file no longer exists
+			assertThrows(RuntimeException.class, () -> fileSystem.readFromTransient(generatedFilename),
+					"Expected RuntimeException when reading a deleted file");
+		} catch (Exception e) {
+			e.printStackTrace(); // Log the error for debugging
+			throw e; // Re-throw the exception to fail the test if needed
+		}
 	}
 }

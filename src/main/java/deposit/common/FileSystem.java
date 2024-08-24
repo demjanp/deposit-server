@@ -1,6 +1,8 @@
 package deposit.common;
 
 import org.apache.commons.vfs2.*;
+import org.apache.commons.vfs2.FileNotFoundException;
+
 import java.nio.file.Paths;
 import java.io.*;
 import java.time.ZonedDateTime;
@@ -13,7 +15,9 @@ import java.util.concurrent.locks.ReentrantLock;
 public class FileSystem {
 	
 	private static final int TIMEOUT = 60; // seconds
-
+	private static final int MAX_RETRIES = 5;
+    private static final long INITIAL_WAIT_TIME_MS = 1000; // 1 second
+	
 	private static final Map<String, String> IMAGE_FORMATS = new HashMap<>();
 
 	static {
@@ -119,6 +123,9 @@ public class FileSystem {
 		return executeWithLock(() -> {
 			try {
 				FileObject file = transientStorage.resolveFile(filename);
+				if (!file.exists()) {
+					ExceptionHandler.throwException("File does not exist: " + file.getName().getURI());
+				}
 				try (InputStream is = file.getContent().getInputStream()) {
 					byte[] data = is.readAllBytes();
 					return Base64.getEncoder().encodeToString(data);
@@ -161,10 +168,12 @@ public class FileSystem {
 
 				if (!sourceFile.exists()) {
 					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
+					return null;
 				}
 
 				if (destFile.exists()) {
 					ExceptionHandler.throwException("Destination file already exists: " + destFile.getName().getURI());
+					return null;
 				}
 
 				try {
@@ -331,13 +340,68 @@ public class FileSystem {
 		return filename.replaceAll("[^a-zA-Z0-9.\\-]", "_");
 	}
 	
-	private static <T> T executeWithLock(Supplier<T> operation) {
+	private static <T> T __executeWithLock(Supplier<T> operation) {
 		boolean acquired = false;
 		T result = null;
 		try {
 			acquired = lock.tryLock(TIMEOUT, TimeUnit.SECONDS);
 			if (acquired) {
 				result = operation.get();
+			} else {
+				ExceptionHandler.throwException("Timeout: Could not acquire lock within " + TIMEOUT + " seconds.");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			ExceptionHandler.throwException("Thread was interrupted while waiting to acquire lock", e);
+		} finally {
+			if (acquired) {
+				lock.unlock();
+			}
+		}
+		return result;
+	}
+	
+	private static <T> T executeWithLock(Supplier<T> operation) {
+		boolean acquired = false;
+		T result = null;
+		int attempt = 0;
+		long waitTimeMillis = INITIAL_WAIT_TIME_MS;
+
+		try {
+			// Attempt to acquire the lock with a timeout
+			acquired = lock.tryLock(TIMEOUT, TimeUnit.SECONDS);
+			if (acquired) {
+				while (attempt < MAX_RETRIES) {
+					try {
+						// Reset the exception flag before each operation
+						ExceptionHandler.resetExceptionHandledFlag();
+						
+						// Try to execute the operation
+						result = operation.get();
+						break; // Exit loop if successful
+					} catch (Exception e) {
+						// If ExceptionHandler has handled the exception, do not retry
+						if (!ExceptionHandler.hasExceptionBeenHandled()) {
+							throw e; // Rethrow the exception if it's non-retryable
+						}
+
+						attempt++;
+						if (attempt >= MAX_RETRIES) {
+							ExceptionHandler.throwException("Operation failed after " + MAX_RETRIES + " attempts", e);
+						} else {
+							// Log and wait before retrying
+							System.err.println("Attempt " + attempt + " failed. Retrying in " + waitTimeMillis + "ms...");
+							try {
+								Thread.sleep(waitTimeMillis);
+							} catch (InterruptedException ie) {
+								Thread.currentThread().interrupt();
+								ExceptionHandler.throwException("Thread was interrupted during retry backoff", ie);
+							}
+							// Increase wait time for the next attempt
+							waitTimeMillis *= 2;
+						}
+					}
+				}
 			} else {
 				ExceptionHandler.throwException("Timeout: Could not acquire lock within " + TIMEOUT + " seconds.");
 			}

@@ -12,7 +12,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.List;
 import java.util.ArrayList;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 class FileSystemConcurrentTest {
@@ -25,17 +25,33 @@ class FileSystemConcurrentTest {
 		System.setProperty("user.home", homeDir);
 		fileSystem = FileSystem.getInstance();
 	}
-
+	
 	@Test
 	void testConcurrentReadFromPermanent() throws ExecutionException, InterruptedException {
-		String filename = createTestFile();
+		String filename = createTestFile(); // Ensure this creates and stores a file in the system
+		String expectedContent = "This is a test file."; // Original content
 
-		List<CompletableFuture<Void>> tasks = new ArrayList<>();
+		// List to hold CompletableFutures that return the file content
+		List<CompletableFuture<String>> tasks = new ArrayList<>();
+
 		for (int i = 0; i < 5; i++) {
-			tasks.add(CompletableFuture.runAsync(() -> assertDoesNotThrow(() -> fileSystem.readFromPermanent(filename))));
+			tasks.add(CompletableFuture.supplyAsync(() -> {
+				// Return the content read from the file
+				return assertDoesNotThrow(() -> fileSystem.readFromPermanent(filename));
+			}));
 		}
 
-		CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+		// Wait for all tasks to complete
+		CompletableFuture<Void> allTasks = CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]));
+		allTasks.get(); // Blocking wait for all tasks to finish
+
+		// Validate the content read by each task
+		for (CompletableFuture<String> task : tasks) {
+			String retrievedContent = task.get(); // Get the content read by this task
+			assertNotNull("Content should not be null", retrievedContent);
+			String decodedContent = new String(Base64.getDecoder().decode(retrievedContent));
+			assertEquals("Content read by task should match the original content", expectedContent, decodedContent );
+		}
 	}
 
 	@Test
