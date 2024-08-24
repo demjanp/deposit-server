@@ -48,9 +48,7 @@ public class CreateClassRepository extends BaseRepository {
 				position: $position,
 				comment: $comment,
 				createdAt: $timeStamp,
-				createdBy: $username,
-				updatedAt: $timeStamp,
-				updatedBy: $username
+				createdBy: $username
 			})
 			WITH updated
 			MATCH (namespace:Namespace {name: $namespaceName})

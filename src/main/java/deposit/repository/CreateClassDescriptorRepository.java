@@ -45,12 +45,11 @@ public class CreateClassDescriptorRepository extends BaseRepository {
 			CREATE (updated:Descriptor {
 				id: randomUUID(),
 				name: $descriptorName,
+				type: $type,
 				order: $order,
 				comment: $comment,
 				createdAt: $timeStamp,
-				createdBy: $username,
-				updatedAt: $timeStamp,
-				updatedBy: $username
+				createdBy: $username
 			})
 			WITH updated
 			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Class {name: $className})

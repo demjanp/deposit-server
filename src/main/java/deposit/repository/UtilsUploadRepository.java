@@ -21,11 +21,11 @@ public class UtilsUploadRepository extends BaseRepository {
 	
     public Node utilsResource(Transaction tx, String stream, String filename) {
         String storedFilename = FileSystem.storeFile(stream, filename);
-        boolean isImage = false; // TODO: implement checking if resource is an image
+        String imageFormat = FileSystem.getImageFormat(filename);
         Node node = tx.createNode(Label.label("DResource"));
         node.setProperty("filename", filename);
         node.setProperty("storedFilename", storedFilename);
-        node.setProperty("isImage", isImage);
+        node.setProperty("imageFormat", imageFormat);
         return node;
     }
 }

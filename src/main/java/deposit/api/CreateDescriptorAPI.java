@@ -20,8 +20,6 @@ public class CreateDescriptorAPI extends BaseAPI {
 	/**
 	 * Create a Descriptor.
 	 *
-	 * If the Object is a member of multiple Classes and the descriptors of those Classes overlap, the first Class returned by deposit.getObjectClasses applies
-	 *
 	 * @param objectId the Id of the Object.
 	 * @param descriptorName the name of the Descriptor to create.
 	 * @param value can be of any Neo4j type or a DResource node.

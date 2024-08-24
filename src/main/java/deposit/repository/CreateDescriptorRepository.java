@@ -25,21 +25,23 @@ public class CreateDescriptorRepository extends BaseRepository {
 		return instance;
 	}
 	
-    public Node createDescriptor(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String objectId, String descriptorName, Object value) {
-		String validateQuery = """
-			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $objectId})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $descriptorName}) RETURN existing
-		""";
-		try {
-			Result validation = tx.execute(validateQuery, Map.of(
-				"namespaceName", namespaceName,
-				"objectId", objectId,
-				"descriptorName", descriptorName
-			));
-			if (validation.hasNext()) {
-				throwException("Error creating Descriptor. A Descriptor with the name: " + descriptorName + " already exists for Object" + objectId + ".");
+	public Node createDescriptor(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String objectId, String descriptorName, Object value, Boolean update) {
+		if (!update) {
+			String validateQuery = """
+				MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $objectId})-[:HAS_DESCRIPTOR]->(existing:Descriptor {name: $descriptorName}) RETURN existing
+			""";
+			try {
+				Result validation = tx.execute(validateQuery, Map.of(
+					"namespaceName", namespaceName,
+					"objectId", objectId,
+					"descriptorName", descriptorName
+				));
+				if (validation.hasNext()) {
+					throwException("Error creating Descriptor. A Descriptor with the name: " + descriptorName + " already exists for Object" + objectId + ".");
+				}
+			} catch (Exception e) {
+				throwException("Error creating Descriptor with name: " + descriptorName, e);
 			}
-		} catch (Exception e) {
-			throwException("Error creating Descriptor with name: " + descriptorName, e);
 		}
 		
 		Map<String, Object> params = new HashMap<>();
@@ -50,23 +52,37 @@ public class CreateDescriptorRepository extends BaseRepository {
 		params.put("descriptorName", descriptorName);
 		params.put("value", value);
 		
-		String createQuery = """
-			CREATE (updated:Descriptor {
-				id: randomUUID(),
-				name: $descriptorName,
-				value: $value,
-				createdAt: $timeStamp,
-				createdBy: $username,
-				updatedAt: $timeStamp,
-				updatedBy: $username
-			})
-			WITH updated
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Object {id: $objectId})
-			WITH namespace, parent, updated
-			MERGE (parent)-[:HAS_DESCRIPTOR]->(updated)
-			WITH namespace, parent, updated
-		""";
-		createQuery += Versioning.getElementUpdateCode("Descriptor", false, versioningType);
+		String updateQuery;
+		if (update) {
+			updateQuery = """
+				MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Object {id: $objectId})
+				MERGE (parent)-[:HAS_DESCRIPTOR]->(updated:Descriptor {name: $descriptorName})
+				ON CREATE SET
+					updated.id = randomUUID(),
+					updated.value = $value,
+					updated.createdAt = $timeStamp,
+					updated.createdBy = $username
+				ON MATCH SET
+					updated.value = $value
+				WITH namespace, parent, updated
+			""";
+		} else {
+			updateQuery = """
+				CREATE (updated:Descriptor {
+					id: randomUUID(),
+					name: $descriptorName,
+					value: $value,
+					createdAt: $timeStamp,
+					createdBy: $username
+				})
+				WITH updated
+				MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Object {id: $objectId})
+				WITH namespace, parent, updated
+				MERGE (parent)-[:HAS_DESCRIPTOR]->(updated)
+				WITH namespace, parent, updated
+			""";
+		}
+		updateQuery += Versioning.getElementUpdateCode("Descriptor", false, versioningType);
 		
 		String storedFilename = "";
 		
@@ -80,18 +96,18 @@ public class CreateDescriptorRepository extends BaseRepository {
 					
 					params.put("filename", filename);
 					params.put("storedFilename", storedFilename);
-					params.put("isImage", node.getProperty("isImage").toString());
+					params.put("imageFormat", node.getProperty("imageFormat").toString());
 					
 					FileSystem.moveToPermanent(storedFilename);
 					
 					params.put("value", filename);
 					
-					createQuery += """
+					updateQuery += """
 						WITH updated
 						CREATE (resource:DResource {
 							filename: $filename,
 							storedFilename: $storedFilename,
-							isImage: $isImage
+							imageFormat: $imageFormat
 						})
 						WITH updated, resource
 						CREATE (updated)-[:HAS_RESOURCE]->(resource)
@@ -99,10 +115,10 @@ public class CreateDescriptorRepository extends BaseRepository {
 				}
 			}
 		}
-		
-		createQuery += "RETURN updated";
+		updateQuery += "RETURN updated";
+
 		try {
-			Result result = tx.execute(createQuery, params);
+			Result result = tx.execute(updateQuery, params);
 			if (result.hasNext()) {
 				return (Node) result.next().get("updated");
 			} else {
@@ -114,11 +130,11 @@ public class CreateDescriptorRepository extends BaseRepository {
 			throwException("Error creating Descriptor with name: " + descriptorName, e);
 		}
 		return null;
-    }
-    
-    private void rollbackMoveToPermanent(String filename) {
+	}
+
+	private void rollbackMoveToPermanent(String filename) {
 		if (!filename.isEmpty()) {
 			FileSystem.deleteFromPermanent(filename);
 		}
-    }
+	}
 }

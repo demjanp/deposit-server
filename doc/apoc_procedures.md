@@ -70,7 +70,7 @@ CALL deposit.create.classRelationship(startClassName, endClassName, label, comme
 
 ## deposit.create.descriptor
 
-Create a Descriptor.  If the Object is a member of multiple Classes and the descriptors of those Classes overlap, the first Class returned by deposit.getObjectClasses applies
+Create a Descriptor.
 
 ### Parameters:
 
@@ -165,7 +165,7 @@ Create a User node.
 
 ### Throws:
 
-- **RuntimeException**: if User node couldn't be created.
+- **RuntimeException**: if the User node couldn't be created.
 
 ### Usage:
 
@@ -998,6 +998,28 @@ Set comment of a Class Descriptor.
 CALL deposit.set.classDescriptorComment(className, descriptorName, comment, token)
 ```
 
+## deposit.set.classRelationship
+
+Create or Update a Class Relationship.
+
+### Parameters:
+
+- **startClassName**: the name of the start Class.
+- **endClassName**: the name of the end Class.
+- **label**: the label of the Relationship.
+- **comment**: annotation to provide additional information about the Relationship, default is an empty string.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error during the update.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classRelationship(startClassName, endClassName, label, comment, token) YIELD node AS relationship
+```
+
 ## deposit.set.classRelationshipComment
 
 Set comment of a Class Relationship.
@@ -1018,6 +1040,27 @@ Set comment of a Class Relationship.
 
 ```cypher
 CALL deposit.set.classRelationshipComment(startClassName, endClassName, label, comment, token)
+```
+
+## deposit.set.descriptor
+
+Create or update a Descriptor.
+
+### Parameters:
+
+- **objectId**: the Id of the Object.
+- **descriptorName**: the name of the Descriptor to set.
+- **value**: can be of any Neo4j type or a DResource node.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error creating or updating the Descriptor.
+
+### Usage:
+
+```cypher
+CALL deposit.set.descriptor(objectId, descriptorName, value, token) YIELD node AS descriptor
 ```
 
 ## deposit.set.membership
@@ -1057,6 +1100,70 @@ Set description of the active Namespace.
 
 ```cypher
 CALL deposit.set.namespaceDescription(description, token)
+```
+
+## deposit.set.password
+
+Set password for a User node.
+
+### Parameters:
+
+- **username**: the username.
+- **password**: the new password (unhashed).
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if the User node couldn't be updated.
+
+### Usage:
+
+```cypher
+CALL deposit.set.password(username, password, token)
+```
+
+## deposit.set.relationship
+
+Create or Update a Relationship.
+
+### Parameters:
+
+- **startObjectId**: the Id of the start Object.
+- **endObjectId**: the Id of the end Object.
+- **label**: the label of the Relationship.
+- **weight**: the weight of the Relationship, if null is passed it defaults to 0.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error during the update.
+
+### Usage:
+
+```cypher
+CALL deposit.set.relationship(startObjectId, endObjectId, label, weight, token) YIELD node AS relationship
+```
+
+## deposit.set.relationshipWeight
+
+Update the weight of a Relationship.
+
+### Parameters:
+
+- **startObjectId**: the Id of the start Object.
+- **endObjectId**: the Id of the end Object.
+- **label**: the label of the Relationship.
+- **weight**: the weight of the Relationship.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the weight.
+
+### Usage:
+
+```cypher
+CALL deposit.set.relationshipWeight(startObjectId, endObjectId, label, weight, token)
 ```
 
 ## deposit.set.versioningType

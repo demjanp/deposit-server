@@ -1,6 +1,5 @@
 package deposit.service;
 
-import deposit.repository.CreateDescriptorRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -11,10 +10,10 @@ import java.time.ZonedDateTime;
 public class CreateDescriptorService extends BaseService {
 
 	private static CreateDescriptorService instance;
-	private final CreateDescriptorRepository createDescriptorRepository;
+	private final EnsureDescriptorService ensureDescriptorService;
 
 	private CreateDescriptorService() {
-		this.createDescriptorRepository = CreateDescriptorRepository.getInstance();
+		this.ensureDescriptorService = EnsureDescriptorService.getInstance();
 	}
 
 	public static synchronized CreateDescriptorService getInstance() {
@@ -37,9 +36,6 @@ public class CreateDescriptorService extends BaseService {
 			throwException("Cannot create Descriptor without an active Namespace.");
 		}
 		
-		// TODO : If the Object's Class has a Descriptor with the given name, check if the value is of the same type
-		// TODO : If the Object's Class doesn't have a Descriptor with the given name, create it
-		
-		return createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value);
+		return ensureDescriptorService.ensureDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value, false);
 	}
 }

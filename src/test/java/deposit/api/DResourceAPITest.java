@@ -38,7 +38,7 @@ public class DResourceAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldStoreFileAndReturnCorrectNode() {
 		try (Session session = driver.session()) {
-			String originalFilename = "testFile.txt";
+			String originalFilename = "testFile.jpg";
 			String content = "This is a test file.";
 			String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
 
@@ -51,7 +51,7 @@ public class DResourceAPITest extends BaseNeo4jTest {
 				assertEquals("DResource", node.labels().iterator().next(), "Node should have the label 'DResource'.");
 				assertEquals(originalFilename, node.get("filename").asString(), "Filename should match.");
 				assertNotNull(node.get("storedFilename").asString(), "Stored filename should not be null.");
-				assertFalse(node.get("isImage").asBoolean(), "isImage should be false.");
+				assertEquals("JPEG", node.get("imageFormat").asString(), "imageFormat should be JPEG.");
 
 				// Check that the file was created on disk
 				Path storedFilePath = Path.of(homeDir).resolve("Deposit/transient_storage").resolve(node.get("storedFilename").asString());

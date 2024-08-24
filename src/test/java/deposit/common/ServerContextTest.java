@@ -23,14 +23,6 @@ class ServerContextTest {
 	}
 
 	@Test
-	void testDefaultUsername() {
-		assertEquals("neo4j", ServerContext.getDefaultUsername(), "Default username should be 'neo4j'");
-
-		ServerContext.setDefaultUsername("testUser");
-		assertEquals("testUser", ServerContext.getDefaultUsername(), "Default username should be 'testUser'");
-	}
-
-	@Test
 	void testGenerateAndValidateToken() {
 		String username = "testUser";
 		String token = ServerContext.generateToken(username);

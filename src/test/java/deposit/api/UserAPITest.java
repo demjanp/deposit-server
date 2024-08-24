@@ -252,4 +252,58 @@ public class UserAPITest extends BaseNeo4jTest {
 			assertFalse("No user should be retrieved with an invalid userId", result.hasNext());
 		}
 	}
+	
+	@Test
+	public void shouldSetPassword() {
+		try (Session session = driver.session()) {
+			String username = "newUser";
+			String password = "oldPassword123";
+			String newPassword = "newPassword456";
+			//String revertPassword = "password";
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.user($username, $password, $token)",
+						Map.of("username", username, "password", password, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.password($username, $password, $token)",
+						Map.of("username", username, "password", newPassword, "token", token));
+				return null;
+			});
+
+			String newToken = session.writeTransaction(tx -> {
+				Result result = tx.run("CALL deposit.utils.login($username, $password) YIELD value AS token",
+						Map.of("username", username, "password", newPassword));
+				String retrievedToken = result.single().get("token").asString();
+				return retrievedToken;
+			});
+			assertTrue(newToken != null && !newToken.isEmpty());
+		}
+	}
+
+	@Test
+	public void shouldThrowExceptionWhenSettingPasswordForDefaultUser() {
+		try (Session session = driver.session()) {
+			String username = "neo4j";
+			String newPassword = "newPassword456";
+
+			// Test: Try to delete the active user
+			Exception exception = assertThrows(Exception.class, () -> {
+				session.writeTransaction(tx -> {
+					tx.run("CALL deposit.set.password($username, $password, $token)",
+							Map.of("username", username, "password", newPassword, "token", token));
+					return null;
+				});
+			});
+
+			// Verify: Exception message
+			String expectedMessage = "Cannot change password for the default Neo4j username: neo4j";
+			String actualMessage = exception.getMessage();
+			assertTrue("Exception message should indicate that the active user cannot be deleted",
+					actualMessage.contains(expectedMessage));
+		}
+	}
 }

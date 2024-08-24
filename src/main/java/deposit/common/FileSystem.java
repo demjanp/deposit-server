@@ -5,10 +5,7 @@ import java.nio.file.Paths;
 import java.io.*;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -16,13 +13,26 @@ import java.util.concurrent.locks.ReentrantLock;
 public class FileSystem {
 	
 	private static final int TIMEOUT = 60; // seconds
-	
+
+	private static final Map<String, String> IMAGE_FORMATS = new HashMap<>();
+
+	static {
+		IMAGE_FORMATS.put("svg", "SVG");
+		IMAGE_FORMATS.put("png", "PNG");
+		IMAGE_FORMATS.put("jpg", "JPEG");
+		IMAGE_FORMATS.put("jpeg", "JPEG");
+		IMAGE_FORMATS.put("gif", "GIF");
+		IMAGE_FORMATS.put("tif", "TIFF");
+		IMAGE_FORMATS.put("tiff", "TIFF");
+		IMAGE_FORMATS.put("bmp", "BMP");
+	}
+
 	private static FileSystem instance;
 	
 	private static FileObject transientStorage;
 	private static FileObject permanentStorage;
 	private static FileObject archiveStorage;
-	
+
 	private static final ReentrantLock lock = new ReentrantLock(true);
 
 	public static synchronized FileSystem getInstance() throws FileSystemException {
@@ -80,6 +90,16 @@ public class FileSystem {
 			}
 			return generatedFilename;
 		});
+	}
+
+	public static String getImageFormat(String filename) {
+		if (filename == null || !filename.contains(".")) {
+			return "";
+		}
+
+		String extension = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+
+		return IMAGE_FORMATS.getOrDefault(extension, "");
 	}
 
 	// Creates a packaged database (GraphSON + specified files in a zipped directory) based on a GraphSON string and resource filenames and returns a base64 encoded string

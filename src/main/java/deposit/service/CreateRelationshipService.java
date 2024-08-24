@@ -1,20 +1,20 @@
 package deposit.service;
 
-import deposit.repository.CreateRelationshipRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
+import java.util.stream.Stream;
 
 public class CreateRelationshipService extends BaseService {
 
 	private static CreateRelationshipService instance;
-	private final CreateRelationshipRepository createRelationshipRepository;
+	private final EnsureRelationshipService ensureRelationshipService;
 
 	private CreateRelationshipService() {
-		this.createRelationshipRepository = CreateRelationshipRepository.getInstance();
+		this.ensureRelationshipService = EnsureRelationshipService.getInstance();
 	}
 
 	public static synchronized CreateRelationshipService getInstance() {
@@ -26,7 +26,7 @@ public class CreateRelationshipService extends BaseService {
 
 	public Node createRelationship(Transaction tx, String startObjectId, String endObjectId, String label, Double weight, String token) {
 		
-		if (startObjectId == endObjectId) {
+		if (startObjectId.equals(endObjectId)) {
 			throwException("Cannot create a Relationship of an Object with itself.");
 		}
 		validateToken(token);
@@ -41,8 +41,6 @@ public class CreateRelationshipService extends BaseService {
 			throwException("Cannot create a Relationship without an active Namespace.");
 		}
 		
-		// TODO : If Objects don't have the same class, ensure Class Relationships between the Classes of the Objects (implement in repository layer?)
-		
-		return createRelationshipRepository.createRelationship(tx, timeStamp, username, namespaceName, versioningType, startObjectId, endObjectId, label, weight);
+		return ensureRelationshipService.ensureRelationship(tx, timeStamp, username, namespaceName, versioningType, startObjectId, endObjectId, label, weight);
 	}
 }

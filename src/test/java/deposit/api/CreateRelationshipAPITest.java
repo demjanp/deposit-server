@@ -7,9 +7,7 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertNotNull;
@@ -76,13 +74,25 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
-					Map.of("startObjectId", startObjectId,
+			Result resultObject = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel",
+					Map.of("namespaceName", namespaceName,
+						   "startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
 						   "label", label));
 
-			assertTrue("Relationship node should exist with correct label", result.hasNext());
-			assertNotNull("The relationship node should not be null", result.next().get("rel"));
+			assertTrue("Relationship node should exist with correct label", resultObject.hasNext());
+			assertNotNull("The relationship node should not be null", resultObject.next().get("rel"));
+
+			// Verify: Class Relationship node was created
+			Result resultClass = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Class {name: $endClassName}) RETURN rel",
+					Map.of("namespaceName", namespaceName,
+						   "startClassName", startObjectClassName,
+						   "endClassName", endObjectClassName,
+						   "label", label));
+
+			assertTrue("Class Relationship node should exist with correct label", resultClass.hasNext());
+			assertNotNull("The relationship node should not be null", resultClass.next().get("rel"));
+
 		}
 	}
 
@@ -154,8 +164,9 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
-					Map.of("startObjectId", startObjectId,
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
+					Map.of("namespaceName", namespaceName,
+						   "startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
 						   "label", label));
 
@@ -189,13 +200,131 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
-					Map.of("startObjectId", startObjectId,
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
+					Map.of("namespaceName", namespaceName,
+							"startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
 						   "label", label));
 
 			assertTrue("Relationship node should exist with correct label", result.hasNext());
 			assertNotNull("The relationship node should not be null", result.next().get("rel"));
+		}
+	}
+
+	@Test
+	public void shouldUpdateRelationshipWeight() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String versioningType = "transient";  // Set versioning type to 'transient'
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
+			String label = "RELATES_TO";
+			Double initialWeight = 2.5;
+			Double updatedWeight = 5.0;
+
+			// Create Namespace and Objects
+			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClassName, endObjectClassName, versioningType);
+			String startObjectId = objectIds.get("startObjectId");
+			String endObjectId = objectIds.get("endObjectId");
+
+			// Create initial relationship with weight
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+						Map.of("startObjectId", startObjectId,
+							   "endObjectId", endObjectId,
+							   "label", label,
+							   "weight", initialWeight,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Update the weight of the existing relationship
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.relationshipWeight($startObjectId, $endObjectId, $label, $weight, $token)",
+						Map.of("startObjectId", startObjectId,
+							   "endObjectId", endObjectId,
+							   "label", label,
+							   "weight", updatedWeight,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Relationship weight was updated
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
+					Map.of("namespaceName", namespaceName,
+							"startObjectId", startObjectId,
+							"endObjectId", endObjectId,
+							"label", label));
+
+			assertTrue("Relationship node should exist with correct label", result.hasNext());
+			Double retrievedWeight = result.single().get("weight").asDouble();
+			assertTrue("The relationship weight should be updated", updatedWeight.equals(retrievedWeight));
+		}
+	}
+
+	@Test
+	public void shouldCreateOrUpdateRelationship() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String versioningType = "transient";  // Set versioning type to 'transient'
+			String startObjectClassName = "ClassA";
+			String endObjectClassName = "ClassB";
+			String label = "RELATES_TO";
+			Double initialWeight = 2.5;
+			Double updatedWeight = 5.0;
+
+			// Create Namespace and Objects
+			Map<String, String> objectIds = createNamespaceAndObjects(session, namespaceName, startObjectClassName, endObjectClassName, versioningType);
+			String startObjectId = objectIds.get("startObjectId");
+			String endObjectId = objectIds.get("endObjectId");
+
+			// Call the APOC procedure to create or update the relationship
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node AS relationship",
+						Map.of("startObjectId", startObjectId,
+							   "endObjectId", endObjectId,
+							   "label", label,
+							   "weight", initialWeight,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Relationship node was created with the correct initial weight
+			Result initialResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
+					Map.of("namespaceName", namespaceName,
+						   "startObjectId", startObjectId,
+						   "endObjectId", endObjectId,
+						   "label", label));
+
+			assertTrue("Relationship node should exist with correct label after creation", initialResult.hasNext());
+			Double retrievedInitialWeight = initialResult.single().get("weight").asDouble();
+			assertTrue("The relationship weight should match the initial weight", initialWeight.equals(retrievedInitialWeight));
+
+			// Call the APOC procedure again to update the weight of the existing relationship
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node AS relationship",
+						Map.of("startObjectId", startObjectId,
+							   "endObjectId", endObjectId,
+							   "label", label,
+							   "weight", updatedWeight,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Relationship weight was updated
+			Result updatedResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
+					Map.of("namespaceName", namespaceName,
+						   "startObjectId", startObjectId,
+						   "endObjectId", endObjectId,
+						   "label", label));
+
+			assertTrue("Relationship node should exist with correct label after update", updatedResult.hasNext());
+			Double retrievedUpdatedWeight = updatedResult.single().get("weight").asDouble();
+			assertTrue("The relationship weight should be updated to the new value", updatedWeight.equals(retrievedUpdatedWeight));
 		}
 	}
 }

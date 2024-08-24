@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import java.time.*;
 
+import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.values.storable.PointValue;
 import org.neo4j.values.storable.DurationValue;
@@ -20,8 +21,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 public abstract class BaseService {
 	
 	private static final List<String> VALID_TYPES = Arrays.asList(
-			"String", "Integer", "Float", "Boolean", "Date", "Time", "LocalTime", "DateTime", "LocalDateTime",
-			"Duration", "Point", "List", "DResource"
+			"String", "Integer", "Float", "Boolean", "Date", "Time", "LocalDate", "LocalTime", "DateTime", "LocalDateTime",
+			"ZonedDateTime", "Duration", "Point", "List", "DResource"
 	);
 	private static final String NAME_PATTERN = "^[\\p{L}\\p{N}\\-_.~ ]+$";
 	private static final Pattern pattern = Pattern.compile(NAME_PATTERN);
@@ -57,8 +58,7 @@ public abstract class BaseService {
 	protected void throwException(String errorMsg, Exception e) {
 		ExceptionHandler.throwException(errorMsg, e);
 	}
-	
-	
+
 	protected void validateToken(String token) {
 		if (!ServerContext.validateToken(token)) {
 			throwException("Invalid token");
@@ -78,12 +78,6 @@ public abstract class BaseService {
 			UUID.fromString(uuid);
 		} catch (IllegalArgumentException e) {
 			throwException("Invalid ID: " + uuid + ". The ID must be in the format xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx.");
-		}
-	}
-	
-	protected void validateDescriptorTypeName(String typeName) {
-		if (!VALID_TYPES.contains(typeName)) {
-			throwException("Invalid type: " + typeName + ". Must be one of: " + VALID_TYPES);
 		}
 	}
 	
@@ -126,6 +120,25 @@ public abstract class BaseService {
 		}
 	}
 	
+	protected void validateDescriptorTypeName(String typeName) {
+		if (!VALID_TYPES.contains(typeName)) {
+			throwException("Invalid type: " + typeName + ". Must be one of: " + VALID_TYPES);
+		}
+	}
+	
+	private static Boolean isDResource(Object value) {
+		if (value instanceof Node) {
+			Node node = (Node) value;
+			if (node.getLabels().iterator().hasNext()) {
+				Label firstLabel = node.getLabels().iterator().next();
+				if ("DResource".equals(firstLabel.name())) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	
 	protected void validateValue(Object value) {
 		if (value instanceof String ||
 			value instanceof Integer ||
@@ -139,7 +152,7 @@ public abstract class BaseService {
 			value instanceof java.time.ZonedDateTime ||
 			value instanceof DurationValue ||
 			value instanceof PointValue ||
-			value instanceof Node) {
+			isDResource(value)) {
 			// Valid single values that Neo4j supports directly
 		} else if (value instanceof List<?>) {
 			// Validate that all elements in the list are of the same type and are valid Neo4j types
@@ -150,15 +163,44 @@ public abstract class BaseService {
 					if (elementType == null) {
 						elementType = item.getClass();
 					} else if (!elementType.equals(item.getClass())) {
-						throw new IllegalArgumentException("Invalid list: all elements must be of the same type.");
+						throwException("Invalid list: all elements must be of the same type.");
 					}
 					validateValue(item);  // Recursive validation of each list item
 				}
 			}
 		} else {
-			throw new IllegalArgumentException("Invalid value type: " + value.getClass().getName() +
+			throwException("Invalid value type: " + value.getClass().getName() +
 				". The value must be one of the supported Neo4j types.");
 		}
+	}
+	
+	public static String getTypeName(Object value) {
+		if (value == null) {
+			throwException("Value cannot be null");
+		}
+		
+		String simpleName = value.getClass().getSimpleName();
+		
+		if (value instanceof Integer || value instanceof Long) {
+			return "Integer";
+		} else if (value instanceof Float || value instanceof Double) {
+			return "Float";
+		} else if (value instanceof List<?>) {
+			return "List";
+		} else if (isDResource(value)) {
+			return "DResource";
+		} else if (value instanceof DurationValue) {
+			return "Duration";
+		} else if (value instanceof PointValue) {
+			return "Point";
+		}
+		
+		if (VALID_TYPES.contains(simpleName)) {
+			return simpleName;
+		} else {
+			throwException("Unsupported value type: " + value.getClass().getName());
+		}
+		return null;
 	}
 
 	protected void validateDescriptors(List<List<Object>> descriptors) {
@@ -211,5 +253,4 @@ public abstract class BaseService {
 			throwException("Filename exceeds the maximum length of " + MAX_FILENAME_LENGTH + " characters: " + filename);
 		}
 	}
-
 }

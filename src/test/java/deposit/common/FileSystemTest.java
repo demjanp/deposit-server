@@ -47,6 +47,23 @@ class FileSystemTest {
 	}
 
 	@Test
+	void testGetImageFormat() {
+		assertEquals("JPEG", FileSystem.getImageFormat("image.jpg"), "Expected format to be JPEG for .jpg extension");
+		assertEquals("JPEG", FileSystem.getImageFormat("image.jpeg"), "Expected format to be JPEG for .jpeg extension");
+		assertEquals("PNG", FileSystem.getImageFormat("image.png"), "Expected format to be PNG for .png extension");
+		assertEquals("GIF", FileSystem.getImageFormat("image.gif"), "Expected format to be GIF for .gif extension");
+		assertEquals("SVG", FileSystem.getImageFormat("vector.svg"), "Expected format to be SVG for .svg extension");
+		assertEquals("TIFF", FileSystem.getImageFormat("image.tif"), "Expected format to be TIFF for .tif extension");
+		assertEquals("TIFF", FileSystem.getImageFormat("image.tiff"), "Expected format to be TIFF for .tiff extension");
+		assertEquals("BMP", FileSystem.getImageFormat("image.bmp"), "Expected format to be BMP for .bmp extension");
+
+		assertEquals("", FileSystem.getImageFormat("document.pdf"), "Expected empty string for non-image file extensions");
+		assertEquals("", FileSystem.getImageFormat("archive.zip"), "Expected empty string for non-image file extensions");
+		assertEquals("", FileSystem.getImageFormat(""), "Expected empty string for empty filename");
+		assertEquals("", FileSystem.getImageFormat(null), "Expected empty string for null filename");
+	}
+
+	@Test
 	void testMoveToPermanentAndDeleteFromPermanent() {
 		String originalFilename = "testFile.txt";
 		String content = "This is a test file.";

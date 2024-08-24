@@ -2,7 +2,6 @@ package deposit.service;
 
 import deposit.repository.CreateObjectRepository;
 import deposit.repository.SetMembershipRepository;
-import deposit.repository.CreateDescriptorRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -17,13 +16,13 @@ public class CreateObjectService extends BaseService {
 	private final CreateObjectRepository createObjectRepository;
 	private final EnsureClassService ensureClassService;
 	private final SetMembershipRepository setMembershipRepository;
-	private final CreateDescriptorRepository createDescriptorRepository;
+	private final EnsureDescriptorService ensureDescriptorService;
 	
 	private CreateObjectService() {
 		this.createObjectRepository = CreateObjectRepository.getInstance();
 		this.ensureClassService = EnsureClassService.getInstance();
 		this.setMembershipRepository = SetMembershipRepository.getInstance();
-		this.createDescriptorRepository = CreateDescriptorRepository.getInstance();
+		this.ensureDescriptorService = EnsureDescriptorService.getInstance();
 	}
 
 	public static synchronized CreateObjectService getInstance() {
@@ -60,7 +59,7 @@ public class CreateObjectService extends BaseService {
 		for (List<Object> descriptorList : descriptors) {
 			String descriptorName = (String) descriptorList.get(0);
 			Object value = descriptorList.get(1);
-			createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value);
+			ensureDescriptorService.ensureDescriptor(tx, timeStamp, username, namespaceName, versioningType, objectId, descriptorName, value, true);
 		}
 		return node;
 	}

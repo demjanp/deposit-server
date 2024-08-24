@@ -42,6 +42,8 @@ public class Versioning {
 		// Update the Namespace node
 		String queryString = """
 			SET namespace.updatedAt = $timeStamp, namespace.updatedBy = $username
+			WITH namespace, {0}
+			SET updated.updatedAt = $timeStamp, updated.updatedBy = $username
 		""";
 		
 		if (!versioningType.isEmpty()) {

@@ -65,10 +65,11 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel",
-					Map.of("startClassName", startClassName,
-						   "endClassName", endClassName,
-						   "label", label));
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel",
+					Map.of("namespaceName", namespaceName,
+							"startClassName", startClassName,
+							"endClassName", endClassName,
+							"label", label));
 
 			assertTrue("Relationship node should exist with correct label", result.hasNext());
 			assertNotNull("The relationship node should not be null", result.next().get("rel"));
@@ -148,8 +149,9 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Step 3: Verify the Relationship Comment was Updated
-			Result result = session.run("MATCH (cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
-					Map.of("startClassName", startClassName,
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+					Map.of("namespaceName", namespaceName,
+						   "startClassName", startClassName,
 						   "endClassName", endClassName,
 						   "label", label));
 
@@ -159,4 +161,63 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 		}
 	}
 
+	@Test
+	public void shouldCreateOrUpdateClassRelationship() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String startClassName = "StartClass";
+			String endClassName = "EndClass";
+			String label = "RELATES_TO";
+			String initialComment = "Initial comment.";
+			String updatedComment = "Updated comment.";
+
+			// Step 1: Create Namespace, Classes, and Relationship with initial comment
+			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
+
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+						Map.of("startClassName", startClassName,
+							   "endClassName", endClassName,
+							   "label", label,
+							   "comment", initialComment,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Relationship node was created with the initial comment
+			Result initialResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+					Map.of("namespaceName", namespaceName,
+						   "startClassName", startClassName,
+						   "endClassName", endClassName,
+						   "label", label));
+
+			assertTrue("Relationship node should exist with the initial comment", initialResult.hasNext());
+			String returnedInitialComment = initialResult.next().get("comment").asString();
+			assertTrue("The comment should match the initial comment", initialComment.equals(returnedInitialComment));
+
+			// Step 2: Update the comment of the existing relationship
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.set.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+						Map.of("startClassName", startClassName,
+							   "endClassName", endClassName,
+							   "label", label,
+							   "comment", updatedComment,
+							   "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Relationship comment was updated
+			Result updatedResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+					Map.of("namespaceName", namespaceName,
+						   "startClassName", startClassName,
+						   "endClassName", endClassName,
+						   "label", label));
+
+			assertTrue("Relationship node should exist with the updated comment", updatedResult.hasNext());
+			String returnedUpdatedComment = updatedResult.next().get("comment").asString();
+			assertTrue("The comment should be the updated one", updatedComment.equals(returnedUpdatedComment));
+		}
+	}
 }

@@ -55,9 +55,7 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 				updated.label = $label,
 				updated.comment = $comment,
 				updated.createdAt = $timeStamp,
-				updated.createdBy = $username,
-				updated.updatedAt = $timeStamp,
-				updated.updatedBy = $username
+				updated.createdBy = $username
 			WITH namespace, source, target, updated
 		""";
 		createQuery += Versioning.getElementUpdateCode("ClassRelationship", false, versioningType);

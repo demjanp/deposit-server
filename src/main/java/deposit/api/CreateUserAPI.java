@@ -24,7 +24,7 @@ public class CreateUserAPI extends BaseAPI {
 	 * @param password password (unhashed).
 	 * @param token authentication token.
 	 * @return the created User node.
-	 * @throws RuntimeException if User node couldn't be created.
+	 * @throws RuntimeException if the User node couldn't be created.
 	 */
 	@Procedure(name = "deposit.create.user", mode = Mode.WRITE)
 	@Description("CALL deposit.create.user(username, password, token) YIELD node AS user")

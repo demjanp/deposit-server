@@ -1,6 +1,5 @@
 package deposit.service;
 
-import deposit.repository.CreateClassRelationshipRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -11,12 +10,10 @@ import java.time.ZonedDateTime;
 public class CreateClassRelationshipService extends BaseService {
 
 	private static CreateClassRelationshipService instance;
-	private final CreateClassRelationshipRepository createClassRelationshipRepository;
-	private final EnsureClassService ensureClassService;
+	private final EnsureClassRelationshipService ensureClassRelationshipService;
 
 	private CreateClassRelationshipService() {
-		this.createClassRelationshipRepository = CreateClassRelationshipRepository.getInstance();
-		this.ensureClassService = EnsureClassService.getInstance();
+		this.ensureClassRelationshipService = EnsureClassRelationshipService.getInstance();
 	}
 
 	public static synchronized CreateClassRelationshipService getInstance() {
@@ -27,7 +24,6 @@ public class CreateClassRelationshipService extends BaseService {
 	}
 
 	public Node createClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String comment, String token) {
-		
 		if (startClassName == endClassName) {
 			throwException("Cannot create a Class Relationship within the same Class.");
 		}
@@ -43,8 +39,6 @@ public class CreateClassRelationshipService extends BaseService {
 			throwException("Cannot create a Class Relationship without an active Namespace.");
 		}
 		
-		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, startClassName);
-		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, endClassName);
-		return createClassRelationshipRepository.createClassRelationship(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label, comment);
+		return ensureClassRelationshipService.ensureClassRelationship(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label, comment);
 	}
 }
