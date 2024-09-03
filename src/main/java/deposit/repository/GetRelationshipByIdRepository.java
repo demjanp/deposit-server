@@ -38,6 +38,6 @@ public class GetRelationshipByIdRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error retrieving Relationship", e);
 		}
-		return null;		
+		return null;
 	}
 }
