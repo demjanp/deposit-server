@@ -27,7 +27,9 @@ public class GetClassRepository extends BaseRepository {
 		
 		if (className.isEmpty()) {
 			matchQuery = """
-				MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(existing:Class) RETURN existing
+				MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(existing:Class)
+				RETURN existing
+				ORDER BY existing.order
 			""";
 			params = Map.of("namespaceName", namespaceName);
 		} else {

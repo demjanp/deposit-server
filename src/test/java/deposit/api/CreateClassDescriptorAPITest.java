@@ -7,7 +7,6 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
@@ -125,7 +124,7 @@ public class CreateClassDescriptorAPITest extends BaseNeo4jTest {
 			var result = session.run("MATCH (d:Descriptor {name: $descriptorName}) RETURN d.order as order, d.comment as comment", Map.of("descriptorName", descriptorName));
 			assertTrue(result.hasNext());
 			var record = result.next();
-			assertEquals(-1L, record.get("order").asLong());
+			assertEquals(1L, record.get("order").asLong());
 			assertEquals("", record.get("comment").asString());
 		}
 	}
@@ -163,6 +162,82 @@ public class CreateClassDescriptorAPITest extends BaseNeo4jTest {
 										Map.of("descriptorName", descriptorName));
 			assertTrue(result.hasNext());
 			assertEquals(newComment, result.next().get("comment").asString());
+		}
+	}
+
+	@Test
+	public void shouldCreateClassDescriptorWithCorrectOrderWhenOrderIsMinusOne() {
+		try (Session session = driver.session()) {
+			// Setup: Create a Namespace and a Class to contain the Descriptors
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Test: Create Descriptors with order = -1 (should auto-increment)
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.classDescriptor($className, 'Descriptor1', 'String', -1, '', $token)",
+						Map.of("className", className, "token", token));
+				tx.run("CALL deposit.create.classDescriptor($className, 'Descriptor2', 'String', -1, '', $token)",
+						Map.of("className", className, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: The Descriptors should have orders 1 and 2 respectively
+			var result1 = session.run("MATCH (d:Descriptor {name: 'Descriptor1'}) RETURN d.order as order");
+			assertTrue(result1.hasNext());
+			assertEquals(1L, result1.next().get("order").asLong());
+
+			var result2 = session.run("MATCH (d:Descriptor {name: 'Descriptor2'}) RETURN d.order as order");
+			assertTrue(result2.hasNext());
+			assertEquals(2L, result2.next().get("order").asLong());
+		}
+	}
+
+	@Test
+	public void shouldIncrementOrderOfExistingDescriptorsWhenOrderIsSpecified() {
+		try (Session session = driver.session()) {
+			// Setup: Create a Namespace and a Class to contain the Descriptors
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)", Map.of("className", className, "token", token));
+				tx.run("CALL deposit.create.classDescriptor($className, 'Descriptor1', 'String', 1, '', $token)",
+						Map.of("className", className, "token", token));
+				tx.run("CALL deposit.create.classDescriptor($className, 'Descriptor2', 'String', 2, '', $token)",
+						Map.of("className", className, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Test: Insert a new Descriptor with order = 1
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.classDescriptor($className, 'NewDescriptor', 'String', 1, '', $token)",
+						Map.of("className", className, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Orders of existing Descriptors should have been incremented
+			var result1 = session.run("MATCH (d:Descriptor {name: 'NewDescriptor'}) RETURN d.order as order");
+			assertTrue(result1.hasNext());
+			assertEquals(1L, result1.next().get("order").asLong());
+
+			var result2 = session.run("MATCH (d:Descriptor {name: 'Descriptor1'}) RETURN d.order as order");
+			assertTrue(result2.hasNext());
+			assertEquals(2L, result2.next().get("order").asLong());
+
+			var result3 = session.run("MATCH (d:Descriptor {name: 'Descriptor2'}) RETURN d.order as order");
+			assertTrue(result3.hasNext());
+			assertEquals(3L, result3.next().get("order").asLong());
 		}
 	}
 }

@@ -8,6 +8,9 @@ import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
 import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class EnsureClassService extends BaseService {
@@ -29,9 +32,17 @@ public class EnsureClassService extends BaseService {
 	}
 	
 	public void ensureClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className) {
-		Stream<Node> classStream = getClassRepository.getClass(tx, namespaceName, className);
-		if (classStream.findAny().isEmpty()) {
-			createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, -1L, Collections.emptyList(), "");
+		List<Node> classNodes = getClassRepository.getClass(tx, namespaceName, className).collect(Collectors.toList());
+		
+		if (classNodes.isEmpty()) {
+			Stream<Node> classStream2 = getClassRepository.getClass(tx, namespaceName, "");
+			Optional<Long> maxOrder = classStream2
+				.map(node -> (Long) node.getProperty("order", 0L))
+				.max(Long::compare);
+			
+			Long order = maxOrder.orElse(0L) + 1;
+			createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, order, Collections.emptyList(), "");
 		}
 	}
+
 }

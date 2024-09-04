@@ -182,4 +182,69 @@ public class DeleteClassByIdAPITest extends BaseNeo4jTest {
 					   actualMessage.contains(expectedMessage));
 		}
 	}
+
+	@Test
+	public void shouldUpdateClassOrderAfterDeletion() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String className1 = "TestClass1";
+			String className2 = "TestClass2";
+			String className3 = "TestClass3";
+
+			// Create namespace and three classes
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)",
+					   Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
+					   Map.of("namespaceName", namespaceName, "token", token));
+
+				tx.run("CALL deposit.create.class($className1, 1, [], '', [], $token) YIELD node RETURN node.id AS class1Id",
+					   Map.of("className1", className1, "token", token));
+				tx.run("CALL deposit.create.class($className2, 2, [], '', [], $token) YIELD node RETURN node.id AS class2Id",
+					   Map.of("className2", className2, "token", token));
+				tx.run("CALL deposit.create.class($className3, 3, [], '', [], $token) YIELD node RETURN node.id AS class3Id",
+					   Map.of("className3", className3, "token", token));
+
+				tx.commit();
+				return null;
+			});
+
+			// Get the ID of the second class (TestClass2)
+			String classIdToDelete = session.readTransaction(tx -> {
+				Result result = tx.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className2}) RETURN c.id AS id",
+									   Map.of("namespaceName", namespaceName, "className2", className2));
+				return result.single().get("id").asString();
+			});
+
+			// Delete the second class (TestClass2)
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.classById($classId, $token)",
+					   Map.of("classId", classIdToDelete, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify that TestClass2 is deleted
+			Result resultClass = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {id: $classId}) RETURN c",
+											 Map.of("namespaceName", namespaceName, "classId", classIdToDelete));
+			assertFalse("TestClass2 should be deleted", resultClass.hasNext());
+
+			// Verify that the remaining classes' order has been updated
+			Result resultRemainingClasses = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class) RETURN c.name AS name, c.order AS order ORDER BY c.order",
+													   Map.of("namespaceName", namespaceName));
+
+			// Assert that TestClass1 has order 1 and TestClass3 has order 2 (after TestClass2 deletion)
+			while (resultRemainingClasses.hasNext()) {
+				Map<String, Object> classRow = resultRemainingClasses.next().asMap();
+				String className = (String) classRow.get("name");
+				Long order = (Long) classRow.get("order");
+
+				if (className.equals(className1)) {
+					assertTrue("TestClass1 should have order 1", order == 1);
+				} else if (className.equals(className3)) {
+					assertTrue("TestClass3 should have order 2", order == 2);
+				}
+			}
+		}
+	}
 }

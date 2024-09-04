@@ -1,7 +1,6 @@
 package deposit.service;
 
 import deposit.repository.GetClassDescriptorRepository;
-import deposit.repository.DeleteClassDescriptorByIdRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Node;
@@ -15,11 +14,11 @@ public class DeleteClassDescriptorService extends BaseService {
 
 	private static DeleteClassDescriptorService instance;
 	private final GetClassDescriptorRepository getClassDescriptorRepository;
-	private final DeleteClassDescriptorByIdRepository deleteClassDescriptorByIdRepository;
+	private final EnsureClassDescriptorDeletionService ensureClassDescriptorDeletionService;
 
 	private DeleteClassDescriptorService() {
 		this.getClassDescriptorRepository = GetClassDescriptorRepository.getInstance();
-		this.deleteClassDescriptorByIdRepository = DeleteClassDescriptorByIdRepository.getInstance();
+		this.ensureClassDescriptorDeletionService = EnsureClassDescriptorDeletionService.getInstance();
 	}
 
 	public static synchronized DeleteClassDescriptorService getInstance() {
@@ -48,6 +47,6 @@ public class DeleteClassDescriptorService extends BaseService {
 		}
 		String descriptorId = (String) descriptorNode.get().getProperty("id");
 		
-		deleteClassDescriptorByIdRepository.deleteClassDescriptorById(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
+		ensureClassDescriptorDeletionService.ensureClassDescriptorDeletion(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
 	}
 }

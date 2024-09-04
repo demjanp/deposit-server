@@ -5,11 +5,15 @@ import deposit.repository.GetClassDescriptorRepository;
 import deposit.repository.DeleteClassDescriptorByIdRepository;
 import deposit.repository.GetClassRelationshipRepository;
 import deposit.repository.DeleteClassRepository;
+import deposit.repository.GetClassRepository;
+import deposit.repository.SetClassOrderRepository;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
 import java.time.ZonedDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class EnsureClassDeletionService extends BaseService {
@@ -22,6 +26,8 @@ public class EnsureClassDeletionService extends BaseService {
 	private final GetClassRelationshipRepository getClassRelationshipRepository;
 	private final EnsureClassRelationshipDeletionService ensureClassRelationshipDeletionService;
 	private final DeleteClassRepository deleteClassRepository;
+	private final GetClassRepository getClassRepository;
+	private final SetClassOrderRepository setClassOrderRepository;
 
 	private EnsureClassDeletionService() {
 		this.getClassMembersRepository = GetClassMembersRepository.getInstance();
@@ -31,6 +37,8 @@ public class EnsureClassDeletionService extends BaseService {
 		this.getClassRelationshipRepository = GetClassRelationshipRepository.getInstance();
 		this.ensureClassRelationshipDeletionService = EnsureClassRelationshipDeletionService.getInstance();
 		this.deleteClassRepository = DeleteClassRepository.getInstance();
+		this.getClassRepository = GetClassRepository.getInstance();
+		this.setClassOrderRepository = SetClassOrderRepository.getInstance();
 	}
 
 	public static synchronized EnsureClassDeletionService getInstance() {
@@ -67,5 +75,15 @@ public class EnsureClassDeletionService extends BaseService {
 
 		// Delete the Class node
 		deleteClassRepository.deleteClass(tx, timeStamp, username, namespaceName, versioningType, className);
+		
+		// Update the order of the remaining Classes after deletion
+		List<Node> remainingClasses = getClassRepository.getClass(tx, namespaceName, "")
+			.sorted((n1, n2) -> Long.compare((Long) n1.getProperty("order", 0L), (Long) n2.getProperty("order", 0L)))
+			.collect(Collectors.toList());
+		Long newOrder = 1L;
+		for (Node remainingClass : remainingClasses) {
+			String remainingClassName = (String) remainingClass.getProperty("name");
+			setClassOrderRepository.setClassOrder(tx, timeStamp, username, namespaceName, versioningType, remainingClassName, newOrder++);
+		}
 	}
 }

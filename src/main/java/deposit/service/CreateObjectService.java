@@ -52,10 +52,8 @@ public class CreateObjectService extends BaseService {
 		
 		Node node = createObjectRepository.createObject(tx, timeStamp, username, namespaceName, versioningType, position);
 		String objectId = (String) node.getProperty("id");
-		
 		ensureClassService.ensureClass(tx, timeStamp, username, namespaceName, versioningType, className);
 		setMembershipRepository.setMembership(tx, timeStamp, username, namespaceName, versioningType, className, objectId);
-		
 		for (List<Object> descriptorList : descriptors) {
 			String descriptorName = (String) descriptorList.get(0);
 			Object value = descriptorList.get(1);

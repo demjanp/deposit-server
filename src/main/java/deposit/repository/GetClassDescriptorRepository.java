@@ -26,7 +26,9 @@ public class GetClassDescriptorRepository extends BaseRepository {
 		Map<String, Object> params;
 		if (descriptorName.isEmpty()) {
 			matchQuery = """
-				MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(existing:Descriptor) RETURN existing
+				MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(existing:Descriptor)
+				RETURN existing
+				ORDER BY existing.order
 			""";
 			params = Map.of(
 				"namespaceName", namespaceName,

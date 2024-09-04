@@ -50,9 +50,9 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             });
 
             // Verify: Class nodes were created
-            var result1 = session.run("MATCH (c:Class {name: $className}) RETURN c", Map.of("className", className1));
+            var result1 = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className}) RETURN c", Map.of("namespaceName", namespaceName, "className", className1));
             assertTrue(result1.hasNext());
-            var result2 = session.run("MATCH (c:Class {name: $className}) RETURN c", Map.of("className", className2));
+            var result2 = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className}) RETURN c", Map.of("namespaceName", namespaceName, "className", className2));
             assertTrue(result2.hasNext());
         }
     }
@@ -108,10 +108,10 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             });
 
             // Verify: Class node was created with default values
-            var result = session.run("MATCH (c:Class {name: $className}) RETURN c.order as order, c.position as position, c.comment as comment", Map.of("className", className));
+            var result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className}) RETURN c.order as order, c.position as position, c.comment as comment", Map.of("namespaceName", namespaceName, "className", className));
             assertTrue(result.hasNext());
             var record = result.next();
-            assertEquals(-1L, record.get("order").asLong());
+            assertEquals(1L, record.get("order").asLong());
             var positionList = record.get("position").asList(Value::asDouble);
             assertTrue(positionList.isEmpty());
             assertEquals("", record.get("comment").asString());
@@ -144,10 +144,75 @@ public class CreateClassAPITest extends BaseNeo4jTest {
             });
 
             // Verify: Class comment was updated
-            var result = session.run("MATCH (c:Class {name: $className}) RETURN c.comment as comment", Map.of("className", className));
+            var result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className}) RETURN c.comment as comment", Map.of("namespaceName", namespaceName, "className", className));
             assertTrue(result.hasNext());
             var record = result.next();
             assertEquals(newComment, record.get("comment").asString());
         }
     }
+
+    @Test
+	public void shouldCreateClassWithCorrectOrderWhenOrderIsMinusOne() {
+		try (Session session = driver.session()) {
+			// Setup: Create a Namespace and a couple of Class nodes
+			String namespaceName = "TestNamespace";
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+				tx.run("CALL deposit.create.class($className, 1, [], '', [])", Map.of("className", "FirstClass"));
+				tx.run("CALL deposit.create.class($className, 2, [], '', [])", Map.of("className", "SecondClass"));
+				tx.commit();
+				return null;
+			});
+
+			// Test: Create a new Class with order = -1
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.class($className, -1, [], '', [])", Map.of("className", "ThirdClass"));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: The new class should have order = 3
+			var result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $className}) RETURN c.order as order", Map.of("namespaceName", namespaceName, "className", "ThirdClass"));
+			assertTrue(result.hasNext());
+			var record = result.next();
+			assertEquals(3L, record.get("order").asLong());
+		}
+	}
+
+	@Test
+	public void shouldIncrementOrderOfExistingClassesWhenOrderIsSpecified() {
+		try (Session session = driver.session()) {
+			// Setup: Create a Namespace and a couple of Class nodes
+			String namespaceName = "TestNamespace";
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', '')", Map.of("namespaceName", namespaceName));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName)", Map.of("namespaceName", namespaceName));
+				tx.run("CALL deposit.create.class($className, 1, [], '', [])", Map.of("className", "FirstClass"));
+				tx.run("CALL deposit.create.class($className, 2, [], '', [])", Map.of("className", "SecondClass"));
+				tx.commit();
+				return null;
+			});
+
+			// Test: Create a new Class with order = 1
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.class($className, 1, [], '', [])", Map.of("className", "NewFirstClass"));
+				tx.commit();
+				return null;
+			});
+
+			// Verify: Orders of existing classes should have been incremented
+			var result1 = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: 'NewFirstClass'}) RETURN c.order as order", Map.of("namespaceName", namespaceName));
+			assertTrue(result1.hasNext());
+			assertEquals(1L, result1.next().get("order").asLong());
+
+			var result2 = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: 'FirstClass'}) RETURN c.order as order", Map.of("namespaceName", namespaceName));
+			assertTrue(result2.hasNext());
+			assertEquals(2L, result2.next().get("order").asLong());
+
+			var result3 = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: 'SecondClass'}) RETURN c.order as order", Map.of("namespaceName", namespaceName));
+			assertTrue(result3.hasNext());
+			assertEquals(3L, result3.next().get("order").asLong());
+		}
+	}
 }

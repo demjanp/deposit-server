@@ -7,7 +7,6 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -121,6 +120,80 @@ public class DeleteClassDescriptorByIdAPITest extends BaseNeo4jTest {
 
 			assertTrue("Exception message should indicate that the class descriptor does not exist",
 					actualMessage.contains(expectedMessage));
+		}
+	}
+
+	@Test
+	public void shouldUpdateClassDescriptorOrderAfterDeletion() {
+		try (Session session = driver.session()) {
+			String namespaceName = "TestNamespace";
+			String className = "TestClass";
+			String descriptorName1 = "TestDescriptor1";
+			String descriptorName2 = "TestDescriptor2";
+			String descriptorName3 = "TestDescriptor3";
+			String type = "String";
+			long order1 = 1;
+			long order2 = 2;
+			long order3 = 3;
+			String comment = "Test descriptor comment";
+
+			// Create namespace, class, and descriptors
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)",
+					   Map.of("namespaceName", namespaceName, "token", token));
+				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
+					   Map.of("namespaceName", namespaceName, "token", token));
+
+				tx.run("CALL deposit.create.class($className, -1, [], '', [], $token)",
+					   Map.of("className", className, "token", token));
+
+				tx.run("CALL deposit.create.classDescriptor($className, $descriptorName1, $type, $order1, $comment, $token)",
+					   Map.of("className", className, "descriptorName1", descriptorName1, "type", type, "order1", order1, "comment", comment, "token", token));
+				tx.run("CALL deposit.create.classDescriptor($className, $descriptorName2, $type, $order2, $comment, $token)",
+					   Map.of("className", className, "descriptorName2", descriptorName2, "type", type, "order2", order2, "comment", comment, "token", token));
+				tx.run("CALL deposit.create.classDescriptor($className, $descriptorName3, $type, $order3, $comment, $token)",
+					   Map.of("className", className, "descriptorName3", descriptorName3, "type", type, "order3", order3, "comment", comment, "token", token));
+
+				tx.commit();
+				return null;
+			});
+
+			// Get the ID of the second descriptor (TestDescriptor2)
+			String descriptorIdToDelete = session.readTransaction(tx -> {
+				Result result = tx.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(d:Descriptor {name: $descriptorName2}) RETURN d.id AS id",
+									   Map.of("namespaceName", namespaceName, "className", className, "descriptorName2", descriptorName2));
+				return result.single().get("id").asString();
+			});
+
+			// Delete the second descriptor (TestDescriptor2)
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.delete.classDescriptorById($descriptorId, $token)",
+					   Map.of("descriptorId", descriptorIdToDelete, "token", token));
+				tx.commit();
+				return null;
+			});
+
+			// Verify that TestDescriptor2 is deleted
+			Result resultDescriptor = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(d:Descriptor {id: $descriptorId}) RETURN d",
+												  Map.of("namespaceName", namespaceName, "className", className, "descriptorId", descriptorIdToDelete));
+			assertFalse("TestDescriptor2 should be deleted", resultDescriptor.hasNext());
+
+			// Verify that the remaining descriptors' order has been updated
+			Result resultRemainingDescriptors = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $className})-[:HAS_DESCRIPTOR]->(d:Descriptor) RETURN d.name AS name, d.order AS order ORDER BY d.order",
+														   Map.of("namespaceName", namespaceName, "className", className));
+
+			// Assert that TestDescriptor1 has order 1 and TestDescriptor3 has order 2 (after TestDescriptor2 deletion)
+			while (resultRemainingDescriptors.hasNext()) {
+				Map<String, Object> descriptorRow = resultRemainingDescriptors.next().asMap();
+				String descriptorName = (String) descriptorRow.get("name");
+				Long order = (Long) descriptorRow.get("order");
+
+				if (descriptorName.equals(descriptorName1)) {
+					assertTrue("TestDescriptor1 should have order 1", order == 1);
+				} else if (descriptorName.equals(descriptorName3)) {
+					assertTrue("TestDescriptor3 should have order 2", order == 2);
+				}
+			}
 		}
 	}
 }

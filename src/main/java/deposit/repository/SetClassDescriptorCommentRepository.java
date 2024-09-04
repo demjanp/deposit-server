@@ -23,7 +23,7 @@ public class SetClassDescriptorCommentRepository extends BaseRepository {
 	
 	public void setClassDescriptorComment(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String className, String descriptorName, String comment) {
 		String updateQuery = """
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Class)-[:HAS_DESCRIPTOR]->(updated:Descriptor {name: $descriptorName})
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(parent:Class {name: $className})-[:HAS_DESCRIPTOR]->(updated:Descriptor {name: $descriptorName})
 			SET updated.comment = $comment
 			WITH namespace, parent, updated
 		""";

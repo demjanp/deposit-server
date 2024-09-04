@@ -613,6 +613,25 @@ Get Members of a Class.
 CALL deposit.get.classMembers(className, token) YIELD node AS object
 ```
 
+## deposit.get.classPosition
+
+Get the position of a Class node in the graph.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if retrieving the position failed.
+
+### Usage:
+
+```cypher
+CALL deposit.get.classPosition(className, token) YIELD x, y
+```
+
 ## deposit.get.classRelationship
 
 Get existing Class Relationship nodes.
@@ -808,6 +827,25 @@ Get the corresponding ClassDescriptor to the Descriptor of an Object.
 CALL deposit.get.objectClassDescriptorById(descriptorId, token) YIELD node AS descriptor
 ```
 
+## deposit.get.objectPosition
+
+Get the position of an Object node in the graph.
+
+### Parameters:
+
+- **objectId**: Id of the Object to retrieve.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if retrieving the position failed.
+
+### Usage:
+
+```cypher
+CALL deposit.get.objectPosition(objectId, token) YIELD x, y
+```
+
 ## deposit.get.relationship
 
 Get existing Relationship nodes.
@@ -998,6 +1036,67 @@ Set comment of a Class Descriptor.
 CALL deposit.set.classDescriptorComment(className, descriptorName, comment, token)
 ```
 
+## deposit.set.classDescriptorOrder
+
+Set order of a Class Descriptor.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **descriptorName**: the name of the Descriptor.
+- **order**: an order of the Class when represented in a list, -1 indicates the end of the list.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the order.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classDescriptorOrder(className, descriptorName, order, token)
+```
+
+## deposit.set.classOrder
+
+Set order of a Class.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **order**: an order of the Class when represented in a list, -1 indicates the end of the list.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there is an error setting the order.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classOrder(className, order, token)
+```
+
+## deposit.set.classPosition
+
+Set the position of a Class node in the graph.
+
+### Parameters:
+
+- **className**: the name of the Class.
+- **position**: position of the node in a hierarchical graph layout defined as [x, y] or [] to unset position.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if setting the position failed.
+
+### Usage:
+
+```cypher
+CALL deposit.set.classPosition(className, position, token)
+```
+
 ## deposit.set.classRelationship
 
 Create or Update a Class Relationship.
@@ -1100,6 +1199,26 @@ Set description of the active Namespace.
 
 ```cypher
 CALL deposit.set.namespaceDescription(description, token)
+```
+
+## deposit.set.objectPosition
+
+Set the position of an Object node in the graph.
+
+### Parameters:
+
+- **objectId**: Id of the Object to update.
+- **position**: position of the node in a hierarchical graph layout defined as [x, y] or [] to unset position.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if setting the position failed.
+
+### Usage:
+
+```cypher
+CALL deposit.set.objectPosition(objectId, position, token)
 ```
 
 ## deposit.set.password

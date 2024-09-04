@@ -1,6 +1,5 @@
 package deposit.service;
 
-import deposit.repository.DeleteClassDescriptorByIdRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
@@ -10,10 +9,10 @@ import java.time.ZonedDateTime;
 public class DeleteClassDescriptorByIdService extends BaseService {
 
 	private static DeleteClassDescriptorByIdService instance;
-	private final DeleteClassDescriptorByIdRepository deleteClassDescriptorByIdRepository;
+	private final EnsureClassDescriptorDeletionService ensureClassDescriptorDeletionService;
 
 	private DeleteClassDescriptorByIdService() {
-		this.deleteClassDescriptorByIdRepository = DeleteClassDescriptorByIdRepository.getInstance();
+		this.ensureClassDescriptorDeletionService = EnsureClassDescriptorDeletionService.getInstance();
 	}
 
 	public static synchronized DeleteClassDescriptorByIdService getInstance() {
@@ -35,6 +34,6 @@ public class DeleteClassDescriptorByIdService extends BaseService {
 			throwException("Cannot delete the Class Descriptor without an active Namespace.");
 		}
 		
-		deleteClassDescriptorByIdRepository.deleteClassDescriptorById(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
+		ensureClassDescriptorDeletionService.ensureClassDescriptorDeletion(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
 	}
 }
