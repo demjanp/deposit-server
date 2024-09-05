@@ -44,7 +44,7 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 			String endObjectId = endResult.single().get("endObjectId").asString();
 
 			// Create Relationship
-			Result relResult = tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, 'RELATES_TO', 1.0, $token) YIELD node RETURN node.id AS relationshipId",
+			Result relResult = tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, 'RELATES_TO', 1.0, $token) YIELD rel RETURN rel.id AS relationshipId",
 									  Map.of("startObjectId", startObjectId,
 											 "endObjectId", endObjectId,
 											 "token", token));
@@ -73,7 +73,7 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was deleted
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:RS]->(rel:Relationship {id: $relationshipId}) RETURN rel",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[rel:RELATED_TO {id: $relationshipId}]->() RETURN rel",
 										Map.of("namespaceName", namespaceName, "relationshipId", relationshipId));
 
 			assertFalse("Relationship node should be deleted", result.hasNext());
@@ -100,7 +100,7 @@ public class DeleteRelationshipByIdAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was deleted
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(:Object {id: $endObjectId}) RETURN rel",
 										Map.of("namespaceName", namespaceName, "startObjectId", startObjectId, "endObjectId", endObjectId, "label", label));
 
 			assertFalse("Relationship node should be deleted", result.hasNext());

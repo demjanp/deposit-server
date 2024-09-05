@@ -10,6 +10,7 @@ import deposit.repository.SetClassOrderRepository;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -65,11 +66,11 @@ public class EnsureClassDeletionService extends BaseService {
 		});
 		
 		// Delete all Class Relationships between this Class and other Classes
-		Stream<Node[]> relationships = getClassRelationshipRepository.getClassRelationship(tx, namespaceName, className, "", "");
-		relationships.forEach(nodes -> {
-			String startClassName = (String) nodes[0].getProperty("name");
-			String endClassName = (String) nodes[1].getProperty("name");
-			String label = (String) nodes[2].getProperty("label");
+		Stream<Relationship> rels = getClassRelationshipRepository.getClassRelationship(tx, namespaceName, className, "", "");
+		rels.forEach(rel -> {
+			String startClassName = (String) rel.getStartNode().getProperty("name");
+			String endClassName = (String) rel.getEndNode().getProperty("name");
+			String label = (String) rel.getProperty("label");
 			ensureClassRelationshipDeletionService.ensureClassRelationshipDeletion(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label);
 		});
 

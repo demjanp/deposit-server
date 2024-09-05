@@ -132,7 +132,7 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 
 	private void createRelationship(Session session, String namespaceName, String startObjectId, String endObjectId, String label, double weight) {
 		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+			tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 					Map.of("startObjectId", startObjectId, "endObjectId", endObjectId, "label", label, "weight", weight, "token", token));
 			tx.commit();
 			return null;
@@ -158,10 +158,10 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 		assertTrue("Object related to Class2 should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object)-[:MEMBER_OF]->(c:Class {name: 'Class2'}) RETURN o", Map.of("namespaceName", namespaceName)).hasNext());
 
 		// Verify Relationships
-		assertTrue("Relationship between objects should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object)-[:RS]->(r:Relationship)-[:RE]->(:Object) RETURN r", Map.of("namespaceName", namespaceName)).hasNext());
+		assertTrue("Relationship between objects should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object)-[r:RELATED_TO]->(:Object) RETURN r", Map.of("namespaceName", namespaceName)).hasNext());
 
 		// Verify Class Relationships
-		assertTrue("Class Relationship should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: 'Class1'})-[:RS]->(r:Relationship)-[:RE]->(:Class {name: 'Class2'}) RETURN r", Map.of("namespaceName", namespaceName)).hasNext());
+		assertTrue("Class Relationship should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: 'Class1'})-[r:RELATED_TO]->(:Class {name: 'Class2'}) RETURN r", Map.of("namespaceName", namespaceName)).hasNext());
 
 		// Verify Descriptors
 		assertTrue("Descriptor1 should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: 'Descriptor1'}) RETURN d", Map.of("namespaceName", namespaceName)).hasNext());
@@ -177,10 +177,7 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 
 		// Verify no Objects
 		assertFalse("No Objects should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object) RETURN o", Map.of("namespaceName", namespaceName)).hasNext());
-
-		// Verify no Relationships
-		assertFalse("No Relationships should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(r:Relationship) RETURN r", Map.of("namespaceName", namespaceName)).hasNext());
-
+		
 		// Verify no Descriptors
 		assertFalse("No Descriptors should exist", session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(d:Descriptor) RETURN d", Map.of("namespaceName", namespaceName)).hasNext());
 

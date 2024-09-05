@@ -5,7 +5,7 @@ import deposit.repository.SetRelationshipWeightRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
 import java.util.Optional;
@@ -30,7 +30,7 @@ public class SetRelationshipService extends BaseService {
 		return instance;
 	}
 
-	public Node setRelationship(Transaction tx, String startObjectId, String endObjectId, String label, Double weight, String token) {
+	public Relationship setRelationship(Transaction tx, String startObjectId, String endObjectId, String label, Double weight, String token) {
 		
 		if (startObjectId.equals(endObjectId)) {
 			throwException("Cannot set a Relationship of an Object with itself.");
@@ -47,13 +47,13 @@ public class SetRelationshipService extends BaseService {
 			throwException("Cannot set a Relationship without an active Namespace.");
 		}
 		
-		Optional<Node[]> result = getRelationshipRepository.getRelationship(tx, namespaceName, startObjectId, endObjectId, label).findAny();
+		Optional<Relationship> result = getRelationshipRepository.getRelationship(tx, namespaceName, startObjectId, endObjectId, label).findAny();
 		if (result.isEmpty()) {
 			return ensureRelationshipService.ensureRelationship(tx, timeStamp, username, namespaceName, versioningType, startObjectId, endObjectId, label, weight);
 		} else {
 			// If the Relationship exists, just update the weight and return the Relationship node
 			setRelationshipWeightRepository.setRelationshipWeight(tx, timeStamp, username, namespaceName, versioningType, startObjectId, endObjectId, label, weight);
-			return result.map(nodes -> nodes[2]).orElseThrow(() -> new IllegalStateException("Incorrect Relationship result"));
+			return result.orElseThrow(() -> new IllegalStateException("Incorrect Relationship result"));
 		}
 	}
 }

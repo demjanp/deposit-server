@@ -63,7 +63,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectId = objectIds.get("endObjectId");
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -74,7 +74,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result resultObject = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel",
+			Result resultObject = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(:Object {id: $endObjectId}) RETURN rel",
 					Map.of("namespaceName", namespaceName,
 						   "startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
@@ -84,7 +84,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			assertNotNull("The relationship node should not be null", resultObject.next().get("rel"));
 
 			// Verify: Class Relationship node was created
-			Result resultClass = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Class {name: $endClassName}) RETURN rel",
+			Result resultClass = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[rel:RELATED_TO {label: $label}]->(:Class {name: $endClassName}) RETURN rel",
 					Map.of("namespaceName", namespaceName,
 						   "startClassName", startObjectClassName,
 						   "endClassName", endObjectClassName,
@@ -111,7 +111,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectId = objectIds.get("endObjectId");
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -123,7 +123,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 
 			// Attempt to create the same relationship again, should throw an exception
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -158,13 +158,13 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 				params.put("weight", weight);  // weight is null here
 				params.put("token", token);
 
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node", params);
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel", params);
 				tx.commit();
 				return null;
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(oEnd:Object {id: $endObjectId}) RETURN rel",
 					Map.of("namespaceName", namespaceName,
 						   "startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
@@ -189,7 +189,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectId = objectIds.get("endObjectId");
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -200,7 +200,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(oEnd:Object {id: $endObjectId}) RETURN rel",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(oEnd:Object {id: $endObjectId}) RETURN rel",
 					Map.of("namespaceName", namespaceName,
 							"startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
@@ -229,7 +229,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 
 			// Create initial relationship with weight
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -252,7 +252,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship weight was updated
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
 					Map.of("namespaceName", namespaceName,
 							"startObjectId", startObjectId,
 							"endObjectId", endObjectId,
@@ -282,7 +282,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 
 			// Call the APOC procedure to create or update the relationship
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.set.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node AS relationship",
+				tx.run("CALL deposit.set.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel AS relationship",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -293,7 +293,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created with the correct initial weight
-			Result initialResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
+			Result initialResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
 					Map.of("namespaceName", namespaceName,
 						   "startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
@@ -305,7 +305,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 
 			// Call the APOC procedure again to update the weight of the existing relationship
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.set.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node AS relationship",
+				tx.run("CALL deposit.set.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel AS relationship",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -316,7 +316,7 @@ public class CreateRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship weight was updated
-			Result updatedResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[:RS]->(rel:Relationship {label: $label})-[:RE]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
+			Result updatedResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object {id: $startObjectId})-[rel:RELATED_TO {label: $label}]->(:Object {id: $endObjectId}) RETURN rel.weight AS weight",
 					Map.of("namespaceName", namespaceName,
 						   "startObjectId", startObjectId,
 						   "endObjectId", endObjectId,

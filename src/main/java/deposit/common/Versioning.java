@@ -79,14 +79,12 @@ public class Versioning {
 					MERGE (latest)-[:NEXT]->(newVersionNode)
 				)
 				WITH archive, {0}
-				
 			""";
 			
 			// Find latest version of the updated node(s) in the archive
 			switch (elementType) {
 				case "Object", "Class", "UserTool":
 					queryString += """
-						
 						// Find the latest version of the node in the Archive
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prev '{'id: updated.id'}')
 						WITH prev, {0}, archive ORDER BY prev.updatedAt DESC LIMIT 1
@@ -94,7 +92,6 @@ public class Versioning {
 					break;
 				case "Descriptor", "ClassDescriptor":
 					queryString += """
-						
 						// Find the latest parent
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevParent '{'id: parent.id'}')
 						WITH prevParent, {0}, archive ORDER BY prevParent.updatedAt DESC LIMIT 1
@@ -102,11 +99,9 @@ public class Versioning {
 					break;
 				case "Relationship", "ClassRelationship", "Membership":
 					queryString += """
-						
 						// Find the latest source
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevSource '{'id: source.id'}')
 						WITH prevSource, {0}, archive ORDER BY prevSource.updatedAt DESC LIMIT 1
-						
 						// Find the latest target
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevTarget '{'id: target.id'}')
 						WITH prevSource, prevTarget, {0}, archive ORDER BY prevTarget.updatedAt DESC LIMIT 1
@@ -142,7 +137,7 @@ public class Versioning {
 				case "Relationship":
 				case "ClassRelationship":
 					queryString += """
-						CREATE (prevSource)-[:RS]->(newVersion:Relationship)-[:RE]->(prevTarget)
+						CREATE (prevSource)-[newVersion:RELATED_TO]->(prevTarget)
 					""";
 					break;
 				case "Membership":
@@ -162,7 +157,6 @@ public class Versioning {
 				// Re-create relationships to the new version
 				queryString += """
 					WITH prev, newVersion, updated
-					
 					// Proceed if a previous version exists
 					CALL '{'
 						WITH prev, newVersion, updated

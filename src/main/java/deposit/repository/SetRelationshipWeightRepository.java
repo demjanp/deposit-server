@@ -22,7 +22,7 @@ public class SetRelationshipWeightRepository extends BaseRepository {
 	
 	public void setRelationshipWeight(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
 		String updateQuery = """
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $startObjectId})-[:RS]->(updated:Relationship {label: $label})-[:RE]->(target:Object {id: $endObjectId})
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $startObjectId})-[updated:RELATED_TO {label: $label}]->(target:Object {id: $endObjectId})
 			SET updated.weight = $weight
 			WITH namespace, source, target, updated
 		""";

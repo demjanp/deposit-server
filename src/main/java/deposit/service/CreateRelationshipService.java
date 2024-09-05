@@ -3,10 +3,9 @@ package deposit.service;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
-import java.util.stream.Stream;
 
 public class CreateRelationshipService extends BaseService {
 
@@ -24,7 +23,7 @@ public class CreateRelationshipService extends BaseService {
 		return instance;
 	}
 
-	public Node createRelationship(Transaction tx, String startObjectId, String endObjectId, String label, Double weight, String token) {
+	public Relationship createRelationship(Transaction tx, String startObjectId, String endObjectId, String label, Double weight, String token) {
 		
 		if (startObjectId.equals(endObjectId)) {
 			throwException("Cannot create a Relationship of an Object with itself.");

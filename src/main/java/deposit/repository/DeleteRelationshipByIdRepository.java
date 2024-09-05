@@ -23,7 +23,7 @@ public class DeleteRelationshipByIdRepository extends BaseRepository {
 	
 	public void deleteRelationshipById(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String relationshipId) {
 		String validateQuery = """
-			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:RS]->(existing:Relationship {id: $relationshipId})
+			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[existing:RELATED_TO {id: $relationshipId}]->()
 			RETURN existing
 		""";
 		Map<String, Object> params = Map.of(
@@ -41,7 +41,7 @@ public class DeleteRelationshipByIdRepository extends BaseRepository {
 		}
 		
 		String deleteQuery = """
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object)-[:RS]->(updated:Relationship {id: $relationshipId})-[:RE]->(target:Object)
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object)-[updated:RELATED_TO {id: $relationshipId}]->(target:Object)
 			WITH namespace, source, target, updated
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("Relationship", true, versioningType);

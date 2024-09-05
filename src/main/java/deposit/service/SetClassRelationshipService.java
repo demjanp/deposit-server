@@ -5,7 +5,7 @@ import deposit.repository.SetClassRelationshipCommentRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
 import java.util.Optional;
@@ -30,7 +30,7 @@ public class SetClassRelationshipService extends BaseService {
 		return instance;
 	}
 
-	public Node setClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String comment, String token) {
+	public Relationship setClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String comment, String token) {
 		if (startClassName == endClassName) {
 			throwException("Cannot update a Class Relationship within the same Class.");
 		}
@@ -46,13 +46,13 @@ public class SetClassRelationshipService extends BaseService {
 			throwException("Cannot update a Class Relationship without an active Namespace.");
 		}
 		
-		Optional<Node[]> result = getClassRelationshipRepository.getClassRelationship(tx, namespaceName, startClassName, endClassName, label).findAny();
+		Optional<Relationship> result = getClassRelationshipRepository.getClassRelationship(tx, namespaceName, startClassName, endClassName, label).findAny();
 		if (result.isEmpty()) {
 			return ensureClassRelationshipService.ensureClassRelationship(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label, comment);
 		} else {
 			// If the Class Relationship exists, just update the comment and return the Class Relationship node
 			setClassRelationshipCommentRepository.setClassRelationshipComment(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label, comment);
-			return result.map(nodes -> nodes[2]).orElseThrow(() -> new IllegalStateException("Incorrect Class Relationship result"));
+			return result.orElseThrow(() -> new IllegalStateException("Incorrect Class Relationship result"));
 		}
 	}
 }

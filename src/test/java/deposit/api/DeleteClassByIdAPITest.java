@@ -113,7 +113,7 @@ public class DeleteClassByIdAPITest extends BaseNeo4jTest {
 
 			// Create a relationship between the start and end classes
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, 'RELATES_TO', 'Test relationship', $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, 'RELATES_TO', 'Test relationship', $token) YIELD rel RETURN rel",
 					   Map.of("startClassName", startClassName,
 							  "endClassName", endClassName,
 							  "token", token));
@@ -150,7 +150,7 @@ public class DeleteClassByIdAPITest extends BaseNeo4jTest {
 			assertFalse("Class node should be deleted", resultClass.hasNext());
 
 			// Verify the class relationship has been deleted
-			Result resultRelationship = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $startClassName})-[:RS]->(rel:Relationship) RETURN rel",
+			Result resultRelationship = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(c:Class {name: $startClassName})-[rel:RELATED_TO]->() RETURN rel",
 													Map.of("namespaceName", namespaceName, "startClassName", startClassName));
 			assertFalse("Class relationship should be deleted", resultRelationship.hasNext());
 

@@ -3,7 +3,7 @@ package deposit.repository;
 import deposit.common.Versioning;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Result;
 
 import java.time.ZonedDateTime;
@@ -22,11 +22,11 @@ public class CreateRelationshipRepository extends BaseRepository {
 		return instance;
 	}
 	
-    public Node createRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
+    public Relationship createRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
 		String validateQuery = """
 			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId}),
 				  (n)-[:CONTAINS]->(oEnd:Object {id: $endObjectId})
-			OPTIONAL MATCH (oStart)-[:RS]->(existing:Relationship {label: $label})-[:RE]->(oEnd)
+			OPTIONAL MATCH (oStart)-[existing:RELATED_TO {label: $label}]->(oEnd)
 			RETURN existing
 		""";
 		Map<String, Object> params = Map.of(
@@ -49,7 +49,7 @@ public class CreateRelationshipRepository extends BaseRepository {
 		}
 		String createQuery = """
 			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $startObjectId}), (namespace)-[:CONTAINS]->(target:Object {id: $endObjectId})
-			CREATE (source)-[:RS]->(updated:Relationship)-[:RE]->(target)
+			CREATE (source)-[updated:RELATED_TO {label: $label}]->(target)
 			SET	updated.id = randomUUID(),
 				updated.label = $label,
 				updated.weight = $weight,
@@ -71,7 +71,7 @@ public class CreateRelationshipRepository extends BaseRepository {
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {
-				return (Node) result.next().get("updated");
+				return (Relationship) result.next().get("updated");
 			} else {
 				throwException("Relationship creation failed: No result returned");
 			}

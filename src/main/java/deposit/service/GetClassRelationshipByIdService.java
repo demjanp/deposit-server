@@ -4,7 +4,7 @@ import deposit.repository.GetClassRelationshipByIdRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 public class GetClassRelationshipByIdService extends BaseService {
 
@@ -22,7 +22,7 @@ public class GetClassRelationshipByIdService extends BaseService {
 		return instance;
 	}
 
-	public Node[] getClassRelationshipById(Transaction tx, String relationshipId, String token) {
+	public Relationship getClassRelationshipById(Transaction tx, String relationshipId, String token) {
 		
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

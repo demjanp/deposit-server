@@ -17,17 +17,17 @@ public class GetRelationshipAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get existing Relationship nodes.
+	 * Get existing Relationship.
 	 *
 	 * @param startObjectId the Id of the start Object.
 	 * @param endObjectId the Id of the end Object or empty for all related Objects.
 	 * @param label the label of the Relationship or empty for all Relationships.
 	 * @param token authentication token.
-	 * @return the source, target, relationship node(s) or null if it doesn't exist.
-	 * @throws RuntimeException if there was an error retrieving the node(s).
+	 * @return the relationship(s) or null if it doesn't exist.
+	 * @throws RuntimeException if there was an error retrieving the relationship(s).
 	 */
 	@Procedure(name = "deposit.get.relationship", mode = Mode.READ)
-	@Description("CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD source, target, relationship")
+	@Description("CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD rel")
 	public Stream<RelationshipResult> getRelationship(
 			@Name("startObjectId") String startObjectId,
 			@Name(value = "endObjectId", defaultValue = "") String endObjectId,
@@ -35,6 +35,6 @@ public class GetRelationshipAPI extends BaseAPI {
 			@Name(value = "token", defaultValue = "") String token) {
 		GetRelationshipService service = GetRelationshipService.getInstance();
 		return service.getRelationship(tx, startObjectId, endObjectId, label, token)
-						.map(nodes -> new RelationshipResult(nodes[0], nodes[1], nodes[2]));
+						.map(rel -> new RelationshipResult(rel));
 	}
 }

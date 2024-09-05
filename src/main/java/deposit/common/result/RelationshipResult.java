@@ -1,15 +1,11 @@
 package deposit.common.result;
 
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 public class RelationshipResult {
-	public Node source;
-	public Node target;
-	public Node relationship;
+	public Relationship rel;
 
-	public RelationshipResult(Node source, Node target, Node relationship) {
-		this.source = source;
-		this.target = target;
-		this.relationship = relationship;
+	public RelationshipResult(Relationship rel) {
+		this.rel = rel;
 	}
 }

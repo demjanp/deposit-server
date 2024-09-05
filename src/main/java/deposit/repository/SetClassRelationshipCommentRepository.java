@@ -22,7 +22,7 @@ public class SetClassRelationshipCommentRepository extends BaseRepository {
 	
 	public void setClassRelationshipComment(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startClassName, String endClassName, String label, String comment) {
 		String updateQuery = """
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName})-[:RS]->(updated:Relationship {label: $label})-[:RE]->(target:Class {name: $endClassName})
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName})-[updated:RELATED_TO {label: $label}]->(target:Class {name: $endClassName})
 			SET updated.comment = $comment
 			WITH namespace, source, target, updated
 		""";

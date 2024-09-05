@@ -6,9 +6,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
-import org.neo4j.driver.types.Node;
+import org.neo4j.driver.types.Relationship;
 
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertNotNull;
@@ -71,7 +70,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectId = objectIds.get("endObjectId");
 
 			String relationshipId = session.writeTransaction(tx -> {
-				Result createResult = tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node.id AS relationshipId",
+				Result createResult = tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel.id AS relationshipId",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -81,15 +80,15 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Retrieve and consume the result in a single step
-			Node relationshipNode = session.readTransaction(tx -> {
-				Result result = tx.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Relationship relationship = session.readTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD rel RETURN rel",
 						Map.of("relationshipId", relationshipId, "token", token));
 
 				// Ensure the result is consumed immediately
-				return result.hasNext() ? result.next().get("relationship").asNode() : null;
+				return result.hasNext() ? result.next().get("rel").asRelationship() : null;
 			});
 
-			assertNotNull("The relationship node should not be null", relationshipNode);
+			assertNotNull("The relationship should not be null", relationship);
 		}
 	}
 
@@ -100,7 +99,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String nonExistentRelationshipId = "non-existent-id";
 
 			// Call the get.relationshipById procedure with a non-existent ID
-			Result result = session.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD rel RETURN rel",
 					Map.of("relationshipId", nonExistentRelationshipId,
 						   "token", token));
 
@@ -124,7 +123,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectId = objectIds.get("endObjectId");
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -135,7 +134,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Call the get.relationship procedure to retrieve the relationship by label
-			Result result = session.run("CALL deposit.get.relationship($startObjectId, $endObjectId, $label, $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.relationship($startObjectId, $endObjectId, $label, $token) YIELD rel RETURN rel",
 					Map.of("startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
 						   "label", label,
@@ -167,13 +166,13 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			Double weight = 2.5;
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId1,
 							   "label", label1,
 							   "weight", weight,
 							   "token", token));
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId2,
 							   "label", label2,
@@ -184,7 +183,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Call the get.relationship procedure to retrieve all relationships for the start object
-			Result result = session.run("CALL deposit.get.relationship($startObjectId, '', '', $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.relationship($startObjectId, '', '', $token) YIELD rel RETURN rel",
 					Map.of("startObjectId", startObjectId,
 						   "token", token));
 
@@ -214,7 +213,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectId = objectIds.get("endObjectId");
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
 						Map.of("startObjectId", startObjectId,
 							   "endObjectId", endObjectId,
 							   "label", label,
@@ -225,7 +224,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Call the get.relationship procedure without specifying a label or endObjectId
-			Result result = session.run("CALL deposit.get.relationship($startObjectId, '', '', $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.relationship($startObjectId, '', '', $token) YIELD rel RETURN rel",
 					Map.of("startObjectId", startObjectId,
 						   "token", token));
 

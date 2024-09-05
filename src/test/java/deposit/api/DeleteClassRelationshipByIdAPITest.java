@@ -46,7 +46,7 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 
 	private String createClassRelationship(Session session, String startClassName, String endClassName, String label, String comment) {
 		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node.id AS relationshipId",
+			Result result = tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel.id AS relationshipId",
 					Map.of("startClassName", startClassName,
 							"endClassName", endClassName,
 							"label", label,
@@ -78,7 +78,7 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Class Relationship node was deleted
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class)-[:RS]->(r:Relationship {id: $relationshipId}) RETURN r",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class)-[r:RELATED_TO {id: $relationshipId}]->() RETURN r",
 										Map.of("namespaceName", namespaceName,
 												"relationshipId", relationshipId));
 
@@ -112,7 +112,7 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 				String endObjectId = endResult.single().get("endObjectId").asString();
 
 				// Step 3: Create Relationship between Objects
-				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, 1.0, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, 1.0, $token) YIELD rel RETURN rel",
 					   Map.of("startObjectId", startObjectId, "endObjectId", endObjectId, "label", label, "token", token));
 
 				tx.commit();
@@ -128,12 +128,12 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 			});
 
 			// Step 5: Verify that the Class Relationship and Object Relationships are deleted
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[:RS]->(r:Relationship {label: $label})-[:RE]->(:Class {name: $endClassName}) RETURN r",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[r:RELATED_TO {label: $label}]->(:Class {name: $endClassName}) RETURN r",
 										Map.of("namespaceName", namespaceName, "startClassName", startClassName, "endClassName", endClassName, "label", label));
 
 			assertFalse("Class Relationship node should be deleted", result.hasNext());
 
-			Result objectRelResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object)-[:RS]->(r:Relationship {label: $label})-[:RE]->(oEnd:Object) RETURN r",
+			Result objectRelResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object)-[r:RELATED_TO {label: $label}]->(oEnd:Object) RETURN r",
 										Map.of("namespaceName", namespaceName, "label", label));
 
 			assertFalse("Object Relationship node should be deleted", objectRelResult.hasNext());

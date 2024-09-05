@@ -17,17 +17,17 @@ public class GetClassRelationshipAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get existing Class Relationship nodes.
+	 * Get existing Class Relationship.
 	 *
 	 * @param startClassName the name of the start Class.
 	 * @param endClassName the name of the end Class or empty for all related Classes.
 	 * @param label the label of the Class Relationship or empty for all Relationships.
 	 * @param token authentication token.
-	 * @return the source, target, relationship node(s) or null if it doesn't exist.
-	 * @throws RuntimeException if there was an error retrieving the node(s).
+	 * @return the source, target, relationship(s) or null if it doesn't exist.
+	 * @throws RuntimeException if there was an error retrieving the relationship(s).
 	 */
 	@Procedure(name = "deposit.get.classRelationship", mode = Mode.READ)
-	@Description("CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD source, target, relationship")
+	@Description("CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD rel")
 	public Stream<RelationshipResult> getClassRelationship(
 			@Name("startClassName") String startClassName,
 			@Name(value = "endClassName", defaultValue = "") String endClassName,
@@ -35,6 +35,6 @@ public class GetClassRelationshipAPI extends BaseAPI {
 			@Name(value = "token", defaultValue = "") String token) {
 		GetClassRelationshipService service = GetClassRelationshipService.getInstance();
 		return service.getClassRelationship(tx, startClassName, endClassName, label, token)
-						.map(nodes -> new RelationshipResult(nodes[0], nodes[1], nodes[2]));
+						.map(rel -> new RelationshipResult(rel));
 	}
 }

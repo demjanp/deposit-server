@@ -4,7 +4,7 @@ import deposit.repository.GetClassRelationshipRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.util.stream.Stream;
 
@@ -24,7 +24,7 @@ public class GetClassRelationshipService extends BaseService {
 		return instance;
 	}
 
-	public Stream<Node[]> getClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String token) {
+	public Stream<Relationship> getClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String token) {
 		
 		if (startClassName.equals(endClassName)) {
 			throwException("Cannot retrieve a Relationship of a Class with itself.");

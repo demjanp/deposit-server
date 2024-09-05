@@ -65,7 +65,7 @@ Create a Class Relationship.
 ### Usage:
 
 ```cypher
-CALL deposit.create.classRelationship(startClassName, endClassName, label, comment, token) YIELD node AS relationship
+CALL deposit.create.classRelationship(startClassName, endClassName, label, comment, token) YIELD rel
 ```
 
 ## deposit.create.descriptor
@@ -150,7 +150,7 @@ Create a Relationship.
 ### Usage:
 
 ```cypher
-CALL deposit.create.relationship(startObjectId, endObjectId, label, weight, token) YIELD node AS relationship
+CALL deposit.create.relationship(startObjectId, endObjectId, label, weight, token) YIELD rel
 ```
 
 ## deposit.create.user
@@ -634,7 +634,7 @@ CALL deposit.get.classPosition(className, token) YIELD x, y
 
 ## deposit.get.classRelationship
 
-Get existing Class Relationship nodes.
+Get existing Class Relationship.
 
 ### Parameters:
 
@@ -645,17 +645,17 @@ Get existing Class Relationship nodes.
 
 ### Throws:
 
-- **RuntimeException**: if there was an error retrieving the node(s).
+- **RuntimeException**: if there was an error retrieving the relationship(s).
 
 ### Usage:
 
 ```cypher
-CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD source, target, relationship
+CALL deposit.get.classRelationship(startClassName, endClassName, label, token) YIELD rel
 ```
 
 ## deposit.get.classRelationshipById
 
-Get existing Class Relationship node.
+Get existing Class Relationship.
 
 ### Parameters:
 
@@ -664,12 +664,12 @@ Get existing Class Relationship node.
 
 ### Throws:
 
-- **RuntimeException**: if there was an error retrieving the nodes.
+- **RuntimeException**: if there was an error retrieving the relationship.
 
 ### Usage:
 
 ```cypher
-CALL deposit.get.classRelationshipById(relationshipId, token) YIELD source, target, relationship
+CALL deposit.get.classRelationshipById(relationshipId, token) YIELD rel
 ```
 
 ## deposit.get.descriptor
@@ -848,7 +848,7 @@ CALL deposit.get.objectPosition(objectId, token) YIELD x, y
 
 ## deposit.get.relationship
 
-Get existing Relationship nodes.
+Get existing Relationship.
 
 ### Parameters:
 
@@ -859,17 +859,17 @@ Get existing Relationship nodes.
 
 ### Throws:
 
-- **RuntimeException**: if there was an error retrieving the node(s).
+- **RuntimeException**: if there was an error retrieving the relationship(s).
 
 ### Usage:
 
 ```cypher
-CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD source, target, relationship
+CALL deposit.get.relationship(startObjectId, endObjectId, label, token) YIELD rel
 ```
 
 ## deposit.get.relationshipById
 
-Get existing Relationship node.
+Get existing Relationship.
 
 ### Parameters:
 
@@ -878,12 +878,12 @@ Get existing Relationship node.
 
 ### Throws:
 
-- **RuntimeException**: if there was an error retrieving the nodes.
+- **RuntimeException**: if there was an error retrieving the relationship.
 
 ### Usage:
 
 ```cypher
-CALL deposit.get.relationshipById(relationshipId, token) YIELD source, target, relationship
+CALL deposit.get.relationshipById(relationshipId, token) YIELD rel
 ```
 
 ## deposit.get.user
@@ -1116,7 +1116,7 @@ Create or Update a Class Relationship.
 ### Usage:
 
 ```cypher
-CALL deposit.set.classRelationship(startClassName, endClassName, label, comment, token) YIELD node AS relationship
+CALL deposit.set.classRelationship(startClassName, endClassName, label, comment, token) YIELD rel
 ```
 
 ## deposit.set.classRelationshipComment
@@ -1179,7 +1179,7 @@ Set the Membership of an Object in a Class.
 ### Usage:
 
 ```cypher
-CALL deposit.set.membership(className, objectId, token) YIELD membership
+CALL deposit.set.membership(className, objectId, token) YIELD rel
 ```
 
 ## deposit.set.namespaceDescription
@@ -1260,7 +1260,7 @@ Create or Update a Relationship.
 ### Usage:
 
 ```cypher
-CALL deposit.set.relationship(startObjectId, endObjectId, label, weight, token) YIELD node AS relationship
+CALL deposit.set.relationship(startObjectId, endObjectId, label, weight, token) YIELD rel
 ```
 
 ## deposit.set.relationshipWeight

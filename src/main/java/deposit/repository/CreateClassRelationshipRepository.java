@@ -3,7 +3,7 @@ package deposit.repository;
 import deposit.common.Versioning;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Result;
 
 import java.time.ZonedDateTime;
@@ -22,11 +22,11 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 		return instance;
 	}
 	
-    public Node createClassRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startClassName, String endClassName, String label, String comment) {
+    public Relationship createClassRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startClassName, String endClassName, String label, String comment) {
 		String validateRelationshipQuery = """
 			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName}),
 				  (n)-[:CONTAINS]->(cEnd:Class {name: $endClassName})
-			OPTIONAL MATCH (cStart)-[:RS]->(existing:Relationship {label: $label})-[:RE]->(cEnd)
+			OPTIONAL MATCH (cStart)-[existing:RELATED_TO {label: $label}]->(cEnd)
 			RETURN existing
 		""";
 		Map<String, Object> params = Map.of(
@@ -50,9 +50,8 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 		
 		String createQuery = """
 			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}), (namespace)-[:CONTAINS]->(target:Class {name: $endClassName})
-			CREATE (source)-[:RS]->(updated:Relationship)-[:RE]->(target)
+			CREATE (source)-[updated:RELATED_TO {label: $label}]->(target)
 			SET	updated.id = randomUUID(),
-				updated.label = $label,
 				updated.comment = $comment,
 				updated.createdAt = $timeStamp,
 				updated.createdBy = $username
@@ -73,7 +72,7 @@ public class CreateClassRelationshipRepository extends BaseRepository {
 		try {
 			Result result = tx.execute(createQuery, params);
 			if (result.hasNext()) {
-				return (Node) result.next().get("updated");
+				return (Relationship) result.next().get("updated");
 			} else {
 				throwException("Class Relationship creation failed: No result returned");
 			}

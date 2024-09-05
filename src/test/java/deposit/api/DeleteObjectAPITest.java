@@ -53,7 +53,7 @@ public class DeleteObjectAPITest extends BaseNeo4jTest {
 
 	private void createRelationship(Session session, String startObjectId, String endObjectId, String label) {
 		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, 1.0, $token) YIELD node RETURN node",
+			tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, 1.0, $token) YIELD rel RETURN rel",
 					Map.of("startObjectId", startObjectId,
 						   "endObjectId", endObjectId,
 						   "label", label,

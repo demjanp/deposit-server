@@ -54,7 +54,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel",
 						Map.of("startClassName", startClassName,
 							   "endClassName", endClassName,
 							   "label", label,
@@ -65,7 +65,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[rel:RELATED_TO {label: $label}]->(cEnd:Class {name: $endClassName}) RETURN rel",
 					Map.of("namespaceName", namespaceName,
 							"startClassName", startClassName,
 							"endClassName", endClassName,
@@ -126,7 +126,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel",
 						Map.of("startClassName", startClassName,
 							   "endClassName", endClassName,
 							   "label", label,
@@ -149,7 +149,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Step 3: Verify the Relationship Comment was Updated
-			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+			Result result = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[rel:RELATED_TO {label: $label}]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
 					Map.of("namespaceName", namespaceName,
 						   "startClassName", startClassName,
 						   "endClassName", endClassName,
@@ -175,7 +175,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel",
 						Map.of("startClassName", startClassName,
 							   "endClassName", endClassName,
 							   "label", label,
@@ -186,7 +186,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship node was created with the initial comment
-			Result initialResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+			Result initialResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[rel:RELATED_TO {label: $label}]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
 					Map.of("namespaceName", namespaceName,
 						   "startClassName", startClassName,
 						   "endClassName", endClassName,
@@ -198,7 +198,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 
 			// Step 2: Update the comment of the existing relationship
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.set.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.set.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel",
 						Map.of("startClassName", startClassName,
 							   "endClassName", endClassName,
 							   "label", label,
@@ -209,7 +209,7 @@ public class CreateClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Verify: Relationship comment was updated
-			Result updatedResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[r:RS]->(rel:Relationship {label: $label})-[r2:RE]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
+			Result updatedResult = session.run("MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(cStart:Class {name: $startClassName})-[rel:RELATED_TO {label: $label}]->(cEnd:Class {name: $endClassName}) RETURN rel.comment AS comment",
 					Map.of("namespaceName", namespaceName,
 						   "startClassName", startClassName,
 						   "endClassName", endClassName,

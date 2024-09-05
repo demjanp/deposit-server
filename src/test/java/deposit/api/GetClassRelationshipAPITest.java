@@ -56,7 +56,7 @@ public class GetClassRelationshipAPITest extends BaseNeo4jTest {
 
 			// Create the class relationship and get its ID
 			String relationshipId = session.writeTransaction(tx -> {
-				Result createResult = tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node.id AS relationshipId",
+				Result createResult = tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel.id AS relationshipId",
 						Map.of("startClassName", startClassName,
 							   "endClassName", endClassName,
 							   "label", label,
@@ -66,7 +66,7 @@ public class GetClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Retrieve the class relationship by ID
-			Result result = session.run("CALL deposit.get.classRelationshipById($relationshipId, $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.classRelationshipById($relationshipId, $token) YIELD rel RETURN rel",
 					Map.of("relationshipId", relationshipId, "token", token));
 
 			assertTrue("Should retrieve the class relationship by ID", result.hasNext());
@@ -80,7 +80,7 @@ public class GetClassRelationshipAPITest extends BaseNeo4jTest {
 			String nonExistentRelationshipId = "non-existent-id";
 
 			// Call the get.classRelationshipById procedure with a non-existent ID
-			Result result = session.run("CALL deposit.get.classRelationshipById($relationshipId, $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.classRelationshipById($relationshipId, $token) YIELD rel RETURN rel",
 					Map.of("relationshipId", nonExistentRelationshipId, "token", token));
 
 			assertFalse("Should not retrieve any class relationship", result.hasNext());
@@ -99,7 +99,7 @@ public class GetClassRelationshipAPITest extends BaseNeo4jTest {
 			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
 
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD node RETURN node",
+				tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel",
 						Map.of("startClassName", startClassName,
 							   "endClassName", endClassName,
 							   "label", label,
@@ -110,7 +110,7 @@ public class GetClassRelationshipAPITest extends BaseNeo4jTest {
 			});
 
 			// Retrieve the class relationship by start and end class
-			Result result = session.run("CALL deposit.get.classRelationship($startClassName, $endClassName, $label, $token) YIELD source, target, relationship RETURN source, target, relationship",
+			Result result = session.run("CALL deposit.get.classRelationship($startClassName, $endClassName, $label, $token) YIELD rel RETURN rel",
 					Map.of("startClassName", startClassName, "endClassName", endClassName, "label", label, "token", token));
 
 			assertTrue("Should retrieve the class relationship by classes", result.hasNext());

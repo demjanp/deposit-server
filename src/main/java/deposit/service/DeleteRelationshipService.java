@@ -5,7 +5,7 @@ import deposit.repository.DeleteRelationshipByIdRepository;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -46,14 +46,14 @@ public class DeleteRelationshipService extends BaseService {
 		}
 		
 		// Get Relationship Id
-		Stream<Node[]> relationships = getRelationshipRepository.getRelationship(tx, namespaceName, startObjectId, endObjectId, label);
-		Optional<Node[]> optionalNodes = relationships.findFirst();
+		Stream<Relationship> relationships = getRelationshipRepository.getRelationship(tx, namespaceName, startObjectId, endObjectId, label);
+		Optional<Relationship> optionalRelationship = relationships.findFirst();
 
-		Node[] nodes = optionalNodes.orElseThrow(() ->
+		Relationship rel = optionalRelationship.orElseThrow(() ->
 			new RuntimeException("Error deleting Relationship " + label + ". It does not exist.")
 		);
 
-		String relationshipId = (String) nodes[2].getProperty("id");
+		String relationshipId = (String) rel.getProperty("id");
 		
 		deleteRelationshipByIdRepository.deleteRelationshipById(tx, timeStamp, username, namespaceName, versioningType, relationshipId);
 	}

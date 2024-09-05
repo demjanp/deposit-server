@@ -1,15 +1,15 @@
 package deposit.api;
 
 import deposit.service.SetRelationshipService;
-import deposit.common.result.NodeResult;
+import deposit.common.result.RelationshipResult;
 
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.procedure.Context;
 import org.neo4j.procedure.Description;
 import org.neo4j.procedure.Mode;
 import org.neo4j.procedure.Procedure;
 import org.neo4j.procedure.Name;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
 
 import java.util.stream.Stream;
 
@@ -29,8 +29,8 @@ public class SetRelationshipAPI extends BaseAPI {
 	 * @throws RuntimeException if there is an error during the update.
 	 */
 	@Procedure(name = "deposit.set.relationship", mode = Mode.WRITE)
-	@Description("CALL deposit.set.relationship(startObjectId, endObjectId, label, weight, token) YIELD node AS relationship")
-	public Stream<NodeResult> setRelationship(
+	@Description("CALL deposit.set.relationship(startObjectId, endObjectId, label, weight, token) YIELD rel")
+	public Stream<RelationshipResult> setRelationship(
 			@Name("startObjectId") String startObjectId,
 			@Name("endObjectId") String endObjectId,
 			@Name("label") String label,
@@ -40,7 +40,7 @@ public class SetRelationshipAPI extends BaseAPI {
 			weight = 0.0;
 		}
 		SetRelationshipService service = SetRelationshipService.getInstance();
-		Node node = service.setRelationship(tx, startObjectId, endObjectId, label, weight, token);
-		return Stream.of(new NodeResult(node));
+		Relationship rel = service.setRelationship(tx, startObjectId, endObjectId, label, weight, token);
+		return Stream.of(new RelationshipResult(rel));
 	}
 }

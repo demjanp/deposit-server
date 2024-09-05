@@ -3,7 +3,7 @@ package deposit.service;
 import deposit.common.ServerContext;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
 
@@ -23,7 +23,7 @@ public class CreateClassRelationshipService extends BaseService {
 		return instance;
 	}
 
-	public Node createClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String comment, String token) {
+	public Relationship createClassRelationship(Transaction tx, String startClassName, String endClassName, String label, String comment, String token) {
 		if (startClassName == endClassName) {
 			throwException("Cannot create a Class Relationship within the same Class.");
 		}

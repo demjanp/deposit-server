@@ -10,6 +10,7 @@ import deposit.repository.DeleteMembershipRepository;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
 import java.util.stream.Stream;
@@ -50,9 +51,9 @@ public class EnsureObjectDeletionService extends BaseService {
 			deleteDescriptorByIdRepository.deleteDescriptorById(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
 		});
 
-		Stream<Node[]> relationships = getRelationshipRepository.getRelationship(tx, namespaceName, objectId, "", "");
-		relationships.forEach(relationship -> {
-			String relationshipId = String.valueOf(relationship[2].getProperty("id"));
+		Stream<Relationship> rels = getRelationshipRepository.getRelationship(tx, namespaceName, objectId, "", "");
+		rels.forEach(rel -> {
+			String relationshipId = String.valueOf(rel.getProperty("id"));
 			deleteRelationshipByIdRepository.deleteRelationshipById(tx, timeStamp, username, namespaceName, versioningType, relationshipId);
 		});
 		

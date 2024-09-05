@@ -1,7 +1,7 @@
 package deposit.repository;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Result;
 
 import java.util.Map;
@@ -19,10 +19,10 @@ public class GetClassRelationshipByIdRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Node[] getClassRelationshipById(Transaction tx, String namespaceName, String relationshipId) {
+	public Relationship getClassRelationshipById(Transaction tx, String namespaceName, String relationshipId) {
 		String matchQuery = """
-			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class)-[:RS]->(relationship:Relationship {id: $relationshipId})-[:RE]->(target:Class)
-			RETURN source, target, relationship
+			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class)-[relationship:RELATED_TO {id: $relationshipId}]->(:Class)
+			RETURN relationship
 		""";
 		Map<String, Object> params = Map.of(
 			"namespaceName", namespaceName,
@@ -31,8 +31,7 @@ public class GetClassRelationshipByIdRepository extends BaseRepository {
 		try {
 			Result result = tx.execute(matchQuery, params);
 			if (result.hasNext()) {
-				Map<String, Object> row = result.next();
-				return new Node[]{(Node) row.get("source"), (Node) row.get("target"), (Node) row.get("relationship")};
+				return (Relationship) result.next().get("relationship");
 			}
 		} catch (Exception e) {
 			throwException("Error retrieving Class Relationship", e);

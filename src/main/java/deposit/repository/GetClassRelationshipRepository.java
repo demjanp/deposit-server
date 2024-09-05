@@ -1,7 +1,7 @@
 package deposit.repository;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Result;
 
 import java.util.Map;
@@ -21,7 +21,7 @@ public class GetClassRelationshipRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Stream<Node[]> getClassRelationship(Transaction tx, String namespaceName, String startClassName, String endClassName, String label) {
+	public Stream<Relationship> getClassRelationship(Transaction tx, String namespaceName, String startClassName, String endClassName, String label) {
 		String matchQuery;
 		Map<String, Object> params;
 		
@@ -29,8 +29,8 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			matchQuery = """
 				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
 					  (n)-[:CONTAINS]->(target:Class)
-				MATCH (source)-[:RS]->(relationship:Relationship)-[:RE]->(target)
-				RETURN source, target, relationship
+				MATCH (source)-[relationship:RELATED_TO]->(target)
+				RETURN relationship
 			""";
 			params = Map.of(
 				"namespaceName", namespaceName,
@@ -40,8 +40,8 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			matchQuery = """
 				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
 					  (n)-[:CONTAINS]->(target:Class)
-				MATCH (source)-[:RS]->(relationship:Relationship {label: $label})-[:RE]->(target)
-				RETURN source, target, relationship
+				MATCH (source)-[relationship:RELATED_TO {label: $label}]->(target)
+				RETURN relationship
 			""";
 			params = Map.of(
 				"namespaceName", namespaceName,
@@ -52,8 +52,8 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			matchQuery = """
 				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
 					  (n)-[:CONTAINS]->(target:Class {name: $endClassName})
-				MATCH (source)-[:RS]->(relationship:Relationship)-[:RE]->(target)
-				RETURN source, target, relationship
+				MATCH (source)-[relationship:RELATED_TO]->(target)
+				RETURN relationship
 			""";
 			params = Map.of(
 				"namespaceName", namespaceName,
@@ -64,8 +64,8 @@ public class GetClassRelationshipRepository extends BaseRepository {
 			matchQuery = """
 				MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName}),
 					  (n)-[:CONTAINS]->(target:Class {name: $endClassName})
-				MATCH (source)-[:RS]->(relationship:Relationship {label: $label})-[:RE]->(target)
-				RETURN source, target, relationship
+				MATCH (source)-[relationship:RELATED_TO {label: $label}]->(target)
+				RETURN relationship
 			""";
 			params = Map.of(
 				"namespaceName", namespaceName,
@@ -78,7 +78,7 @@ public class GetClassRelationshipRepository extends BaseRepository {
 		try {
 			Result result = tx.execute(matchQuery, params);
 			return StreamSupport.stream(result.stream().spliterator(), false)
-					.map(r -> new Node[]{(Node) r.get("source"), (Node) r.get("target"), (Node) r.get("relationship")});
+					.map(r -> (Relationship) r.get("relationship"));
 		} catch (Exception e) {
 			throwException("Error retrieving Class Relationship", e);
 		}

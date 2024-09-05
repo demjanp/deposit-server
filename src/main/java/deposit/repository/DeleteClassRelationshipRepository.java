@@ -23,7 +23,7 @@ public class DeleteClassRelationshipRepository extends BaseRepository {
 	
 	public void deleteClassRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startClassName, String endClassName, String label) {
 		String validateQuery = """
-			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[:RS]->(existing:Relationship {label: $label})-[:RE]->(:Class {name: $endClassName})
+			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class {name: $startClassName})-[existing:RELATED_TO {label: $label}]->(:Class {name: $endClassName})
 			RETURN existing
 		""";
 		Map<String, Object> params = Map.of(
@@ -43,7 +43,7 @@ public class DeleteClassRelationshipRepository extends BaseRepository {
 		}
 		
 		String deleteQuery = """
-			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName})-[:RS]->(updated:Relationship {label: $label})-[:RE]->(target:Class {name: $endClassName})
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Class {name: $startClassName})-[updated:RELATED_TO {label: $label}]->(target:Class {name: $endClassName})
 			WITH namespace, source, target, updated
 		""";
 		deleteQuery += Versioning.getElementUpdateCode("ClassRelationship", true, versioningType);

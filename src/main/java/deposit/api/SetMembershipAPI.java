@@ -1,7 +1,7 @@
 package deposit.api;
 
 import deposit.service.SetMembershipService;
-import deposit.common.result.MembershipResult;
+import deposit.common.result.RelationshipResult;
 
 import org.neo4j.procedure.Context;
 import org.neo4j.procedure.Description;
@@ -27,13 +27,13 @@ public class SetMembershipAPI extends BaseAPI {
 	 * @throws RuntimeException if the Membership already exists or if there is an error during the creation.
 	 */
 	@Procedure(name = "deposit.set.membership", mode = Mode.WRITE)
-	@Description("CALL deposit.set.membership(className, objectId, token) YIELD membership")
-	public Stream<MembershipResult> createMembership(
+	@Description("CALL deposit.set.membership(className, objectId, token) YIELD rel")
+	public Stream<RelationshipResult> createMembership(
 			@Name("className") String className,
 			@Name("objectId") String objectId,
 			@Name(value = "token", defaultValue = "") String token) {
 		SetMembershipService service = SetMembershipService.getInstance();
-		Relationship relationship = service.setMembership(tx, className, objectId, token);
-		return Stream.of(new MembershipResult(relationship));
+		Relationship rel = service.setMembership(tx, className, objectId, token);
+		return Stream.of(new RelationshipResult(rel));
 	}
 }

@@ -7,6 +7,7 @@ import deposit.repository.CreateRelationshipRepository;
 
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 import java.time.ZonedDateTime;
 import java.util.stream.Stream;
@@ -33,14 +34,14 @@ public class EnsureRelationshipService extends BaseService {
 		return instance;
 	}
 
-	public Node ensureRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
+	public Relationship ensureRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
 		Node startClassNode = getObjectClassRepository.getObjectClass(tx, namespaceName, startObjectId);
 		String startClassName = String.valueOf(startClassNode.getProperty("name"));
 		Node endClassNode = getObjectClassRepository.getObjectClass(tx, namespaceName, endObjectId);
 		String endClassName = String.valueOf(endClassNode.getProperty("name"));
 		if (!startClassName.equals(endClassName)) {
 			// Ensure a Class Relationship between the start and end Classes
-			Stream<Node[]> result = getClassRelationshipRepository.getClassRelationship(tx, namespaceName, startClassName, endClassName, label);
+			Stream<Relationship> result = getClassRelationshipRepository.getClassRelationship(tx, namespaceName, startClassName, endClassName, label);
 			if (result.findAny().isEmpty()) {
 				createClassRelationshipRepository.createClassRelationship(tx, timeStamp, username, namespaceName, versioningType, startClassName, endClassName, label, "");
 			}
