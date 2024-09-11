@@ -4,60 +4,111 @@ grammar DepositQuery;
 package deposit.service.query;
 }
 
-// Entry point
-query          : selectClause whereClause? EOF;
+query
+    : selectClause whereClause? EOF
+    ;
 
-// SELECT clause
-selectClause   : 'SELECT' DISTINCT? selectItem (',' selectItem)*;
-selectItem     : aggregationFunction | identifier ('.' identifier)? ('AS' alias)?;
+selectClause
+    : 'SELECT' DISTINCT? selectItem (',' selectItem)*
+    ;
 
-// Aggregation functions
+selectItem
+    : aggregationFunction
+    | identifier ('.' identifier)? ('AS' alias)?
+    ;
+
 aggregationFunction
-               : functionName '(' identifier ('.' identifier)? (',' NUMBER)? ')' ('AS' alias)?;
+    : functionName '(' identifier ('.' identifier)? (',' NUMBER)? ')' ('AS' alias)?
+    ;
 
-// WHERE clause
-whereClause    : 'WHERE' condition (logicalOp condition)*;
+whereClause
+    : 'WHERE' logicalExpression
+    ;
 
-// Conditions for both relationships and expressions
-condition      : 'NOT'? relationship
-               | 'NOT'? expression comparator value;
+logicalExpression
+    : logicalTerm (logicalOp logicalTerm)*
+    ;
 
-// Expressions for descriptors
-expression     : identifier ('.' identifier)?;
+logicalTerm
+    : 'NOT' logicalTerm                        // NOT can apply to any term
+    | '(' 'NOT'? logicalExpression ')'         // NOT before a parenthesized expression
+    | atomicCondition                         // Basic condition
+    | '(' logicalExpression ')'               // Parenthesized logical expressions
+    ;
 
-// Relationship pattern, e.g., C1-contains->C2
-relationship   : identifier ('<-' | '-') label? ('*' minHops '..' maxHops)? '->' identifier
-               | identifier '<-' label? ('*' minHops '..' maxHops)? '-' identifier
-               | identifier '-' label? ('*' minHops '..' maxHops)? '-' identifier;
+condition
+    : atomicCondition
+    | '(' logicalExpression ')'
+    ;
 
-minHops        : NUMBER;
-maxHops        : NUMBER;
+atomicCondition
+    : identifier ('.' identifier)? comparator value  
+    | relationship
+    ;
 
-// Label is the relationship label like 'contains'
-label          : identifier;
+relationship
+    : identifier ('<-' | '-') label? ('*' minHops '..' maxHops)? '->' identifier
+    | identifier '<-' label? ('*' minHops '..' maxHops)? '-' identifier
+    | identifier '-' label? ('*' minHops '..' maxHops)? '-' identifier
+    ;
 
-// Values and comparators
-value          : QUOTED_STRING | NUMBER | tuple;
-comparator     : '=' | 'IN' | '<>' | '!=' | '>' | '<';
+minHops
+    : NUMBER
+    ;
 
-// Logical operators for WHERE conditions
-logicalOp      : 'AND' | 'OR';
+maxHops
+    : NUMBER
+    ;
 
-// Aliases for SELECT items
-alias          : identifier;
+label
+    : identifier
+    ;
 
-// Tuple support for multiple values
-tuple          : '(' value (',' value)* ')';
+value
+    : QUOTED_STRING | NUMBER | tuple  
+    ;
 
-// Supported aggregation functions
-functionName   : 'COUNT' | 'PERCENTILE' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COLLECT';
+comparator
+    : '=' | 'IN' | '<>' | '!=' | '>' | '<'
+    ;
 
-// Identifiers and keywords
-DISTINCT       : 'DISTINCT';
-identifier     : ID | QUOTED_STRING;
+logicalOp
+    : 'AND' | 'OR'
+    ;
 
-// Basic tokens (identifiers, strings, numbers, and whitespace)
-ID             : [a-zA-Z_][a-zA-Z0-9_]*;
-QUOTED_STRING  : '"' ( ~["\\] | '\\' . )* '"' ;
-NUMBER         : [0-9]+ ('.' [0-9]+)?;
-WS             : [ \t\r\n]+ -> skip;
+alias
+    : identifier
+    ;
+
+tuple
+    : '(' value (',' value)* ')'
+    ;
+
+functionName
+    : 'COUNT' | 'PERCENTILE' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COLLECT'
+    ;
+
+DISTINCT
+    : 'DISTINCT'
+    ;
+
+identifier
+    : ID | QUOTED_STRING
+    ;
+
+ID
+    : [a-zA-Z_][a-zA-Z0-9_]*
+    ;
+
+QUOTED_STRING
+    : ('"' ( ~["\\] | '\\' . )* '"')
+    | ('\'' ( ~['\\] | '\\' . )* '\'')
+    ;
+
+NUMBER
+    : [0-9]+ ('.' [0-9]+)?
+    ;
+
+WS
+    : [ \t\r\n]+ -> skip
+    ;
