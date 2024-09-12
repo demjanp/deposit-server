@@ -422,4 +422,27 @@ public class QueryTranslatorTest {
         // Assert the generated Cypher matches the expected result
         assertEquals(expected, cypher);
     }
+
+    @Test
+    public void testOrderBy() {
+        // Given a simple query with class and descriptor
+        String depositQuery = "SELECT C1.D1, C2.D2 AS alias WHERE C1.D1 = 'value1' ORDER BY C1.D1, alias DESC";
+
+        // When the query is translated to Cypher
+        String cypher = QueryTranslator.translateToCypher(depositQuery);
+
+        // Expected Cypher query
+        String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), " +
+                          "(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'}), " +
+                          "(:Namespace {name: $namespaceName})-[:CONTAINS]->(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), " +
+                          "(o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D2'})\n" +
+                          "WITH d_C1_D1, d_alias, o_alias, o_C1\n" +
+                          "OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_alias)\n" +
+                          "WITH d_C1_D1, d_alias, o_alias, o_C1\n" +
+                          "WHERE (d_C1_D1 = 'value1')\n" +
+                          "RETURN d_C1_D1 AS C1_D1, d_alias AS alias\n" +
+                          "ORDER BY d_C1_D1 ASC, d_alias DESC";
+
+        assertEquals(expected, cypher);
+    }
 }

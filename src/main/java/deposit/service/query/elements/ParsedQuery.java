@@ -9,6 +9,7 @@ public class ParsedQuery {
 	private List<WhereCondition> whereConditions;
 	private List<WhereCondition> relationshipConditions;
 	private List<String> logicalOperators;
+	private List<OrderByItem> orderByItems;
 
 	private boolean distinct;
 
@@ -17,6 +18,7 @@ public class ParsedQuery {
 		this.whereConditions = new ArrayList<>();
 		this.relationshipConditions = new ArrayList<>();
 		this.logicalOperators = new ArrayList<>();
+		this.orderByItems = new ArrayList<>();
 		this.distinct = false;
 	}
 
@@ -68,6 +70,14 @@ public class ParsedQuery {
 	public List<WhereCondition> getRelationshipConditions() {
 		return this.relationshipConditions;
 	}
+
+	public void addOrderByItem(OrderByItem orderByItem) {
+        this.orderByItems.add(orderByItem);
+    }
+
+    public List<OrderByItem> getOrderByItems() {
+        return this.orderByItems;
+    }
 
 	public boolean isDistinct() {
 		return distinct;
