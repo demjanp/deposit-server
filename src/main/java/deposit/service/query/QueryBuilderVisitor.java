@@ -41,7 +41,6 @@ public class QueryBuilderVisitor extends DepositQueryBaseVisitor<ParsedQuery> {
             String className = ctx.identifier(0).getText();
             String descriptor = ctx.identifier().size() > 1 ? ctx.identifier(1).getText() : null;
             String alias = ctx.alias() != null ? ctx.alias().getText() : "";
-            parsedQuery.addClassName(className);
             SelectItem selectItem = new SelectItem(className, descriptor, alias);
             parsedQuery.addSelectItem(selectItem);
         }
@@ -54,7 +53,9 @@ public class QueryBuilderVisitor extends DepositQueryBaseVisitor<ParsedQuery> {
         String className = ctx.identifier(0).getText();
         String descriptor = ctx.identifier().size() > 1 ? ctx.identifier(1).getText() : null;
         String alias = ctx.alias() != null ? ctx.alias().getText() : "";
-        SelectItem selectItem = new SelectItem(className, descriptor, alias, functionName);
+        Double functionValue = ctx.NUMBER() != null ? Double.parseDouble(ctx.NUMBER().getText()) : null;
+        boolean isDistinct = ctx.DISTINCT() != null;
+        SelectItem selectItem = new SelectItem(className, descriptor, alias, functionName, functionValue, isDistinct);
         parsedQuery.addSelectItem(selectItem);
         return parsedQuery;
     }
@@ -161,23 +162,22 @@ public class QueryBuilderVisitor extends DepositQueryBaseVisitor<ParsedQuery> {
         return condition;
     }
 
-
-
     private WhereCondition extractRelationshipCondition(DepositQueryParser.RelationshipContext ctx) {
-        String leftClassOrAlias = QueryUtils.sanitizeAlias(QueryUtils.stripQuotes(ctx.identifier(0).getText()));
-        String rightClassOrAlias = QueryUtils.sanitizeAlias(QueryUtils.stripQuotes(ctx.identifier(1).getText()));
+        String leftClassOrAlias = QueryUtils.generateAliasForClass(ctx.identifier(0).getText());
+        String rightClassOrAlias = QueryUtils.generateAliasForClass(ctx.identifier(1).getText());
         SelectItem leftAliasInSelect = parsedQuery.getSelectItemByAlias(leftClassOrAlias);
         SelectItem rightAliasInSelect = parsedQuery.getSelectItemByAlias(rightClassOrAlias);
         String leftOperand = leftAliasInSelect != null ? leftAliasInSelect.getObjectVariable() : "o_" + leftClassOrAlias;
         String rightOperand = rightAliasInSelect != null ? rightAliasInSelect.getObjectVariable() : "o_" + rightClassOrAlias;
         String leftClassName = leftAliasInSelect != null ? leftAliasInSelect.getClassName() : leftClassOrAlias;
         String rightClassName = rightAliasInSelect != null ? rightAliasInSelect.getClassName() : rightClassOrAlias;
-        String label = QueryUtils.stripQuotes(ctx.label().getText());
+        String label = ctx.label() != null ? QueryUtils.stripQuotes(ctx.label().getText()) : "";
         String relationshipType = ctx.getText().contains("<-") ? "INCOMING" : (ctx.getText().contains("->") ? "OUTGOING" : "BIDIRECTIONAL");
         String minHops = ctx.minHops() != null ? ctx.minHops().getText() : null;
         String maxHops = ctx.maxHops() != null ? ctx.maxHops().getText() : null;
+        boolean asterisk = ctx.asterisk() != null;
         return new WhereCondition(leftOperand, "--", rightOperand, leftClassName, rightClassName,
-                null, null, leftClassOrAlias, rightClassOrAlias, label, relationshipType, minHops, maxHops);
+                null, null, leftClassOrAlias, rightClassOrAlias, label, relationshipType, minHops, maxHops, asterisk);
     }
 
     private boolean isLiteralValue(DepositQueryParser.ValueContext valueCtx) {

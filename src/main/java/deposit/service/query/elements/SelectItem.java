@@ -6,41 +6,36 @@ public class SelectItem {
     private String className;
     private String descriptor;
     private String alias;
-    private String objectAlias;
     private String aggregationFunction;
+    private Double functionValue;
+    private boolean distinct;
     private String variable;
     private String objectVariable;
 
     public SelectItem(String className, String descriptor, String alias) {
-        this(className, descriptor, alias, null);
+        this(className, descriptor, alias, null, null, false);
     }
 
-    public SelectItem(String className, String descriptor, String alias, String aggregationFunction) {
+    public SelectItem(String className, String descriptor, String alias, String aggregationFunction, Double functionValue, boolean distinct) {
         this.className = QueryUtils.stripQuotes(className);
         this.descriptor = (descriptor != null) ? QueryUtils.stripQuotes(descriptor) : null;
 
-        // Generate objectAlias and descriptorAlias when SelectItem is instantiated
         if (aggregationFunction == null) {
             this.alias = !alias.isEmpty() ? alias : (this.descriptor != null ? this.className + "_" + this.descriptor : this.className);
         } else {
-            this.alias = !alias.isEmpty() ? alias : aggregationFunction + "_" + className;
+            this.alias = !alias.isEmpty() ? alias : (this.descriptor != null ? aggregationFunction + "_" + className + "_" + descriptor : aggregationFunction + "_" + className);
         }
 
-        this.objectAlias = !alias.isEmpty() ? alias : this.className;
         this.alias = QueryUtils.sanitizeAlias(this.alias);
-        this.objectAlias = QueryUtils.sanitizeAlias(this.objectAlias);
-
         this.aggregationFunction = aggregationFunction;
         this.variable = (descriptor != null) ? "d_" + this.alias : "o_" + this.alias;
-        this.objectVariable = "o_" + this.objectAlias;
+        this.objectVariable = "o_" + (!alias.isEmpty() ? alias : QueryUtils.sanitizeAlias(this.className));
+        this.functionValue = functionValue;
+        this.distinct = distinct;
     }
 
     public String getAlias() {
         return alias;
-    }
-
-    public String getObjectAlias() {
-        return objectAlias;
     }
 
     public String getVariable() {
@@ -63,10 +58,16 @@ public class SelectItem {
         return aggregationFunction;
     }
 
-    public void setAggregationFunction(String aggregationFunction) {
-        this.aggregationFunction = aggregationFunction;
-    }
+	public boolean isAggregation() {
+		return aggregationFunction != null && !aggregationFunction.isEmpty();
+	}
 
+    public boolean isDistinct() { return distinct; }
+
+	public Double getFunctionValue() {
+		return functionValue;
+	}
+	
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -79,7 +80,6 @@ public class SelectItem {
             sb.append(", aggregationFunction='").append(aggregationFunction).append("'");
         }
         sb.append(", alias='").append(alias).append("'");
-        sb.append(", objectAlias='").append(objectAlias).append("'");
         sb.append(" }");
         return sb.toString();
     }

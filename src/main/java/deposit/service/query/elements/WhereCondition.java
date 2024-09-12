@@ -10,14 +10,15 @@ public class WhereCondition {
     private String rightDescriptor;
     private String leftAlias;
     private String rightAlias;
-    private String logicalOperator;
     private boolean negated;
 
     // Fields for relationship conditions
+    private String relVariable;
     private String label;
     private String relationshipType;
     private String minHops;
     private String maxHops;
+    private boolean asterisk;
 
     // Constructor for non-relationship conditions
     public WhereCondition(String leftOperand, String operator, String rightOperand,
@@ -39,12 +40,14 @@ public class WhereCondition {
     public WhereCondition(String leftOperand, String operator, String rightOperand,
                           String leftClass, String rightClass, String leftDescriptor,
                           String rightDescriptor, String leftAlias, String rightAlias,
-                          String label, String relationshipType, String minHops, String maxHops) {
+                          String label, String relationshipType, String minHops, String maxHops, boolean asterisk) {
         this(leftOperand, operator, rightOperand, leftClass, rightClass, leftDescriptor, rightDescriptor, leftAlias, rightAlias);
         this.label = label;
         this.relationshipType = relationshipType;
         this.minHops = minHops;
         this.maxHops = maxHops;
+        this.asterisk = asterisk;
+        this.relVariable = "r_" + leftAlias + "_" + rightAlias;
     }
 
     public String getLeftOperand() {
@@ -86,7 +89,11 @@ public class WhereCondition {
     public boolean isNegated() {
         return negated;
     }
-
+	
+	public String getRelVariable() {
+        return relVariable;
+    }
+	
     public String getLabel() {
         return label;
     }
@@ -103,12 +110,8 @@ public class WhereCondition {
         return maxHops;
     }
 
-    public void setLogicalOperator(String logicalOperator) {
-        this.logicalOperator = logicalOperator;
-    }
-
-    public void setOperator(String operator) {
-        this.operator = operator;
+    public boolean hasAsterisk() {
+        return asterisk;
     }
 
     public void setNegated(boolean negated) {
