@@ -128,6 +128,7 @@ public class WhereCondition {
                     ", rightOperand='" + rightOperand + '\'' +
                     ", label='" + label + '\'' +
                     ", relationshipType='" + relationshipType + '\'' +
+                    ", asterisk=" + asterisk + '\'' +
                     ", minHops='" + minHops + '\'' +
                     ", maxHops='" + maxHops + '\'' +
                     " }";

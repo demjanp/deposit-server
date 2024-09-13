@@ -6,21 +6,23 @@ import deposit.service.query.elements.SelectItem;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.List;
+import java.util.ArrayList;
 
 public class ReturnClauseBuilder {
-
 	private static final DecimalFormat decimalFormat = createDecimalFormat();
 
 	private static DecimalFormat createDecimalFormat() {
 		DecimalFormatSymbols symbols = new DecimalFormatSymbols();
-		symbols.setDecimalSeparator('.');  // Force dot (.) as the decimal separator
+		symbols.setDecimalSeparator('.');
 		DecimalFormat format = new DecimalFormat();
 		format.setDecimalFormatSymbols(symbols);
 		return format;
 	}
 
-	public static String buildReturnClause(ParsedQuery parsedQuery) {
+	public static ReturnResult buildReturnClause(ParsedQuery parsedQuery) {
 		StringBuilder returnClause = new StringBuilder();
+		List<String> returnedNodes = new ArrayList<>();
+		List<String> returnedKeys = new ArrayList<>();
 
 		if (parsedQuery.isDistinct()) {
 			returnClause.append("DISTINCT ");
@@ -29,25 +31,48 @@ public class ReturnClauseBuilder {
 		List<SelectItem> selectItems = parsedQuery.getSelectItems();
 		for (int i = 0; i < selectItems.size(); i++) {
 			SelectItem selectItem = selectItems.get(i);
-
 			if (i > 0) {
 				returnClause.append(", ");
 			}
-
 			if (selectItem.isAggregation()) {
 				appendAggregationFunction(returnClause, selectItem);
 			} else {
 				appendRegularItem(returnClause, selectItem);
 			}
+			returnedNodes.add(selectItem.getAlias());
+			returnedKeys.add(selectItem.getResultKey());
 		}
 
-		return returnClause.toString();
+		return new ReturnResult(returnClause.toString(), returnedNodes, returnedKeys);
+	}
+
+	public static class ReturnResult {
+		private final String returnClause;
+		private final List<String> returnedNodes;
+		private final List<String> returnedKeys;
+
+		public ReturnResult(String returnClause, List<String> returnedNodes, List<String> returnedKeys) {
+			this.returnClause = returnClause;
+			this.returnedNodes = returnedNodes;
+			this.returnedKeys = returnedKeys;
+		}
+
+		public String getReturnClause() {
+			return returnClause;
+		}
+
+		public List<String> getReturnedNodes() {
+			return returnedNodes;
+		}
+		
+		public List<String> getReturnedKeys() {
+			return returnedKeys;
+		}
 	}
 
 	private static void appendAggregationFunction(StringBuilder returnClause, SelectItem selectItem) {
 		String distinctClause = selectItem.isDistinct() ? "DISTINCT " : "";
 		String function = selectItem.getAggregationFunction().toUpperCase();
-
 		switch (function) {
 			case "PERCENTILE":
 				appendPercentileFunction(returnClause, selectItem, distinctClause);
@@ -70,8 +95,8 @@ public class ReturnClauseBuilder {
 	}
 
 	private static void appendCountFunction(StringBuilder returnClause, SelectItem selectItem, String distinctClause) {
-		returnClause.append(String.format("%s(%s%s) AS %s",
-			"COUNT", distinctClause, selectItem.getObjectVariable(), selectItem.getAlias()));
+		returnClause.append(String.format("COUNT(%s%s) AS %s",
+			distinctClause, selectItem.getObjectVariable(), selectItem.getAlias()));
 	}
 
 	private static void appendGenericFunction(StringBuilder returnClause, SelectItem selectItem, String distinctClause, String function) {
@@ -83,7 +108,6 @@ public class ReturnClauseBuilder {
 		String variable = selectItem.getDescriptor() != null && !selectItem.getDescriptor().isEmpty()
 				? selectItem.getVariable()
 				: selectItem.getObjectVariable();
-
 		returnClause.append(String.format("%s AS %s", variable, selectItem.getAlias()));
 	}
 }

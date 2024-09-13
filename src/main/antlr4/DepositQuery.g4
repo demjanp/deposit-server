@@ -59,7 +59,7 @@ atomicCondition
     ;
 
 relationship
-    : identifier ('<-' | '-') label? asterisk? (minHops? '..' maxHops?)? '->' identifier
+    : identifier ('<-' | '-') label? asterisk? (minHops? '..' maxHops?)? ('-' | '->') identifier
     ;
 
 asterisk

@@ -62,11 +62,14 @@ public class WhereClauseBuilder {
 
 	private static String replaceWithVariable(String operand, ParsedQuery parsedQuery) {
 		SelectItem selectItem = parsedQuery.getSelectItemByAlias(operand);
-
+		String variable = operand;
 		if (selectItem != null) {
-			return resolveSelectItemVariable(selectItem);
+			variable = resolveSelectItemVariable(selectItem);
 		}
-		return operand;
+		if (variable.startsWith("d_")) {
+			variable = variable + ".value";
+		}
+		return variable;
 	}
 
 	private static String resolveSelectItemVariable(SelectItem selectItem) {
