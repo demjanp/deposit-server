@@ -846,6 +846,25 @@ Get the position of an Object node in the graph.
 CALL deposit.get.objectPosition(objectId, token) YIELD x, y
 ```
 
+## deposit.get.query
+
+Executes a Deposit query and returns the result as QueryResult.
+
+### Parameters:
+
+- **queryStr**: the Deposit query string
+- **token**: the authentication token
+
+### Throws:
+
+- **RuntimeException**: if there is an error executing the query
+
+### Usage:
+
+```cypher
+CALL deposit.get.query(queryStr, token) YIELD result
+```
+
 ## deposit.get.relationship
 
 Get existing Relationship.

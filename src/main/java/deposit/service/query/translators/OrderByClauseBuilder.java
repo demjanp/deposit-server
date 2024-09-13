@@ -31,6 +31,7 @@ public class OrderByClauseBuilder {
         if (selectItem == null) {
             throw new IllegalStateException("ORDER BY item not defined in SELECT statement: " + alias);
         }
-        return selectItem.getVariable() + " " + orderByItem.getOrderDirection();
+        String value = selectItem.getDescriptor() != null ? ".value" : "";
+        return selectItem.getVariable() + value + " " + orderByItem.getOrderDirection();
     }
 }

@@ -22,7 +22,7 @@ public class GetQueryAPI extends BaseAPI {
 	 *
 	 * @param queryStr the Deposit query string
 	 * @param token the authentication token
-	 * @return a stream of QueryResult objects. Use result.get(key) to retrieve a returned node. Use result.keys() to retrieve a list of keys.
+	 * @return a stream of QueryResult objects. Use result.get(key) to retrieve a returned node. Keys are identical to the identifiers used in the SELECT clause.
 	 * @throws RuntimeException if there is an error executing the query
 	 */
 	@Procedure(name = "deposit.get.query", mode = Mode.READ)

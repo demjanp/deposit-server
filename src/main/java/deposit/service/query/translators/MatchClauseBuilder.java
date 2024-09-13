@@ -5,16 +5,16 @@ import deposit.service.query.elements.ParsedQuery;
 import deposit.service.query.elements.SelectItem;
 import deposit.service.query.elements.WhereCondition;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class MatchClauseBuilder {
 
 	public static String buildMatchClause(ParsedQuery parsedQuery, Set<String> objectVariables, Set<String> descriptorVariables, Set<String> relVariables) {
 
-		Set<SelectItem> queryItems = new HashSet<>();
-		Set<WhereCondition> definedRelationships = new HashSet<>();
-		Set<WhereCondition> undefinedRelationships = new HashSet<>();
+		Set<SelectItem> queryItems = new LinkedHashSet<>();
+		Set<WhereCondition> definedRelationships = new LinkedHashSet<>();
+		Set<WhereCondition> undefinedRelationships = new LinkedHashSet<>();
 
 		SelectItem firstSelectItem = parsedQuery.getSelectItems().get(0);
 
@@ -30,7 +30,7 @@ public class MatchClauseBuilder {
 		String firstObjectVariable = firstSelectItem.getObjectVariable();
 		String firstClassName = firstSelectItem.getClassName();
 		String firstAlias = firstSelectItem.getAlias();
-		Set<String> variablesWithRelationships = new HashSet<>();
+		Set<String> variablesWithRelationships = new LinkedHashSet<>();
 		variablesWithRelationships.add(firstObjectVariable);
 		for (WhereCondition condition : definedRelationships) {
 			variablesWithRelationships.add(condition.getLeftOperand());
@@ -129,7 +129,7 @@ public class MatchClauseBuilder {
 	}
 
 	private static void appendWithClause(StringBuilder matchClause, Set<String> objectVariables, Set<String> descriptorVariables, Set<String> relVariables) {
-		Set<String> matchedVariables = new HashSet<>(objectVariables);
+		Set<String> matchedVariables = new LinkedHashSet<>(objectVariables);
 		matchedVariables.addAll(descriptorVariables);
 		matchedVariables.addAll(relVariables);
 		matchClause.append("WITH ").append(String.join(", ", matchedVariables)).append("\n");

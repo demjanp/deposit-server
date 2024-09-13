@@ -8,8 +8,11 @@ import org.junit.Test;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
+import org.neo4j.driver.Value;
 import org.neo4j.driver.types.Node;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
@@ -88,42 +91,28 @@ public class GetQueryAPITest extends BaseNeo4jTest {
             String objectId3 = createObject(session, className1);
             String objectId4 = createObject(session, className2);
 
-            createDescriptor(session, objectId1, "D1", "value1");
-            createDescriptor(session, objectId2, "D2", "value2");
-            createDescriptor(session, objectId3, "D1", "value3");
-            createDescriptor(session, objectId4, "D2", "value4");
-
             createRelationship(session, objectId1, "contains", objectId2);
 
-            /*
             Result queryResult = session.run(
-                    "CALL deposit.get.query('SELECT C1, C2', $token) YIELD result RETURN result",
+                    "CALL deposit.get.query('SELECT C1, C2 ORDER BY C2', $token) YIELD result RETURN result",
                     Map.of("token", token)
             );
-
+            List<String[]> expectedPairs = new ArrayList<>();
+            expectedPairs.add(new String[]{objectId1, objectId2});
+            expectedPairs.add(new String[]{objectId3, null});
+            int index = 0;
             while (queryResult.hasNext()) {
                 Map<String, Object> result = queryResult.next().get("result").asMap();
-                System.out.println(result);
                 Node node1 = (Node) result.get("C1");
                 Node node2 = (Node) result.get("C2");
-                System.out.println(node1.get("id").asString() + " : " + node2.get("id").asString());
+                String id1 = node1 == null ? null : node1.get("id").asString();
+                String id2 = node2 == null ? null : node2.get("id").asString();
+                String[] expected = expectedPairs.get(index);
+                index++;
+                assertEquals(expected[0], id1);
+                assertEquals(expected[1], id2);
             }
-
-            */
-
-            Result queryResult = session.run(
-            "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-                    "WITH o_C1, d_C1_D1\n" +
-                    "OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), (o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
-                    "WITH o_C1, d_C1_D1, o_C2, d_C2_D2\n" +
-                    "RETURN d_C1_D1.value AS C1_D1, d_C2_D2.value AS D2_C2",
-                    Map.of("namespaceName", namespaceName)
-            );
-            while (queryResult.hasNext()) {
-                Record record = queryResult.next();
-                System.out.println(record);
-            }
-
+            assertEquals("Number of returned results doesn't match expected pairs.", expectedPairs.size(), index);
         }
     }
 
@@ -149,43 +138,33 @@ public class GetQueryAPITest extends BaseNeo4jTest {
             createDescriptor(session, objectId2, descriptorName2, "value2");
             createDescriptor(session, objectId3, descriptorName1, "value3");
             createDescriptor(session, objectId4, descriptorName2, "value4");
+            
+            createRelationship(session, objectId1, "contains", objectId2);
+            createRelationship(session, objectId1, "contains", objectId4);
 
             Result queryResult = session.run(
-                    "CALL deposit.get.query('SELECT C1.D1, C2.D2', $token) YIELD result RETURN result",
+                    "CALL deposit.get.query('SELECT C1.D1, C2.D2 ORDER BY C1.D1, C2.D2', $token) YIELD result RETURN result",
                     Map.of("token", token)
             );
 
+            List<String[]> expectedPairs = new ArrayList<>();
+            expectedPairs.add(new String[]{"value1", "value2"});
+            expectedPairs.add(new String[]{"value1", "value4"});
+            expectedPairs.add(new String[]{"value3", null});
+
+            int index = 0;
             while (queryResult.hasNext()) {
-                Map<String, Object> result = queryResult.next().get("result").asMap();
-                System.out.println(result); // DEBUG
-
-                Node node1 = (Node) result.get("C1.D1");
-                Node node2 = (Node) result.get("C2.D2");
-                System.out.println(node1.get("value").asString() + " : " + node2.get("value").asString());
+                Map<String, Object> mapResult = queryResult.next().get("result").asMap();
+                Node node1 = (Node) mapResult.get("C1.D1");
+                Node node2 = (Node) mapResult.get("C2.D2");
+                String value1 = node1 == null ? null : node1.get("value").asString();
+                String value2 = node2 == null ? null : node2.get("value").asString();
+                String[] expected = expectedPairs.get(index);
+                index++;
+                assertEquals(expected[0], value1);
+                assertEquals(expected[1], value2);
             }
-
-            // Check the results
-            assertTrue(queryResult.hasNext());
-            Map<String, Object> result = queryResult.next().get("result").asMap();
-
-            // Validate the returned nodes (using org.neo4j.driver.types.Node)
-            assertTrue(result.containsKey("C1.D1"));
-            assertTrue(result.containsKey("C2.D2"));
-
-            // Retrieve nodes from the result map
-            Node node1 = (Node) result.get("C1.D1");
-            Node node2 = (Node) result.get("C2.D2");
-
-            assertNotNull(node1);
-            assertNotNull(node2);
-
-            // Validate the node properties
-            assertEquals("value1", node1.get("value").asString());
-            assertEquals("value2", node2.get("value").asString());
-
-            // Validate the keys
-            assertTrue(result.keySet().contains("C1.D1"));
-            assertTrue(result.keySet().contains("C2.D2"));
+            assertEquals("Number of returned results doesn't match expected pairs.", expectedPairs.size(), index);
         }
     }
 
