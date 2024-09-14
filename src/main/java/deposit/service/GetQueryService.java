@@ -28,20 +28,17 @@ public class GetQueryService extends BaseService {
 
 	public Stream<QueryResult> getQuery(Transaction tx, String queryStr, String token) {
 
-		// Validate token and get the active namespace
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot process query without an active Namespace.");
 		}
 
-		// Translate the query to Cypher
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(queryStr);
 		String cypherQueryStr = result.getCypherQuery();
 		List<String> returnedNodes = result.getReturnedNodes();
 		List<String> returnedKeys = result.getReturnedKeys();
 
-		// Execute the query and build the result stream
 		return getQueryRepository.getQuery(tx, namespaceName, cypherQueryStr, returnedNodes)
 			.map(nodeArray -> {
 				QueryResult queryResult = new QueryResult();

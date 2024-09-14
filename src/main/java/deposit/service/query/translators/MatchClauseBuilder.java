@@ -62,8 +62,6 @@ public class MatchClauseBuilder {
 		generateMatchesForDescriptors(matchClause, firstObjectVariable, queryItems, descriptorVariables);
 		matchClause.append("\n");
 
-		appendWithClause(matchClause, objectVariables, descriptorVariables, relVariables);
-
 		// Generate OPTIONAL MATCH clauses for each SelectItem
 		String className;
 		for (WhereCondition condition : undefinedRelationships) {
@@ -73,7 +71,6 @@ public class MatchClauseBuilder {
 			objectVariables.add(objectVariable);
 			generateMatchesForDescriptors(matchClause, objectVariable, queryItems, descriptorVariables);
 			matchClause.append("\n");
-			appendWithClause(matchClause, objectVariables, descriptorVariables, relVariables);
 		}
 		String leftVar;
 		String rightVar;
@@ -85,7 +82,6 @@ public class MatchClauseBuilder {
 			objectVariables.add(objectVariable);
 			generateMatchesForDescriptors(matchClause, objectVariable, queryItems, descriptorVariables);
 			matchClause.append("\n");
-			appendWithClause(matchClause, objectVariables, descriptorVariables, relVariables);
 		}
 
 		return matchClause.toString();
@@ -94,7 +90,7 @@ public class MatchClauseBuilder {
 	private static void generateMatchesForDescriptors(StringBuilder matchClause, String objectVariable, Set<SelectItem> queryItems, Set<String> descriptorVariables) {
 		for (SelectItem selectItem : queryItems) {
 			if ((selectItem.getDescriptor() != null) && (selectItem.getObjectVariable().equals(objectVariable))) {
-				matchClause.append(", \n");
+				matchClause.append("\n");
 				matchClause.append(generateMatchForDescriptor(objectVariable, selectItem.getVariable(), selectItem.getDescriptor()));
 				descriptorVariables.add(selectItem.getVariable());
 			}
@@ -128,19 +124,12 @@ public class MatchClauseBuilder {
 		}
 	}
 
-	private static void appendWithClause(StringBuilder matchClause, Set<String> objectVariables, Set<String> descriptorVariables, Set<String> relVariables) {
-		Set<String> matchedVariables = new LinkedHashSet<>(objectVariables);
-		matchedVariables.addAll(descriptorVariables);
-		matchedVariables.addAll(relVariables);
-		matchClause.append("WITH ").append(String.join(", ", matchedVariables)).append("\n");
-	}
-
 	public static String generateMatchForClass(String objectVariable, String className) {
 		return "(" + objectVariable + ":Object)-[:MEMBER_OF]->(:Class {name: '" + className + "'})";
 	}
 
 	public static String generateMatchForDescriptor(String objectVariable, String descriptorVariable, String descriptor) {
-		return "(" + objectVariable + ")-[:HAS_DESCRIPTOR]-(" + descriptorVariable + ":Descriptor {name: '" + descriptor + "'})";
+		return "OPTIONAL MATCH (%s)-[:HAS_DESCRIPTOR]-(%s:Descriptor {name: '%s'})".formatted(objectVariable, descriptorVariable, descriptor);
 	}
 
 	private static String generateUndefinedRelationshipMatch(String leftVar, String rightVar, String rightClass) {

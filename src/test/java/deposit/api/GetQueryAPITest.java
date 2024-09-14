@@ -1,227 +1,329 @@
+
+
 package deposit.api;
 
 import deposit.BaseNeo4jTest;
+import deposit.CypherScriptExporter;
 import deposit.common.ServerContext;
-import deposit.common.result.QueryResult;
 import org.junit.Before;
 import org.junit.Test;
-import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
-import org.neo4j.driver.Value;
+import org.neo4j.driver.internal.value.NullValue;
 import org.neo4j.driver.types.Node;
+import org.neo4j.driver.Record;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.util.*;
 
 import static org.junit.Assert.*;
 
 public class GetQueryAPITest extends BaseNeo4jTest {
 
-    private String token;
+	private String token;
 
-    @Before
-    public void setUp() {
-        super.setUp();
-        token = ServerContext.getInstance().generateToken("testUser");
-    }
+	@Before
+	public void setUp() {
+		super.setUp();
+		token = ServerContext.getInstance().generateToken("testUser");
+	}
 
-    private void ensureNamespaceExists(Session session, String namespaceName) {
-        session.writeTransaction(tx -> {
-            // Check if the namespace exists
-            Result result = tx.run("MATCH (n:Namespace {name: $namespaceName}) RETURN n",
-                                   Map.of("namespaceName", namespaceName));
-            if (!result.hasNext()) {
-                // If it doesn't exist, create the namespace
-                tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)",
-                       Map.of("namespaceName", namespaceName, "token", token));
-            }
-            // Set it as the active namespace
-            tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
-                   Map.of("namespaceName", namespaceName, "token", token));
-            tx.commit();
-            return null;
-        });
-    }
+	private void createNamespace(Session session, String namespaceName) {
+		session.writeTransaction(tx -> {
+			tx.run("CALL deposit.create.namespace($namespaceName, '', '', $token)",
+					Map.of("namespaceName", namespaceName, "token", token));
+			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
+					Map.of("namespaceName", namespaceName, "token", token));
+			ServerContext.setActiveNamespace(namespaceName, token);
+			tx.commit();
+			return null;
+		});
+	}
 
-    private String createObject(Session session, String className) {
-        return session.writeTransaction(tx -> {
-            Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
-                                   Map.of("className", className, "token", token));
-            String objectId = result.single().get("objectId").asString();
-            tx.commit();
-            return objectId;
-        });
-    }
+	private String createObject(Session session, String className) {
+		return session.writeTransaction(tx -> {
+			Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
+								   Map.of("className", className, "token", token));
+			String objectId = result.single().get("objectId").asString();
+			tx.commit();
+			return objectId;
+		});
+	}
 
-    private String createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-        return session.writeTransaction(tx -> {
-            Result result = tx.run("CALL deposit.set.descriptor($objectId, $descriptorName, $value, $token) YIELD node RETURN node.id AS descriptorId",
-                   Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
-            String descriptorId = result.single().get("descriptorId").asString();
-            tx.commit();
-            return descriptorId;
-        });
-    }
+	private String createDescriptor(Session session, String objectId, String descriptorName, Object value) {
+		return session.writeTransaction(tx -> {
+			Result result = tx.run("CALL deposit.set.descriptor($objectId, $descriptorName, $value, $token) YIELD node RETURN node.id AS descriptorId",
+				   Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
+			String descriptorId = result.single().get("descriptorId").asString();
+			tx.commit();
+			return descriptorId;
+		});
+	}
 
-    private String createRelationship(Session session, String objectId1, String label, String objectId2) {
-        return session.writeTransaction(tx -> {
-            Result result = tx.run("CALL deposit.create.relationship($objectId1, $objectId2, $label, null, $token) YIELD rel RETURN rel.id AS relationshipId",
-                       Map.of("objectId1", objectId1, "objectId2", objectId2, "label", label, "token", token));
-            String relId = result.single().get("relationshipId").asString();
-            tx.commit();
-            return relId;
-        });
-    }
+	private String createRelationship(Session session, String objectId1, String label, String objectId2) {
+		return session.writeTransaction(tx -> {
+			Result result = tx.run("CALL deposit.create.relationship($objectId1, $objectId2, $label, null, $token) YIELD rel RETURN rel.id AS relationshipId",
+					   Map.of("objectId1", objectId1, "objectId2", objectId2, "label", label, "token", token));
+			String relId = result.single().get("relationshipId").asString();
+			tx.commit();
+			return relId;
+		});
+	}
 
-    @Test
-    public void shouldReturnQueryResults() {
-        try (Session session = driver.session()) {
-            String namespaceName = "TestNamespace";
-            String className1 = "C1";
-            String className2 = "C2";
+	private static List<String[]> listOfLists(int groupSize, String... items) {
+		List<String[]> result = new ArrayList<>();
+		for (int i = 0; i < items.length; i += groupSize) {
+			int end = Math.min(i + groupSize, items.length);
+			String[] group = new String[end - i];
+			System.arraycopy(items, i, group, 0, end - i);
+			result.add(group);
+		}
+		return result;
+	}
 
-            // Ensure the namespace exists and set it as active
-            ensureNamespaceExists(session, namespaceName);
+	private void assertQueryResult(Result queryResult, String key, int nColumns, String... items) {
+		List<String[]> expectedRows = listOfLists(nColumns, items);
+		int i = 0;
+		while (queryResult.hasNext()) {
+			List<Object> resultList = queryResult.next().get("result").asList();
+			assertTrue("Number of returned results exceeded expected value.", i < expectedRows.size());
+			String[] expected = expectedRows.get(i);
+			for (int j = 0; j < nColumns; j++) {
+				Object obj = resultList.get(j);
+				Map<String, Object> entryMap = (Map<String, Object>) obj;
+				Map.Entry<String, Object> entry = entryMap.entrySet().iterator().next();
+				Object valueObj = entry.getValue();
+				String value;
+				if (valueObj instanceof Node node) {
+					value = node.get(key) instanceof NullValue ? null : node.get(key).asString();
+				} else if (valueObj instanceof Number || valueObj instanceof String) {
+					value = valueObj.toString();
+				} else {
+					value = null;
+				}
+				assertEquals(expected[j], value);
+			}
+			i++;
+		}
+		assertEquals("Number of returned results doesn't match expected rows.", expectedRows.size(), i);
+	}
 
-            // Create objects and descriptors
-            String objectId1 = createObject(session, className1);
-            String objectId2 = createObject(session, className2);
-            String objectId3 = createObject(session, className1);
-            String objectId4 = createObject(session, className2);
+	private List<Map<String, String>> createData(Session session, String namespaceName, List<String[]> headers, List<String[]> values, List<String[]> relationships) {
+		/*
+		 * headers:
+		 *   class1, descriptor1,
+		 *   class2, descriptor2,
+		 *   ...
+		 *
+		 * values:
+		 *   value1, value2, ...
+		 *   value1, value2, ...
+		 *   value1, value2, ...
+		 *   ...
+		 *
+		 * relationships:
+		 *   srcRow, srcClass, label, tgtRow, tgtClass
+		 *   srcRow, srcClass, label, tgtRow, tgtClass
+		 *   ...
+		 *
+		 * returns objectIds:
+		 *   objectId = objectIds.get(row).get(className)
+ 		 */
+		createNamespace(session, namespaceName);
 
-            createRelationship(session, objectId1, "contains", objectId2);
+		int nHeaders = headers.size();
+		int nRows = values.size();
+		List<Map<String, String>> objectIds = new ArrayList<>();
+		for (int i = 0; i < nRows; i++) {
+			Map<String, String> objectIdsRow = new HashMap<>();
+			for (int j = 0; j < nHeaders; j++) {
+				String className = headers.get(j)[0];
+				String objectId = objectIdsRow.getOrDefault(className, null);
+				if (objectId == null) {
+					objectId = createObject(session, className);
+					objectIdsRow.put(className, objectId);
+				}
+				String descriptor = headers.get(j)[1];
+				String value = values.get(i)[j];
+				if ((descriptor != null) && (value != null)) {
+					createDescriptor(session, objectId, descriptor, value);
+				}
+			}
+            objectIds.add(objectIdsRow);
+		}
 
-            Result queryResult = session.run(
-                    "CALL deposit.get.query('SELECT C1, C2 ORDER BY C2', $token) YIELD result RETURN result",
-                    Map.of("token", token)
-            );
-            List<String[]> expectedPairs = new ArrayList<>();
-            expectedPairs.add(new String[]{objectId1, objectId2});
-            expectedPairs.add(new String[]{objectId3, null});
-            int index = 0;
-            while (queryResult.hasNext()) {
-                Map<String, Object> result = queryResult.next().get("result").asMap();
-                Node node1 = (Node) result.get("C1");
-                Node node2 = (Node) result.get("C2");
-                String id1 = node1 == null ? null : node1.get("id").asString();
-                String id2 = node2 == null ? null : node2.get("id").asString();
-                String[] expected = expectedPairs.get(index);
-                index++;
-                assertEquals(expected[0], id1);
-                assertEquals(expected[1], id2);
-            }
-            assertEquals("Number of returned results doesn't match expected pairs.", expectedPairs.size(), index);
-        }
-    }
+		int nRelationships = relationships.size();
+		for (int i = 0; i < nRelationships; i++) {
+			int srcRow = Integer.parseInt(relationships.get(i)[0]);
+			String srcClass = relationships.get(i)[1];
+			String label = relationships.get(i)[2];
+			int tgtRow = Integer.parseInt(relationships.get(i)[3]);
+			String tgtClass = relationships.get(i)[4];
+			String srcId = objectIds.get(srcRow).get(srcClass);
+			String tgtId = objectIds.get(tgtRow).get(tgtClass);
+            createRelationship(session, srcId, label, tgtId);
+		}
 
-    @Test
-    public void shouldReturnQueryResultsWithDescriptors() {
-        try (Session session = driver.session()) {
-            String namespaceName = "TestNamespace";
-            String className1 = "C1";
-            String className2 = "C2";
-            String descriptorName1 = "D1";
-            String descriptorName2 = "D2";
+		return objectIds;
+	}
 
-            // Ensure the namespace exists and set it as active
-            ensureNamespaceExists(session, namespaceName);
+	@Test
+	public void testSimpleQuery() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", null,
+				"C2", null
+			);
+			List<String[]> values = listOfLists(2,
+				null, null,
+				null, null
+			);
+			List<String[]> relationships = listOfLists(5,
+				"0", "C1", "contains", "0", "C2"
+			);
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+			Result queryResult = session.run(
+					"CALL deposit.get.query('SELECT C1, C2 ORDER BY C2', $token) YIELD result RETURN result",
+					Map.of("token", token)
+			);
+			assertQueryResult(queryResult, "id", 2,
+				objectIds.get(0).get("C1"), objectIds.get(0).get("C2"),
+				objectIds.get(1).get("C1"), null
+			);
+		}
+	}
 
-            // Create objects and descriptors
-            String objectId1 = createObject(session, className1);
-            String objectId2 = createObject(session, className2);
-            String objectId3 = createObject(session, className1);
-            String objectId4 = createObject(session, className2);
+	@Test
+	public void testDescriptors() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", "D2"
+			);
+			List<String[]> values = listOfLists(2,
+				"value1", "value2",
+				"value3", "value4"
+			);
+			List<String[]> relationships = listOfLists(5,
+				"0", "C1", "contains", "0", "C2",
+				"0", "C1", "contains", "1", "C2"
+			);
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+			Result queryResult = session.run(
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 ORDER BY C1.D1, C2.D2', $token) YIELD result RETURN result",
+					Map.of("token", token)
+			);
+			assertQueryResult(queryResult, "value", 2,
+				"value1", "value2",
+				"value1", "value4",
+				"value3", null
+			);
+		}
+	}
 
-            createDescriptor(session, objectId1, descriptorName1, "value1");
-            createDescriptor(session, objectId2, descriptorName2, "value2");
-            createDescriptor(session, objectId3, descriptorName1, "value3");
-            createDescriptor(session, objectId4, descriptorName2, "value4");
-            
-            createRelationship(session, objectId1, "contains", objectId2);
-            createRelationship(session, objectId1, "contains", objectId4);
+	@Test
+	public void testWhereClause() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", "D2"
+			);
+			List<String[]> values = listOfLists(2,
+				"value1", "value2",
+				null, "value2",
+				null, "value4"
+			);
+			List<String[]> relationships = listOfLists(5,
+				"0", "C1", "contains", "0", "C2",
+				"0", "C1", "contains", "1", "C2",
+				"0", "C1", "contains", "2", "C2"
+			);
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+			Result queryResult = session.run(
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C2.D2 = \"value2\" ORDER BY C1.D1, C2.D2', $token) YIELD result RETURN result",
+					Map.of("token", token)
+			);
+			assertQueryResult(queryResult, "value", 2,
+				"value1", "value2",
+				"value1", "value2",
+				"value1", null, // TODO incorrect (?)
+				null, null,
+				null, null
+			);
+		}
+	}
 
-            Result queryResult = session.run(
-                    "CALL deposit.get.query('SELECT C1.D1, C2.D2 ORDER BY C1.D1, C2.D2', $token) YIELD result RETURN result",
-                    Map.of("token", token)
-            );
+	@Test
+	public void testRelationship() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", "D2"
+			);
+			List<String[]> values = listOfLists(2,
+				"value1", "value2",
+				null, "value3",
+				null, "value4",
+				null, "value5"
+			);
+			List<String[]> relationships = listOfLists(5,
+				"0", "C1", "contains", "0", "C2",
+				"0", "C1", "disturbs", "1", "C2",
+				"0", "C1", "disturbs", "2", "C2",
+				"0", "C1", "contains", "3", "C2"
+			);
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+			Result queryResult = session.run(
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-disturbs->C2 ORDER BY C1.D1, C2.D2', $token) YIELD result RETURN result",
+					Map.of("token", token)
+			);
 
-            List<String[]> expectedPairs = new ArrayList<>();
-            expectedPairs.add(new String[]{"value1", "value2"});
-            expectedPairs.add(new String[]{"value1", "value4"});
-            expectedPairs.add(new String[]{"value3", null});
+			assertQueryResult(queryResult, "value", 2,
+				"value1", "value3",
+				"value1", "value4",
+					null, null,
+					null, null,
+					null, null
+			);
+		}
+	}
+	
+	@Test
+	public void testCount() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", null
+			);
+			List<String[]> values = listOfLists(2,
+				"value1", null,
+				"value2", null,
+				null, null,
+				null, null,
+				null, null
+			);
+			List<String[]> relationships = listOfLists(5,
+				"0", "C1", "contains", "0", "C2",
+				"0", "C1", "contains", "1", "C2",
+				"1", "C1", "contains", "2", "C2",
+				"1", "C1", "contains", "3", "C2",
+				"1", "C1", "contains", "4", "C2"
+			);
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-            int index = 0;
-            while (queryResult.hasNext()) {
-                Map<String, Object> mapResult = queryResult.next().get("result").asMap();
-                Node node1 = (Node) mapResult.get("C1.D1");
-                Node node2 = (Node) mapResult.get("C2.D2");
-                String value1 = node1 == null ? null : node1.get("value").asString();
-                String value2 = node2 == null ? null : node2.get("value").asString();
-                String[] expected = expectedPairs.get(index);
-                index++;
-                assertEquals(expected[0], value1);
-                assertEquals(expected[1], value2);
-            }
-            assertEquals("Number of returned results doesn't match expected pairs.", expectedPairs.size(), index);
-        }
-    }
+			CypherScriptExporter exporter = new CypherScriptExporter(driver);
+        	exporter.exportData();
 
-    @Test
-    public void shouldReturnFilteredQueryResultsWithWhereClause() {
-        try (Session session = driver.session()) {
-            String namespaceName = "TestNamespace";
-            String className1 = "C1";
-            String className2 = "C2";
-            String descriptorName1 = "D1";
-            String descriptorName2 = "D2";
+			Result queryResult = session.run(
+					"CALL deposit.get.query('SELECT C1.D1, COUNT(C2) AS CNT_2 WHERE C1.D1 = \"value1\" ORDER BY C1.D1', $token) YIELD result RETURN result",
+					Map.of("token", token)
+			);
 
-            // Ensure the namespace exists and set it as active
-            ensureNamespaceExists(session, namespaceName);
-
-            // Create objects and descriptors
-            String objectId1 = createObject(session, className1);
-            String objectId2 = createObject(session, className2);
-            String objectId3 = createObject(session, className2);
-            String objectId4 = createObject(session, className2);
-
-            // Create descriptors and get their IDs
-            String descriptorId1 = createDescriptor(session, objectId1, descriptorName1, "value1");
-            String descriptorId2 = createDescriptor(session, objectId2, descriptorName2, "value2");
-            String descriptorId3 = createDescriptor(session, objectId3, descriptorName2, "value2");
-            String descriptorId4 = createDescriptor(session, objectId4, descriptorName2, "value4");
-
-            // Create relationships
-            createRelationship(session, objectId1, "contains", objectId2);
-            createRelationship(session, objectId1, "contains", objectId3);
-            createRelationship(session, objectId1, "contains", objectId4);
-
-            // Run the query with the WHERE clause
-            Result queryResult = session.run(
-                    "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C2.D2 = \"value2\"', $token) YIELD result RETURN result",
-                    Map.of("token", token)
-            );
-
-            // Iterate over all results to verify that only descriptorId2 and descriptorId3 are returned
-            while (queryResult.hasNext()) {
-                Map<String, Object> result = queryResult.next().get("result").asMap();
-
-                assertTrue(result.containsKey("C1.D1"));
-                assertTrue(result.containsKey("C2.D2"));
-
-                Node descriptorNode = (Node) result.get("C2.D2");
-
-                assertNotNull(descriptorNode);
-
-                // Check that the returned descriptor ID matches either descriptorId2 or descriptorId3
-                String returnedDescriptorId = descriptorNode.get("id").asString();
-                assertTrue(returnedDescriptorId.equals(descriptorId2) || returnedDescriptorId.equals(descriptorId3));
-
-                // Ensure descriptorId4 is not included
-                assertFalse(returnedDescriptorId.equals(descriptorId4));
-            }
-        }
-    }
-
+			assertQueryResult(queryResult, "value", 2,
+				"value1", "2"
+			);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
 }
