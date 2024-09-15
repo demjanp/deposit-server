@@ -64,7 +64,7 @@ class ServerContextTest {
 		assertEquals(namespace, ServerContext.getActiveNamespace(token), "Active namespace should be correctly set and retrieved");
 
 		ServerContext.deactivateToken(token);
-		assertEquals("", ServerContext.getActiveNamespace(token), "After deactivating the token, active namespace should be an empty string");
+		assertEquals(null, ServerContext.getActiveNamespace(token), "After deactivating the token, active namespace should be an empty string");
 	}
 
 	@Test

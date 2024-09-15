@@ -8,7 +8,7 @@ import deposit.common.result.QueryResult;
 import org.neo4j.graphdb.Transaction;
 
 import java.util.stream.Stream;
-import java.util.List;
+import java.util.Map;
 
 public class GetQueryService extends BaseService {
 
@@ -33,19 +33,9 @@ public class GetQueryService extends BaseService {
 		if (namespaceName == null) {
 			throwException("Cannot process query without an active Namespace.");
 		}
-
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(queryStr);
 		String cypherQueryStr = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
-
-		return getQueryRepository.getQuery(tx, namespaceName, cypherQueryStr, returnedNodes)
-			.map(nodeArray -> {
-				QueryResult queryResult = new QueryResult();
-				for (int i = 0; i < returnedKeys.size(); i++) {
-					queryResult.addNode(returnedKeys.get(i), nodeArray[i]);
-				}
-				return queryResult;
-			});
+		Map<String, String> returnedKeys = result.getReturnedKeys();
+		return getQueryRepository.getQuery(tx, namespaceName, cypherQueryStr, returnedKeys);
 	}
 }

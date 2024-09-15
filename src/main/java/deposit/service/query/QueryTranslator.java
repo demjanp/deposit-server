@@ -3,9 +3,7 @@ package deposit.service.query;
 import deposit.service.query.elements.*;
 import deposit.service.query.translators.*;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class QueryTranslator {
 
@@ -22,13 +20,13 @@ public class QueryTranslator {
 
 		String whereClause = WhereClauseBuilder.buildWhereClause(parsedQuery);
 		if (!whereClause.isEmpty()) {
-			cypherQuery.append("WHERE ").append(whereClause).append("\n");
+			appendWithClause(cypherQuery, objectVariables, descriptorVariables, relVariables);
+			cypherQuery.append("\nWHERE ").append(whereClause).append("\n");
 		}
 
 		ReturnClauseBuilder.ReturnResult result = ReturnClauseBuilder.buildReturnClause(parsedQuery);
 		String returnClause = result.getReturnClause();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 		cypherQuery.append("RETURN ").append(returnClause);
 
 		String orderByClause = OrderByClauseBuilder.buildOrderByClause(parsedQuery);
@@ -36,29 +34,30 @@ public class QueryTranslator {
 			cypherQuery.append("\n").append("ORDER BY ").append(orderByClause);
 		}
 
-		return new QueryTranslatorResult(cypherQuery.toString(), returnedNodes, returnedKeys);
+		return new QueryTranslatorResult(cypherQuery.toString(), returnedKeys);
+	}
+	
+	private static void appendWithClause(StringBuilder matchClause, Set<String> objectVariables, Set<String> descriptorVariables, Set<String> relVariables) {
+		Set<String> matchedVariables = new LinkedHashSet<>(objectVariables);
+		matchedVariables.addAll(descriptorVariables);
+		matchedVariables.addAll(relVariables);
+		matchClause.append("WITH ").append(String.join(", ", matchedVariables));
 	}
 
 	public static class QueryTranslatorResult {
 		private final String cypherQuery;
-		private final List<String> returnedNodes;
-		private final List<String> returnedKeys;
+		private final Map<String, String> returnedKeys;
 
-		public QueryTranslatorResult(String cypherQuery, List<String> returnedNodes, List<String> returnedKeys) {
+		public QueryTranslatorResult(String cypherQuery, Map<String, String> returnedKeys) {
 			this.cypherQuery = cypherQuery;
-			this.returnedNodes = returnedNodes;
 			this.returnedKeys = returnedKeys;
 		}
 
 		public String getCypherQuery() {
 			return cypherQuery;
 		}
-
-		public List<String> getReturnedNodes() {
-			return returnedNodes;
-		}
-
-		public List<String> getReturnedKeys() {
+		
+		public Map<String, String> getReturnedKeys() {
 			return returnedKeys;
 		}
 	}

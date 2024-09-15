@@ -229,8 +229,10 @@ public class QueryBuilderVisitor extends DepositQueryBaseVisitor<ParsedQuery> {
 		if (ctx.identifier(0) != null) {
 			String className = ctx.identifier(0).getText();
 			String descriptor = ctx.identifier().size() > 1 ? ctx.identifier(1).getText() : null;
-
-			SelectItem selectItem = new SelectItem(className, descriptor, "");
+			SelectItem selectItem = parsedQuery.getSelectItemByAlias(className);
+			if (selectItem == null) {
+				selectItem = new SelectItem(className, descriptor, "");
+			}
 			String orderDirection = ctx.orderDirection() != null ? ctx.orderDirection().getText() : "ASC";  // Default to ASC if not provided
 			return new OrderByItem(selectItem, orderDirection);
 		}

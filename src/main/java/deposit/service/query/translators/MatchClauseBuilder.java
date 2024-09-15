@@ -122,8 +122,8 @@ public class MatchClauseBuilder {
 			SelectItem selectItem = new SelectItem(className, descriptorName, "");
 			queryItems.add(selectItem);
 		}
-	}
-
+	}	
+	
 	public static String generateMatchForClass(String objectVariable, String className) {
 		return "(" + objectVariable + ":Object)-[:MEMBER_OF]->(:Class {name: '" + className + "'})";
 	}

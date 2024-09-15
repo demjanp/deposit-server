@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -16,18 +17,17 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 						  "RETURN o_C1 AS C1";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1");
-		List<String> expectedReturnedKeys = Arrays.asList("C1");
+		Map<String, String> expectedReturnedKeys = Map.of(
+				"C1", "C1"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -38,19 +38,18 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
 				"RETURN d_C1_D1 AS C1_D1";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1");
+		Map<String, String> expectedReturnedKeys = Map.of(
+				"C1_D1", "C1.D1"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -61,20 +60,20 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D2:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D2:Descriptor {name: 'D2'})\n" +
 				"RETURN d_C1_D1 AS C1_D1, d_C1_D2 AS C1_D2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "C1_D2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "C1.D2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+				"C1_D1", "C1.D1",
+				"C1_D2", "C1.D2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -85,19 +84,18 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D1'})\n" +
 				"RETURN d_alias AS alias";
 
-		List<String> expectedReturnedNodes = Arrays.asList("alias");
-		List<String> expectedReturnedKeys = Arrays.asList("alias");
+		Map<String, String> expectedReturnedKeys = Map.of(
+				"alias", "alias"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -108,22 +106,23 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D2'})\n" +
+				"WITH o_alias, o_C1, d_C1_D1, d_alias\n" +
 				"WHERE (d_C1_D1.value = 'value1' AND d_alias.value = 'value2')\n" +
 				"RETURN d_C1_D1 AS C1_D1, d_alias AS alias";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "alias");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "alias");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"alias", "alias"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -134,22 +133,22 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
+				"WITH o_C2, o_C1, d_C1_D1, d_C2_D2\n" +
 				"WHERE (d_C1_D1.value = 'value1' AND d_C2_D2.value = 'value2')\n" +
 				"RETURN o_C1 AS C1";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1");
-		List<String> expectedReturnedKeys = Arrays.asList("C1");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -160,23 +159,24 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_Class_2:Object)-[:MEMBER_OF]->(:Class {name: 'Class 2'}), \n" +
-				"(o_Class_2)-[:HAS_DESCRIPTOR]-(d_Class_2_D2:Descriptor {name: 'D2'})\n" +
-				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_Class_3:Object)-[:MEMBER_OF]->(:Class {name: 'Class 3'}), \n" +
-				"(o_Class_3)-[:HAS_DESCRIPTOR]-(d_Class_3_Descr_3:Descriptor {name: 'Descr 3'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_Class_2:Object)-[:MEMBER_OF]->(:Class {name: 'Class 2'})\n" +
+				"OPTIONAL MATCH (o_Class_2)-[:HAS_DESCRIPTOR]-(d_Class_2_D2:Descriptor {name: 'D2'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_Class_3:Object)-[:MEMBER_OF]->(:Class {name: 'Class 3'})\n" +
+				"OPTIONAL MATCH (o_Class_3)-[:HAS_DESCRIPTOR]-(d_Class_3_Descr_3:Descriptor {name: 'Descr 3'})\n" +
 				"RETURN d_C1_D1 AS C1_D1, d_Class_2_D2 AS Class_2_D2, d_Class_3_Descr_3 AS Class_3_Descr_3";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "Class_2_D2", "Class_3_Descr_3");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "Class 2.D2", "Class 3.Descr 3");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"Class_2_D2", "Class 2.D2",
+			"Class_3_Descr_3", "Class 3.Descr 3"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -187,6 +187,7 @@ public class QueryTranslatorTest {
 		String cypher = result.getCypherQuery();
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 		assertEquals(expected, cypher);
@@ -201,6 +202,7 @@ public class QueryTranslatorTest {
 				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C3:Object)-[:MEMBER_OF]->(:Class {name: 'C3'})\n" +
 				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C4:Object)-[:MEMBER_OF]->(:Class {name: 'C4'})\n" +
 				"OPTIONAL MATCH (o_C3)<-[r_C3_C2:RELATED_TO {label: 'contains'}]-(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C4, o_C3, o_C2, o_C1, r_C3_C2\n" +
 				"WHERE (r_C3_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2, o_C3 AS C3, o_C4 AS C4";
 		assertEquals(expected, cypher);
@@ -213,6 +215,7 @@ public class QueryTranslatorTest {
 		String cypher = result.getCypherQuery();
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]-(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 		assertEquals(expected, cypher);
@@ -225,21 +228,22 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, d_C1_D1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
-				"RETURN d_C1_D1 AS C1_D1, COUNT(o_C2) AS COUNT_C2";
+				"RETURN d_C1_D1 AS C1_D1, COUNT(o_COUNT_C2) AS COUNT_C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "COUNT_C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "COUNT_C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"COUNT_C2", "COUNT_C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -250,21 +254,22 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, d_C1_D1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
-				"RETURN d_C1_D1 AS C1_D1, COUNT(DISTINCT o_C2) AS COUNT_C2";
+				"RETURN d_C1_D1 AS C1_D1, COUNT(DISTINCT o_COUNT_C2) AS COUNT_C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "COUNT_C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "COUNT_C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"COUNT_C2", "COUNT_C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -275,22 +280,23 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_QUART1_D2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_QUART1_D2)-[:HAS_DESCRIPTOR]-(d_QUART1_D2:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_QUART1_D2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_QUART1_D2)-[:HAS_DESCRIPTOR]-(d_QUART1_D2:Descriptor {name: 'D2'})\n" +
+				"WITH o_QUART1_D2, o_C1, d_C1_D1, d_QUART1_D2, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN d_C1_D1 AS C1_D1, percentileCont(d_QUART1_D2.value, 0.25) AS QUART1_D2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "QUART1_D2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "QUART1_D2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"QUART1_D2", "QUART1_D2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -301,22 +307,23 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_C2)-[:HAS_DESCRIPTOR]-(d_SUM_C2_D2:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_C2)-[:HAS_DESCRIPTOR]-(d_SUM_C2_D2:Descriptor {name: 'D2'})\n" +
+				"WITH o_C2, o_C1, d_C1_D1, d_SUM_C2_D2, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN d_C1_D1 AS C1_D1, SUM(d_SUM_C2_D2.value) AS SUM_C2_D2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "SUM_C2_D2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "SUM_C2_D2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"SUM_C2_D2", "SUM_C2_D2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -327,21 +334,22 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_alias:RELATED_TO {label: 'contains'}]->(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_alias, o_C1, d_C1_D1, r_C1_alias\n" +
 				"WHERE (r_C1_alias IS NOT NULL)\n" +
 				"RETURN d_C1_D1 AS C1_D1, o_alias AS alias";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "alias");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "alias");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"alias", "alias"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -352,20 +360,20 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"WITH o_C1, d_C1_D1\n" +
 				"WHERE (NOT (d_C1_D1.value = 'value1'))\n" +
 				"RETURN d_C1_D1 AS C1_D1";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -376,25 +384,26 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C3:Object)-[:MEMBER_OF]->(:Class {name: 'C3'}), \n" +
-				"(o_C3)-[:HAS_DESCRIPTOR]-(d_C3_D3:Descriptor {name: 'D3'})\n" +
-				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C3:Object)-[:MEMBER_OF]->(:Class {name: 'C3'})\n" +
+				"OPTIONAL MATCH (o_C3)-[:HAS_DESCRIPTOR]-(d_C3_D3:Descriptor {name: 'D3'})\n" +
+				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
+				"WITH o_C3, o_C2, o_C1, d_C1_D1, d_C2_D2, d_C3_D3, r_C1_C2\n" +
 				"WHERE ((d_C1_D1.value = 'value1' OR d_C2_D2.value = 'value2') AND (r_C1_C2 IS NOT NULL) AND NOT (d_C3_D3.value = 'value3'))\n" +
 				"RETURN d_C1_D1 AS C1_D1, d_C2_D2 AS C2_D2";
 
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "C2_D2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "C2.D2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"C2_D2", "C2.D2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -405,22 +414,23 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO*1..3]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO*1..3]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_C2)-[:HAS_DESCRIPTOR]-(d_C2_D2:Descriptor {name: 'D2'})\n" +
+				"WITH o_C2, o_C1, d_C1_D1, d_C2_D2, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN d_C1_D1 AS C1_D1, d_C2_D2 AS C2_D2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "C2_D2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "C2.D2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"C2_D2", "C2.D2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -431,20 +441,21 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO* {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -455,20 +466,21 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO*1.. {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -479,20 +491,21 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO*..3 {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -503,20 +516,21 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO*1..3 {label: 'contains'}]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -527,20 +541,21 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -551,20 +566,21 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
 		// Expected Cypher query
 		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[r_C1_C2:RELATED_TO*]->(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, r_C1_C2\n" +
 				"WHERE (r_C1_C2 IS NOT NULL)\n" +
 				"RETURN o_C1 AS C1, o_C2 AS C2";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1", "C1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -574,22 +590,23 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
-				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C2'}), \n" +
-				"(o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D2'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_alias:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"OPTIONAL MATCH (o_alias)-[:HAS_DESCRIPTOR]-(d_alias:Descriptor {name: 'D2'})\n" +
+				"WITH o_alias, o_C1, d_C1_D1, d_alias\n" +
 				"WHERE (d_C1_D1.value = 'value1')\n" +
 				"RETURN d_C1_D1 AS C1_D1, d_alias AS alias\n" +
-				"ORDER BY d_C1_D1.value ASC, d_alias.value DESC";
+				"ORDER BY C1_D1 ASC, alias DESC";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "alias");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "alias");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"alias", "alias"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 
@@ -599,21 +616,22 @@ public class QueryTranslatorTest {
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
 		String cypher = result.getCypherQuery();
-		List<String> returnedNodes = result.getReturnedNodes();
-		List<String> returnedKeys = result.getReturnedKeys();
+		Map<String, String> returnedKeys = result.getReturnedKeys();
 
-		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'}), \n" +
-				"(o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
+		String expected = "MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o_C1:Object)-[:MEMBER_OF]->(:Class {name: 'C1'})\n" +
+				"OPTIONAL MATCH (o_C1)-[:HAS_DESCRIPTOR]-(d_C1_D1:Descriptor {name: 'D1'})\n" +
 				"OPTIONAL MATCH (o_C1)-[:RELATED_TO*]-(o_C2:Object)-[:MEMBER_OF]->(:Class {name: 'C2'})\n" +
+				"WITH o_C2, o_C1, d_C1_D1\n" +
 				"WHERE (d_C1_D1.value = 'value1')\n" +
 				"RETURN d_C1_D1 AS C1_D1, o_C2 AS C2\n" +
-				"ORDER BY d_C1_D1.value ASC, o_C2 DESC";
+				"ORDER BY C1_D1 ASC, ID(C2) DESC";
 
-		List<String> expectedReturnedNodes = Arrays.asList("C1_D1", "C2");
-		List<String> expectedReturnedKeys = Arrays.asList("C1.D1", "C2");
+		Map<String, String> expectedReturnedKeys = Map.of(
+			"C1_D1", "C1.D1",
+			"C2", "C2"
+		);
 
 		assertEquals(expected, cypher);
-		assertEquals(expectedReturnedNodes, returnedNodes);
 		assertEquals(expectedReturnedKeys, returnedKeys);
 	}
 }

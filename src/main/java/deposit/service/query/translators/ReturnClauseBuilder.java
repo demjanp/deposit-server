@@ -5,8 +5,9 @@ import deposit.service.query.elements.SelectItem;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.HashMap;
 import java.util.List;
-import java.util.ArrayList;
+import java.util.Map;
 
 public class ReturnClauseBuilder {
 	private static final DecimalFormat decimalFormat = createDecimalFormat();
@@ -21,8 +22,7 @@ public class ReturnClauseBuilder {
 
 	public static ReturnResult buildReturnClause(ParsedQuery parsedQuery) {
 		StringBuilder returnClause = new StringBuilder();
-		List<String> returnedNodes = new ArrayList<>();
-		List<String> returnedKeys = new ArrayList<>();
+		Map<String, String> returnedKeys = new HashMap<>();
 
 		if (parsedQuery.isDistinct()) {
 			returnClause.append("DISTINCT ");
@@ -39,33 +39,26 @@ public class ReturnClauseBuilder {
 			} else {
 				appendRegularItem(returnClause, selectItem);
 			}
-			returnedNodes.add(selectItem.getAlias());
-			returnedKeys.add(selectItem.getResultKey());
+			returnedKeys.put(selectItem.getAlias(), selectItem.getResultKey());
 		}
 
-		return new ReturnResult(returnClause.toString(), returnedNodes, returnedKeys);
+		return new ReturnResult(returnClause.toString(), returnedKeys);
 	}
 
 	public static class ReturnResult {
 		private final String returnClause;
-		private final List<String> returnedNodes;
-		private final List<String> returnedKeys;
-
-		public ReturnResult(String returnClause, List<String> returnedNodes, List<String> returnedKeys) {
+		private final Map<String, String> returnedKeys;
+		
+		public ReturnResult(String returnClause, Map<String, String> returnedKeys) {
 			this.returnClause = returnClause;
-			this.returnedNodes = returnedNodes;
 			this.returnedKeys = returnedKeys;
 		}
-
+		
 		public String getReturnClause() {
 			return returnClause;
 		}
-
-		public List<String> getReturnedNodes() {
-			return returnedNodes;
-		}
 		
-		public List<String> getReturnedKeys() {
+		public Map<String, String> getReturnedKeys() {
 			return returnedKeys;
 		}
 	}
@@ -95,8 +88,9 @@ public class ReturnClauseBuilder {
 	}
 
 	private static void appendCountFunction(StringBuilder returnClause, SelectItem selectItem, String distinctClause) {
-		returnClause.append(String.format("COUNT(%s%s) AS %s",
-			distinctClause, selectItem.getObjectVariable(), selectItem.getAlias()));
+		String value = selectItem.getDescriptor() == null ? "" : ".value";
+		returnClause.append(String.format("COUNT(%s%s%s) AS %s",
+			distinctClause, selectItem.getVariable(), value, selectItem.getAlias()));
 	}
 
 	private static void appendGenericFunction(StringBuilder returnClause, SelectItem selectItem, String distinctClause, String function) {

@@ -18,14 +18,17 @@ public class CypherScriptExporter {
         this.driver = driver;
     }
 
-    public void exportData() throws IOException {
+    public void exportData() {
         try (FileWriter writer = new FileWriter("export.cypher")) {
             exportNodes(writer);
             exportRelationships(writer);
+            System.out.println("Cypher script export completed.");
+        } catch (IOException e) {
+            System.err.println("An error occurred while exporting the Cypher script: " + e.getMessage());
+            e.printStackTrace();
         }
-        System.out.println("Cypher script export completed.");
     }
-
+	
     private void exportNodes(FileWriter writer) throws IOException {
         try (Session session = driver.session()) {
             Result result = session.run("MATCH (n) RETURN DISTINCT n");

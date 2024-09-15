@@ -114,7 +114,7 @@ public class ServerContext {
 
 	public static String getActiveNamespace(String token) {
 		String username = getActiveUsername(token);
-		return store.getOrDefault(username + ":namespace", "");
+		return store.getOrDefault(username + ":namespace", null);
 	}
 
 	// Versioning
