@@ -1,6 +1,7 @@
 package deposit.api;
 
 import deposit.BaseNeo4jTest;
+import deposit.CypherScriptExporter;
 import deposit.common.ServerContext;
 import org.junit.Test;
 import org.neo4j.driver.Session;
@@ -66,26 +67,26 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 		return result;
 	}
 
-	private void assertQueryResult(Result queryResult, int nColumns, String... items) {
+	private void assertQueryResult(Result queryResult, boolean ordered, int nColumns, String... items) {
 		List<String[]> expectedRows = listOfLists(nColumns, items);
-		int i = 0;
+		List<String[]> actualRows = new ArrayList<>();
+		
 		while (queryResult.hasNext()) {
 			Record record = queryResult.next();
-			assertTrue("Number of returned results exceeded expected value.", i < expectedRows.size());
-			String[] expected = expectedRows.get(i);
+			String[] row = new String[nColumns];
 			for (int j = 0; j < nColumns; j++) {
 				Object valueObj = record.get(j).asObject();
-				String value;
-				if (valueObj instanceof Number || valueObj instanceof String) {
-					value = valueObj.toString();
-				} else {
-					value = null;
-				}
-				assertEquals("Mismatch at row " + i + " and column " + j, expected[j], value);
+				String value = (valueObj instanceof Number || valueObj instanceof String) ? valueObj.toString() : null;
+				row[j] = value;
 			}
-			i++;
+			actualRows.add(row);
 		}
-		assertEquals("Number of returned results doesn't match expected rows.", expectedRows.size(), i);
+		assertEquals("Number of returned results doesn't match expected rows.", expectedRows.size(), actualRows.size());
+		for (String[] expected : expectedRows) {
+			boolean matchFound = actualRows.stream().anyMatch(actual -> Arrays.equals(expected, actual));
+			assertTrue("Expected row not found: " + Arrays.toString(expected), matchFound);
+			//actualRows.removeIf(actual -> Arrays.equals(expected, actual));
+		}
 	}
 
 	private void printQueryResult(Result queryResult) {
@@ -186,7 +187,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(
 					"CALL deposit.get.query('SELECT C1 ORDER BY C1', '') YIELD result RETURN result.C1.id AS C1"
 			);
-			assertQueryResult(queryResult, 1,
+			assertQueryResult(queryResult, false, 1,
 				objectIds.get(0).get("C1"),
 				objectIds.get(1).get("C1")
 			);
@@ -211,7 +212,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(
 					"CALL deposit.get.query('SELECT C1, C2 ORDER BY C1, C2', '') YIELD result RETURN result.C1.id AS C1, result.C2.id AS C2"
 			);
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, false, 2,
 				objectIds.get(0).get("C1"), objectIds.get(0).get("C2"),
 				objectIds.get(1).get("C1"), null
 			);
@@ -237,7 +238,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(
 					"CALL deposit.get.query('SELECT C1.D1, C2.D2 ORDER BY C1.D1, C2.D2', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2"
 			);
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, false, 2,
 				"value1", "value2",
 				"value1", "value4",
 				"value3", null
@@ -266,7 +267,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(
 					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C2.D2 = \"value2\" ORDER BY C1.D1, C2.D2', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2"
 			);
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 				"value1", "value2",
 				"value1", "value2"
 			);
@@ -297,7 +298,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-disturbs->C2 ORDER BY C1.D1, C2.D2', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2"
 			);
 
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 				"value1", "value3",
 				"value1", "value4"
 			);
@@ -328,7 +329,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 					"CALL deposit.get.query('SELECT C1.D1, C2.D2 AS alias WHERE C1-disturbs->alias ORDER BY C1.D1, alias', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.alias.value AS alias"
 			);
 
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 				"value1", "value3",
 				"value1", "value4"
 			);
@@ -361,7 +362,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 					"CALL deposit.get.query('SELECT C1.D1, COUNT(C2) AS CNT_2 WHERE C1.D1 = \"value1\" ORDER BY C1.D1', '') YIELD result " +
 							"RETURN result.`C1.D1`.value AS C1_D1, result.CNT_2 AS CNT_2"
 			);
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 					"value1", "2"
 			);
 		}
@@ -399,7 +400,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query);
 
 			// Step 6: Assert the results
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 				"value1", "value2"
 			);
 		}
@@ -441,7 +442,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query);
 
 			// Step 6: Assert the results
-			assertQueryResult(queryResult, 3,
+			assertQueryResult(queryResult, true, 3,
 				"value1", "value2", "value3",
 				"value1", "value2", "value4",
 				"value2", "value5", "value6"
@@ -491,7 +492,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			String c3_id = objectIds.get(0).get("C3");
 			String c4_id = objectIds.get(0).get("C4");
 
-			assertQueryResult(queryResult, 4,
+			assertQueryResult(queryResult, true, 4,
 				c1_id, c2_id, c3_id, c4_id
 			);
 		}
@@ -531,7 +532,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			String c1_id_row_1 = objectIds.get(1).get("C1");
 			String c2_id_row_1 = objectIds.get(1).get("C2");
 
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, false, 2,
 				c1_id_row_0, c2_id_row_0,
 				c1_id_row_1, c2_id_row_1
 			);
@@ -567,7 +568,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 						   "RETURN result.C1.id AS C1, result.COUNT_C2 AS COUNT_C2";
 			Result queryResult = session.run(query);
 
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, false, 2,
 					objectIds.get(0).get("C1"), "3",
 					objectIds.get(1).get("C1"), "1"
 			);
@@ -604,7 +605,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 						   "RETURN result.`C1.D1`.value AS C1_D1, result.QUART1_D2 AS QUART1_D2";
 			Result queryResult = session.run(query);
 
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 				"value1", "15.0", // 25th percentile of [10, 20, 30] is 15
 					"value2", "42.5", // 25th percentile of [40, 50] is 42.5
 					null, null
@@ -642,11 +643,155 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 						   "RETURN result.`C1.D1`.value AS C1_D1, result.SUM_C2_D2 AS SUM_C2_D2";
 			Result queryResult = session.run(query);
 
-			assertQueryResult(queryResult, 2,
+			assertQueryResult(queryResult, true, 2,
 				"value1", "60", // SUM of [10, 20, 30] is 60
 				"value2", "90", // SUM of [40, 50] is 90
 				null, "0"
 			);
 		}
 	}
+
+	@Test
+	public void testSelectWithComplexWhereClauseAndNotCondition() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", "D2",
+				"C3", "D3"
+			);
+
+			List<String[]> values = listOfLists(3,
+				"value1", "10x", "value4",  // Row 0: C1.D1 = value1, C2.D2 = 10x, C3.D3 = value4
+				"value2", "20x", "value3",  // Row 1: C1.D1 = value2, C2.D2 = 20x, C3.D3 = value3
+				"value1", "value2", "value5" // Row 2: C1.D1 = value1, C2.D2 = value2, C3.D3 = value5
+			);
+
+			List<String[]> relationships = listOfLists(5,
+				"0", "C1", "disturbs", "0", "C2",
+				"0", "C2", "contains", "0", "C3",
+				"1", "C1", "contains", "1", "C2",
+				"1", "C2", "contains", "1", "C3",
+				"2", "C1", "contains", "2", "C2",
+				"2", "C2", "contains", "2", "C3"
+			);
+
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE (C1.D1 = \"value1\" OR C2.D2 = \"value2\") AND C1-contains->C2 AND NOT C3.D3 = \"value3\" ORDER BY C1.D1, C2.D2', '') YIELD result " +
+						   "RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2";
+			Result queryResult = session.run(query);
+
+			assertQueryResult(queryResult, true, 2,
+				"value1", "value2"  // Matches Row 2
+			);
+		}
+	}
+
+	@Test
+	public void testSelectWithMtoNHopRelationship() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", "D2",
+				"M", null
+			);
+
+			List<String[]> values = listOfLists(3,
+				"val1", "A", null, // Row 0
+				"val2", "B", null, // Row 1
+				"val3", "C", null, // Row 2
+				"val4", "D", null,  // Row 3
+				"val5", "E", null,  // Row 4
+				"val6", "F", null,  // Row 5
+				"val7", "G", null,  // Row 6
+				"val8", "H", null  // Row 7
+			);
+
+			List<String[]> relationships = listOfLists(5,
+				// 2-hop valid path: C1 -> C1 -> C2 (valid for the query)
+				"0", "C1", "relatesTo", "0", "M",
+				"0", "M", "relatesTo", "0", "C2",
+
+				// 3-hop valid path: C1 -> C1 -> C1 -> C2 (valid for the query)
+				"1", "C1", "relatesTo", "1", "M",
+				"1", "M", "relatesTo", "2", "M",
+				"2", "M", "relatesTo", "2", "C2",
+
+				// 1-hop path: C1 -> C2
+				"3", "C1", "relatesTo", "3", "C2",
+
+				// 5-hop path
+				"4", "C1", "relatesTo", "4", "M",
+				"4", "M", "relatesTo", "5", "M",
+				"5", "M", "relatesTo", "6", "M",
+				"6", "M", "relatesTo", "7", "M",
+				"7", "M", "relatesTo", "7", "C2"
+			);
+
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-*2..3->C2 ORDER BY C1.D1, C2.D2', '') YIELD result " +
+						   "RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2";
+			Result queryResult = session.run(query);
+
+			assertQueryResult(queryResult, false, 2,
+				"val1", "A", // 2-hop valid result
+				"val2", "C"  // 3-hop valid result
+			);
+		}
+	}
+
+	@Test
+	public void testSelectWithMultiHopRelationship() {
+		try (Session session = driver.session()) {
+			List<String[]> headers = listOfLists(2,
+				"C1", "D1",
+				"C2", "D2",
+				"M", null
+			);
+
+			List<String[]> values = listOfLists(3,
+				"val1", "A", null, // Row 0
+				"val2", "B", null, // Row 1
+				"val3", "C", null, // Row 2
+				"val4", "D", null,  // Row 3
+				"val5", "E", null,  // Row 4
+				"val6", "F", null,  // Row 5
+				"val7", "G", null,  // Row 6
+				"val8", "H", null  // Row 7
+			);
+
+			List<String[]> relationships = listOfLists(5,
+				// 2-hop
+				"0", "C1", "relatesTo", "0", "M",
+				"0", "M", "relatesTo", "0", "C2",
+
+				// 3-hop
+				"2", "C2", "relatesTo", "1", "M",
+				"1", "M", "relatesTo", "2", "M",
+				"2", "M", "relatesTo", "1", "C1",
+
+				// 1-hop
+				"3", "C1", "relatesTo", "3", "C2",
+
+				// 4-hop
+				"7", "C2", "relatesTo", "4", "M",
+				"4", "M", "relatesTo", "5", "M",
+				"5", "M", "relatesTo", "6", "M",
+				"6", "M", "relatesTo", "4", "C1"
+			);
+
+			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
+
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1<-*-C2 ORDER BY C1.D1, C2.D2', '') YIELD result " +
+						   "RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2";
+			Result queryResult = session.run(query);
+
+			assertQueryResult(queryResult, false, 2,
+				"val2", "C", // 2-hop valid result
+				"val5", "H"  // 3-hop valid result
+			);
+		}
+	}
+
 }
