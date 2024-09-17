@@ -91,9 +91,11 @@ public class CreateDescriptorRepository extends BaseRepository {
 			if (node.getLabels().iterator().hasNext()) {
 				Label firstLabel = node.getLabels().iterator().next();
 				if ("DResource".equals(firstLabel.name())) {
+					String resourceId = node.getProperty("id").toString();
 					storedFilename = node.getProperty("storedFilename").toString();
 					String filename = node.getProperty("filename").toString();
 					
+					params.put("resourceId", resourceId);
 					params.put("filename", filename);
 					params.put("storedFilename", storedFilename);
 					params.put("imageFormat", node.getProperty("imageFormat").toString());
@@ -105,6 +107,7 @@ public class CreateDescriptorRepository extends BaseRepository {
 					updateQuery += """
 						WITH updated
 						CREATE (resource:DResource {
+							id: $resourceId,
 							filename: $filename,
 							storedFilename: $storedFilename,
 							imageFormat: $imageFormat

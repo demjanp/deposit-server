@@ -3,7 +3,7 @@ package deposit.service;
 import deposit.service.query.QueryTranslator;
 import deposit.repository.GetQueryRepository;
 import deposit.common.ServerContext;
-import deposit.common.result.QueryResult;
+import deposit.common.result.MapResult;
 
 import org.neo4j.graphdb.Transaction;
 
@@ -26,13 +26,14 @@ public class GetQueryService extends BaseService {
 		return instance;
 	}
 
-	public Stream<QueryResult> getQuery(Transaction tx, String queryStr, String token) {
+	public Stream<MapResult> getQuery(Transaction tx, String queryStr, String token) {
 
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot process query without an active Namespace.");
 		}
+		
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(queryStr);
 		String cypherQueryStr = result.getCypherQuery();
 		Map<String, String> returnedKeys = result.getReturnedKeys();

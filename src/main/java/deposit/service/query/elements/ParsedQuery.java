@@ -31,13 +31,8 @@ public class ParsedQuery {
 	}
 
 	public SelectItem getSelectItemByAlias(String alias) {
-		// Search for an exact match by alias, class name, or class-descriptor pair
 		for (SelectItem item : selectItems) {
-
-			// Handle alias lookup for both class and class.descriptor pairs
 			String fullKey = item.getDescriptor() != null ? item.getClassName() + "." + item.getDescriptor() : item.getClassName();
-
-			// Check for an alias or class match
 			if (item.getAlias().equals(alias) || fullKey.equals(alias) || item.getClassName().equals(alias)) {
 				return item;
 			}
@@ -72,12 +67,12 @@ public class ParsedQuery {
 	}
 
 	public void addOrderByItem(OrderByItem orderByItem) {
-        this.orderByItems.add(orderByItem);
-    }
+		this.orderByItems.add(orderByItem);
+	}
 
-    public List<OrderByItem> getOrderByItems() {
-        return this.orderByItems;
-    }
+	public List<OrderByItem> getOrderByItems() {
+		return this.orderByItems;
+	}
 
 	public boolean isDistinct() {
 		return distinct;

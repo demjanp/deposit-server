@@ -6,22 +6,15 @@ import org.antlr.v4.runtime.tree.*;
 
 public class QueryParser {
 
-    public static ParsedQuery parse(String queryStr) {
-        // Set up ANTLR input
-        CharStream input = CharStreams.fromString(queryStr);
+	public static ParsedQuery parse(String queryStr) {
+		CharStream input = CharStreams.fromString(queryStr);
+		DepositQueryLexer lexer = new DepositQueryLexer(input);
+		CommonTokenStream tokens = new CommonTokenStream(lexer);
+		DepositQueryParser parser = new DepositQueryParser(tokens);
+		ParseTree tree = parser.query();
+		QueryBuilderVisitor visitor = new QueryBuilderVisitor();
+		ParsedQuery parsedQuery = visitor.visit(tree);
 
-        // Use the generated lexer and parser
-        DepositQueryLexer lexer = new DepositQueryLexer(input);
-        CommonTokenStream tokens = new CommonTokenStream(lexer);
-        DepositQueryParser parser = new DepositQueryParser(tokens);
-
-        // Parse the query and generate the parse tree
-        ParseTree tree = parser.query();
-
-        // Walk the parse tree and build the ParsedQuery object
-        QueryBuilderVisitor visitor = new QueryBuilderVisitor();
-        ParsedQuery parsedQuery = visitor.visit(tree);
-
-        return parsedQuery;
-    }
+		return parsedQuery;
+	}
 }

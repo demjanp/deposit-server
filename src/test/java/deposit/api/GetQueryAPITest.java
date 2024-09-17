@@ -185,7 +185,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			List<String[]> relationships = new ArrayList<>();
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1 ORDER BY C1', '') YIELD result RETURN result.C1.id AS C1"
+					"CALL deposit.get.query('SELECT C1 ORDER BY C1', '') YIELD data RETURN data.C1.id AS C1"
 			);
 			assertQueryResult(queryResult, false, 1,
 				objectIds.get(0).get("C1"),
@@ -210,7 +210,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			);
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1, C2 ORDER BY C1, C2', '') YIELD result RETURN result.C1.id AS C1, result.C2.id AS C2"
+					"CALL deposit.get.query('SELECT C1, C2 ORDER BY C1, C2', '') YIELD data RETURN data.C1.id AS C1, data.C2.id AS C2"
 			);
 			assertQueryResult(queryResult, false, 2,
 				objectIds.get(0).get("C1"), objectIds.get(0).get("C2"),
@@ -236,7 +236,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			);
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1.D1, C2.D2 ORDER BY C1.D1, C2.D2', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2"
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 ORDER BY C1.D1, C2.D2', '') YIELD data RETURN data.`C1.D1`.value AS C1_D1, data.`C2.D2`.value AS C2_D2"
 			);
 			assertQueryResult(queryResult, false, 2,
 				"value1", "value2",
@@ -265,7 +265,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			);
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C2.D2 = \"value2\" ORDER BY C1.D1, C2.D2', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2"
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C2.D2 = \"value2\" ORDER BY C1.D1, C2.D2', '') YIELD data RETURN data.`C1.D1`.value AS C1_D1, data.`C2.D2`.value AS C2_D2"
 			);
 			assertQueryResult(queryResult, true, 2,
 				"value1", "value2",
@@ -295,7 +295,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			);
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-disturbs->C2 ORDER BY C1.D1, C2.D2', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2"
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-disturbs->C2 ORDER BY C1.D1, C2.D2', '') YIELD data RETURN data.`C1.D1`.value AS C1_D1, data.`C2.D2`.value AS C2_D2"
 			);
 
 			assertQueryResult(queryResult, true, 2,
@@ -326,7 +326,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			);
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1.D1, C2.D2 AS alias WHERE C1-disturbs->alias ORDER BY C1.D1, alias', '') YIELD result RETURN result.`C1.D1`.value AS C1_D1, result.alias.value AS alias"
+					"CALL deposit.get.query('SELECT C1.D1, C2.D2 AS alias WHERE C1-disturbs->alias ORDER BY C1.D1, alias', '') YIELD data RETURN data.`C1.D1`.value AS C1_D1, data.alias.value AS alias"
 			);
 
 			assertQueryResult(queryResult, true, 2,
@@ -359,8 +359,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			);
 			createData(session, "TestNamespace", headers, values, relationships);
 			Result queryResult = session.run(
-					"CALL deposit.get.query('SELECT C1.D1, COUNT(C2) AS CNT_2 WHERE C1.D1 = \"value1\" ORDER BY C1.D1', '') YIELD result " +
-							"RETURN result.`C1.D1`.value AS C1_D1, result.CNT_2 AS CNT_2"
+					"CALL deposit.get.query('SELECT C1.D1, COUNT(C2) AS CNT_2 WHERE C1.D1 = \"value1\" ORDER BY C1.D1', '') YIELD data " +
+							"RETURN data.`C1.D1`.value AS C1_D1, data.CNT_2 AS CNT_2"
 			);
 			assertQueryResult(queryResult, true, 2,
 					"value1", "2"
@@ -395,8 +395,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
 			// Step 5: Run the Deposit query
-			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 AS alias WHERE C1.D1 = \"value1\" AND alias = \"value2\" ORDER BY C1.D1, C2.D2', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.alias.value AS alias";
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 AS alias WHERE C1.D1 = \"value1\" AND alias = \"value2\" ORDER BY C1.D1, C2.D2', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.alias.value AS alias";
 			Result queryResult = session.run(query);
 
 			// Step 6: Assert the results
@@ -437,8 +437,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
 			// Step 5: Run the Deposit query
-			String query = "CALL deposit.get.query('SELECT C1.D1, \"Class 2\".D2, \"Class 3\".\"Descr 3\" ORDER BY C1.D1, \"Class 2\".D2, \"Class 3\".\"Descr 3\"', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.`Class 2.D2`.value AS Class2_D2, result.`Class 3.Descr 3`.value AS Class3_Descr3";
+			String query = "CALL deposit.get.query('SELECT C1.D1, \"Class 2\".D2, \"Class 3\".\"Descr 3\" ORDER BY C1.D1, \"Class 2\".D2, \"Class 3\".\"Descr 3\"', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.`Class 2.D2`.value AS Class2_D2, data.`Class 3.Descr 3`.value AS Class3_Descr3";
 			Result queryResult = session.run(query);
 
 			// Step 6: Assert the results
@@ -483,8 +483,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1, C2, C3, C4 WHERE C3<-contains-C2 ORDER BY C1, C2, C3, C4', '') YIELD result " +
-						   "RETURN result.C1.id AS C1, result.C2.id AS C2, result.C3.id AS C3, result.C4.id AS C4";
+			String query = "CALL deposit.get.query('SELECT C1, C2, C3, C4 WHERE C3<-contains-C2 ORDER BY C1, C2, C3, C4', '') YIELD data " +
+						   "RETURN data.C1.id AS C1, data.C2.id AS C2, data.C3.id AS C3, data.C4.id AS C4";
 			Result queryResult = session.run(query);
 
 			String c1_id = objectIds.get(0).get("C1");
@@ -522,8 +522,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1, C2 WHERE C1-contains-C2 ORDER BY C1, C2', '') YIELD result " +
-						   "RETURN result.C1.id AS C1, result.C2.id AS C2";
+			String query = "CALL deposit.get.query('SELECT C1, C2 WHERE C1-contains-C2 ORDER BY C1, C2', '') YIELD data " +
+						   "RETURN data.C1.id AS C1, data.C2.id AS C2";
 			Result queryResult = session.run(query);
 
 			String c1_id_row_0 = objectIds.get(0).get("C1");
@@ -564,8 +564,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1, COUNT(DISTINCT C2.D1) AS COUNT_C2 WHERE C1-contains->C2 ORDER BY C1, COUNT_C2', '') YIELD result " +
-						   "RETURN result.C1.id AS C1, result.COUNT_C2 AS COUNT_C2";
+			String query = "CALL deposit.get.query('SELECT C1, COUNT(DISTINCT C2.D1) AS COUNT_C2 WHERE C1-contains->C2 ORDER BY C1, COUNT_C2', '') YIELD data " +
+						   "RETURN data.C1.id AS C1, data.COUNT_C2 AS COUNT_C2";
 			Result queryResult = session.run(query);
 
 			assertQueryResult(queryResult, false, 2,
@@ -601,8 +601,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1.D1, PERCENTILE(C2.D2, 0.25) AS QUART1_D2 ORDER BY C1.D1, QUART1_D2', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.QUART1_D2 AS QUART1_D2";
+			String query = "CALL deposit.get.query('SELECT C1.D1, PERCENTILE(C2.D2, 0.25) AS QUART1_D2 ORDER BY C1.D1, QUART1_D2', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.QUART1_D2 AS QUART1_D2";
 			Result queryResult = session.run(query);
 
 			assertQueryResult(queryResult, true, 2,
@@ -639,8 +639,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1.D1, SUM(C2.D2) AS SUM_C2_D2 ORDER BY C1.D1, SUM_C2_D2', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.SUM_C2_D2 AS SUM_C2_D2";
+			String query = "CALL deposit.get.query('SELECT C1.D1, SUM(C2.D2) AS SUM_C2_D2 ORDER BY C1.D1, SUM_C2_D2', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.SUM_C2_D2 AS SUM_C2_D2";
 			Result queryResult = session.run(query);
 
 			assertQueryResult(queryResult, true, 2,
@@ -677,8 +677,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE (C1.D1 = \"value1\" OR C2.D2 = \"value2\") AND C1-contains->C2 AND NOT C3.D3 = \"value3\" ORDER BY C1.D1, C2.D2', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2";
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE (C1.D1 = \"value1\" OR C2.D2 = \"value2\") AND C1-contains->C2 AND NOT C3.D3 = \"value3\" ORDER BY C1.D1, C2.D2', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.`C2.D2`.value AS C2_D2";
 			Result queryResult = session.run(query);
 
 			assertQueryResult(queryResult, true, 2,
@@ -730,8 +730,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-*2..3->C2 ORDER BY C1.D1, C2.D2', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2";
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1-*2..3->C2 ORDER BY C1.D1, C2.D2', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.`C2.D2`.value AS C2_D2";
 			Result queryResult = session.run(query);
 
 			assertQueryResult(queryResult, false, 2,
@@ -783,8 +783,8 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 
 			List<Map<String, String>> objectIds = createData(session, "TestNamespace", headers, values, relationships);
 
-			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1<-*-C2 ORDER BY C1.D1, C2.D2', '') YIELD result " +
-						   "RETURN result.`C1.D1`.value AS C1_D1, result.`C2.D2`.value AS C2_D2";
+			String query = "CALL deposit.get.query('SELECT C1.D1, C2.D2 WHERE C1<-*-C2 ORDER BY C1.D1, C2.D2', '') YIELD data " +
+						   "RETURN data.`C1.D1`.value AS C1_D1, data.`C2.D2`.value AS C2_D2";
 			Result queryResult = session.run(query);
 
 			assertQueryResult(queryResult, false, 2,

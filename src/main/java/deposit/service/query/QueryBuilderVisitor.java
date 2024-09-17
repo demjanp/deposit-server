@@ -93,6 +93,7 @@ public class QueryBuilderVisitor extends DepositQueryBaseVisitor<ParsedQuery> {
 		return parsedQuery;
 	}
 	
+	
 	// visitSelectItem helpers
 	
 	private SelectItem handleRegularSelectItem(DepositQueryParser.SelectItemContext ctx) {
@@ -224,7 +225,8 @@ public class QueryBuilderVisitor extends DepositQueryBaseVisitor<ParsedQuery> {
 		return valueCtx != null && (valueCtx.NUMBER() != null || valueCtx.QUOTED_STRING() != null);
 	}
 	
-	// visitOrderByClause helpers
+	
+	// visitOrderByClause helper
 	private OrderByItem handleOrderByItem(DepositQueryParser.OrderItemContext ctx) {
 		if (ctx.identifier(0) != null) {
 			String className = ctx.identifier(0).getText();

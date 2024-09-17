@@ -4,132 +4,132 @@ package deposit.service.query;
 }
 
 query
-    : selectClause whereClause? orderByClause? EOF
-    ;
+	: selectClause whereClause? orderByClause? EOF
+	;
 
 selectClause
-    : 'SELECT' DISTINCT? selectItem (',' selectItem)*
-    ;
+	: 'SELECT' DISTINCT? selectItem (',' selectItem)*
+	;
 
 selectItem
-    : aggregationFunction
-    | identifier ('.' identifier)? ('AS' alias)?
-    ;
+	: aggregationFunction
+	| identifier ('.' identifier)? ('AS' alias)?
+	;
 
 aggregationFunction
-    : functionName '(' DISTINCT? identifier ('.' identifier)? (',' NUMBER)? ')' ('AS' alias)?
-    ;
+	: functionName '(' DISTINCT? identifier ('.' identifier)? (',' NUMBER)? ')' ('AS' alias)?
+	;
 
 whereClause
-    : 'WHERE' logicalExpression
-    ;
+	: 'WHERE' logicalExpression
+	;
 
 orderByClause
-    : 'ORDER' 'BY' orderItem (',' orderItem)*
-    ;
+	: 'ORDER' 'BY' orderItem (',' orderItem)*
+	;
 
 orderItem
-    : identifier ('.' identifier)? orderDirection?
-    ;
+	: identifier ('.' identifier)? orderDirection?
+	;
 
 orderDirection
-    : 'ASC'
-    | 'DESC'
-    ;
+	: 'ASC'
+	| 'DESC'
+	;
 
 logicalExpression
-    : logicalTerm (logicalOp logicalTerm)*
-    ;
+	: logicalTerm (logicalOp logicalTerm)*
+	;
 
 logicalTerm
-    : 'NOT' logicalTerm                        
-    | '(' 'NOT'? logicalExpression ')'         
-    | atomicCondition                         
-    | '(' logicalExpression ')'               
-    ;
+	: 'NOT' logicalTerm                        
+	| '(' 'NOT'? logicalExpression ')'         
+	| atomicCondition                         
+	| '(' logicalExpression ')'               
+	;
 
 condition
-    : atomicCondition
-    | '(' logicalExpression ')'
-    ;
+	: atomicCondition
+	| '(' logicalExpression ')'
+	;
 
 atomicCondition
-    : identifier ('.' identifier)? comparator value  
-    | relationship
-    ;
+	: identifier ('.' identifier)? comparator value  
+	| relationship
+	;
 
 relationship
-    : identifier ('<-' | '-') label? asterisk? (minHops? '..' maxHops?)? ('-' | '->') identifier
-    ;
+	: identifier ('<-' | '-') label? asterisk? (minHops? '..' maxHops?)? ('-' | '->') identifier
+	;
 
 asterisk
-    : '*'
-    ;
+	: '*'
+	;
 
 minHops
-    : NUMBER
-    ;
+	: NUMBER
+	;
 
 maxHops
-    : NUMBER
-    ;
+	: NUMBER
+	;
 
 label
-    : identifier
-    ;
+	: identifier
+	;
 
 value
-    : QUOTED_STRING | NUMBER | tuple  
-    ;
+	: QUOTED_STRING | NUMBER | tuple  
+	;
 
 comparator
-    : '=' | 'IN' | '<>' | '!=' | '>' | '<'
-    ;
+	: '=' | 'IN' | '<>' | '!=' | '>' | '<'
+	;
 
 logicalOp
-    : 'AND' | 'OR'
-    ;
+	: 'AND' | 'OR'
+	;
 
 alias
-    : identifier
-    ;
+	: identifier
+	;
 
 tuple
-    : '(' value (',' value)* ')'
-    ;
+	: '(' value (',' value)* ')'
+	;
 
 functionName
-    : 'COUNT'
-    | 'SUM'
-    | 'AVG'
-    | 'MIN'
-    | 'MAX'
-    | 'COLLECT'
-    | 'STDEV'
-    | 'PERCENTILE'
-    ;
+	: 'COUNT'
+	| 'SUM'
+	| 'AVG'
+	| 'MIN'
+	| 'MAX'
+	| 'COLLECT'
+	| 'STDEV'
+	| 'PERCENTILE'
+	;
 
 DISTINCT
-    : 'DISTINCT'
-    ;
+	: 'DISTINCT'
+	;
 
 identifier
-    : ID | QUOTED_STRING
-    ;
+	: ID | QUOTED_STRING
+	;
 
 ID
-    : [a-zA-Z_][a-zA-Z0-9_]*
-    ;
+	: [a-zA-Z_][a-zA-Z0-9_]*
+	;
 
 QUOTED_STRING
-    : ('"' ( ~["\\] | '\\' . )* '"')
-    | ('\'' ( ~['\\] | '\\' . )* '\'')
-    ;
+	: ('"' ( ~["\\] | '\\' . )* '"')
+	| ('\'' ( ~['\\] | '\\' . )* '\'')
+	;
 
 NUMBER
-    : [0-9]+ ('.' [0-9]+)?
-    ;
+	: [0-9]+ ('.' [0-9]+)?
+	;
 
 WS
-    : [ \t\r\n]+ -> skip
-    ;
+	: [ \t\r\n]+ -> skip
+	;

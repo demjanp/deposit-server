@@ -8,11 +8,14 @@ import org.neo4j.driver.types.Relationship;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.time.ZonedDateTime;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class CypherScriptExporter {
 
     private final Driver driver;
+    private final Set<Object> exportedNodeIds = new HashSet<>();
 
     public CypherScriptExporter(Driver driver) {
         this.driver = driver;
@@ -20,6 +23,7 @@ public class CypherScriptExporter {
 
     public void exportData() {
         try (FileWriter writer = new FileWriter("export.cypher")) {
+            writer.write("MATCH (n) WITH n DETACH DELETE n;\n");
             exportNodes(writer);
             exportRelationships(writer);
             System.out.println("Cypher script export completed.");
@@ -28,13 +32,28 @@ public class CypherScriptExporter {
             e.printStackTrace();
         }
     }
-	
+
     private void exportNodes(FileWriter writer) throws IOException {
         try (Session session = driver.session()) {
             Result result = session.run("MATCH (n) RETURN DISTINCT n");
             while (result.hasNext()) {
                 Record record = result.next();
                 Node node = record.get("n").asNode();
+
+                // Check for 'id' property and exclude Archive type nodes
+                if (node.hasLabel("Archive") || !node.containsKey("id")) {
+                    continue;
+                }
+
+                Object nodeId = node.get("id").asObject();
+
+                // Skip the node if it has already been exported
+                if (exportedNodeIds.contains(nodeId)) {
+                    continue;
+                }
+
+                // Mark this node ID as exported
+                exportedNodeIds.add(nodeId);
 
                 // Build labels string
                 StringBuilder labels = new StringBuilder();

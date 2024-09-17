@@ -6,6 +6,8 @@ import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.Node;
 
+import java.util.UUID;
+
 public class UtilsUploadRepository extends BaseRepository {
 
 	private static UtilsUploadRepository instance;
@@ -23,6 +25,7 @@ public class UtilsUploadRepository extends BaseRepository {
         String storedFilename = FileSystem.storeFile(stream, filename);
         String imageFormat = FileSystem.getImageFormat(filename);
         Node node = tx.createNode(Label.label("DResource"));
+        node.setProperty("id", String.valueOf(UUID.randomUUID()));
         node.setProperty("filename", filename);
         node.setProperty("storedFilename", storedFilename);
         node.setProperty("imageFormat", imageFormat);

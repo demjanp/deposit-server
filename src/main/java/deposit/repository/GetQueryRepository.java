@@ -1,8 +1,10 @@
 package deposit.repository;
 
-import deposit.common.result.QueryResult;
+import deposit.common.result.MapResult;
 
-import org.neo4j.graphdb.*;
+import org.neo4j.graphdb.Result;
+import org.neo4j.graphdb.Transaction;
+
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,7 +24,7 @@ public class GetQueryRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Stream<QueryResult> getQuery(Transaction tx, String namespaceName, String cypherQueryStr, Map<String, String> returnedKeys) {
+	public Stream<MapResult> getQuery(Transaction tx, String namespaceName, String cypherQueryStr, Map<String, String> returnedKeys) {
 		try {
 			Result result = tx.execute(cypherQueryStr, Map.of("namespaceName", namespaceName));
 			return StreamSupport.stream(result.stream().spliterator(), false)
@@ -32,7 +34,7 @@ public class GetQueryRepository extends BaseRepository {
 						Object value = row.get(entry.getKey());
 						queryResultMap.put(entry.getValue(), value);
 					}
-					return new QueryResult(queryResultMap);
+					return new MapResult(queryResultMap);
 				});
 		} catch (Exception e) {
 			throwException("Error executing query: " + cypherQueryStr, e);
