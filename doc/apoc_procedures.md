@@ -13,6 +13,10 @@ Create a Class.
 - **descriptors**: Descriptors of the Class defined as a list of lists [[<name>, <type>] or [<name>, <type>, <comment>], ...], where <name> is the name of the Descriptor, <type> is any Neo4j type or DResource and comment is an annotation. Default is [].
 - **token**: authentication token.
 
+### Return:
+
+the created Class node.
+
 ### Throws:
 
 - **RuntimeException**: if a Class with that name already exists or if there is an error during the creation.
@@ -36,6 +40,10 @@ Create a Class Descriptor.
 - **comment**: annotation to provide additional information about the Descriptor, default is an empty string.
 - **token**: authentication token.
 
+### Return:
+
+the created Class Descriptor node.
+
 ### Throws:
 
 - **RuntimeException**: if a Descriptor with that name already exists for the Class or if there is an error during the creation.
@@ -58,6 +66,10 @@ Create a Class Relationship.
 - **comment**: annotation to provide additional information about the Relationship, default is an empty string.
 - **token**: authentication token.
 
+### Return:
+
+the created Relationship.
+
 ### Throws:
 
 - **RuntimeException**: if the Class Relationship already exists or if there is an error during the creation.
@@ -78,6 +90,10 @@ Create a Descriptor.
 - **descriptorName**: the name of the Descriptor to create.
 - **value**: can be of any Neo4j type or a DResource node.
 - **token**: authentication token.
+
+### Return:
+
+the created Descriptor node.
 
 ### Throws:
 
@@ -100,6 +116,10 @@ Creates a new Namespace.
 - **versioningType**: type of versioning to use. Can be empty, 'transient' or 'persistent', default is an empty string.
 - **token**: authentication token.
 
+### Return:
+
+the created Namespace node.
+
 ### Throws:
 
 - **RuntimeException**: if a namespace with that name already exists or if there is an error during creation.
@@ -120,6 +140,10 @@ Create an Object.
 - **descriptors**: Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type or a resource or geometry node. Default is [].
 - **position**: position of the node in a hierarchical graph layout defined as [x, y], default is [].
 - **token**: authentication token.
+
+### Return:
+
+the created Object node.
 
 ### Throws:
 
@@ -143,6 +167,10 @@ Create a Relationship.
 - **weight**: the weight of the Relationship, if null is passed it defaults to 0.
 - **token**: authentication token.
 
+### Return:
+
+the created Relationship.
+
 ### Throws:
 
 - **RuntimeException**: if the Relationship already exists or if there is an error during the creation.
@@ -162,6 +190,10 @@ Create a User node.
 - **username**: new username to create.
 - **password**: password (unhashed).
 - **token**: authentication token.
+
+### Return:
+
+the created User node.
 
 ### Throws:
 
@@ -183,6 +215,10 @@ Create a User Tool.
 - **data**: JSON encoded string representing the definition of the User Tool.
 - **comment**: annotation to provide additional information about the User Tool, default is an empty string.
 - **token**: authentication token.
+
+### Return:
+
+the created User Tool node.
 
 ### Throws:
 
@@ -511,6 +547,10 @@ Returns the active Namespace node.
 
 - **token**: authentication token.
 
+### Return:
+
+the active Namespace node or null if none is set.
+
 ### Usage:
 
 ```cypher
@@ -525,6 +565,10 @@ Get existing Class nodes.
 
 - **className**: name of the Class to retrieve or empty for all Classes.
 - **token**: authentication token.
+
+### Return:
+
+the Class node(s) or null if it doesn't exist.
 
 ### Throws:
 
@@ -544,6 +588,10 @@ Get an existing Class node.
 
 - **classId**: Id of the Class to retrieve.
 - **token**: authentication token.
+
+### Return:
+
+the Class node or null if it doesn't exist.
 
 ### Throws:
 
@@ -565,6 +613,10 @@ Get existing Class Descriptor nodes.
 - **descriptorName**: name of the Class Descriptor to retrieve or empty for all Descriptors of the Class.
 - **token**: authentication token.
 
+### Return:
+
+the Descriptor node(s) or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node(s).
@@ -583,6 +635,10 @@ Get existing Class Descriptor nodes.
 
 - **descriptorId**: the Id of the Class Descriptor.
 - **token**: authentication token.
+
+### Return:
+
+the Class Descriptor node or null if it doesn't exist.
 
 ### Throws:
 
@@ -603,6 +659,10 @@ Get Members of a Class.
 - **className**: the name of the Class.
 - **token**: authentication token.
 
+### Return:
+
+the Object nodes.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node(s).
@@ -621,6 +681,10 @@ Get the position of a Class node in the graph.
 
 - **className**: the name of the Class.
 - **token**: authentication token.
+
+### Return:
+
+the position.
 
 ### Throws:
 
@@ -643,6 +707,10 @@ Get existing Class Relationship.
 - **label**: the label of the Class Relationship or empty for all Relationships.
 - **token**: authentication token.
 
+### Return:
+
+the source, target, relationship(s) or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the relationship(s).
@@ -662,6 +730,10 @@ Get existing Class Relationship.
 - **relationshipId**: the Id of the Class Relationship.
 - **token**: authentication token.
 
+### Return:
+
+the relationship or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the relationship.
@@ -670,6 +742,29 @@ Get existing Class Relationship.
 
 ```cypher
 CALL deposit.get.classRelationshipById(relationshipId, token) YIELD rel
+```
+
+## deposit.get.data
+
+Get nodes, relationships and resource filenames for the subtrees of the root Objects or the whole Namespace.
+
+### Parameters:
+
+- **rootIds**: a list of root Object ids or empty for the whole Namespace. Default is [].
+- **token**: authentication token.
+
+### Return:
+
+a Map in the format:  {graph: {nodes: nodes, edges: edges}, resources: [<local filename of the resource>, ...]} where graph is in GraphSON format
+
+### Throws:
+
+- **RuntimeException**: if there is an error retrieving the data.
+
+### Usage:
+
+```cypher
+CALL deposit.get.data(rootIds, token) YIELD data
 ```
 
 ## deposit.get.descriptor
@@ -681,6 +776,10 @@ Get existing Descriptor nodes.
 - **objectId**: the Id of the Object.
 - **descriptorName**: name of the Descriptor to retrieve or empty for all Descriptors of the Object.
 - **token**: authentication token.
+
+### Return:
+
+the Descriptor node(s) or null if it doesn't exist.
 
 ### Throws:
 
@@ -701,6 +800,10 @@ Get an existing Descriptor node.
 - **descriptorId**: the Id of the Descriptor.
 - **token**: authentication token.
 
+### Return:
+
+the Descriptor node or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node(s).
@@ -719,6 +822,10 @@ Brief description.
 
 - **namespaceName**: name of the Namespace to retrieve or empty for all namespaces.
 - **token**: authentication token.
+
+### Return:
+
+the Namespace node(s) or null if it doesn't exist.
 
 ### Throws:
 
@@ -740,6 +847,10 @@ Get existing Object nodes which match the parameters (all if no parameters are g
 - **descriptors**: Descriptors of the Object defined as a list of lists [[<name>, <value>], ...], where <name> is the name of the Descriptor, <value> is any Neo4j type. Default is [].
 - **token**: authentication token.
 
+### Return:
+
+the Object node(s) or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node(s).
@@ -759,6 +870,10 @@ Get an existing Object node.
 - **objectId**: Id of the Object to retrieve.
 - **token**: authentication token.
 
+### Return:
+
+the Object node or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node.
@@ -777,6 +892,10 @@ Get Classes of an Object.
 
 - **objectId**: the Id of the Object.
 - **token**: authentication token.
+
+### Return:
+
+the Class nodes.
 
 ### Throws:
 
@@ -798,6 +917,10 @@ Get the ClassDescriptor of the Object's Class.
 - **descriptorName**: name of the Descriptor to retrieve or empty for all Descriptors of the Object.
 - **token**: authentication token.
 
+### Return:
+
+the Class Descriptor node or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node.
@@ -816,6 +939,10 @@ Get the corresponding ClassDescriptor to the Descriptor of an Object.
 
 - **descriptorId**: the Id of the Object's Descriptor.
 - **token**: authentication token.
+
+### Return:
+
+the Class Descriptor node or null if it doesn't exist.
 
 ### Throws:
 
@@ -836,6 +963,10 @@ Get the position of an Object node in the graph.
 - **objectId**: Id of the Object to retrieve.
 - **token**: authentication token.
 
+### Return:
+
+the position.
+
 ### Throws:
 
 - **RuntimeException**: if retrieving the position failed.
@@ -848,12 +979,16 @@ CALL deposit.get.objectPosition(objectId, token) YIELD x, y
 
 ## deposit.get.query
 
-Executes a Deposit query and returns the result as QueryResult.
+Executes a Deposit query and returns the result as MapResult.
 
 ### Parameters:
 
 - **queryStr**: the Deposit query string
 - **token**: the authentication token
+
+### Return:
+
+a stream of MapResult objects. Use result.get(key) to retrieve a returned node. Keys are identical to the identifiers used in the SELECT clause.
 
 ### Throws:
 
@@ -876,6 +1011,10 @@ Get existing Relationship.
 - **label**: the label of the Relationship or empty for all Relationships.
 - **token**: authentication token.
 
+### Return:
+
+the relationship(s) or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the relationship(s).
@@ -894,6 +1033,10 @@ Get existing Relationship.
 
 - **relationshipId**: the Id of the Relationship.
 - **token**: authentication token.
+
+### Return:
+
+the relationship or null if it doesn't exist.
 
 ### Throws:
 
@@ -914,6 +1057,10 @@ Get existing User node(s).
 - **username**: the username of the User to retrieve or empty for all User nodes.
 - **token**: authentication token.
 
+### Return:
+
+the User node(s) or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node(s).
@@ -932,6 +1079,10 @@ Get an existing User node.
 
 - **userId**: the Id of the User node to retrieve.
 - **token**: authentication token.
+
+### Return:
+
+the User node or null if it doesn't exist.
 
 ### Throws:
 
@@ -952,6 +1103,10 @@ Get existing User Tool nodes.
 - **userToolName**: name of the User Tool to retrieve or empty for all User Tools.
 - **token**: authentication token.
 
+### Return:
+
+the User Tool node(s) or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node(s).
@@ -971,6 +1126,10 @@ Get an existing User Tool node.
 - **userToolId**: Id of the User Tool to retrieve.
 - **token**: authentication token.
 
+### Return:
+
+the User Tool node or null if it doesn't exist.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the node.
@@ -983,7 +1142,11 @@ CALL deposit.get.userToolById(userToolId, token) YIELD node AS userTool
 
 ## deposit.get.version
 
-Get the version of the Deposit server.  @return the version as a string.
+Get the version of the Deposit server.
+
+### Return:
+
+the version as a string.
 
 ### Throws:
 
@@ -1128,6 +1291,10 @@ Create or Update a Class Relationship.
 - **comment**: annotation to provide additional information about the Relationship, default is an empty string.
 - **token**: authentication token.
 
+### Return:
+
+the Relationship.
+
 ### Throws:
 
 - **RuntimeException**: if there is an error during the update.
@@ -1171,6 +1338,10 @@ Create or update a Descriptor.
 - **value**: can be of any Neo4j type or a DResource node.
 - **token**: authentication token.
 
+### Return:
+
+the Descriptor node.
+
 ### Throws:
 
 - **RuntimeException**: if there is an error creating or updating the Descriptor.
@@ -1190,6 +1361,10 @@ Set the Membership of an Object in a Class.
 - **className**: the name of the Class.
 - **objectId**: the Id of the Object.
 - **token**: authentication token.
+
+### Return:
+
+the created Membership relationship.
 
 ### Throws:
 
@@ -1272,6 +1447,10 @@ Create or Update a Relationship.
 - **weight**: the weight of the Relationship, if null is passed it defaults to 0.
 - **token**: authentication token.
 
+### Return:
+
+the Relationship node.
+
 ### Throws:
 
 - **RuntimeException**: if there is an error during the update.
@@ -1332,6 +1511,10 @@ Convert a list of coordinates into a WKT.
 - **type**: geometry type.
 - **coordinates**: a list or list of lists of coordinates.
 
+### Return:
+
+the WKT.
+
 ### Throws:
 
 - **RuntimeException**: if there is an error converting the value.
@@ -1351,6 +1534,10 @@ Download a file resource attached to the Descriptor.
 - **descriptor**: the Descriptor with the DResource value. Can be a Descriptor node or Id.
 - **token**: authentication token.
 
+### Return:
+
+the content of the file as a Base64 encoded string.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error retrieving the file resource.
@@ -1369,6 +1556,10 @@ Brief description.
 
 - **username**: the username.
 - **password**: the password (unhashed).
+
+### Return:
+
+the value.
 
 ### Throws:
 
@@ -1390,6 +1581,10 @@ Upload a file resource to the transient storage on the server and return a DReso
 - **filename**: the name of the file.
 - **token**: authentication token.
 
+### Return:
+
+the created DResource node.
+
 ### Throws:
 
 - **RuntimeException**: if there was an error uploading the file.
@@ -1407,6 +1602,10 @@ Convert a WKT to a list of coordinates.
 ### Parameters:
 
 - **wkt**: well-known-text string.
+
+### Return:
+
+the coordinates.
 
 ### Throws:
 

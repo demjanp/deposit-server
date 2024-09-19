@@ -1,12 +1,10 @@
 package deposit.api;
 
 import deposit.BaseNeo4jTest;
-import deposit.CypherScriptExporter;
 import deposit.common.ServerContext;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
-import org.neo4j.driver.Record;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -35,6 +33,16 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			String objectId = result.single().get("objectId").asString();
 			tx.commit();
 			return objectId;
+		});
+	}
+
+	private String getClassId(Session session, String className) {
+		return session.writeTransaction(tx -> {
+			Result result = tx.run("CALL deposit.get.class($className, '') YIELD node RETURN node.id AS classId",
+								   Map.of("className", className));
+			String classId = result.single().get("classId").asString();
+			tx.commit();
+			return classId;
 		});
 	}
 
@@ -82,57 +90,51 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private static List<String[]> listOfLists(int groupSize, String... items) {
-		List<String[]> result = new ArrayList<>();
-		for (int i = 0; i < items.length; i += groupSize) {
-			int end = Math.min(i + groupSize, items.length);
-			String[] group = new String[end - i];
-			System.arraycopy(items, i, group, 0, end - i);
-			result.add(group);
-		}
-		return result;
-	}
-
-	private void assertQueryResult(Result queryResult, boolean ordered, int nColumns, String... items) {
-		List<String[]> expectedRows = listOfLists(nColumns, items);
-		List<String[]> actualRows = new ArrayList<>();
-		
+	private void assertQueryResult(Result queryResult, Set<String> expectedValues) {
+		Set<String> foundValues = new HashSet<>();
+		Set<String> expectedResources = new HashSet<>();
+		Set<String> foundResources = new HashSet<>();
 		while (queryResult.hasNext()) {
-			Record record = queryResult.next();
-			String[] row = new String[nColumns];
-			for (int j = 0; j < nColumns; j++) {
-				Object valueObj = record.get(j).asObject();
-				String value = (valueObj instanceof Number || valueObj instanceof String) ? valueObj.toString() : null;
-				row[j] = value;
+			Map<String, Object> data = queryResult.next().get("data").asMap();
+			Map<String, Object> graph = (Map<String, Object>) data.get("graph");
+			for (String resource : (List<String>) data.get("resources")) {
+				String[] parts = resource.split("-");
+				expectedResources.add(parts[0] + ".tmp");
 			}
-			actualRows.add(row);
+			for (Map<String, Object> node : (List<Map<String, Object>>) graph.get("nodes")) {
+				if (node.get("label").equals("Descriptor")) {
+					Map<String, Object> properties = (Map<String, Object>) node.get("properties");
+					Object valueObject = properties.get("value");
+					if (valueObject != null) {
+						String value = valueObject.toString();
+						if (value.endsWith(".tmp")) {
+							assertTrue("Unexpected resource found: " + value, expectedResources.contains(value));
+							foundResources.add(value);
+						} else {
+							assertTrue("Unexpected value found: " + value, expectedValues.contains(value));
+							foundValues.add(value);
+						}
+					}
+				}
+			}
 		}
-		assertEquals("Number of returned results doesn't match expected rows.", expectedRows.size(), actualRows.size());
-		for (String[] expected : expectedRows) {
-			boolean matchFound = actualRows.stream().anyMatch(actual -> Arrays.equals(expected, actual));
-			assertTrue("Expected row not found: " + Arrays.toString(expected), matchFound);
-			//actualRows.removeIf(actual -> Arrays.equals(expected, actual));
-		}
+		assertEquals("Number of returned values doesn't match the expected number.", expectedValues.size(), foundValues.size());
+		assertEquals("Number of returned resources doesn't match the expected number.", expectedResources.size(), foundResources.size());
 	}
 
 	private void printQueryResult(Result queryResult) {
+		System.out.println("");
 		while (queryResult.hasNext()) {
-			Record record = queryResult.next();
-			System.out.println(record);
-		}
-	}
-
-	private static Number parseNumber(String input) {
-		if (input == null) {
-			return null;
-		}
-		try {
-			return Integer.parseInt(input);
-		} catch (NumberFormatException e) {
-			try {
-				return Double.parseDouble(input);
-			} catch (NumberFormatException ex) {
-				return null;
+			Map<String, Object> data = queryResult.next().get("data").asMap();
+			Map<String, Object> graph = (Map<String, Object>) data.get("graph");
+			for (Map<String, Object> node : (List<Map<String, Object>>) graph.get("nodes")) {
+				if (node.get("label").equals("Descriptor")) {
+					Map<String, Object> properties = (Map<String, Object>) node.get("properties");
+					Object value = properties.get("value");
+					if (value != null) {
+						System.out.println(value.toString());
+					}
+				}
 			}
 		}
 	}
@@ -207,9 +209,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					<-employee_of- Person: Mark
 						-citizen_of-> Country: Belgium
 						-lives_in-> City: Antwerp
+						-owns-> Car: Toyota
 					<-employee_of- Person: Max
 						-citizen_of-> Country: Belgium
 						-lives_in-> City: Antwerp
+						-owns-> Car: Peugeot
 		Country: Czechoslovakia
 			-contains-> City: Prague
 				-contains-> Company: Pilsner
@@ -242,6 +246,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					<-employee_of- Person: Zoe
 						-citizen_of-> Country: Czechoslovakia
 						-lives_in-> City: Bratislava
+						-owns-> Car: Skoda
 		""";
 		createNamespace(session, namespaceName);
 		Map<String, String> objectIdMap = new HashMap<>(); // Maps "Class: Value" to objectId
@@ -371,38 +376,165 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	public void testGetAllData() {
 		try (Session session = driver.session()) {
 			Map<String, String> objectIdMap = createData(session, "TestNamespace");
-
-			String objId_Emma = objectIdMap.get("Person: Emma"); // Linz, Lentils
-			String objId_Adam = objectIdMap.get("Person: Adam"); // Vienna, Velocipeds
-			String objId_Alex = objectIdMap.get("Person: Alex"); // Vienna, Velocipeds
-			String objId_Linz = objectIdMap.get("City: Linz");
-			String objId_Velocipeds = objectIdMap.get("Company: Velocipeds");
-
-			/* TODO
-			 * Linz
-			 * Velocipeds
-			 * Emma
-			 * Emma, Adam, Alex
-			 * Velocipeds, Emma
-			 */
-
-			List<String> rootIds = List.of(objId_Linz);
-
-			CypherScriptExporter exporter = new CypherScriptExporter(driver);
-			exporter.exportData();
-			System.out.println("");
-			System.out.println("Emma:" + objId_Emma);
-			System.out.println("Adam:" + objId_Adam);
-			System.out.println("Alex:" + objId_Alex);
-			System.out.println("Linz:" + objId_Linz);
-			System.out.println("Velocipeds:" + objId_Velocipeds);
-			System.out.println("");
-
-			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
-			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
-
-			printQueryResult(queryResult);
+			Set<String> expected = new HashSet<>();
+			for (String key : objectIdMap.keySet()) {
+				String[] parts = key.split(": ");
+				expected.add(parts[1]);
+			}
+			String query = "CALL deposit.get.data([], '') YIELD data RETURN data";
+			Result queryResult = session.run(query);
+			assertQueryResult(queryResult, expected);
 		}
 	}
 
+	@Test
+	public void testGetOneCity() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId = objectIdMap.get("City: Linz");
+			List<String> rootIds = List.of(rootId);
+			Set<String> expected = Set.of(
+				"Alex",
+				"Austria",
+				"Clara",
+				"Ella",
+				"Emma",
+				"Lentils",
+				"Linz",
+				"Logs"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+
+	@Test
+	public void testGetOneCompany() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId = objectIdMap.get("Company: Velocipeds");
+			List<String> rootIds = List.of(rootId);
+			Set<String> expected = Set.of(
+				"Austria",
+				"Vienna",
+				"Velocipeds",
+				"Adam",
+				"Alex"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+
+	@Test
+	public void testGetOnePerson() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId = objectIdMap.get("Person: Emma");
+			List<String> rootIds = List.of(rootId);
+			Set<String> expected = Set.of(
+				"Austria",
+				"Linz",
+				"Lentils",
+				"Emma"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+
+	@Test
+	public void testGetThreePersonsFromTwoCompanies() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId1 = objectIdMap.get("Person: Emma");
+			String rootId2 = objectIdMap.get("Person: Adam");
+			String rootId3 = objectIdMap.get("Person: Alex");
+			List<String> rootIds = List.of(rootId1, rootId2, rootId3);
+			Set<String> expected = Set.of(
+				"Austria",
+				"Vienna",
+				"Velocipeds",
+				"Adam",
+				"Alex",
+				"Linz",
+				"Lentils",
+				"Emma"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+
+	@Test
+	public void testGetCompanyAndPersonFromAnotherCompany() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId1 = objectIdMap.get("Company: Velocipeds");
+			String rootId2 = objectIdMap.get("Person: Emma");
+			List<String> rootIds = List.of(rootId1, rootId2);
+			Set<String> expected = Set.of(
+				"Austria",
+				"Vienna",
+				"Velocipeds",
+				"Linz",
+				"Emma"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+
+	@Test
+	public void testGetOneClass() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId = getClassId(session, "Car");
+			List<String> rootIds = List.of(rootId);
+			Set<String> expected = Set.of(
+				"Belgium",
+				"Czechoslovakia",
+				"Antwerp",
+				"Automobiles",
+				"Mark",
+				"Toyota",
+				"Max",
+				"Peugeot",
+				"Bratislava",
+				"Bakery",
+				"Zoe",
+				"Skoda"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+
+	@Test
+	public void testGetOneClassAndOnePerson() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			String rootId1 = getClassId(session, "Car");
+			String rootId2 = objectIdMap.get("Person: Mia");
+			List<String> rootIds = List.of(rootId1, rootId2);
+			Set<String> expected = Set.of(
+				"Mia",
+				"Czechoslovakia",
+				"Prague",
+				"Toyota",
+				"Peugeot",
+				"Pilsner",
+				"Skoda"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
 }

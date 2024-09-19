@@ -22,7 +22,7 @@ public class GetDataAPI extends BaseAPI {
 	 *
 	 * @param rootIds a list of root Object ids or empty for the whole Namespace. Default is [].
 	 * @param token authentication token.
-	 * @return a Map in the format:  {nodes: nodes, relationships: relationships, resources: [<local filename of the resource>, ...]}
+	 * @return a Map in the format:  {graph: {nodes: nodes, edges: edges}, resources: [<local filename of the resource>, ...]} where graph is in GraphSON format
 	 * @throws RuntimeException if there is an error retrieving the data.
 	 */
 	@Procedure(name = "deposit.get.data", mode = Mode.READ)
