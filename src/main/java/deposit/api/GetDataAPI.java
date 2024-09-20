@@ -18,7 +18,8 @@ public class GetDataAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get nodes, relationships and resource filenames for the subtrees of the root Objects or the whole Namespace.
+	 * Get nodes (except User Tools and Archive nodes), relationships and 
+	 * resource filenames for the subtrees of the root Objects or the whole Namespace.
 	 *
 	 * @param rootIds a list of root Object ids or empty for the whole Namespace. Default is [].
 	 * @param token authentication token.

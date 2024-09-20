@@ -14,10 +14,10 @@ import static org.junit.Assert.*;
 
 public class GetDataAPITest extends BaseNeo4jTest {
 
-	private void createNamespace(Session session, String namespaceName) {
+	private void createNamespace(Session session, String namespaceName, String versioningType) {
 		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', '', '')",
-					Map.of("namespaceName", namespaceName));
+			tx.run("CALL deposit.create.namespace($namespaceName, '', $versioningType, '')",
+					Map.of("namespaceName", namespaceName, "versioningType", versioningType));
 			tx.run("CALL deposit.set.activeNamespace($namespaceName, '')",
 					Map.of("namespaceName", namespaceName));
 			ServerContext.setActiveNamespace(namespaceName, "");
@@ -139,7 +139,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		}
 	}
 
-	private Map<String, String> createData(Session session, String namespaceName) {
+	private Map<String, String> createData(Session session, String namespaceName, String versioningType) {
 		String definition = """
 		Country: Austria
 			-contains-> City: Vienna
@@ -248,7 +248,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 						-lives_in-> City: Bratislava
 						-owns-> Car: Skoda
 		""";
-		createNamespace(session, namespaceName);
+		createNamespace(session, namespaceName, versioningType);
 		Map<String, String> objectIdMap = new HashMap<>(); // Maps "Class: Value" to objectId
 		Stack<String> objectStack = new Stack<>();
 		Stack<Integer> indentStack = new Stack<>();
@@ -375,7 +375,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetAllData() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			Set<String> expected = new HashSet<>();
 			for (String key : objectIdMap.keySet()) {
 				String[] parts = key.split(": ");
@@ -390,7 +390,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneCity() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("City: Linz");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -412,7 +412,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneCompany() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("Company: Velocipeds");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -431,7 +431,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOnePerson() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("Person: Emma");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -449,7 +449,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetThreePersonsFromTwoCompanies() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId1 = objectIdMap.get("Person: Emma");
 			String rootId2 = objectIdMap.get("Person: Adam");
 			String rootId3 = objectIdMap.get("Person: Alex");
@@ -473,7 +473,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetCompanyAndPersonFromAnotherCompany() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId1 = objectIdMap.get("Company: Velocipeds");
 			String rootId2 = objectIdMap.get("Person: Emma");
 			List<String> rootIds = List.of(rootId1, rootId2);
@@ -493,7 +493,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneClass() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId = getClassId(session, "Car");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -519,7 +519,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneClassAndOnePerson() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace");
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId1 = getClassId(session, "Car");
 			String rootId2 = objectIdMap.get("Person: Mia");
 			List<String> rootIds = List.of(rootId1, rootId2);
@@ -535,6 +535,64 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
 			assertQueryResult(queryResult, expected);
+		}
+	}
+	
+	@Test
+	public void testGetNamespaceData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "transient");
+			String query = "CALL deposit.get.namespaceData('') YIELD data RETURN data";
+			Result queryResult = session.run(query);
+			Set<String> foundNodeLabels = new HashSet<>();
+			Set<String> foundEdgeTypes = new HashSet<>();
+			Set<String> foundEdgeLabels = new HashSet<>();
+			Set<String> foundClasses = new HashSet<>();
+			Set<String> foundDescriptors = new HashSet<>();
+			Set<String> foundValues = new HashSet<>();
+			if (queryResult.hasNext()) {
+				Map<String, Object> data = queryResult.next().get("data").asMap();
+				Map<String, Object> graph = (Map<String, Object>) data.get("graph");
+				List<Map<String, Object>> nodes = (List<Map<String, Object>>) graph.get("nodes");
+				List<Map<String, Object>> edges = (List<Map<String, Object>>) graph.get("edges");
+				for (Map<String, Object> node : nodes) {
+					String label = node.get("label").toString();
+					foundNodeLabels.add(label);
+					Map<String, Object> properties = (Map<String, Object>) node.get("properties");
+					if (label.equals("Descriptor") && properties.containsKey("value")) {
+						String value = properties.get("value").toString();
+						foundValues.add(value);
+					} else if (label.equals("Descriptor") && properties.containsKey("type")) {
+						String name = properties.get("name").toString();
+						String type = properties.get("type").toString();
+						foundDescriptors.add(name + " (" + type + ")");
+					} else if (label.equals("Class")) {
+						String name = properties.get("name").toString();
+						foundClasses.add(name);
+					}
+				}
+				for (Map<String, Object> edge : edges) {
+					String type = edge.get("type").toString();
+					foundEdgeTypes.add(type);
+					Map<String, Object> properties = (Map<String, Object>) edge.get("properties");
+					if (properties.containsKey("label")) {
+						String label = properties.get("label").toString();
+						foundEdgeLabels.add(label);
+					}
+				}
+			}
+			Set<String> expectedNodeLabels = Set.of("DResource", "Archive", "Version", "Descriptor", "Object", "Class", "Namespace");
+			Set<String> expectedEdgeTypes = Set.of("MEMBER_OF", "RELATED_TO", "NEXT", "CONTAINS", "HAS_RESOURCE", "HAS_DESCRIPTOR");
+			Set<String> expectedEdgeLabels = Set.of("contains", "employee_of", "lives_in", "friend_of", "competes_with", "owns", "citizen_of");
+			Set<String> expectedClasses = Set.of("Company", "Car", "Country", "City", "Person");
+			Set<String> expectedDescriptors = Set.of("Name (String)", "File (DResource)");
+			Set<String> expectedValues = Set.of("Linz", "Eva.tmp", "Ian.tmp", "Lisa", "Beta", "Julia.tmp", "Gamma", "Austria", "Mia.tmp", "Simon", "Antwerp", "Czechoslovakia", "Max.tmp", "Nora.tmp", "Luca.tmp", "Alex", "Rita", "Emma.tmp", "Mia", "Lisa.tmp", "Bakery", "Automobiles", "Bratislava", "Ella.tmp", "Peugeot", "Prague", "Adam", "Zoe", "Eva", "Tom", "Voleyballs", "Belgium", "Toyota", "Ian", "Sara", "Alex.tmp", "Rita.tmp", "Clara", "Max", "Lentils", "Mark", "Papermill", "Clara.tmp", "Ben.tmp", "Paul", "Ghent", "Anna.tmp", "Velocipeds", "Tom.tmp", "Vienna", "Zoe.tmp", "Paul.tmp", "Ella", "Simon.tmp", "Anna", "Adam.tmp", "Luca", "Ben", "Logs", "Gothic", "Mark.tmp", "Julia", "Sara.tmp", "Nora", "Skoda", "Hugo", "Leo", "Alpha", "Leo.tmp", "Pilsner", "Hugo.tmp", "Emma");
+			assertEquals(expectedNodeLabels, foundNodeLabels);
+			assertEquals(expectedEdgeTypes, foundEdgeTypes);
+			assertEquals(expectedEdgeLabels, foundEdgeLabels);
+			assertEquals(expectedClasses, foundClasses);
+			assertEquals(expectedDescriptors, foundDescriptors);
+			assertEquals(expectedValues, foundValues);
 		}
 	}
 }
