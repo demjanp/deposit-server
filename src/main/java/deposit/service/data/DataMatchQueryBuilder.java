@@ -93,14 +93,21 @@ public class DataMatchQueryBuilder {
             objVars.add(objVar);
 
             StringBuilder pattern = new StringBuilder();
+            List<String> descriptorConditions = new ArrayList<>();
             pattern.append(String.format("\nMATCH (%s:Object)-[:MEMBER_OF]->(:Class {name: '%s'})", objVar, className));
-
             Map<String, Object> descriptors = (Map<String, Object>) objData.get("descriptors");
+            
+            if (matchEmpty) {
+				String objVarsStr = String.join(", ", objVars);
+				pattern.append(String.format("\nOPTIONAL MATCH (%s)-[:HAS_DESCRIPTOR]->(dAll_%s)", objVar, objId));
+				pattern.append(String.format("\nWITH %s, count(dAll_%s) AS totalDescriptors_%s", objVarsStr, objId, objId));
+				descriptorConditions.add(String.format("totalDescriptors_%s = %d", objId, descriptors.size()));
+            }
+			
             if (!descriptors.isEmpty()) {
                 Map<String, Object> objDescriptorMap = new HashMap<>();
                 descriptorsMap.put(objVar, objDescriptorMap);
-
-                List<String> descriptorConditions = new ArrayList<>();
+                
                 for (Map.Entry<String, Object> descrEntry : descriptors.entrySet()) {
                     String descrName = descrEntry.getKey();
                     Object descrValue = descrEntry.getValue();
@@ -117,9 +124,11 @@ public class DataMatchQueryBuilder {
                                 objVar, descrName, "'" + objVar + "'", "'" + descrName + "'"));
                     }
                 }
-                pattern.append("\nWHERE ").append(String.join(" AND ", descriptorConditions));
             }
-
+            if (!descriptorConditions.isEmpty()) {
+				pattern.append("\nWHERE ").append(String.join(" AND ", descriptorConditions));
+            }
+			
             Map<String, String> relationships = (Map<String, String>) objData.get("relationships");
             for (Map.Entry<String, String> relEntry : relationships.entrySet()) {
                 String label = relEntry.getKey();

@@ -746,7 +746,7 @@ CALL deposit.get.classRelationshipById(relationshipId, token) YIELD rel
 
 ## deposit.get.data
 
-Get nodes, relationships and resource filenames for the subtrees of the root Objects or the whole Namespace.
+Get nodes (except User Tools and Archive nodes), relationships and resource filenames for the subtrees of the root Objects or the whole Namespace.
 
 ### Parameters:
 
@@ -835,6 +835,28 @@ the Namespace node(s) or null if it doesn't exist.
 
 ```cypher
 CALL deposit.get.namespace(namespaceName, token) YIELD node AS namespace
+```
+
+## deposit.get.namespaceData
+
+Get nodes, relationships and resource filenames for the whole Namespace.
+
+### Parameters:
+
+- **token**: authentication token.
+
+### Return:
+
+a Map in the format:  {graph: {nodes: nodes, edges: edges}, resources: [<local filename of the resource>, ...]} where graph is in GraphSON format
+
+### Throws:
+
+- **RuntimeException**: if there is an error retrieving the data.
+
+### Usage:
+
+```cypher
+CALL deposit.get.namespaceData(token) YIELD data
 ```
 
 ## deposit.get.object
@@ -975,6 +997,30 @@ the position.
 
 ```cypher
 CALL deposit.get.objectPosition(objectId, token) YIELD x, y
+```
+
+## deposit.get.objectsByData
+
+Try to retrieve Objects from an identical data structure in the active Namespace as the one supplied as GraphSON data.
+
+### Parameters:
+
+- **data**: Map in the GraphSON format: {nodes: nodes, edges: edges}, where nodes = [{id, label, properties: {name: value, ...}}, ...], edges = [{id, type, outV: start_node_id, inV: end_node_id, properties: {name: value, ...}}, ...]
+- **matchEmpty**: boolean, if true, ensure all Descriptors of the matched Objects are present and equal those in data. Otherwise only match Descriptors present in the Namespace and with non-null values in the data.
+- **token**: authentication token.
+
+### Return:
+
+the matched Object nodes.
+
+### Throws:
+
+- **RuntimeException**: if there was an error retrieving the nodes.
+
+### Usage:
+
+```cypher
+CALL deposit.get.objectsByData(data, matchEmpty, token) YIELD node
 ```
 
 ## deposit.get.query

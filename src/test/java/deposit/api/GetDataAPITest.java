@@ -1,11 +1,14 @@
 package deposit.api;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import deposit.BaseNeo4jTest;
 import deposit.common.ServerContext;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -120,23 +123,6 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		}
 		assertEquals("Number of returned values doesn't match the expected number.", expectedValues.size(), foundValues.size());
 		assertEquals("Number of returned resources doesn't match the expected number.", expectedResources.size(), foundResources.size());
-	}
-
-	private void printQueryResult(Result queryResult) {
-		System.out.println("");
-		while (queryResult.hasNext()) {
-			Map<String, Object> data = queryResult.next().get("data").asMap();
-			Map<String, Object> graph = (Map<String, Object>) data.get("graph");
-			for (Map<String, Object> node : (List<Map<String, Object>>) graph.get("nodes")) {
-				if (node.get("label").equals("Descriptor")) {
-					Map<String, Object> properties = (Map<String, Object>) node.get("properties");
-					Object value = properties.get("value");
-					if (value != null) {
-						System.out.println(value.toString());
-					}
-				}
-			}
-		}
 	}
 
 	private Map<String, String> createData(Session session, String namespaceName, String versioningType) {
@@ -372,6 +358,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		return (int) indentCount;
 	}
 
+	private static Map<String, Object> decodeJsonToData(String jsonData) throws IOException {
+		ObjectMapper objectMapper = new ObjectMapper();
+		return objectMapper.readValue(jsonData, new TypeReference<Map<String, Object>>() {});
+	}
+
 	@Test
 	public void testGetAllData() {
 		try (Session session = driver.session()) {
@@ -560,7 +551,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			assertQueryResult(queryResult, expected);
 		}
 	}
-	
+
 	@Test
 	public void testGetObjectsByData() {
 		try (Session session = driver.session()) {
@@ -579,19 +570,345 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			);
 			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("rootIds", List.of(rootId)));
-			Map<String, Object> data = queryResult.next().get("data").asMap();
+			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
+			
 			query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
-			queryResult = session.run(query, Map.of("data", data.get("graph")));
-			int countResults = 0;
+			queryResult = session.run(query, Map.of("data", data));
+
+			Set<String> actual = new HashSet<>();
 			while (queryResult.hasNext()) {
 				String objectId = queryResult.next().get("objectId").asString();
-				assertTrue("Object " + objectId + " not expected.", expected.contains(objectId));
-				countResults++;
+				actual.add(objectId);
 			}
-			assertEquals("Unexpected number of results", countResults, expected.size());
+			assertEquals("Unexpected objects returned", expected, actual);
 		}
 	}
-	
+
+	@Test
+	public void testGetObjectsByReducedData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Set<String> expected = Set.of(
+					objectIdMap.get("Country: Belgium"),
+					objectIdMap.get("City: Ghent"),
+					objectIdMap.get("Company: Gamma"),
+					objectIdMap.get("Company: Gothic"),
+					objectIdMap.get("Person: Hugo"),
+					objectIdMap.get("Person: Ben"),
+					objectIdMap.get("Person: Ian"),
+					objectIdMap.get("Person: Julia"),
+					objectIdMap.get("Person: Leo")
+			);
+			Map<String, Object> data = decodeJsonToData("""
+				{
+					"nodes":[
+						{"properties":{},"id":16,"label":"Object"},
+						{"properties":{},"id":33,"label":"Object"},
+						{"properties":{},"id":48,"label":"Object"},
+						{"properties":{},"id":53,"label":"Object"},
+						{"properties":{},"id":55,"label":"Object"},
+						{"properties":{},"id":90,"label":"Object"},
+						{"properties":{},"id":92,"label":"Object"},
+						{"properties":{},"id":99,"label":"Object"},
+						{"properties":{},"id":104,"label":"Object"},
+						{"properties":{"name":"Company"},"id":11,"label":"Class"},
+						{"properties":{"name":"Person"},"id":19,"label":"Class"},
+						{"properties":{"name":"Country"},"id":3,"label":"Class"},
+						{"properties":{"name":"City"},"id":7,"label":"Class"},
+						{"properties":{"name":"Name","value":"Gamma"},"id":17,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Hugo"},"id":34,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Ben"},"id":49,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Belgium"},"id":54,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Ghent"},"id":56,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Gothic"},"id":91,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Ian"},"id":93,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Julia"},"id":100,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Leo"},"id":105,"label":"Descriptor"}
+					],
+					"edges":[
+						{"id":252,"outV":92,"inV":16,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":249,"outV":33,"inV":16,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":248,"outV":16,"inV":90,"type":"RELATED_TO","properties":{"label":"competes_with"}},
+						{"id":247,"outV":55,"inV":16,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":21,"outV":16,"inV":17,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":20,"outV":16,"inV":11,"type":"MEMBER_OF","properties":{}},
+						{"id":251,"outV":33,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":250,"outV":33,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":41,"outV":33,"inV":36,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":40,"outV":33,"inV":34,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":39,"outV":33,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":228,"outV":48,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":227,"outV":48,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":56,"outV":48,"inV":51,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":55,"outV":48,"inV":49,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":54,"outV":48,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":261,"outV":104,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":258,"outV":99,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":253,"outV":92,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":246,"outV":53,"inV":55,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":60,"outV":53,"inV":54,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":59,"outV":53,"inV":3,"type":"MEMBER_OF","properties":{}},
+						{"id":262,"outV":104,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":259,"outV":99,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":255,"outV":55,"inV":90,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":254,"outV":92,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":63,"outV":55,"inV":56,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":62,"outV":55,"inV":7,"type":"MEMBER_OF","properties":{}},
+						{"id":260,"outV":104,"inV":90,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":257,"outV":99,"inV":90,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":103,"outV":90,"inV":91,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":102,"outV":90,"inV":11,"type":"MEMBER_OF","properties":{}},
+						{"id":107,"outV":92,"inV":95,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":106,"outV":92,"inV":93,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":105,"outV":92,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":115,"outV":99,"inV":102,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":114,"outV":99,"inV":100,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":113,"outV":99,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":120,"outV":104,"inV":107,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":119,"outV":104,"inV":105,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":118,"outV":104,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":210,"outV":19,"inV":11,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":206,"outV":7,"inV":11,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":14,"outV":11,"inV":12,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":214,"outV":19,"inV":7,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":212,"outV":19,"inV":3,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":27,"outV":19,"inV":23,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":25,"outV":19,"inV":20,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":204,"outV":3,"inV":7,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":4,"outV":3,"inV":4,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":9,"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{}}
+					]
+				}
+			""");
+			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
+			Result queryResult = session.run(query, Map.of("data", data));
+			Set<String> actual = new HashSet<>();
+			while (queryResult.hasNext()) {
+				String objectId = queryResult.next().get("objectId").asString();
+				actual.add(objectId);
+			}
+			assertEquals("Unexpected objects returned", expected, actual);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Test
+	public void testShouldNotReturnObjects() {
+		try (Session session = driver.session()) {
+			createData(session, "TestNamespace", "");
+			// replaced Hugo with Karl
+			Map<String, Object> data = decodeJsonToData("""
+				{
+					"nodes":[
+						{"properties":{},"id":16,"label":"Object"},
+						{"properties":{},"id":33,"label":"Object"},
+						{"properties":{},"id":48,"label":"Object"},
+						{"properties":{},"id":53,"label":"Object"},
+						{"properties":{},"id":55,"label":"Object"},
+						{"properties":{},"id":90,"label":"Object"},
+						{"properties":{},"id":92,"label":"Object"},
+						{"properties":{},"id":99,"label":"Object"},
+						{"properties":{},"id":104,"label":"Object"},
+						{"properties":{"name":"Company"},"id":11,"label":"Class"},
+						{"properties":{"name":"Person"},"id":19,"label":"Class"},
+						{"properties":{"name":"Country"},"id":3,"label":"Class"},
+						{"properties":{"name":"City"},"id":7,"label":"Class"},
+						{"properties":{"name":"Name","value":"Gamma"},"id":17,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Karl"},"id":34,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Ben"},"id":49,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Belgium"},"id":54,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Ghent"},"id":56,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Gothic"},"id":91,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Ian"},"id":93,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Julia"},"id":100,"label":"Descriptor"},
+						{"properties":{"name":"Name","value":"Leo"},"id":105,"label":"Descriptor"}
+					],
+					"edges":[
+						{"id":252,"outV":92,"inV":16,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":249,"outV":33,"inV":16,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":248,"outV":16,"inV":90,"type":"RELATED_TO","properties":{"label":"competes_with"}},
+						{"id":247,"outV":55,"inV":16,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":21,"outV":16,"inV":17,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":20,"outV":16,"inV":11,"type":"MEMBER_OF","properties":{}},
+						{"id":251,"outV":33,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":250,"outV":33,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":41,"outV":33,"inV":36,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":40,"outV":33,"inV":34,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":39,"outV":33,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":228,"outV":48,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":227,"outV":48,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":56,"outV":48,"inV":51,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":55,"outV":48,"inV":49,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":54,"outV":48,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":261,"outV":104,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":258,"outV":99,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":253,"outV":92,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":246,"outV":53,"inV":55,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":60,"outV":53,"inV":54,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":59,"outV":53,"inV":3,"type":"MEMBER_OF","properties":{}},
+						{"id":262,"outV":104,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":259,"outV":99,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":255,"outV":55,"inV":90,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":254,"outV":92,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":63,"outV":55,"inV":56,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":62,"outV":55,"inV":7,"type":"MEMBER_OF","properties":{}},
+						{"id":260,"outV":104,"inV":90,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":257,"outV":99,"inV":90,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":103,"outV":90,"inV":91,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":102,"outV":90,"inV":11,"type":"MEMBER_OF","properties":{}},
+						{"id":107,"outV":92,"inV":95,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":106,"outV":92,"inV":93,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":105,"outV":92,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":115,"outV":99,"inV":102,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":114,"outV":99,"inV":100,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":113,"outV":99,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":120,"outV":104,"inV":107,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":119,"outV":104,"inV":105,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":118,"outV":104,"inV":19,"type":"MEMBER_OF","properties":{}},
+						{"id":210,"outV":19,"inV":11,"type":"RELATED_TO","properties":{"label":"employee_of"}},
+						{"id":206,"outV":7,"inV":11,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":14,"outV":11,"inV":12,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":214,"outV":19,"inV":7,"type":"RELATED_TO","properties":{"label":"lives_in"}},
+						{"id":212,"outV":19,"inV":3,"type":"RELATED_TO","properties":{"label":"citizen_of"}},
+						{"id":27,"outV":19,"inV":23,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":25,"outV":19,"inV":20,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":204,"outV":3,"inV":7,"type":"RELATED_TO","properties":{"label":"contains"}},
+						{"id":4,"outV":3,"inV":4,"type":"HAS_DESCRIPTOR","properties":{}},
+						{"id":9,"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{}}
+					]
+				}
+			""");
+			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
+			Result queryResult = session.run(query, Map.of("data", data));
+			assertFalse("Should not return any objects", queryResult.hasNext());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Test
+	public void testGetObjectsByExactData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Set<String> expected = Set.of(
+					objectIdMap.get("Country: Belgium"),
+					objectIdMap.get("City: Ghent"),
+					objectIdMap.get("Company: Gamma"),
+					objectIdMap.get("Person: Hugo")
+			);
+			Map<String, Object> data = decodeJsonToData("""
+				{"nodes":[
+					{"properties":{},"id":16,"label":"Object"},
+					{"properties":{},"id":33,"label":"Object"},
+					{"properties":{},"id":53,"label":"Object"},
+					{"properties":{},"id":55,"label":"Object"},
+					{"properties":{"name":"Company"},"id":11,"label":"Class"},
+					{"properties":{"name":"Person"},"id":19,"label":"Class"},
+					{"properties":{"name":"Country"},"id":3,"label":"Class"},
+					{"properties":{"name":"City"},"id":7,"label":"Class"},
+					{"properties":{"name":"Name","value":"Gamma"},"id":17,"label":"Descriptor"},
+					{"properties":{"name":"File","value":"Hugo.tmp"},"id":36,"label":"Descriptor"},
+					{"properties":{"name":"Name","value":"Hugo"},"id":34,"label":"Descriptor"},
+					{"properties":{"name":"Name","value":"Belgium"},"id":54,"label":"Descriptor"},
+					{"properties":{"name":"Name","value":"Ghent"},"id":56,"label":"Descriptor"},
+					{"properties":{"name":"Name","type":"String"},"id":12,"label":"Descriptor"}
+				],
+				"edges":[
+					{"outV":33,"inV":16,"type":"RELATED_TO","properties":{"label":"employee_of"},"id":249},
+					{"outV":55,"inV":16,"type":"RELATED_TO","properties":{"label":"contains"},"id":247},
+					{"outV":16,"inV":17,"type":"HAS_DESCRIPTOR","properties":{},"id":21},
+					{"outV":16,"inV":11,"type":"MEMBER_OF","properties":{},"id":20},
+					{"outV":33,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"},"id":251},
+					{"outV":33,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"},"id":250},
+					{"outV":33,"inV":36,"type":"HAS_DESCRIPTOR","properties":{},"id":41},
+					{"outV":33,"inV":34,"type":"HAS_DESCRIPTOR","properties":{},"id":40},
+					{"outV":33,"inV":19,"type":"MEMBER_OF","properties":{},"id":39},
+					{"outV":53,"inV":55,"type":"RELATED_TO","properties":{"label":"contains"},"id":246},
+					{"outV":53,"inV":54,"type":"HAS_DESCRIPTOR","properties":{},"id":60},
+					{"outV":53,"inV":3,"type":"MEMBER_OF","properties":{},"id":59},
+					{"outV":55,"inV":56,"type":"HAS_DESCRIPTOR","properties":{},"id":63},
+					{"outV":55,"inV":7,"type":"MEMBER_OF","properties":{},"id":62},
+					{"outV":19,"inV":11,"type":"RELATED_TO","properties":{"label":"employee_of"},"id":210},
+					{"outV":7,"inV":11,"type":"RELATED_TO","properties":{"label":"contains"},"id":206},
+					{"outV":11,"inV":12,"type":"HAS_DESCRIPTOR","properties":{},"id":14},
+					{"outV":19,"inV":7,"type":"RELATED_TO","properties":{"label":"lives_in"},"id":214},
+					{"outV":19,"inV":3,"type":"RELATED_TO","properties":{"label":"citizen_of"},"id":212},
+					{"outV":19,"inV":23,"type":"HAS_DESCRIPTOR","properties":{},"id":27},
+					{"outV":19,"inV":20,"type":"HAS_DESCRIPTOR","properties":{},"id":25},
+					{"outV":3,"inV":7,"type":"RELATED_TO","properties":{"label":"contains"},"id":204},
+					{"outV":3,"inV":4,"type":"HAS_DESCRIPTOR","properties":{},"id":4},
+					{"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{},"id":9}
+				]}
+			""");
+			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD node RETURN node.id AS objectId";
+			Result queryResult = session.run(query, Map.of("data", data));
+			Set<String> actual = new HashSet<>();
+			while (queryResult.hasNext()) {
+				String objectId = queryResult.next().get("objectId").asString();
+				actual.add(objectId);
+			}
+			assertEquals("Unexpected objects returned", expected, actual);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Test
+	public void testShouldNotReturnObjectsByExactData() {
+		try (Session session = driver.session()) {
+			createData(session, "TestNamespace", "");
+			// Missing Hugo.tmp
+			Map<String, Object> data = decodeJsonToData("""
+				{"nodes":[
+					{"properties":{},"id":16,"label":"Object"},
+					{"properties":{},"id":33,"label":"Object"},
+					{"properties":{},"id":53,"label":"Object"},
+					{"properties":{},"id":55,"label":"Object"},
+					{"properties":{"name":"Company"},"id":11,"label":"Class"},
+					{"properties":{"name":"Person"},"id":19,"label":"Class"},
+					{"properties":{"name":"Country"},"id":3,"label":"Class"},
+					{"properties":{"name":"City"},"id":7,"label":"Class"},
+					{"properties":{"name":"Name","value":"Gamma"},"id":17,"label":"Descriptor"},
+					{"properties":{"name":"Name","value":"Hugo"},"id":34,"label":"Descriptor"},
+					{"properties":{"name":"Name","value":"Belgium"},"id":54,"label":"Descriptor"},
+					{"properties":{"name":"Name","value":"Ghent"},"id":56,"label":"Descriptor"},
+					{"properties":{"name":"Name","type":"String"},"id":12,"label":"Descriptor"}
+				],
+				"edges":[
+					{"outV":33,"inV":16,"type":"RELATED_TO","properties":{"label":"employee_of"},"id":249},
+					{"outV":55,"inV":16,"type":"RELATED_TO","properties":{"label":"contains"},"id":247},
+					{"outV":16,"inV":17,"type":"HAS_DESCRIPTOR","properties":{},"id":21},
+					{"outV":16,"inV":11,"type":"MEMBER_OF","properties":{},"id":20},
+					{"outV":33,"inV":55,"type":"RELATED_TO","properties":{"label":"lives_in"},"id":251},
+					{"outV":33,"inV":53,"type":"RELATED_TO","properties":{"label":"citizen_of"},"id":250},
+					{"outV":33,"inV":34,"type":"HAS_DESCRIPTOR","properties":{},"id":40},
+					{"outV":33,"inV":19,"type":"MEMBER_OF","properties":{},"id":39},
+					{"outV":53,"inV":55,"type":"RELATED_TO","properties":{"label":"contains"},"id":246},
+					{"outV":53,"inV":54,"type":"HAS_DESCRIPTOR","properties":{},"id":60},
+					{"outV":53,"inV":3,"type":"MEMBER_OF","properties":{},"id":59},
+					{"outV":55,"inV":56,"type":"HAS_DESCRIPTOR","properties":{},"id":63},
+					{"outV":55,"inV":7,"type":"MEMBER_OF","properties":{},"id":62},
+					{"outV":19,"inV":11,"type":"RELATED_TO","properties":{"label":"employee_of"},"id":210},
+					{"outV":7,"inV":11,"type":"RELATED_TO","properties":{"label":"contains"},"id":206},
+					{"outV":11,"inV":12,"type":"HAS_DESCRIPTOR","properties":{},"id":14},
+					{"outV":19,"inV":7,"type":"RELATED_TO","properties":{"label":"lives_in"},"id":214},
+					{"outV":19,"inV":3,"type":"RELATED_TO","properties":{"label":"citizen_of"},"id":212},
+					{"outV":19,"inV":23,"type":"HAS_DESCRIPTOR","properties":{},"id":27},
+					{"outV":19,"inV":20,"type":"HAS_DESCRIPTOR","properties":{},"id":25},
+					{"outV":3,"inV":7,"type":"RELATED_TO","properties":{"label":"contains"},"id":204},
+					{"outV":3,"inV":4,"type":"HAS_DESCRIPTOR","properties":{},"id":4},
+					{"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{},"id":9}
+				]}
+			""");
+			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD node RETURN node.id AS objectId";
+			Result queryResult = session.run(query, Map.of("data", data));
+			assertFalse("Should not return any objects", queryResult.hasNext());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	@Test
 	public void testGetNamespaceData() {
 		try (Session session = driver.session()) {
