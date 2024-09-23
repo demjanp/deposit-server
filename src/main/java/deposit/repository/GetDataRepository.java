@@ -30,7 +30,7 @@ public class GetDataRepository extends BaseRepository {
 		));
 		String finalQuery = """
 			WITH [node IN nodes WHERE node IS NOT NULL | {
-				id: node.id,
+				id: id(node),
 				label: head(labels(node)),
 				properties: properties(node)
 			}] AS nodes,

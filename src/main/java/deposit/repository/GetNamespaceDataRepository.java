@@ -37,7 +37,7 @@ public class GetNamespaceDataRepository extends BaseRepository {
 				OPTIONAL MATCH (src)-[rel]-(tgt) WHERE src IN nodes AND tgt IN nodes
 				WITH nodes, COLLECT(DISTINCT rel) AS relationships, COLLECT(DISTINCT res.storedFilename) AS resources
 				WITH [node IN nodes WHERE node IS NOT NULL | {
-					id: node.id,
+					id: id(node),
 					label: head(labels(node)),
 					properties: properties(node)
 				}] AS nodes,

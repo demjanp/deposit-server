@@ -388,7 +388,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	}
 
 	@Test
-	public void testGetOneCity() {
+	public void testGetOneCity1() {
 		try (Session session = driver.session()) {
 			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("City: Linz");
@@ -408,7 +408,30 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			assertQueryResult(queryResult, expected);
 		}
 	}
-
+	
+	@Test
+	public void testGetOneCity2() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			String rootId = objectIdMap.get("City: Ghent");
+			List<String> rootIds = List.of(rootId);
+			Set<String> expected = Set.of(
+				"Belgium",
+				"Ghent",
+				"Gamma",
+				"Gothic",
+				"Hugo",
+				"Ben",
+				"Ian",
+				"Julia",
+				"Leo"
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
+			assertQueryResult(queryResult, expected);
+		}
+	}
+	
 	@Test
 	public void testGetOneCompany() {
 		try (Session session = driver.session()) {
@@ -535,6 +558,37 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("rootIds", rootIds));
 			assertQueryResult(queryResult, expected);
+		}
+	}
+	
+	@Test
+	public void testGetObjectsByData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			String rootId = objectIdMap.get("City: Ghent");
+			Set<String> expected = Set.of(
+					objectIdMap.get("Country: Belgium"),
+					objectIdMap.get("City: Ghent"),
+					objectIdMap.get("Company: Gamma"),
+					objectIdMap.get("Company: Gothic"),
+					objectIdMap.get("Person: Hugo"),
+					objectIdMap.get("Person: Ben"),
+					objectIdMap.get("Person: Ian"),
+					objectIdMap.get("Person: Julia"),
+					objectIdMap.get("Person: Leo")
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", List.of(rootId)));
+			Map<String, Object> data = queryResult.next().get("data").asMap();
+			query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
+			queryResult = session.run(query, Map.of("data", data.get("graph")));
+			int countResults = 0;
+			while (queryResult.hasNext()) {
+				String objectId = queryResult.next().get("objectId").asString();
+				assertTrue("Object " + objectId + " not expected.", expected.contains(objectId));
+				countResults++;
+			}
+			assertEquals("Unexpected number of results", countResults, expected.size());
 		}
 	}
 	
