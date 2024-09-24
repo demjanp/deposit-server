@@ -13,11 +13,11 @@ public class DataMatchQueryBuilder {
 		List<String> objVars = new ArrayList<>();
 
 		Map<String, Map<String, Object>> descriptorsMap = new HashMap<>();
-		Map<String, String> objVarToOrigId = new HashMap<>(); // Map from objVar to origId
+		Map<String, String> objVarToOrigId = new HashMap<>();
 
 		queryStr.append("MATCH (ns:Namespace {name: $namespaceName})");
 		buildObjectMatches(queryStr, objVars, objects, descriptorsMap, matchEmpty, objVarToOrigId);
-		buildReturnClause(queryStr, objVars, objVarToOrigId); // Pass the mapping to buildReturnClause
+		buildReturnClause(queryStr, objVars, objVarToOrigId);
 
 		values.put("descriptorsMap", descriptorsMap);
 
@@ -45,7 +45,7 @@ public class DataMatchQueryBuilder {
 					"id", properties.containsKey("id") ? properties.get("id").toString() : nodeId,
 					"class", "",
 					"descriptors", new HashMap<String, Object>(),
-					"relationships", new HashMap<String, String>()
+					"relationships", new HashMap<String, List<String>>()
 				)));
 			} else if (label.equals("Class")) {
 				classes.put(nodeId, properties.get("name").toString());
@@ -73,17 +73,17 @@ public class DataMatchQueryBuilder {
 			} else if (type.equals("RELATED_TO") && objects.containsKey(startId) && objects.containsKey(endId)) {
 				Map<String, Object> properties = (Map<String, Object>) edge.get("properties");
 				String label = properties.get("label").toString();
-				Map<String, String> objectRelationships = (Map<String, String>) objects.get(startId).get("relationships");
-				objectRelationships.put(label, endId);
+				Map<String, List<String>> objectRelationships = (Map<String, List<String>>) objects.get(startId).get("relationships");
+				objectRelationships.computeIfAbsent(label, k -> new ArrayList<>()).add(endId);
 			}
 		}
 		return objects;
 	}
-	
+		
 	private static void buildObjectMatches(StringBuilder queryStr, List<String> objVars,
 										   Map<String, Map<String, Object>> objects,
 										   Map<String, Map<String, Object>> descriptorsMap, boolean matchEmpty,
-										   Map<String, String> objVarToOrigId) { // Added objVarToOrigId parameter
+										   Map<String, String> objVarToOrigId) {
 		for (Map.Entry<String, Map<String, Object>> objEntry : objects.entrySet()) {
 			String objId = objEntry.getKey();
 			Map<String, Object> objData = objEntry.getValue();
@@ -95,11 +95,11 @@ public class DataMatchQueryBuilder {
 			String objVar = "obj_" + objId;
 			objVars.add(objVar);
 
-			objVarToOrigId.put(objVar, origId); // Map objVar to origId
+			objVarToOrigId.put(objVar, origId);
 
 			StringBuilder pattern = new StringBuilder();
 			List<String> descriptorConditions = new ArrayList<>();
-			pattern.append(String.format("\nMATCH (%s:Object)-[:MEMBER_OF]->(:Class {name: '%s'})", objVar, className));
+			pattern.append(String.format("\nMATCH (ns)-[:CONTAINS]->(%s:Object)-[:MEMBER_OF]->(:Class {name: '%s'})", objVar, className));
 			Map<String, Object> descriptors = (Map<String, Object>) objData.get("descriptors");
 
 			if (matchEmpty) {
@@ -134,12 +134,13 @@ public class DataMatchQueryBuilder {
 				pattern.append("\nWHERE ").append(String.join(" AND ", descriptorConditions));
 			}
 
-			Map<String, String> relationships = (Map<String, String>) objData.get("relationships");
-			for (Map.Entry<String, String> relEntry : relationships.entrySet()) {
+			Map<String, List<String>> relationships = (Map<String, List<String>>) objData.get("relationships");
+			for (Map.Entry<String, List<String>> relEntry : relationships.entrySet()) {
 				String label = relEntry.getKey();
-				String tgtId = relEntry.getValue();
-				String tgtVar = "obj_" + tgtId;
-				pattern.append(String.format("\nMATCH (%s)-[:RELATED_TO {label: '%s'}]->(%s)", objVar, label, tgtVar));
+				for (String tgtId : relEntry.getValue()) {
+					String tgtVar = "obj_" + tgtId;
+					pattern.append(String.format("\nMATCH (%s)-[:RELATED_TO {label: '%s'}]->(%s)", objVar, label, tgtVar));
+				}
 			}
 
 			queryStr.append(pattern);

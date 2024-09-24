@@ -127,115 +127,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		assertEquals("Number of returned resources doesn't match the expected number.", expectedResources.size(), foundResources.size());
 	}
 
-	private Map<String, String> createData(Session session, String namespaceName, String versioningType) {
-		String definition = """
-		Country: Austria
-			-contains-> City: Vienna
-				-contains-> Company: Velocipeds
-					-competes_with-> Company: Voleyballs
-					-competes_with-> Company: Gamma
-					<-employee_of- Person: Adam
-						-citizen_of-> Country: Austria
-						-lives_in-> City: Vienna
-						-friend_of-> Person: Alex
-					<-employee_of- Person: Alex
-						-citizen_of-> Country: Austria
-						-lives_in-> City: Linz
-						-friend_of-> Person: Hugo
-						-friend_of-> Person: Lisa
-				-contains-> Company: Voleyballs
-					<-employee_of- Person: Anna
-						-citizen_of-> Country: Austria
-						-lives_in-> City: Vienna
-					<-employee_of- Person: Ben
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Ghent
-			-contains-> City: Linz
-				-contains-> Company: Logs
-					<-employee_of- Person: Clara
-						-citizen_of-> Country: Austria
-						-lives_in-> City: Linz
-					<-employee_of- Person: Ella
-						-citizen_of-> Country: Austria
-						-lives_in-> City: Linz
-				-contains-> Company: Lentils
-					<-employee_of- Person: Emma
-						-citizen_of-> Country: Austria
-						-lives_in-> City: Linz
-						-friend_of-> Person: Mia
-					<-employee_of- Person: Eva
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Prague
-						-friend_of-> Person: Emma
-		Country: Belgium
-			-contains-> City: Ghent
-				-contains-> Company: Gamma
-					-competes_with-> Company: Gothic
-					<-employee_of- Person: Hugo
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Ghent
-					<-employee_of- Person: Ian
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Ghent
-				-contains-> Company: Gothic
-					-competes_with-> Company: Beta
-					<-employee_of- Person: Julia
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Ghent
-					<-employee_of- Person: Leo
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Ghent
-			-contains-> City: Antwerp
-				-contains-> Company: Alpha
-					<-employee_of- Person: Lisa
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Antwerp
-					<-employee_of- Person: Luca
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Antwerp
-				-contains-> Company: Automobiles
-					<-employee_of- Person: Mark
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Antwerp
-						-owns-> Car: Toyota
-					<-employee_of- Person: Max
-						-citizen_of-> Country: Belgium
-						-lives_in-> City: Antwerp
-						-owns-> Car: Peugeot
-		Country: Czechoslovakia
-			-contains-> City: Prague
-				-contains-> Company: Pilsner
-					<-employee_of- Person: Mia
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Prague
-						-friend_of-> Person: Eva
-					<-employee_of- Person: Nora
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Prague
-				-contains-> Company: Papermill
-					<-employee_of- Person: Paul
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Prague
-					<-employee_of- Person: Rita
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Prague
-			-contains-> City: Bratislava
-				-contains-> Company: Beta
-					<-employee_of- Person: Sara
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Vienna
-					<-employee_of- Person: Simon
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Bratislava
-				-contains-> Company: Bakery
-					<-employee_of- Person: Tom
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Bratislava
-					<-employee_of- Person: Zoe
-						-citizen_of-> Country: Czechoslovakia
-						-lives_in-> City: Bratislava
-						-owns-> Car: Skoda
-		""";
+	private Map<String, String> createDataFromString(Session session, String namespaceName, String versioningType, String definition) {
 		createNamespace(session, namespaceName, versioningType);
 		Map<String, String> objectIdMap = new HashMap<>(); // Maps "Class: Value" to objectId
 		Stack<String> objectStack = new Stack<>();
@@ -324,8 +216,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		}
 		return objectIdMap;
 	}
-
-	// Helper for createData
+	
+	// Helper for createDataFromString
 	private String[] extractObjectsFromLine(String line) {
 		List<String> objects = new ArrayList<>();
 		if (!line.contains("-")) {
@@ -345,7 +237,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		return objects.toArray(new String[0]);
 	}
 
-	// Helper for createData
+	// Helper for createDataFromString
 	private int countLeadingIndents(String line) {
 		int indentCount = 0;
 		for (char c : line.toCharArray()) {
@@ -359,16 +251,214 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		}
 		return (int) indentCount;
 	}
+	
+	private static String encodeDataToJson(Map<String, Object> data) throws IOException {
+		Set<String> filterProps = Set.of(
+			"createdAt", "createdBy", "updatedAt", "updatedBy", "weight", "order", "comment", "position"
+		);
 
+		List<Map<String, Object>> nodes = new ArrayList<>();
+		for (Map<String, Object> node : (List<Map<String, Object>>) data.get("nodes")) {
+			Long id = (Long) node.get("id");
+			String label = node.get("label").toString();
+			Map<String, Object> properties = new HashMap<>();
+			for (Map.Entry<String, Object> entry : ((Map<String, Object>) node.get("properties")).entrySet()) {
+				String key = entry.getKey();
+				if (!filterProps.contains(key)) {
+					properties.put(key, entry.getValue());
+				}
+			}
+			nodes.add(Map.of(
+				"id", id,
+				"label", label,
+				"properties", properties
+			));
+		}
+		List<Map<String, Object>> edges = new ArrayList<>();
+		for (Map<String, Object> edge : (List<Map<String, Object>>) data.get("edges")) {
+			Long id = (Long) edge.get("id");
+			Long inV = (Long) edge.get("inV");
+			Long outV = (Long) edge.get("outV");
+			String type = edge.get("type").toString();
+			Map<String, Object> properties = new HashMap<>();
+			for (Map.Entry<String, Object> entry : ((Map<String, Object>) edge.get("properties")).entrySet()) {
+				String key = entry.getKey();
+				if (!filterProps.contains(key)) {
+					properties.put(key, entry.getValue());
+				}
+			}
+			edges.add(Map.of(
+					"id", id,
+					"inV", inV,
+					"outV", outV,
+					"type", type,
+					"properties", properties
+			));
+		}
+		data = new HashMap<>(Map.of(
+			"nodes", nodes,
+			"edges", edges
+		));
+
+		ObjectMapper objectMapper = new ObjectMapper();
+		return objectMapper.writeValueAsString(data);
+	}
+	
 	private static Map<String, Object> decodeJsonToData(String jsonData) throws IOException {
 		ObjectMapper objectMapper = new ObjectMapper();
 		return objectMapper.readValue(jsonData, new TypeReference<Map<String, Object>>() {});
 	}
-
+	
+	// Country-City-Company-Person
+	private Map<String, String> createDataA(Session session, String namespaceName, String versioningType) {
+		return createDataFromString(session, namespaceName, versioningType, """
+			Country: Austria
+				-contains-> City: Vienna
+					-contains-> Company: Velocipeds
+						-competes_with-> Company: Voleyballs
+						-competes_with-> Company: Gamma
+						<-employee_of- Person: Adam
+							-citizen_of-> Country: Austria
+							-lives_in-> City: Vienna
+							-friend_of-> Person: Alex
+						<-employee_of- Person: Alex
+							-citizen_of-> Country: Austria
+							-lives_in-> City: Linz
+							-friend_of-> Person: Hugo
+							-friend_of-> Person: Lisa
+					-contains-> Company: Voleyballs
+						<-employee_of- Person: Anna
+							-citizen_of-> Country: Austria
+							-lives_in-> City: Vienna
+						<-employee_of- Person: Ben
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Ghent
+				-contains-> City: Linz
+					-contains-> Company: Logs
+						<-employee_of- Person: Clara
+							-citizen_of-> Country: Austria
+							-lives_in-> City: Linz
+						<-employee_of- Person: Ella
+							-citizen_of-> Country: Austria
+							-lives_in-> City: Linz
+					-contains-> Company: Lentils
+						<-employee_of- Person: Emma
+							-citizen_of-> Country: Austria
+							-lives_in-> City: Linz
+							-friend_of-> Person: Mia
+						<-employee_of- Person: Eva
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Prague
+							-friend_of-> Person: Emma
+			Country: Belgium
+				-contains-> City: Ghent
+					-contains-> Company: Gamma
+						-competes_with-> Company: Gothic
+						<-employee_of- Person: Hugo
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Ghent
+						<-employee_of- Person: Ian
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Ghent
+					-contains-> Company: Gothic
+						-competes_with-> Company: Beta
+						<-employee_of- Person: Julia
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Ghent
+						<-employee_of- Person: Leo
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Ghent
+				-contains-> City: Antwerp
+					-contains-> Company: Alpha
+						<-employee_of- Person: Lisa
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Antwerp
+						<-employee_of- Person: Luca
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Antwerp
+					-contains-> Company: Automobiles
+						<-employee_of- Person: Mark
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Antwerp
+							-owns-> Car: Toyota
+						<-employee_of- Person: Max
+							-citizen_of-> Country: Belgium
+							-lives_in-> City: Antwerp
+							-owns-> Car: Peugeot
+			Country: Czechoslovakia
+				-contains-> City: Prague
+					-contains-> Company: Pilsner
+						<-employee_of- Person: Mia
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Prague
+							-friend_of-> Person: Eva
+						<-employee_of- Person: Nora
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Prague
+					-contains-> Company: Papermill
+						<-employee_of- Person: Paul
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Prague
+						<-employee_of- Person: Rita
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Prague
+				-contains-> City: Bratislava
+					-contains-> Company: Beta
+						<-employee_of- Person: Sara
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Vienna
+						<-employee_of- Person: Simon
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Bratislava
+					-contains-> Company: Bakery
+						<-employee_of- Person: Tom
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Bratislava
+						<-employee_of- Person: Zoe
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Bratislava
+							-owns-> Car: Skoda
+			"""
+		);
+	}
+	
+	// Area - Feature - Find
+	private Map<String, String> createDataB(Session session, String namespaceName, String versioningType) {
+		createNamespace(session, namespaceName, versioningType);
+		Map<String, String> objectIdMap = new HashMap<>();
+		for (int i = 1; i <= 3; i++) {
+			String areaName = String.valueOf(i);
+			String areaId = createObject(session, "Area");
+			createDescriptor(session, areaId, "Name", String.valueOf(i));
+			objectIdMap.put(areaName, areaId);
+			for (int j = 1; j <= 6; j++) {
+				String featureName = areaName + "." + j;
+				String featureId = createObject(session, "Feature");
+				createDescriptor(session, featureId, "Name", String.valueOf(j));
+				createRelationship(session, areaId, "contains", featureId);
+				objectIdMap.put(featureName, featureId);
+				for (int k = 1; k <= 3; k++) {
+					String findName = featureName + "." + k;
+					String findId = createObject(session, "Find");
+					createDescriptor(session, findId, "Name", String.valueOf(k));
+					createRelationship(session, featureId, "contains", findId);
+					objectIdMap.put(findName, findId);
+				}
+			}
+		}
+		String srcId = objectIdMap.get("2.2");
+		String tgtId = objectIdMap.get("2.3");
+		createRelationship(session, srcId, "disturbs", tgtId);
+		srcId = objectIdMap.get("2.3");
+		tgtId = objectIdMap.get("2.4");
+		createRelationship(session, srcId, "disturbs", tgtId);
+		return objectIdMap;
+	}
+	
 	@Test
 	public void testGetAllData() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			Set<String> expected = new HashSet<>();
 			for (String key : objectIdMap.keySet()) {
 				String[] parts = key.split(": ");
@@ -383,7 +473,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneCity1() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("City: Linz");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -405,7 +495,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneCity2() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("City: Ghent");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -428,7 +518,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneCompany() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("Company: Velocipeds");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -447,7 +537,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOnePerson() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("Person: Emma");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -465,7 +555,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetThreePersonsFromTwoCompanies() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId1 = objectIdMap.get("Person: Emma");
 			String rootId2 = objectIdMap.get("Person: Adam");
 			String rootId3 = objectIdMap.get("Person: Alex");
@@ -489,7 +579,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetCompanyAndPersonFromAnotherCompany() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId1 = objectIdMap.get("Company: Velocipeds");
 			String rootId2 = objectIdMap.get("Person: Emma");
 			List<String> rootIds = List.of(rootId1, rootId2);
@@ -509,7 +599,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneClass() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId = getClassId(session, "Car");
 			List<String> rootIds = List.of(rootId);
 			Set<String> expected = Set.of(
@@ -535,7 +625,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetOneClassAndOnePerson() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId1 = getClassId(session, "Car");
 			String rootId2 = objectIdMap.get("Person: Mia");
 			List<String> rootIds = List.of(rootId1, rootId2);
@@ -557,7 +647,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	@Test
 	public void testGetObjectsByData() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			String rootId = objectIdMap.get("City: Ghent");
 			Set<String> expected = Set.of(
 					objectIdMap.get("Country: Belgium"),
@@ -585,11 +675,67 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			assertEquals("Unexpected objects returned", expected, actual);
 		}
 	}
+	
+	@Test
+	public void testGetObjectsWithIdenticalDescriptorsByData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createDataB(session, "TestNamespace", "");
+			String rootId = objectIdMap.get("1.1");
+			Set<String> expected = Set.of(
+					objectIdMap.get("1"),
+					objectIdMap.get("1.1"),
+					objectIdMap.get("1.1.1"),
+					objectIdMap.get("1.1.2"),
+					objectIdMap.get("1.1.3")
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", List.of(rootId)));
+			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
+			
+			Set<String> actual = new HashSet<>();
+			query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			queryResult = session.run(query, Map.of("data", data));
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
+			}
+
+			assertEquals("Unexpected objects returned", expected, actual);
+		}
+	}
+
+	@Test
+	public void testGetObjectsWithWithinClassRelationshipByData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMap = createDataB(session, "TestNamespace", "");
+			String rootId = objectIdMap.get("2.3.3");
+			Set<String> expected = Set.of(
+					objectIdMap.get("2"),
+					objectIdMap.get("2.3"),
+					objectIdMap.get("2.3.3")
+			);
+			String query = "CALL deposit.get.data($rootIds, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("rootIds", List.of(rootId)));
+			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
+
+			Set<String> actual = new HashSet<>();
+			query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			queryResult = session.run(query, Map.of("data", data));
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
+			}
+
+			assertEquals("Unexpected objects returned", expected, actual);
+		}
+	}
 
 	@Test
 	public void testGetObjectsByReducedData() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			Set<String> expected = Set.of(
 					objectIdMap.get("Country: Belgium"),
 					objectIdMap.get("City: Ghent"),
@@ -695,11 +841,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			throw new RuntimeException(e);
 		}
 	}
-
+	
 	@Test
 	public void testShouldNotReturnObjects() {
 		try (Session session = driver.session()) {
-			createData(session, "TestNamespace", "");
+			createDataA(session, "TestNamespace", "");
 			// replaced Hugo with Karl
 			Map<String, Object> data = decodeJsonToData("""
 				{
@@ -795,11 +941,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			throw new RuntimeException(e);
 		}
 	}
-
+	
 	@Test
 	public void testGetObjectsByExactData() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "");
 			Set<String> expected = Set.of(
 					objectIdMap.get("Country: Belgium"),
 					objectIdMap.get("City: Ghent"),
@@ -863,11 +1009,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			throw new RuntimeException(e);
 		}
 	}
-
+	
 	@Test
 	public void testShouldNotReturnObjectsByExactData() {
 		try (Session session = driver.session()) {
-			createData(session, "TestNamespace", "");
+			createDataA(session, "TestNamespace", "");
 			// Missing Hugo.tmp
 			Map<String, Object> data = decodeJsonToData("""
 				{"nodes":[
@@ -924,11 +1070,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			throw new RuntimeException(e);
 		}
 	}
-
+	
 	@Test
 	public void testGetNamespaceData() {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMap = createData(session, "TestNamespace", "transient");
+			Map<String, String> objectIdMap = createDataA(session, "TestNamespace", "transient");
 			String query = "CALL deposit.get.namespaceData('') YIELD data RETURN data";
 			Result queryResult = session.run(query);
 			Set<String> foundNodeLabels = new HashSet<>();
