@@ -3,12 +3,11 @@ package deposit.service;
 import deposit.service.data.DataMatchQueryBuilder;
 import deposit.repository.GetObjectsByDataRepository;
 import deposit.common.ServerContext;
+import deposit.common.result.StringMapResult;
 
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
 
 import java.util.Map;
-import java.util.stream.Stream;
 
 public class GetObjectsByDataService extends BaseService {
 
@@ -26,7 +25,7 @@ public class GetObjectsByDataService extends BaseService {
 		return instance;
 	}
 
-	public Stream<Node> getObjectsByData(Transaction tx, Map<String, Object> data, boolean matchEmpty, String token) {
+	public StringMapResult getObjectsByData(Transaction tx, Map<String, Object> data, boolean matchEmpty, String token) {
 		
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

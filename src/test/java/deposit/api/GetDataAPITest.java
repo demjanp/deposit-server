@@ -7,6 +7,8 @@ import deposit.common.ServerContext;
 import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
+import org.neo4j.driver.Record;
+import org.neo4j.driver.Value;
 
 import java.io.IOException;
 import java.util.*;
@@ -572,13 +574,13 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query, Map.of("rootIds", List.of(rootId)));
 			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
 			
-			query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
-			queryResult = session.run(query, Map.of("data", data));
-
 			Set<String> actual = new HashSet<>();
-			while (queryResult.hasNext()) {
-				String objectId = queryResult.next().get("objectId").asString();
-				actual.add(objectId);
+			query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			queryResult = session.run(query, Map.of("data", data));
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
 			}
 			assertEquals("Unexpected objects returned", expected, actual);
 		}
@@ -680,12 +682,13 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					]
 				}
 			""");
-			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
-			Result queryResult = session.run(query, Map.of("data", data));
 			Set<String> actual = new HashSet<>();
-			while (queryResult.hasNext()) {
-				String objectId = queryResult.next().get("objectId").asString();
-				actual.add(objectId);
+			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("data", data));
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
 			}
 			assertEquals("Unexpected objects returned", expected, actual);
 		} catch (IOException e) {
@@ -779,9 +782,15 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					]
 				}
 			""");
-			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD node RETURN node.id AS objectId";
+			Set<String> actual = new HashSet<>();
+			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
-			assertFalse("Should not return any objects", queryResult.hasNext());
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
+			}
+			assertTrue("Should not return any objects", actual.isEmpty());
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -841,12 +850,13 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					{"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{},"id":9}
 				]}
 			""");
-			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD node RETURN node.id AS objectId";
-			Result queryResult = session.run(query, Map.of("data", data));
 			Set<String> actual = new HashSet<>();
-			while (queryResult.hasNext()) {
-				String objectId = queryResult.next().get("objectId").asString();
-				actual.add(objectId);
+			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD data RETURN data";
+			Result queryResult = session.run(query, Map.of("data", data));
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
 			}
 			assertEquals("Unexpected objects returned", expected, actual);
 		} catch (IOException e) {
@@ -901,9 +911,15 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					{"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{},"id":9}
 				]}
 			""");
-			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD node RETURN node.id AS objectId";
+			Set<String> actual = new HashSet<>();
+			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
-			assertFalse("Should not return any objects", queryResult.hasNext());
+			if (queryResult.hasNext()) {
+				Record record = queryResult.next();
+				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
+				actual.addAll(objectMap.values());
+			}
+			assertTrue("Should not return any objects", actual.isEmpty());
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}

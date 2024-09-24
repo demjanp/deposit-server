@@ -1,13 +1,12 @@
 package deposit.repository;
 
+import deposit.common.result.StringMapResult;
+
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Result;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 public class GetObjectsByDataRepository extends BaseRepository {
 
@@ -22,20 +21,18 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Stream<Node> getObjectsByData(Transaction tx, String namespaceName, String queryStr, Map<String, Object> values) {
+	public StringMapResult getObjectsByData(Transaction tx, String namespaceName, String queryStr, Map<String, Object> values) {
 		try {
 			Map<String, Object> params = new HashMap<>(values);
 			params.put("namespaceName", namespaceName);
 			Result result = tx.execute(queryStr, params);
-
-			return StreamSupport.stream(result.stream().spliterator(), false)
-				.flatMap(row -> row.values().stream())
-				.filter(value -> value instanceof Node)
-				.map(value -> (Node) value)
-				.distinct();
+			if (result.hasNext()) {
+				Map<String, String> data = (Map<String, String>) result.next().get("data");
+				return new StringMapResult(data);
+			}
 		} catch (Exception e) {
 			throwException("Error retrieving Objects", e);
 		}
-		return Stream.empty();
+		return new StringMapResult(Map.of());
 	}
 }
