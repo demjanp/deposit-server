@@ -4,9 +4,34 @@ import deposit.common.ExceptionHandler;
 
 import java.util.*;
 
-public class DataMatchQueryBuilder {
+public class DataHandler {
 
-	public static DataMatchQueryBuilderResult buildQuery(Map<String, Object> data, boolean matchEmpty) {
+	/* buildDataMatchQuery
+	 *
+	 * 	Accepts:
+	 *	data Map<String, Object> = {
+	 * 		nodes List<Map<String, Object>> = {
+	 * 			id Long = nodeId,
+	 * 			label String = nodeLabel,
+	 * 			properties Map<String, Object> = {name: value, ...}
+	 *		},
+	 * 		edges List<Map<String, Object>> = {
+	 * 			id Long = edgeId,
+	 * 			type String = edgeType,
+	 * 			outV Long = startNodeId,
+	 * 			inV Long = endNodeId,
+	 * 			properties Map<String, Object> = {name: value, ...}
+	 * 		}
+	 *	}
+	 * 	matchEmpty boolean = if true, ensure all Descriptors of the matched Objects are present and equal those in data.
+	 * 		Otherwise only match Descriptors present in the Namespace and with non-null values in the data.
+	 *
+	 *	Returns:
+	 *	result DataMatchQuery
+	 *		result.getQueryStr() String = query string
+	 * 		result.getValues() Map<String, Object> = query parameters
+	 */
+	public static DataMatchQuery buildDataMatchQuery(Map<String, Object> data, boolean matchEmpty) {
 		StringBuilder queryStr = new StringBuilder();
 		Map<String, Object> values = new HashMap<>();
 		Map<String, Map<String, Object>> objects = extractObjectData(data);
@@ -21,9 +46,24 @@ public class DataMatchQueryBuilder {
 
 		values.put("descriptorsMap", descriptorsMap);
 
-		return new DataMatchQueryBuilderResult(queryStr.toString(), values);
+		return new DataMatchQuery(queryStr.toString(), values);
 	}
 
+	/* extractObjectData
+	 *
+	 * 	Accepts:
+	 *	data Map<String, Object> = same as buildDataMatchQuery
+	 *
+	 *	Returns:
+	 *	objects Map<String, Map<String, Object>> = {
+	 *		nodeId: {
+	 *			id String = objectId,
+	 *			class String = className,
+	 *			descriptors Map<String, Object> = {name: value, ...},
+	 *			relationships Map<String, List<String>> = {label: [objId, ...], ...}
+	 *		}
+	 *	}
+	 */
 	private static Map<String, Map<String, Object>> extractObjectData(Map<String, Object> data) {
 		Map<String, Map<String, Object>> objects = new HashMap<>();
 		Map<String, String> classes = new HashMap<>();
@@ -157,11 +197,11 @@ public class DataMatchQueryBuilder {
 		queryStr.append("\nRETURN {").append(mappingsStr).append("} AS data");
 	}
 
-	public static class DataMatchQueryBuilderResult {
+	public static class DataMatchQuery {
 		private final String queryStr;
 		private final Map<String, Object> values;
 
-		public DataMatchQueryBuilderResult(String queryStr, Map<String, Object> values) {
+		public DataMatchQuery(String queryStr, Map<String, Object> values) {
 			this.queryStr = queryStr;
 			this.values = values;
 		}

@@ -1,6 +1,6 @@
 package deposit.service;
 
-import deposit.service.data.DataMatchQueryBuilder;
+import deposit.service.data.DataHandler;
 import deposit.repository.GetObjectsByDataRepository;
 import deposit.common.ServerContext;
 import deposit.common.result.StringMapResult;
@@ -33,7 +33,7 @@ public class GetObjectsByDataService extends BaseService {
 			throwException("Cannot retrieve Objects without an active Namespace.");
 		}
 		
-		DataMatchQueryBuilder.DataMatchQueryBuilderResult result = DataMatchQueryBuilder.buildQuery(data, matchEmpty);
+		DataHandler.DataMatchQuery result = DataHandler.buildDataMatchQuery(data, matchEmpty);
 		return getObjectsByDataRepository.getObjectsByData(tx, namespaceName, result.getQueryStr(), result.getValues());
 	}
 }

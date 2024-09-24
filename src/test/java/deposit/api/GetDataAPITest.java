@@ -455,6 +455,29 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		return objectIdMap;
 	}
 	
+	// Country-City-Company-Person
+	private Map<String, String> createDataC(Session session, String namespaceName, String versioningType) {
+		return createDataFromString(session, namespaceName, versioningType, """
+			Country: Czechoslovakia
+				-contains-> City: Trnava
+					-contains-> Company: Tinfoil
+						<-employee_of- Person: Jana
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Trnava
+						<-employee_of- Person: Milan
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Bratislava
+					-contains-> Company: Toasters
+						<-employee_of- Person: Juraj
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Trnava
+						<-employee_of- Person: Zuzana
+							-citizen_of-> Country: Czechoslovakia
+							-lives_in-> City: Trnava
+			"""
+		);
+	}
+	
 	@Test
 	public void testGetAllData() {
 		try (Session session = driver.session()) {
@@ -1128,4 +1151,33 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			assertEquals(expectedValues, foundValues);
 		}
 	}
+	
+	@Test
+	public void testImportData() {
+		try (Session session = driver.session()) {
+			Map<String, String> objectIdMapB = createDataC(session, "TestNamespace", "");
+			
+			Map<String, Object> dataB = session.writeTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
+				assertTrue(result.hasNext());
+				Map<String, Object> resultData = (Map<String, Object>) result.next().get("data").asMap();
+				tx.commit();
+				return resultData;
+			});
+			session.writeTransaction(tx -> {
+				tx.run("MATCH (n) DETACH DELETE n");
+				tx.commit();
+				return null;
+			});
+			
+			Map<String, String> objectIdMapA = createDataA(session, "TestNamespace", "");
+			
+			session.writeTransaction(tx -> {
+				tx.run("CALL deposit.import.data($data, [], {}, false, '')", Map.of("data", dataB));
+				tx.commit();
+				return null;
+			});
+		}
+	}
+	
 }

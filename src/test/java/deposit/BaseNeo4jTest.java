@@ -27,7 +27,7 @@ public abstract class BaseNeo4jTest {
 	public void setUp() {
 		// Clear the database before each test
 		try (Session session = driver.session();
-			 Transaction tx = session.beginTransaction()) {
+			Transaction tx = session.beginTransaction()) {
 			tx.run("MATCH (n) DETACH DELETE n");
 			tx.commit();
 		}
