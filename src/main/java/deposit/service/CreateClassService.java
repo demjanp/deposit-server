@@ -63,11 +63,13 @@ public class CreateClassService extends BaseService {
 		}
 		
 		// Create the descriptors associated with the class
+		Long descrOrder = 1L;
 		for (List<String> descriptorList : descriptors) {
 			String descriptorName = descriptorList.get(0);
 			String type = descriptorList.get(1);
 			String descriptorComment = (descriptorList.size() == 3) ? descriptorList.get(2) : "";
-			createClassDescriptorRepository.createClassDescriptor(tx, timeStamp, username, namespaceName, versioningType, className, descriptorName, type, (long) -1, descriptorComment);
+			createClassDescriptorRepository.createClassDescriptor(tx, timeStamp, username, namespaceName, versioningType, className, descriptorName, type, descrOrder, descriptorComment);
+			descrOrder++;
 		}
 
 		return node;
