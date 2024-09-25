@@ -458,6 +458,11 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	// Country-City-Company-Person
 	private Map<String, String> createDataC(Session session, String namespaceName, String versioningType) {
 		return createDataFromString(session, namespaceName, versioningType, """
+			Country: Belgium
+				-contains-> City: Antwerp
+				 	-contains-> Company: Alpha
+				 		<-employee_of- Person: Simone
+				 			-owns-> Dog: Bobik
 			Country: Czechoslovakia
 				-contains-> City: Trnava
 					-contains-> Company: Tinfoil
@@ -1160,7 +1165,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Map<String, Object> dataB = session.writeTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
 				assertTrue(result.hasNext());
-				Map<String, Object> resultData = (Map<String, Object>) result.next().get("data").asMap();
+				Map<String, Object> resultData = result.next().get("data").asMap();
 				tx.commit();
 				return resultData;
 			});
@@ -1173,7 +1178,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Map<String, String> objectIdMapA = createDataA(session, "TestNamespace", "");
 			
 			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.import.data($data, [], {}, false, '')", Map.of("data", dataB));
+				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataB));
 				tx.commit();
 				return null;
 			});

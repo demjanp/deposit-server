@@ -132,7 +132,7 @@ public class FileSystem {
 				}
 			} catch (IOException e) {
 				ExceptionHandler.throwException("Failed to retrieve file", e);
-				return null;  // This will never be reached but is required to satisfy the compiler
+				return null;
 			}
 		});
 	}
@@ -153,7 +153,7 @@ public class FileSystem {
 				}
 			} catch (IOException e) {
 				ExceptionHandler.throwException("Failed to stream file as base64", e);
-				return null;  // This will never be reached but is required to satisfy the compiler
+				return null;
 			}
 		});
 	}
@@ -162,9 +162,8 @@ public class FileSystem {
 	public static String moveToPermanent(String filename) {
 		return executeWithLock(() -> {
 			try {
-				String subdir = generateHashBasedSubdir(filename);
 				FileObject sourceFile = transientStorage.resolveFile(filename);
-				FileObject destFile = permanentStorage.resolveFile(subdir + "/" + filename);
+				FileObject destFile = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
 
 				if (!sourceFile.exists()) {
 					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
@@ -172,8 +171,8 @@ public class FileSystem {
 				}
 
 				if (destFile.exists()) {
-					ExceptionHandler.throwException("Destination file already exists: " + destFile.getName().getURI());
-					return null;
+					sourceFile.delete();
+					return filename;
 				}
 
 				try {
@@ -189,6 +188,58 @@ public class FileSystem {
 
 			} catch (FileSystemException e) {
 				ExceptionHandler.throwException("Failed to move file to permanent storage", e);
+				return null;
+			}
+			return filename;
+		});
+	}
+
+	// Copies a file from the transient to the permanent storage
+	public static String copyToPermanent(String filename) {
+		return executeWithLock(() -> {
+			try {
+				FileObject sourceFile = transientStorage.resolveFile(filename);
+				FileObject destFile = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
+
+				if (!sourceFile.exists()) {
+					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
+					return null;
+				}
+
+				if (destFile.exists()) {
+					return filename;
+				}
+				
+				destFile.copyFrom(sourceFile, Selectors.SELECT_SELF);
+				
+			} catch (FileSystemException e) {
+				ExceptionHandler.throwException("Failed to copy file to permanent storage", e);
+				return null;
+			}
+			return filename;
+		});
+	}
+	
+	// Copies a file from the permanent to the transient storage
+	public static String copyToTransient(String filename) {
+		return executeWithLock(() -> {
+			try {
+				FileObject sourceFile = permanentStorage.resolveFile(generateHashBasedSubdir(filename) + "/" + filename);
+				FileObject destFile = transientStorage.resolveFile(filename);
+
+				if (!sourceFile.exists()) {
+					ExceptionHandler.throwException("Source file does not exist: " + sourceFile.getName().getURI());
+					return null;
+				}
+
+				if (destFile.exists()) {
+					return filename;
+				}
+				
+				destFile.copyFrom(sourceFile, Selectors.SELECT_SELF);
+				
+			} catch (FileSystemException e) {
+				ExceptionHandler.throwException("Failed to copy file to transient storage", e);
 				return null;
 			}
 			return filename;

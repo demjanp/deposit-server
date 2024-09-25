@@ -1,5 +1,6 @@
 package deposit.repository;
 
+import deposit.common.FileSystem;
 import deposit.common.result.MapResult;
 
 import org.neo4j.graphdb.Transaction;
@@ -134,6 +135,11 @@ public class GetDataRepository extends BaseRepository {
 		} catch (Exception e) {
 			throwException("Error retrieving data.", e);
 		}
+		
+		for (String filename : (List<String>) data.get("resources")) {
+			FileSystem.copyToTransient(filename);
+		}
+		
 		return new MapResult(data);
 	}
 }

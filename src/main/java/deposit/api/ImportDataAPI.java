@@ -23,7 +23,7 @@ public class ImportDataAPI extends BaseAPI {
 	 *
 	 * @param data Map in the GraphSON format: {nodes: nodes, edges: edges, resources: resources}, where nodes = [{id, label, properties: {name: value, ...}}, ...], edges = [{id, type, outV: start_node_id, inV: end_node_id, properties: {name: value, ...}}, ...], resources: [<local filename of the resource>, ...]
 	 * @param unique List of Class names where new Objects should always be added, rather than reusing existing Objects with identical Descriptors. This ensures unique Objects for these Classes.
-	 * @param overwrite Map of Class names to existing Objects where Descriptors should be overwritten rather than creating new ones as: {className: objectId, ...}.
+	 * @param overwrite List of ids of Objects existing both in the data and the current Namespace where existing Descriptors should be deleted and new ones created.
 	 * @param matchEmpty boolean, if true, ensure all Descriptors of the matched Objects are present and equal those in data. Otherwise only match Descriptors present in the Namespace and with non-null values in the data.
 	 * @param token authentication token.
 	 * @throws RuntimeException if there was an error importing the data.
@@ -33,7 +33,7 @@ public class ImportDataAPI extends BaseAPI {
 	public void importData(
 			@Name("data") Map<String, Object> data,
 			@Name("unique") List<String> unique,
-			@Name("overwrite") Map<String, String> overwrite,
+			@Name("overwrite") List<String> overwrite,
 			@Name("matchEmpty") boolean matchEmpty,
 			@Name(value = "token", defaultValue = "") String token) {
 		ImportDataService service = ImportDataService.getInstance();

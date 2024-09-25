@@ -25,7 +25,7 @@ public class ImportDataService extends BaseService {
 		return instance;
 	}
 
-	public void importData(Transaction tx, Map<String, Object> data, List<String> unique, Map<String, String> overwrite, boolean matchEmpty, String token) {
+	public void importData(Transaction tx, Map<String, Object> data, List<String> unique, List<String> overwrite, boolean matchEmpty, String token) {
 		
 		validateToken(token);
 		ZonedDateTime timeStamp = ZonedDateTime.now();

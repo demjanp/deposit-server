@@ -20,6 +20,7 @@ public class GetDataAPI extends BaseAPI {
 	/**
 	 * Get nodes (except User Tools and Archive nodes), relationships and 
 	 * resource filenames for the subtrees of the root Objects or the whole Namespace.
+	 * The returned resources are copied to transient storage.
 	 *
 	 * @param rootIds a list of root Object ids or empty for the whole Namespace. Default is [].
 	 * @param token authentication token.

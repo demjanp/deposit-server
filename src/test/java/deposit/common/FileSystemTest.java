@@ -86,6 +86,43 @@ class FileSystemTest {
 		assertThrows(RuntimeException.class, () -> fileSystem.readFromPermanent(generatedFilename),
 					 "Expected RuntimeException when reading a deleted file");
 	}
+	
+	@Test
+	void testCopyToPermanent() {
+		String originalFilename = "testFile.txt";
+		String content = "This is a test file.";
+		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
+
+		String generatedFilename = fileSystem.storeFile(base64Content, originalFilename);
+		fileSystem.copyToPermanent(generatedFilename);
+
+		String retrievedContent = fileSystem.readFromPermanent(generatedFilename);
+		assertNotNull(retrievedContent, "Content should be retrievable from permanent storage");
+		
+		retrievedContent = fileSystem.readFromTransient(generatedFilename);
+		assertNotNull(retrievedContent, "Content should remain in transient storage");
+	}
+	
+	@Test
+	void testCopyToTransient() {
+		String originalFilename = "testFile.txt";
+		String content = "This is a test file.";
+		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
+
+		String generatedFilename = fileSystem.storeFile(base64Content, originalFilename);
+		fileSystem.moveToPermanent(generatedFilename);
+
+		String retrievedContent = fileSystem.readFromPermanent(generatedFilename);
+		assertNotNull(retrievedContent, "Content should be retrievable from permanent storage");
+		
+		assertThrows(RuntimeException.class, () -> fileSystem.readFromTransient(generatedFilename),
+					 "Expected RuntimeException when reading a deleted file");
+					 
+		fileSystem.copyToTransient(generatedFilename);
+		
+		retrievedContent = fileSystem.readFromTransient(generatedFilename);
+		assertNotNull(retrievedContent, "Content should be retrievable from transient storage");
+	}
 
 	@Test
 	void testDeleteFromArchive() {
