@@ -13,7 +13,11 @@ public class GraphSONData {
 		Map<String, GraphsonObject> graphsonObjectsById = new HashMap<>();
 		Map<String, String> classes = new HashMap<>();
 		Map<String, List<Descriptor>> descriptors = new HashMap<>();
-		
+
+		if (data.containsKey("graph")) {
+			data = (Map<String, Object>) data.get("graph");
+		}
+
 		List<Map<String, Object>> nodes = (List<Map<String, Object>>) data.get("nodes");
 		List<Map<String, Object>> edges = (List<Map<String, Object>>) data.get("edges");
 		
@@ -115,10 +119,18 @@ public class GraphSONData {
 		public String toString() {
 			StringBuilder toReturn = new StringBuilder();
 			toReturn.append(id).append("(").append(className).append(")");
+			List<String> descriptorStrings = new ArrayList<>();
+			for (Descriptor descriptor : descriptors) {
+				descriptorStrings.add(descriptor.toString());
+			}
+			if (!descriptorStrings.isEmpty()) {
+				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
+			}
 			for (RelatedTo relationship : relatedTo) {
 				toReturn.append("\n\t").append(relationship.toString());
 			}
-			 return toReturn.toString();
+			toReturn.append("\n");
+			return toReturn.toString();
 		}
 	}
 	
@@ -126,6 +138,11 @@ public class GraphSONData {
 	public static class Descriptor {
 		public String name;
 		public String value;
+
+		@Override
+		public String toString() {
+			return name + ": " + value;
+		}
 	}
 	
 	// Class to represent RELATED_TO relationships in GraphSON

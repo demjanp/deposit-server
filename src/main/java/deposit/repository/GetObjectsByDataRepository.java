@@ -61,41 +61,61 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		
 		// Match Descriptors
 		if (matchEmpty) {
-			query.append("WITH ns, objectInfo, obj\n");
-			query.append("UNWIND objectInfo.descriptors AS givenDescr\n");
-			query.append("MATCH (obj)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: givenDescr.name})\n");
-			query.append("WHERE (d.value IS NULL AND givenDescr.value IS NULL) OR d.value = givenDescr.value\n");
-			query.append("WITH ns, objectInfo, obj, COUNT(d) AS matchingDescriptorCount\n");
-			query.append("WHERE matchingDescriptorCount = objectInfo.descriptorCount\n");
-			query.append("WITH ns, objectInfo.dataId AS dataId, collect(DISTINCT obj.id) AS ids\n");
-			query.append("WITH ns, collect({dataId: dataId, ids: ids}) AS dataIdIdsList\n");
+			query.append("""
+				WITH objectInfo, obj
+				UNWIND objectInfo.descriptors AS givenDescr
+				MATCH (obj)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: givenDescr.name})
+				WHERE (d.value IS NULL AND givenDescr.value IS NULL) OR d.value = givenDescr.value
+				WITH obj, objectInfo, COUNT(d) AS matchingDescriptorCount
+				MATCH (obj)-[:HAS_DESCRIPTOR]->(allDescriptors:Descriptor)
+				WITH obj, objectInfo, matchingDescriptorCount, COUNT(allDescriptors) AS totalDescriptorCount
+				WHERE matchingDescriptorCount = objectInfo.descriptorCount AND totalDescriptorCount = objectInfo.descriptorCount
+				WITH objectInfo.dataId AS dataId, collect(DISTINCT obj.id) AS ids
+				WITH collect({dataId: dataId, ids: ids}) AS dataIdIdsList
+				""");
 		} else {
-			query.append("UNWIND objectInfo.descriptors AS givenDescr\n");
-			query.append("OPTIONAL MATCH (obj)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: givenDescr.name, value: givenDescr.value})\n");
-			query.append("WITH ns, objectInfo.dataId AS dataId, obj, SUM(CASE WHEN d IS NOT NULL THEN 1 ELSE 0 END) AS matchCount\n");
-			query.append("ORDER BY dataId, matchCount DESC\n");
-			query.append("WITH ns, dataId, collect({objId: obj.id, matchCount: matchCount}) AS objMatches\n");
-			query.append("WITH ns, dataId, [om IN objMatches WHERE om.matchCount = head(objMatches).matchCount | om.objId] AS ids\n");
-			query.append("WITH ns, collect({dataId: dataId, ids: ids}) AS dataIdIdsList\n");
+			query.append("""
+				UNWIND objectInfo.descriptors AS givenDescr
+				OPTIONAL MATCH (obj)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: givenDescr.name})
+				WITH objectInfo, obj, givenDescr, d
+				WITH objectInfo, obj, SUM(CASE 
+					WHEN d IS NULL THEN 0
+					WHEN d.value = givenDescr.value OR (d.value IS NULL AND givenDescr.value IS NULL) THEN 1
+					ELSE -1
+				END) AS matchScore, COUNT(d) AS matchedDescriptors
+				WHERE matchScore >= 0
+				WITH objectInfo.dataId AS dataId, obj, matchedDescriptors
+				ORDER BY dataId, matchedDescriptors DESC
+				WITH dataId, collect({objId: obj.id, matchedDescriptors: matchedDescriptors}) AS objMatches
+				WITH dataId, [om IN objMatches WHERE om.matchedDescriptors = head(objMatches).matchedDescriptors | om.objId] AS ids
+				WITH collect({dataId: dataId, ids: ids}) AS dataIdIdsList
+				""");
 		}
-		query.append("WITH ns, reduce(resultMap = {}, pair IN dataIdIdsList | apoc.map.setKey(resultMap, pair.dataId, pair.ids)) AS descrResults\n");
+		query.append("WITH reduce(resultMap = {}, pair IN dataIdIdsList | apoc.map.setKey(resultMap, pair.dataId, pair.ids)) AS descrResults\n");
 		
 		// Match Relationships
+		query.append("MATCH (ns:Namespace {name: $namespaceName})\n");
 		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
 			String dataId = graphSONObject.id;
+			query.append(String.format("MATCH (ns)-[:CONTAINS]->(obj%s:Object) WHERE obj%s.id IN descrResults[\"%s\"]\n", dataId, dataId, dataId));
+		}
+
+		List<String> relationshipMatchItems = new ArrayList<>();
+		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
 			if (!graphSONObject.relatedTo.isEmpty()) {
+				String dataId = graphSONObject.id;
 				int index = 1;
 				for (GraphSONData.RelatedTo relatedTo : graphSONObject.relatedTo) {
 					String labelVar = "label" + dataId + "_" + index;
 					String targetId = relatedTo.targetId;
-					query.append(String.format("MATCH (ns)-[:CONTAINS]->(obj%s:Object)-[:RELATED_TO {label: $%s}]->(obj%s:Object)\n", dataId, labelVar, targetId));
-					query.append(String.format("WHERE obj%s.id IN descrResults[\"%s\"] AND obj%s.id IN descrResults[\"%s\"]\n", dataId, dataId, targetId, targetId));
+					relationshipMatchItems.add(String.format("(obj%s)-[:RELATED_TO {label: $%s}]->(obj%s:Object)", dataId, labelVar, targetId));
 					params.put(labelVar, relatedTo.label);
 					index++;
 				}
-			} else {
-				query.append(String.format("MATCH (ns)-[:CONTAINS]->(obj%s:Object)", dataId));
 			}
+		}
+		if (!relationshipMatchItems.isEmpty()) {
+			query.append("MATCH ").append(String.join(",\n", relationshipMatchItems)).append("\n");
 		}
 		
 		// Collect and return results
@@ -119,7 +139,9 @@ public class GetObjectsByDataRepository extends BaseRepository {
 				List<String> ids = entry.getValue().stream()
 						.map(Object::toString)
 						.collect(Collectors.toList());
-				objectIdMap.put(key, ids);
+				if (!ids.isEmpty()) {
+					objectIdMap.put(key, ids);
+				}
 			}
 		}
 

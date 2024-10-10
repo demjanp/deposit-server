@@ -3,6 +3,7 @@ package deposit.api;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import deposit.BaseNeo4jTest;
+import deposit.common.GraphSONData;
 import deposit.common.ServerContext;
 import org.junit.Test;
 import org.neo4j.driver.Session;
@@ -125,6 +126,23 @@ public class GetDataAPITest extends BaseNeo4jTest {
 		}
 		assertEquals("Number of returned values doesn't match the expected number.", expectedValues.size(), foundValues.size());
 		assertEquals("Number of returned resources doesn't match the expected number.", expectedResources.size(), foundResources.size());
+	}
+
+	private void printQueryResult(Result queryResult) {
+		System.out.println("");
+		while (queryResult.hasNext()) {
+			Map<String, Object> data = queryResult.next().get("data").asMap();
+			Map<String, Object> graph = (Map<String, Object>) data.get("graph");
+			for (Map<String, Object> node : (List<Map<String, Object>>) graph.get("nodes")) {
+				if (node.get("label").equals("Descriptor")) {
+					Map<String, Object> properties = (Map<String, Object>) node.get("properties");
+					Object value = properties.get("value");
+					if (value != null) {
+						System.out.println(value.toString());
+					}
+				}
+			}
+		}
 	}
 
 	private Map<String, String> createDataFromString(Session session, String namespaceName, String versioningType, String definition) {
@@ -1086,6 +1104,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 					{"outV":7,"inV":8,"type":"HAS_DESCRIPTOR","properties":{},"id":9}
 				]}
 			""");
+
 			Set<String> actual = new HashSet<>();
 			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
@@ -1170,6 +1189,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				tx.commit();
 				return resultData;
 			});
+
 			session.writeTransaction(tx -> {
 				tx.run("MATCH (n) DETACH DELETE n");
 				tx.commit();
@@ -1177,13 +1197,39 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			});
 			
 			Map<String, String> objectIdMapA = createDataA(session, "TestNamespace", "");
-			
+
+			//String objectId = createObject(session, "Company");
+			//createDescriptor(session, objectId, "Name", "Bakery");
+
+			Map<String, Object> dataAB = session.writeTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
+				assertTrue(result.hasNext());
+				Map<String, Object> resultData = result.next().get("data").asMap();
+				tx.commit();
+				return resultData;
+			});
+			Map<String, GraphSONData.GraphsonObject> graphSONAB = GraphSONData.parseData(dataAB);
+			System.out.println();
+			System.out.println("---- DATABASE ----");
+			System.out.println(graphSONAB);
+			System.out.println();
+
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataB));
 				tx.commit();
 				return null;
 			});
 
+			/*
+			try {
+				String jsonData = encodeDataToJson(dataAB);
+				System.out.print(jsonData);
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+			/*
+
+			/*
 			String query = """
 				MATCH (ns:Namespace {name: 'TestNamespace'})-[:CONTAINS]->(obj:Object)-[:HAS_DESCRIPTOR]->(descr:Descriptor),
 				(obj)-[:MEMBER_OF]-(cls:Class)
@@ -1206,6 +1252,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				}
 				return null;
 			});
+			*/
+			assertTrue(false); // DEBUG
 		}
 	}
 }
