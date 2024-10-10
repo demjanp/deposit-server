@@ -41,7 +41,7 @@ public class EnsureClassService extends BaseService {
 				.max(Long::compare);
 			
 			Long order = maxOrder.orElse(0L) + 1;
-			createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, order, Collections.emptyList(), "");
+			createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, order, List.of(), "");
 		}
 	}
 

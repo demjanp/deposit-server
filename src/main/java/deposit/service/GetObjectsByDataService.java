@@ -1,12 +1,14 @@
 package deposit.service;
 
-import deposit.service.data.DataHandler;
 import deposit.repository.GetObjectsByDataRepository;
+import deposit.common.GraphSONData;
 import deposit.common.ServerContext;
 import deposit.common.result.StringMapResult;
 
 import org.neo4j.graphdb.Transaction;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public class GetObjectsByDataService extends BaseService {
@@ -33,7 +35,8 @@ public class GetObjectsByDataService extends BaseService {
 			throwException("Cannot retrieve Objects without an active Namespace.");
 		}
 		
-		DataHandler.DataMatchQuery result = DataHandler.buildDataMatchQuery(data, matchEmpty);
-		return getObjectsByDataRepository.getObjectsByData(tx, namespaceName, result.getQueryStr(), result.getValues());
+		List<GraphSONData.GraphsonObject> graphSONObjects = new ArrayList<>(GraphSONData.parseData(data).values());
+
+		return new StringMapResult(getObjectsByDataRepository.getObjectsByData(tx, namespaceName, graphSONObjects, matchEmpty));
 	}
 }

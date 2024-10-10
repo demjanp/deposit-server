@@ -100,7 +100,7 @@ public class CreateDescriptorRepository extends BaseRepository {
 					params.put("storedFilename", storedFilename);
 					params.put("imageFormat", node.getProperty("imageFormat").toString());
 					
-					FileSystem.moveToPermanent(storedFilename);
+					FileSystem.copyToPermanent(storedFilename);
 					
 					params.put("value", filename);
 					
@@ -125,17 +125,17 @@ public class CreateDescriptorRepository extends BaseRepository {
 			if (result.hasNext()) {
 				return (Node) result.next().get("updated");
 			} else {
-				rollbackMoveToPermanent(storedFilename);
+				rollbackCopyToPermanent(storedFilename);
 				throwException("Descriptor creation failed: No result returned");
 			}
 		} catch (Exception e) {
-			rollbackMoveToPermanent(storedFilename);
+			rollbackCopyToPermanent(storedFilename);
 			throwException("Error creating Descriptor with name: " + descriptorName, e);
 		}
 		return null;
 	}
 
-	private void rollbackMoveToPermanent(String filename) {
+	private void rollbackCopyToPermanent(String filename) {
 		if (!filename.isEmpty()) {
 			FileSystem.deleteFromPermanent(filename);
 		}

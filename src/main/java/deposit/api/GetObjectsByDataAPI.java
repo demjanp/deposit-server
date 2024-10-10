@@ -23,7 +23,7 @@ public class GetObjectsByDataAPI extends BaseAPI {
 	 * @param data Map in the GraphSON format: {nodes: nodes, edges: edges}, where nodes = [{id, label, properties: {name: value, ...}}, ...], edges = [{id, type, outV: start_node_id, inV: end_node_id, properties: {name: value, ...}}, ...]
 	 * @param matchEmpty boolean, if true, ensure all Descriptors of the matched Objects are present and equal those in data. Otherwise only match Descriptors present in the Namespace and with non-null values in the data.
 	 * @param token authentication token.
-	 * @return a map of the original Object ids and the ids of the matched Objects in the current Namespace
+	 * @return a map of the original Object ids and lists of ids of the matched Objects in the current Namespace
 	 * @throws RuntimeException if there was an error retrieving the nodes.
 	 */
 	@Procedure(name = "deposit.get.objectsByData", mode = Mode.READ)

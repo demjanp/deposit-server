@@ -697,8 +697,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
 			assertEquals("Unexpected objects returned", expected, actual);
 		}
@@ -725,8 +725,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
 
 			assertEquals("Unexpected objects returned", expected, actual);
@@ -752,8 +752,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
 
 			assertEquals("Unexpected objects returned", expected, actual);
@@ -861,8 +861,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
 			assertEquals("Unexpected objects returned", expected, actual);
 		} catch (IOException e) {
@@ -961,9 +961,10 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
+			System.out.println(actual); // DEBUG
 			assertTrue("Should not return any objects", actual.isEmpty());
 		} catch (IOException e) {
 			throw new RuntimeException(e);
@@ -1029,8 +1030,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
 			assertEquals("Unexpected objects returned", expected, actual);
 		} catch (IOException e) {
@@ -1090,8 +1091,8 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
-				Map<String, String> objectMap = record.get("data").asMap(Value::asString);
-				actual.addAll(objectMap.values());
+				Map<String, List<String>> objectMap = record.get("data").asMap(v -> v.asList(Value::asString));
+				objectMap.values().forEach(actual::addAll);
 			}
 			assertTrue("Should not return any objects", actual.isEmpty());
 		} catch (IOException e) {
@@ -1161,7 +1162,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	public void testImportData() {
 		try (Session session = driver.session()) {
 			Map<String, String> objectIdMapB = createDataC(session, "TestNamespace", "");
-			
+
 			Map<String, Object> dataB = session.writeTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
 				assertTrue(result.hasNext());
@@ -1182,7 +1183,29 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				tx.commit();
 				return null;
 			});
+
+			String query = """
+				MATCH (ns:Namespace {name: 'TestNamespace'})-[:CONTAINS]->(obj:Object)-[:HAS_DESCRIPTOR]->(descr:Descriptor),
+				(obj)-[:MEMBER_OF]-(cls:Class)
+				OPTIONAL MATCH (obj)-[rel:RELATED_TO]->(tgtObj:Object)-[:HAS_DESCRIPTOR]->(tgtDescr:Descriptor), (tgtObj)-[:MEMBER_OF]-(tgtCls:Class)
+				RETURN cls.name AS srcName, descr.value AS srcValue, rel.label AS label, tgtCls.name AS tgtName, tgtDescr.value AS tgtValue
+			""";
+			session.writeTransaction(tx -> {
+				Result result = tx.run(query);
+				while (result.hasNext()) {
+					Record record = result.next();
+					String srcName = record.get("srcName").asString();
+					String srcValue = record.get("srcValue").asString();
+					String label = record.get("label").asString();
+					String tgtName = record.get("tgtName").asString();
+					String tgtValue = record.get("tgtValue").asString();
+					if (srcValue.endsWith(".tmp") || tgtValue.endsWith(".tmp")) {
+						continue;
+					}
+					System.out.println(srcName + " : " + srcValue + " - " + label + " - " + tgtName + " : " + tgtValue);
+				}
+				return null;
+			});
 		}
 	}
-	
 }
