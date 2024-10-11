@@ -17,7 +17,7 @@ public class GetNamespaceDataAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get nodes, relationships and resource filenames for the whole Namespace.
+	 * Get nodes, Relationships and resource filenames for the whole Namespace.
 	 *
 	 * @param token authentication token.
 	 * @return a Map in the format:  {graph: {nodes: nodes, edges: edges}, resources: [<local filename of the resource>, ...]} where graph is in GraphSON format

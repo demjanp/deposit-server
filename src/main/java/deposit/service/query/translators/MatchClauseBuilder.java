@@ -18,7 +18,7 @@ public class MatchClauseBuilder {
 
 		SelectItem firstSelectItem = parsedQuery.getSelectItems().get(0);
 
-		// Collect all SelectItems and relationships from the SELECT and WHERE clauses
+		// Collect all SelectItems and Relationships from the SELECT and WHERE clauses
 		for (SelectItem selectItem : parsedQuery.getSelectItems()) {
 			queryItems.add(selectItem);
 		}

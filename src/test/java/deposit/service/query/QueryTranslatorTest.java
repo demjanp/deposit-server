@@ -409,7 +409,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testHopRelationship1() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop Relationships
 		String depositQuery = "SELECT C1.D1, C2.D2 WHERE C1-*1..3->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
@@ -436,7 +436,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testHopRelationship2() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop GSRelationships
 		String depositQuery = "SELECT C1, C2 WHERE C1-contains*->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
@@ -461,7 +461,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testHopRelationship3() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop GSRelationships
 		String depositQuery = "SELECT C1, C2 WHERE C1-contains*1..->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
@@ -486,7 +486,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testHopRelationship4() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop GSRelationships
 		String depositQuery = "SELECT C1, C2 WHERE C1-contains*..3->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
@@ -511,7 +511,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testHopRelationship5() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop GSRelationships
 		String depositQuery = "SELECT C1, C2 WHERE C1-contains*1..3->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
@@ -536,7 +536,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testAnyRelationship() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop GSRelationships
 		String depositQuery = "SELECT C1, C2 WHERE C1-->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);
@@ -561,7 +561,7 @@ public class QueryTranslatorTest {
 
 	@Test
 	public void testHopsAnyRelationship() {
-		// Given a query with multi-hop relationships
+		// Given a query with multi-hop GSRelationships
 		String depositQuery = "SELECT C1, C2 WHERE C1-*->C2";
 
 		QueryTranslator.QueryTranslatorResult result = QueryTranslator.translateToCypher(depositQuery);

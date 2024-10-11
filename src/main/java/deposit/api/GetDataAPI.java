@@ -18,7 +18,7 @@ public class GetDataAPI extends BaseAPI {
 	@Context
 	public Transaction tx;
 	/**
-	 * Get nodes (except User Tools and Archive nodes), relationships and 
+	 * Get nodes (except User Tools and Archive nodes), Relationships and
 	 * resource filenames for the subtrees of the root Objects or the whole Namespace.
 	 * The returned resources are copied to transient storage.
 	 *

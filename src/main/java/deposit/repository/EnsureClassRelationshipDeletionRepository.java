@@ -23,8 +23,8 @@ public class EnsureClassRelationshipDeletionRepository extends BaseRepository {
 	public Stream<String> getObjectRelationshipIds(Transaction tx, String namespaceName, String startClassName, String endClassName, String label) {
 		String matchQuery = """
 			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object)-[:MEMBER_OF]->(:Class {name: $startClassName}), (n)-[:CONTAINS]->(target:Object)-[:MEMBER_OF]->(:Class {name: $endClassName})
-			MATCH (source:Object)-[relationship:RELATED_TO {label: $label}]->(target:Object)
-			RETURN relationship.id AS relationshipId
+			MATCH (source:Object)-[Relationship:RELATED_TO {label: $label}]->(target:Object)
+			RETURN Relationship.id AS relationshipId
 		""";
 		Map<String, Object> params = Map.of(
 			"namespaceName", namespaceName,

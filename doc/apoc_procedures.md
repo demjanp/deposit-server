@@ -746,7 +746,7 @@ CALL deposit.get.classRelationshipById(relationshipId, token) YIELD rel
 
 ## deposit.get.data
 
-Get nodes (except User Tools and Archive nodes), relationships and resource filenames for the subtrees of the root Objects or the whole Namespace.
+Get nodes (except User Tools and Archive nodes), Relationships and resource filenames for the subtrees of the root Objects or the whole Namespace. The returned resources are copied to transient storage.
 
 ### Parameters:
 
@@ -839,7 +839,7 @@ CALL deposit.get.namespace(namespaceName, token) YIELD node AS namespace
 
 ## deposit.get.namespaceData
 
-Get nodes, relationships and resource filenames for the whole Namespace.
+Get nodes, Relationships and resource filenames for the whole Namespace.
 
 ### Parameters:
 
@@ -1006,12 +1006,13 @@ Try to retrieve Objects from an identical data structure in the active Namespace
 ### Parameters:
 
 - **data**: Map in the GraphSON format: {nodes: nodes, edges: edges}, where nodes = [{id, label, properties: {name: value, ...}}, ...], edges = [{id, type, outV: start_node_id, inV: end_node_id, properties: {name: value, ...}}, ...]
+- **overwrite**: List of ids of Objects existing both in the data and the current Namespace where Descriptors should be ignored when matching (they are about to be overwritten).
 - **matchEmpty**: boolean, if true, ensure all Descriptors of the matched Objects are present and equal those in data. Otherwise only match Descriptors present in the Namespace and with non-null values in the data.
 - **token**: authentication token.
 
 ### Return:
 
-the matched Object nodes.
+a map of the original Object ids and lists of ids of the matched Objects in the current Namespace
 
 ### Throws:
 
@@ -1020,7 +1021,7 @@ the matched Object nodes.
 ### Usage:
 
 ```cypher
-CALL deposit.get.objectsByData(data, matchEmpty, token) YIELD node
+CALL deposit.get.objectsByData(data, overwrite, matchEmpty, token) YIELD data
 ```
 
 ## deposit.get.query
@@ -1202,6 +1203,28 @@ the version as a string.
 
 ```cypher
 CALL deposit.get.version() YIELD value AS version
+```
+
+## deposit.import.data
+
+Import GraphSON data into the database.
+
+### Parameters:
+
+- **data**: Map in the GraphSON format: {nodes: nodes, edges: edges, resources: resources}, where nodes = [{id, label, properties: {name: value, ...}}, ...], edges = [{id, type, outV: start_node_id, inV: end_node_id, properties: {name: value, ...}}, ...], resources: [<local filename of the resource>, ...]
+- **unique**: List of Class names where new Objects should always be added, rather than reusing existing Objects with identical Descriptors. This ensures unique Objects for these Classes.
+- **overwrite**: List of ids of Objects existing both in the data and the current Namespace where existing Descriptors should be deleted and new ones created.
+- **matchEmpty**: boolean, if true, ensure all Descriptors of the matched Objects are present and equal those in data. Otherwise only match Descriptors present in the Namespace and with non-null values in the data.
+- **token**: authentication token.
+
+### Throws:
+
+- **RuntimeException**: if there was an error importing the data.
+
+### Usage:
+
+```cypher
+CALL deposit.import.data(data, unique, overwrite, matchEmpty, token)
 ```
 
 ## deposit.set.activeNamespace

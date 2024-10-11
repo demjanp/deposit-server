@@ -55,10 +55,10 @@ condition
 
 atomicCondition
 	: identifier ('.' identifier)? comparator value  
-	| relationship
+	| GSRelationship
 	;
 
-relationship
+GSRelationship
 	: identifier ('<-' | '-') label? asterisk? (minHops? '..' maxHops?)? ('-' | '->') identifier
 	;
 

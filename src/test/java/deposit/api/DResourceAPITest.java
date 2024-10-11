@@ -174,7 +174,7 @@ public class DResourceAPITest extends BaseNeo4jTest {
 			Path storedFilePath = Path.of(homeDir).resolve("Deposit/permanent_storage/" + generateHashBasedSubdir(storedFilename) + "/" + storedFilename);
 			assertTrue("The file should be created on disk.", Files.exists(storedFilePath));
 
-			// Step 4: Verify the database nodes and relationships
+			// Step 4: Verify the database nodes and Relationships
 			session.readTransaction(tx -> {
 				Result result = tx.run("""
 					MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(:Object)-[:HAS_DESCRIPTOR]->(d:Descriptor {name: $descriptorName, value: $filename})-[:HAS_RESOURCE]->(resource:DResource {filename: $filename})
@@ -187,7 +187,7 @@ public class DResourceAPITest extends BaseNeo4jTest {
 					)
 				);
 
-				assertTrue("Database should contain the expected Descriptor and Resource nodes with correct relationships.", result.hasNext());
+				assertTrue("Database should contain the expected Descriptor and Resource nodes with correct Relationships.", result.hasNext());
 				return null;
 			});
 		}

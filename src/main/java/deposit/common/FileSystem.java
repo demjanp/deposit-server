@@ -55,6 +55,7 @@ public class FileSystem {
 	}
 
 	private static void initializeFileSystem() throws FileSystemException {
+		
 		FileSystemManager fsManager = VFS.getManager();
 
 		String userHome = System.getProperty("user.home");

@@ -16,7 +16,7 @@ public class CreateClassAPITest extends BaseNeo4jTest {
 
     @Test
     public void shouldCreateClassNode() {
-        try (Session session = driver.session()) {
+		try (Session session = driver.session()) {
             // Setup: Create a Namespace to contain the Class
             String namespaceName = "TestNamespace";
             String versioningType = "transient";

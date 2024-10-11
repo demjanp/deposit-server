@@ -182,7 +182,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 				return null;
 			});
 
-			// Call the get.relationship procedure to retrieve all relationships for the start object
+			// Call the get.relationship procedure to retrieve all Relationships for the start object
 			Result result = session.run("CALL deposit.get.relationship($startObjectId, '', '', $token) YIELD rel RETURN rel",
 					Map.of("startObjectId", startObjectId,
 						   "token", token));
@@ -193,7 +193,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 				count++;
 			}
 
-			assertTrue("Should retrieve both relationships associated with the start object", count == 2);
+			assertTrue("Should retrieve both Relationships associated with the start object", count == 2);
 		}
 	}
 

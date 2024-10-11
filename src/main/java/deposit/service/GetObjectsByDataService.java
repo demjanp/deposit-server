@@ -36,8 +36,8 @@ public class GetObjectsByDataService extends BaseService {
 		}
 
 		Map<String, Map<String, ?>> parsed = GraphSONData.parseData(data);
-		List<GraphSONData.GraphsonObject> graphSONObjects = new ArrayList<>(((Map<String, GraphSONData.GraphsonObject>) parsed.get("objects")).values());
+		List<GraphSONData.GSObject> gsObjects = new ArrayList<>(((Map<String, GraphSONData.GSObject>) parsed.get("objects")).values());
 
-		return new StringMapResult(getObjectsByDataRepository.getObjectsByData(tx, namespaceName, graphSONObjects, overwrite, matchEmpty));
+		return new StringMapResult(getObjectsByDataRepository.getObjectsByData(tx, namespaceName, gsObjects, overwrite, matchEmpty));
 	}
 }

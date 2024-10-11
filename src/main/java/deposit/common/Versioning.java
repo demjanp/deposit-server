@@ -154,7 +154,7 @@ public class Versioning {
 			""";
 			
 			if (elementType.equals("Object") || elementType.equals("Class")) {
-				// Re-create relationships to the new version
+				// Re-create Relationships to the new version
 				queryString += """
 					WITH prev, newVersion, updated
 					// Proceed if a previous version exists

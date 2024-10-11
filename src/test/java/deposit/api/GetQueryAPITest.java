@@ -124,7 +124,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 		 *   value1, value2, ...
 		 *   ...
 		 *
-		 * relationships:
+		 * Relationships:
 		 *   srcRow, srcClass, label, tgtRow, tgtClass
 		 *   srcRow, srcClass, label, tgtRow, tgtClass
 		 *   ...
@@ -384,7 +384,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 				"value2", "value2"  // Row 2: Does not match C1.D1 = "value1"
 			);
 
-			// Step 3: Define relationships between objects
+			// Step 3: Define Relationships between objects
 			List<String[]> relationships = listOfLists(5,
 				"0", "C1", "relatesTo", "0", "C2",
 				"1", "C1", "relatesTo", "1", "C2",
@@ -423,7 +423,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 				"value2", "value5", "value6"  // Row 2
 			);
 
-			// Step 3: Define relationships between objects
+			// Step 3: Define Relationships between objects
 			List<String[]> relationships = listOfLists(5,
 				"0", "C1", "relatesTo", "0", "Class 2",
 				"0", "Class 2", "relatesTo", "0", "Class 3",
@@ -468,7 +468,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 				null, null, null, null  // Row 2
 			);
 
-			// Step 3: Define relationships
+			// Step 3: Define Relationships
 			List<String[]> relationships = listOfLists(5,
 				"0", "C1", "relatesTo", "0", "C2",
 				"0", "C2", "contains", "0", "C3",

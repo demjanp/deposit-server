@@ -24,35 +24,35 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Map<String, List<String>> getObjectsByData(Transaction tx, String namespaceName, 
-			List<GraphSONData.GraphsonObject> graphSONObjects, List<String> overwrite, boolean matchEmpty) {
+	public Map<String, List<String>> getObjectsByData(Transaction tx, String namespaceName,
+													  List<GraphSONData.GSObject> gsObjects, List<String> overwrite, boolean matchEmpty) {
 		
 		Map<String, List<String>> objectIdMap = new HashMap<>();
 		StringBuilder query = new StringBuilder();
 		Map<String, Object> params = new HashMap<>();
 		
 		List<Map<String, Object>> objectInfoList = new ArrayList<>();
-		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
-			if (overwrite.contains(graphSONObject.originalId)) {
-				objectIdMap.put(graphSONObject.id, List.of(graphSONObject.originalId));
+		for (GraphSONData.GSObject gsObject : gsObjects) {
+			if (overwrite.contains(gsObject.originalId)) {
+				objectIdMap.put(gsObject.id, List.of(gsObject.originalId));
 				continue;
 			}
-			if (graphSONObject.className == null || graphSONObject.className.isEmpty()) {
+			if (gsObject.className == null || gsObject.className.isEmpty()) {
 				throwException("Cannot match an Object without a specified Class.");
 			}
 			List<Map<String, Object>> givenDescriptors = new ArrayList<>();
-			for (GraphSONData.Descriptor descriptor : graphSONObject.descriptors) {
+			for (GraphSONData.GSDescriptor descriptor : gsObject.descriptors) {
 				Map<String, Object> descrMap = new HashMap<>();
 				descrMap.put("name", descriptor.name);
 				descrMap.put("value", descriptor.value);
 				givenDescriptors.add(descrMap);
 			}
 			Map<String, Object> objectInfo = new HashMap<>();
-			objectInfo.put("className", graphSONObject.className);
+			objectInfo.put("className", gsObject.className);
 			objectInfo.put("descriptors", givenDescriptors);
-			objectInfo.put("dataId", graphSONObject.id);
+			objectInfo.put("dataId", gsObject.id);
 			if (matchEmpty) {
-				objectInfo.put("descriptorCount", graphSONObject.descriptors.size());
+				objectInfo.put("descriptorCount", gsObject.descriptors.size());
 			}
 			objectInfoList.add(objectInfo);
 		}
@@ -101,17 +101,17 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		
 		// Match Relationships
 		query.append("MATCH (ns:Namespace {name: $namespaceName})\n");
-		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
-			String dataId = graphSONObject.id;
+		for (GraphSONData.GSObject gsObject : gsObjects) {
+			String dataId = gsObject.id;
 			query.append(String.format("MATCH (ns)-[:CONTAINS]->(obj%s:Object) WHERE obj%s.id IN descrResults[\"%s\"]\n", dataId, dataId, dataId));
 		}
 
 		List<String> relationshipMatchItems = new ArrayList<>();
-		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
-			if (!graphSONObject.relationships.isEmpty()) {
-				String dataId = graphSONObject.id;
+		for (GraphSONData.GSObject gsObject : gsObjects) {
+			if (!gsObject.relationships.isEmpty()) {
+				String dataId = gsObject.id;
 				int index = 1;
-				for (GraphSONData.Relationship relationship : graphSONObject.relationships) {
+				for (GraphSONData.GSRelationship relationship : gsObject.relationships) {
 					String labelVar = "label" + dataId + "_" + index;
 					String targetId = relationship.targetId;
 					relationshipMatchItems.add(String.format("(obj%s)-[:RELATED_TO {label: $%s}]->(obj%s:Object)", dataId, labelVar, targetId));
@@ -127,8 +127,8 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		// Collect and return results
 		List<String> objCollectItems = new ArrayList<>();
 		List<String> objMapItems = new ArrayList<>();
-		for (GraphSONData.GraphsonObject graphsonObject : graphSONObjects) {
-			String dataId = graphsonObject.id;
+		for (GraphSONData.GSObject gsObject : gsObjects) {
+			String dataId = gsObject.id;
 			objCollectItems.add(String.format("COLLECT(DISTINCT obj%s.id) AS objIds%s", dataId, dataId));
 			objMapItems.add(String.format("\"%s\", objIds%s", dataId, dataId));
 		}

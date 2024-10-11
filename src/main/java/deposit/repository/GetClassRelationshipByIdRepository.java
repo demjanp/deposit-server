@@ -21,8 +21,8 @@ public class GetClassRelationshipByIdRepository extends BaseRepository {
 	
 	public Relationship getClassRelationshipById(Transaction tx, String namespaceName, String relationshipId) {
 		String matchQuery = """
-			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class)-[relationship:RELATED_TO {id: $relationshipId}]->(:Class)
-			RETURN relationship
+			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(:Class)-[rel:RELATED_TO {id: $relationshipId}]->(:Class)
+			RETURN rel
 		""";
 		Map<String, Object> params = Map.of(
 			"namespaceName", namespaceName,
@@ -31,7 +31,7 @@ public class GetClassRelationshipByIdRepository extends BaseRepository {
 		try {
 			Result result = tx.execute(matchQuery, params);
 			if (result.hasNext()) {
-				return (Relationship) result.next().get("relationship");
+				return (Relationship) result.next().get("rel");
 			}
 		} catch (Exception e) {
 			throwException("Error retrieving Class Relationship", e);

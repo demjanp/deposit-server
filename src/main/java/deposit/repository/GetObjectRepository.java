@@ -44,7 +44,7 @@ public class GetObjectRepository extends BaseRepository {
 					String descriptorName = "descriptorName" + i;
 					String descriptorValue = "descriptorValue" + i;
 					matchQuery.append(" MATCH (existing)-[:HAS_DESCRIPTOR]->(descriptor:Descriptor {name: $").append(descriptorName).append(", value: $").append(descriptorValue).append("})");
-					params.put(descriptorName, descriptor.get(0));
+					params.put(descriptorName, descriptor.get(0).toString());
 					params.put(descriptorValue, descriptor.get(1));
 				}
 			}

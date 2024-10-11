@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class GraphSONDataTest {
 
-	private Map<String, GraphSONData.GraphsonObject> graphsonObjects;
+	private Map<String, GraphSONData.GSObject> graphsonObjects;
 
 	@BeforeEach
 	void setUp() {
@@ -21,13 +21,13 @@ class GraphSONDataTest {
 
 	@Test
 	void testFindSubgraphs_singleNode() {
-		GraphSONData.GraphsonObject node = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node = new GraphSONData.GSObject();
 		node.id = "1";
 		node.className = "NodeClass";
 		node.relationships = new ArrayList<>();
 		graphsonObjects.put(node.id, node);
 
-		List<List<GraphSONData.GraphsonObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(1, subgraphs.size(), "There should be 1 component.");
 		assertEquals(1, subgraphs.get(0).size(), "The component should contain 1 node.");
 		assertEquals("1", subgraphs.get(0).get(0).id, "The node ID should be '1'.");
@@ -35,17 +35,17 @@ class GraphSONDataTest {
 
 	@Test
 	void testFindSubgraphs_twoConnectedNodes() {
-		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
 		node1.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
 		node2.relationships = new ArrayList<>();
 
-		GraphSONData.Relationship relationship = new GraphSONData.Relationship();
+		GraphSONData.GSRelationship relationship = new GraphSONData.GSRelationship();
 		relationship.label = "related_to";
 		relationship.targetId = "2";
 		node1.relationships.add(relationship);
@@ -53,19 +53,19 @@ class GraphSONDataTest {
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
 
-		List<List<GraphSONData.GraphsonObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(1, subgraphs.size(), "There should be 1 component.");
 		assertEquals(2, subgraphs.get(0).size(), "The component should contain 2 nodes.");
 	}
 
 	@Test
 	void testFindSubgraphs_twoDisconnectedNodes() {
-		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
 		node1.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
 		node2.relationships = new ArrayList<>();
@@ -73,7 +73,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
 
-		List<List<GraphSONData.GraphsonObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(2, subgraphs.size(), "There should be 2 components.");
 		assertEquals(1, subgraphs.get(0).size(), "Each component should contain 1 node.");
 		assertEquals(1, subgraphs.get(1).size(), "Each component should contain 1 node.");
@@ -81,22 +81,22 @@ class GraphSONDataTest {
 
 	@Test
 	void testFindSubgraphs_threeNodesTwoConnected() {
-		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
 		node1.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
 		node2.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node3 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node3 = new GraphSONData.GSObject();
 		node3.id = "3";
 		node3.className = "NodeClass";
 		node3.relationships = new ArrayList<>();
 
-		GraphSONData.Relationship relationship = new GraphSONData.Relationship();
+		GraphSONData.GSRelationship relationship = new GraphSONData.GSRelationship();
 		relationship.label = "related_to";
 		relationship.targetId = "2";
 		node1.relationships.add(relationship);
@@ -105,7 +105,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node2.id, node2);
 		graphsonObjects.put(node3.id, node3);
 
-		List<List<GraphSONData.GraphsonObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(2, subgraphs.size(), "There should be 2 components.");
 		assertEquals(2, subgraphs.get(0).size(), "One component should contain 2 nodes.");
 		assertEquals(1, subgraphs.get(1).size(), "One component should contain 1 node.");
@@ -114,63 +114,63 @@ class GraphSONDataTest {
 	@Test
 	void testFindSubgraphs_largeComplicatedGraph() {
 		// Create multiple nodes
-		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
 		node1.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
 		node2.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node3 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node3 = new GraphSONData.GSObject();
 		node3.id = "3";
 		node3.className = "NodeClass";
 		node3.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node4 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node4 = new GraphSONData.GSObject();
 		node4.id = "4";
 		node4.className = "NodeClass";
 		node4.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node5 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node5 = new GraphSONData.GSObject();
 		node5.id = "5";
 		node5.className = "NodeClass";
 		node5.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node6 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node6 = new GraphSONData.GSObject();
 		node6.id = "6";
 		node6.className = "NodeClass";
 		node6.relationships = new ArrayList<>();
 
-		GraphSONData.GraphsonObject node7 = new GraphSONData.GraphsonObject();
+		GraphSONData.GSObject node7 = new GraphSONData.GSObject();
 		node7.id = "7";
 		node7.className = "NodeClass";
 		node7.relationships = new ArrayList<>();
 
-		// Create relationships between nodes
-		GraphSONData.Relationship rel1to2 = new GraphSONData.Relationship();
+		// Create GSRelationships between nodes
+		GraphSONData.GSRelationship rel1to2 = new GraphSONData.GSRelationship();
 		rel1to2.label = "related_to";
 		rel1to2.targetId = "2";
 		node1.relationships.add(rel1to2);
 
-		GraphSONData.Relationship rel2to3 = new GraphSONData.Relationship();
+		GraphSONData.GSRelationship rel2to3 = new GraphSONData.GSRelationship();
 		rel2to3.label = "related_to";
 		rel2to3.targetId = "3";
 		node2.relationships.add(rel2to3);
 
-		GraphSONData.Relationship rel4to5 = new GraphSONData.Relationship();
+		GraphSONData.GSRelationship rel4to5 = new GraphSONData.GSRelationship();
 		rel4to5.label = "related_to";
 		rel4to5.targetId = "5";
 		node4.relationships.add(rel4to5);
 
-		GraphSONData.Relationship rel5to6 = new GraphSONData.Relationship();
+		GraphSONData.GSRelationship rel5to6 = new GraphSONData.GSRelationship();
 		rel5to6.label = "related_to";
 		rel5to6.targetId = "6";
 		node5.relationships.add(rel5to6);
 
-		GraphSONData.Relationship rel6to7 = new GraphSONData.Relationship();
+		GraphSONData.GSRelationship rel6to7 = new GraphSONData.GSRelationship();
 		rel6to7.label = "related_to";
 		rel6to7.targetId = "7";
 		node6.relationships.add(rel6to7);
@@ -185,7 +185,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node7.id, node7);
 
 		// Run the findSubgraphs method
-		List<List<GraphSONData.GraphsonObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 
 		// Check that there are 2 components (one with nodes 1-3, another with nodes 4-7)
 		assertEquals(2, subgraphs.size(), "There should be 2 components.");
@@ -200,9 +200,9 @@ class GraphSONDataTest {
 	}
 
 	// Helper method to get the IDs of nodes in a component
-	private List<String> getIdsFromComponent(List<GraphSONData.GraphsonObject> component) {
+	private List<String> getIdsFromComponent(List<GraphSONData.GSObject> component) {
 		List<String> ids = new ArrayList<>();
-		for (GraphSONData.GraphsonObject obj : component) {
+		for (GraphSONData.GSObject obj : component) {
 			ids.add(obj.id);
 		}
 		return ids;
