@@ -711,7 +711,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
 			
 			Set<String> actual = new HashSet<>();
-			query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			query = "CALL deposit.get.objectsByData($data, [], false, '') YIELD data RETURN data";
 			queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -739,7 +739,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
 			
 			Set<String> actual = new HashSet<>();
-			query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			query = "CALL deposit.get.objectsByData($data, [], false, '') YIELD data RETURN data";
 			queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -766,7 +766,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			Map<String, Object> data = (Map<String, Object>) queryResult.next().get("data").asMap().get("graph");
 
 			Set<String> actual = new HashSet<>();
-			query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			query = "CALL deposit.get.objectsByData($data, [], false, '') YIELD data RETURN data";
 			queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -875,7 +875,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				}
 			""");
 			Set<String> actual = new HashSet<>();
-			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			String query = "CALL deposit.get.objectsByData($data, [], false, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -975,7 +975,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				}
 			""");
 			Set<String> actual = new HashSet<>();
-			String query = "CALL deposit.get.objectsByData($data, false, '') YIELD data RETURN data";
+			String query = "CALL deposit.get.objectsByData($data, [], false, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -1044,7 +1044,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				]}
 			""");
 			Set<String> actual = new HashSet<>();
-			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD data RETURN data";
+			String query = "CALL deposit.get.objectsByData($data, [], true, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -1106,7 +1106,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			""");
 
 			Set<String> actual = new HashSet<>();
-			String query = "CALL deposit.get.objectsByData($data, true, '') YIELD data RETURN data";
+			String query = "CALL deposit.get.objectsByData($data, [], true, '') YIELD data RETURN data";
 			Result queryResult = session.run(query, Map.of("data", data));
 			if (queryResult.hasNext()) {
 				Record record = queryResult.next();
@@ -1201,6 +1201,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			//String objectId = createObject(session, "Company");
 			//createDescriptor(session, objectId, "Name", "Bakery");
 
+			/*
 			Map<String, Object> dataAB = session.writeTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
 				assertTrue(result.hasNext());
@@ -1208,11 +1209,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				tx.commit();
 				return resultData;
 			});
-			Map<String, GraphSONData.GraphsonObject> graphSONAB = GraphSONData.parseData(dataAB);
-			System.out.println();
-			System.out.println("---- DATABASE ----");
-			System.out.println(graphSONAB);
-			System.out.println();
+			*/
 
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataB));

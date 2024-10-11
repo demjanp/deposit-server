@@ -4,15 +4,17 @@ import java.util.*;
 
 public class GraphSONData {
 	/**
-	 * Parses GraphSON data into a map of GraphsonObject instances keyed by their node id.
+	 * Parses GraphSON data into a map of GraphsonObject, GraphsonClass and GraphsonUserTool instances keyed by their node id.
 	 *
 	 * @param data Map<String, Object> The GraphSON data to parse
-	 * @return Map<String, GraphsonObject> {dataId: GraphsonObject, ...}
+	 * @return Map<String, Map < String, Object>> {"objects": {dataId: GraphsonObject, ...}, "classes": {dataId: GraphsonClass, ...}, "userTools": {dataId: GraphsonUserTool, ...}}
 	 */
-	public static Map<String, GraphsonObject> parseData(Map<String, Object> data) {
+	public static Map<String, Map<String, ?>> parseData(Map<String, Object> data) {
 		Map<String, GraphsonObject> graphsonObjectsById = new HashMap<>();
-		Map<String, String> classes = new HashMap<>();
+		Map<String, GraphsonClass> graphsonClassesById = new HashMap<>();
+		Map<String, GraphsonUserTool> graphsonUserToolsById = new HashMap<>();
 		Map<String, List<Descriptor>> descriptors = new HashMap<>();
+		Map<String, List<ClassDescriptor>> classDescriptors = new HashMap<>();
 
 		if (data.containsKey("graph")) {
 			data = (Map<String, Object>) data.get("graph");
@@ -35,18 +37,49 @@ public class GraphSONData {
 				GraphsonObject graphsonObject = new GraphsonObject();
 				graphsonObject.id = dataId;
 				graphsonObject.className = "";
+				graphsonObject.originalId = properties.getOrDefault("id", "0").toString();
+				graphsonObject.position = (properties.get("position") instanceof List) ? (List<Double>) properties.get("position") : List.of();
 				graphsonObject.descriptors = new ArrayList<>();
-				graphsonObject.relatedTo = new ArrayList<>();
+				graphsonObject.relationships = new ArrayList<>();
 				graphsonObjectsById.put(dataId, graphsonObject);
+			
 			} else if (label.equals("Class")) {
-				classes.put(dataId, properties.get("name").toString());
+				GraphsonClass graphsonClass = new GraphsonClass();
+				graphsonClass.id = dataId;
+				graphsonClass.name = properties.get("name").toString();
+				graphsonClass.order = (Long) properties.getOrDefault("order", 0L);
+				graphsonClass.position = (properties.get("position") instanceof List) ? (List<Double>) properties.get("position") : List.of();;
+				graphsonClass.comment = properties.getOrDefault("comment", "").toString();
+				graphsonClass.descriptors = new ArrayList<>();
+				graphsonClass.relationships = new ArrayList<>();
+				graphsonClassesById.put(dataId, graphsonClass);
+			
 			} else if (label.equals("Descriptor")) {
+				
+				// Object Descriptor
 				if (properties.containsKey("value")) {
 					Descriptor descriptor = new Descriptor();
 					descriptor.name = properties.get("name").toString();
 					descriptor.value = properties.get("value").toString();
 					descriptors.computeIfAbsent(dataId, k -> new ArrayList<>()).add(descriptor);
+				
+				// Class Descriptor
+				} else {
+					ClassDescriptor classDescriptor = new ClassDescriptor();
+					classDescriptor.name = properties.get("name").toString();
+					classDescriptor.type = properties.get("type").toString();
+					classDescriptor.order = (Long) properties.getOrDefault("order", 0L);
+					classDescriptor.comment = properties.getOrDefault("comment", "").toString();
+					classDescriptors.computeIfAbsent(dataId, k -> new ArrayList<>()).add(classDescriptor);
 				}
+			
+			} else if (label.equals("UserTool")) {
+				GraphsonUserTool graphsonUserTool = new GraphsonUserTool();
+				graphsonUserTool.id = dataId;
+				graphsonUserTool.name = properties.get("name").toString();
+				graphsonUserTool.data = properties.get("data").toString();
+				graphsonUserTool.comment = properties.getOrDefault("comment", "").toString();
+				graphsonUserToolsById.put(dataId, graphsonUserTool);
 			}
 		}
 		
@@ -57,20 +90,45 @@ public class GraphSONData {
 			String type = edge.get("type").toString();
 			Map<String, Object> edgeProperties = (Map<String, Object>) edge.get("properties");
 			
-			if (type.equals("MEMBER_OF") && graphsonObjectsById.containsKey(startId) && classes.containsKey(endId)) {
-				graphsonObjectsById.get(startId).className = classes.get(endId);
-			} else if (type.equals("HAS_DESCRIPTOR") && graphsonObjectsById.containsKey(startId) && descriptors.containsKey(endId)) {
-				graphsonObjectsById.get(startId).descriptors.addAll(descriptors.get(endId));
-			} else if (type.equals("RELATED_TO") && graphsonObjectsById.containsKey(startId) && graphsonObjectsById.containsKey(endId)) {
-				String label = edgeProperties.get("label").toString();
-				RelatedTo relatedToOut = new RelatedTo();
-				relatedToOut.label = label;
-				relatedToOut.targetId = endId;
-				graphsonObjectsById.get(startId).relatedTo.add(relatedToOut);
+			if (type.equals("MEMBER_OF") && graphsonObjectsById.containsKey(startId) && graphsonClassesById.containsKey(endId)) {
+				graphsonObjectsById.get(startId).className = graphsonClassesById.get(endId).name;
+			} else if (type.equals("HAS_DESCRIPTOR")) {
+				
+				// Object Descriptor
+				if (graphsonObjectsById.containsKey(startId) && descriptors.containsKey(endId)) {
+					graphsonObjectsById.get(startId).descriptors.addAll(descriptors.get(endId));
+				
+				// Class Descriptor
+				} else if (graphsonClassesById.containsKey(startId) && classDescriptors.containsKey(endId)) {
+					graphsonClassesById.get(startId).descriptors.addAll(classDescriptors.get(endId));
+				}
+			
+			} else if (type.equals("RELATED_TO")) {
+				
+				// Object Relationship
+				if (graphsonObjectsById.containsKey(startId) && graphsonObjectsById.containsKey(endId)) {
+					Relationship relationship = new Relationship();
+					relationship.label = edgeProperties.get("label").toString();
+					relationship.targetId = endId;
+					relationship.weight = (edgeProperties.get("weight") instanceof Double) ? (Double) edgeProperties.get("weight") : 0.0;
+					graphsonObjectsById.get(startId).relationships.add(relationship);
+				
+				// Class Relationship
+				} else if (graphsonClassesById.containsKey(startId) && graphsonClassesById.containsKey(endId)) {
+					ClassRelationship relationship = new ClassRelationship();
+					relationship.label = edgeProperties.get("label").toString();
+					relationship.targetId = endId;
+					relationship.comment = edgeProperties.getOrDefault("comment", "").toString();
+					graphsonClassesById.get(startId).relationships.add(relationship);
+				}
 			}
 		}
 		
-		return graphsonObjectsById;
+		return Map.of(
+			"objects", graphsonObjectsById,
+			"classes", graphsonClassesById,
+			"userTools", graphsonUserToolsById
+		);
 	}
 	
 	/**
@@ -86,7 +144,7 @@ public class GraphSONData {
 		// Populate the adjacency list
 		for (GraphsonObject obj : graphsonObjects.values()) {
 			adjacencyList.putIfAbsent(obj.id, new HashSet<>());
-			for (RelatedTo relation : obj.relatedTo) {
+			for (Relationship relation : obj.relationships) {
 				adjacencyList.putIfAbsent(relation.targetId, new HashSet<>());
 				// Add both directions (ignoring the direction of edges for weakly connected components)
 				adjacencyList.get(obj.id).add(relation.targetId);
@@ -108,17 +166,18 @@ public class GraphSONData {
 		return components;
 	}
 	
-	// Class to represent GraphSON Object structure
 	public static class GraphsonObject {
 		public String id;
 		public String className;
+		public String originalId;
+		public List<Double> position;
 		public List<Descriptor> descriptors;
-		public List<RelatedTo> relatedTo;
+		public List<Relationship> relationships;
 		
 		@Override
 		public String toString() {
 			StringBuilder toReturn = new StringBuilder();
-			toReturn.append(id).append("(").append(className).append(")");
+			toReturn.append("Object ").append(id).append("(").append(className).append(")");
 			List<String> descriptorStrings = new ArrayList<>();
 			for (Descriptor descriptor : descriptors) {
 				descriptorStrings.add(descriptor.toString());
@@ -126,7 +185,8 @@ public class GraphSONData {
 			if (!descriptorStrings.isEmpty()) {
 				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
 			}
-			for (RelatedTo relationship : relatedTo) {
+			toReturn.append("\norigId: ").append(originalId);
+			for (Relationship relationship : relationships) {
 				toReturn.append("\n\t").append(relationship.toString());
 			}
 			toReturn.append("\n");
@@ -134,7 +194,6 @@ public class GraphSONData {
 		}
 	}
 	
-	// Class to represent a Descriptor in GraphSON
 	public static class Descriptor {
 		public String name;
 		public String value;
@@ -145,14 +204,77 @@ public class GraphSONData {
 		}
 	}
 	
-	// Class to represent RELATED_TO relationships in GraphSON
-	public static class RelatedTo {
+	public static class Relationship {
 		public String label;
 		public String targetId;
+		public Double weight;
 		
 		@Override
 		public String toString() {
 			return "-[" + label + "]->(" + targetId + ")";
+		}
+	}
+	
+	public static class GraphsonClass {
+		public String id;
+		public String name;
+		public Long order;
+		public List<Double> position;
+		public String comment;
+		public List<ClassDescriptor> descriptors;
+		public List<ClassRelationship> relationships;
+		
+		@Override
+		public String toString() {
+			StringBuilder toReturn = new StringBuilder();
+			toReturn.append("Class ").append(id).append(" : ").append(name);
+			List<String> descriptorStrings = new ArrayList<>();
+			for (ClassDescriptor descriptor : descriptors) {
+				descriptorStrings.add(descriptor.toString());
+			}
+			if (!descriptorStrings.isEmpty()) {
+				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
+			}
+			for (ClassRelationship relationship : relationships) {
+				toReturn.append("\n\t").append(relationship.toString());
+			}
+			toReturn.append("\n");
+			return toReturn.toString();
+		}
+	}
+	
+	public static class ClassDescriptor {
+		public String name;
+		public String type;
+		public Long order;
+		public String comment;
+
+		@Override
+		public String toString() {
+			return name + " (" + type + ")";
+		}
+	}
+	
+	public static class ClassRelationship {
+		public String label;
+		public String targetId;
+		public String comment;
+		
+		@Override
+		public String toString() {
+			return "-[" + label + "]->(" + targetId + ")";
+		}
+	}
+	
+	public static class GraphsonUserTool {
+		public String id;
+		public String name;
+		public String data;
+		public String comment;
+		
+		@Override
+		public String toString() {
+			return "UserTool " + id + " : " + name;
 		}
 	}
 	

@@ -24,13 +24,19 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		return instance;
 	}
 	
-	public Map<String, List<String>> getObjectsByData(Transaction tx, String namespaceName, List<GraphSONData.GraphsonObject> graphSONObjects, boolean matchEmpty) {
+	public Map<String, List<String>> getObjectsByData(Transaction tx, String namespaceName, 
+			List<GraphSONData.GraphsonObject> graphSONObjects, List<String> overwrite, boolean matchEmpty) {
+		
 		Map<String, List<String>> objectIdMap = new HashMap<>();
 		StringBuilder query = new StringBuilder();
 		Map<String, Object> params = new HashMap<>();
 		
 		List<Map<String, Object>> objectInfoList = new ArrayList<>();
 		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
+			if (overwrite.contains(graphSONObject.originalId)) {
+				objectIdMap.put(graphSONObject.id, List.of(graphSONObject.originalId));
+				continue;
+			}
 			if (graphSONObject.className == null || graphSONObject.className.isEmpty()) {
 				throwException("Cannot match an Object without a specified Class.");
 			}
@@ -102,14 +108,14 @@ public class GetObjectsByDataRepository extends BaseRepository {
 
 		List<String> relationshipMatchItems = new ArrayList<>();
 		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects) {
-			if (!graphSONObject.relatedTo.isEmpty()) {
+			if (!graphSONObject.relationships.isEmpty()) {
 				String dataId = graphSONObject.id;
 				int index = 1;
-				for (GraphSONData.RelatedTo relatedTo : graphSONObject.relatedTo) {
+				for (GraphSONData.Relationship relationship : graphSONObject.relationships) {
 					String labelVar = "label" + dataId + "_" + index;
-					String targetId = relatedTo.targetId;
+					String targetId = relationship.targetId;
 					relationshipMatchItems.add(String.format("(obj%s)-[:RELATED_TO {label: $%s}]->(obj%s:Object)", dataId, labelVar, targetId));
-					params.put(labelVar, relatedTo.label);
+					params.put(labelVar, relationship.label);
 					index++;
 				}
 			}
@@ -128,7 +134,7 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		}
 		query.append(String.format("WITH %s\n", String.join(", ", objCollectItems)));
 		query.append(String.format("RETURN apoc.map.fromValues([%s]) AS results\n", String.join(", ", objMapItems)));
-
+		
 		// Execute query
 		Result result = tx.execute(query.toString(), params);
 		if (result.hasNext()) {

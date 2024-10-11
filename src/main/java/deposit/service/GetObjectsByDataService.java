@@ -27,16 +27,17 @@ public class GetObjectsByDataService extends BaseService {
 		return instance;
 	}
 
-	public StringMapResult getObjectsByData(Transaction tx, Map<String, Object> data, boolean matchEmpty, String token) {
+	public StringMapResult getObjectsByData(Transaction tx, Map<String, Object> data, List<String> overwrite, boolean matchEmpty, String token) {
 		
 		validateToken(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve Objects without an active Namespace.");
 		}
-		
-		List<GraphSONData.GraphsonObject> graphSONObjects = new ArrayList<>(GraphSONData.parseData(data).values());
 
-		return new StringMapResult(getObjectsByDataRepository.getObjectsByData(tx, namespaceName, graphSONObjects, matchEmpty));
+		Map<String, Map<String, ?>> parsed = GraphSONData.parseData(data);
+		List<GraphSONData.GraphsonObject> graphSONObjects = new ArrayList<>(((Map<String, GraphSONData.GraphsonObject>) parsed.get("objects")).values());
+
+		return new StringMapResult(getObjectsByDataRepository.getObjectsByData(tx, namespaceName, graphSONObjects, overwrite, matchEmpty));
 	}
 }

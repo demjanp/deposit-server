@@ -24,7 +24,7 @@ class GraphSONDataTest {
 		GraphSONData.GraphsonObject node = new GraphSONData.GraphsonObject();
 		node.id = "1";
 		node.className = "NodeClass";
-		node.relatedTo = new ArrayList<>();
+		node.relationships = new ArrayList<>();
 		graphsonObjects.put(node.id, node);
 
 		List<List<GraphSONData.GraphsonObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
@@ -38,17 +38,17 @@ class GraphSONDataTest {
 		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
-		node1.relatedTo = new ArrayList<>();
+		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
-		node2.relatedTo = new ArrayList<>();
+		node2.relationships = new ArrayList<>();
 
-		GraphSONData.RelatedTo relationship = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship relationship = new GraphSONData.Relationship();
 		relationship.label = "related_to";
 		relationship.targetId = "2";
-		node1.relatedTo.add(relationship);
+		node1.relationships.add(relationship);
 
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
@@ -63,12 +63,12 @@ class GraphSONDataTest {
 		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
-		node1.relatedTo = new ArrayList<>();
+		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
-		node2.relatedTo = new ArrayList<>();
+		node2.relationships = new ArrayList<>();
 
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
@@ -84,22 +84,22 @@ class GraphSONDataTest {
 		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
-		node1.relatedTo = new ArrayList<>();
+		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
-		node2.relatedTo = new ArrayList<>();
+		node2.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node3 = new GraphSONData.GraphsonObject();
 		node3.id = "3";
 		node3.className = "NodeClass";
-		node3.relatedTo = new ArrayList<>();
+		node3.relationships = new ArrayList<>();
 
-		GraphSONData.RelatedTo relationship = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship relationship = new GraphSONData.Relationship();
 		relationship.label = "related_to";
 		relationship.targetId = "2";
-		node1.relatedTo.add(relationship);
+		node1.relationships.add(relationship);
 
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
@@ -117,63 +117,63 @@ class GraphSONDataTest {
 		GraphSONData.GraphsonObject node1 = new GraphSONData.GraphsonObject();
 		node1.id = "1";
 		node1.className = "NodeClass";
-		node1.relatedTo = new ArrayList<>();
+		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node2 = new GraphSONData.GraphsonObject();
 		node2.id = "2";
 		node2.className = "NodeClass";
-		node2.relatedTo = new ArrayList<>();
+		node2.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node3 = new GraphSONData.GraphsonObject();
 		node3.id = "3";
 		node3.className = "NodeClass";
-		node3.relatedTo = new ArrayList<>();
+		node3.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node4 = new GraphSONData.GraphsonObject();
 		node4.id = "4";
 		node4.className = "NodeClass";
-		node4.relatedTo = new ArrayList<>();
+		node4.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node5 = new GraphSONData.GraphsonObject();
 		node5.id = "5";
 		node5.className = "NodeClass";
-		node5.relatedTo = new ArrayList<>();
+		node5.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node6 = new GraphSONData.GraphsonObject();
 		node6.id = "6";
 		node6.className = "NodeClass";
-		node6.relatedTo = new ArrayList<>();
+		node6.relationships = new ArrayList<>();
 
 		GraphSONData.GraphsonObject node7 = new GraphSONData.GraphsonObject();
 		node7.id = "7";
 		node7.className = "NodeClass";
-		node7.relatedTo = new ArrayList<>();
+		node7.relationships = new ArrayList<>();
 
 		// Create relationships between nodes
-		GraphSONData.RelatedTo rel1to2 = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship rel1to2 = new GraphSONData.Relationship();
 		rel1to2.label = "related_to";
 		rel1to2.targetId = "2";
-		node1.relatedTo.add(rel1to2);
+		node1.relationships.add(rel1to2);
 
-		GraphSONData.RelatedTo rel2to3 = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship rel2to3 = new GraphSONData.Relationship();
 		rel2to3.label = "related_to";
 		rel2to3.targetId = "3";
-		node2.relatedTo.add(rel2to3);
+		node2.relationships.add(rel2to3);
 
-		GraphSONData.RelatedTo rel4to5 = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship rel4to5 = new GraphSONData.Relationship();
 		rel4to5.label = "related_to";
 		rel4to5.targetId = "5";
-		node4.relatedTo.add(rel4to5);
+		node4.relationships.add(rel4to5);
 
-		GraphSONData.RelatedTo rel5to6 = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship rel5to6 = new GraphSONData.Relationship();
 		rel5to6.label = "related_to";
 		rel5to6.targetId = "6";
-		node5.relatedTo.add(rel5to6);
+		node5.relationships.add(rel5to6);
 
-		GraphSONData.RelatedTo rel6to7 = new GraphSONData.RelatedTo();
+		GraphSONData.Relationship rel6to7 = new GraphSONData.Relationship();
 		rel6to7.label = "related_to";
 		rel6to7.targetId = "7";
-		node6.relatedTo.add(rel6to7);
+		node6.relationships.add(rel6to7);
 
 		// Add all nodes to the graph
 		graphsonObjects.put(node1.id, node1);
