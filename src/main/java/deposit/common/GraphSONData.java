@@ -196,7 +196,7 @@ public class GraphSONData {
 	
 	public static class Descriptor {
 		public String name;
-		public String value;
+		public String value; // TODO change type to Object
 
 		@Override
 		public String toString() {

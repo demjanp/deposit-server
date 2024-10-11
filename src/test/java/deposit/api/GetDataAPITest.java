@@ -1198,59 +1198,29 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			
 			Map<String, String> objectIdMapA = createDataA(session, "TestNamespace", "");
 
-			//String objectId = createObject(session, "Company");
-			//createDescriptor(session, objectId, "Name", "Bakery");
-
-			/*
-			Map<String, Object> dataAB = session.writeTransaction(tx -> {
-				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
-				assertTrue(result.hasNext());
-				Map<String, Object> resultData = result.next().get("data").asMap();
-				tx.commit();
-				return resultData;
-			});
-			*/
-
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataB));
 				tx.commit();
 				return null;
 			});
 
-			/*
-			try {
-				String jsonData = encodeDataToJson(dataAB);
-				System.out.print(jsonData);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
+			Set<String> expected = new HashSet<>();
+			for (String key : objectIdMapB.keySet()) {
+				String[] parts = key.split(": ");
+				expected.add(parts[1]);
 			}
-			/*
+			for (String key : objectIdMapA.keySet()) {
+				String[] parts = key.split(": ");
+				expected.add(parts[1]);
+			}
+			System.out.println(expected); // DEBUG
 
-			/*
-			String query = """
-				MATCH (ns:Namespace {name: 'TestNamespace'})-[:CONTAINS]->(obj:Object)-[:HAS_DESCRIPTOR]->(descr:Descriptor),
-				(obj)-[:MEMBER_OF]-(cls:Class)
-				OPTIONAL MATCH (obj)-[rel:RELATED_TO]->(tgtObj:Object)-[:HAS_DESCRIPTOR]->(tgtDescr:Descriptor), (tgtObj)-[:MEMBER_OF]-(tgtCls:Class)
-				RETURN cls.name AS srcName, descr.value AS srcValue, rel.label AS label, tgtCls.name AS tgtName, tgtDescr.value AS tgtValue
-			""";
-			session.writeTransaction(tx -> {
-				Result result = tx.run(query);
-				while (result.hasNext()) {
-					Record record = result.next();
-					String srcName = record.get("srcName").asString();
-					String srcValue = record.get("srcValue").asString();
-					String label = record.get("label").asString();
-					String tgtName = record.get("tgtName").asString();
-					String tgtValue = record.get("tgtValue").asString();
-					if (srcValue.endsWith(".tmp") || tgtValue.endsWith(".tmp")) {
-						continue;
-					}
-					System.out.println(srcName + " : " + srcValue + " - " + label + " - " + tgtName + " : " + tgtValue);
-				}
-				return null;
-			});
-			*/
-			assertTrue(false); // DEBUG
+			String query = "CALL deposit.get.data([], '') YIELD data RETURN data";
+			Result queryResult = session.run(query);
+			assertQueryResult(queryResult, expected);
+
+			// TODO test if relationships have been created
+
 		}
 	}
 }

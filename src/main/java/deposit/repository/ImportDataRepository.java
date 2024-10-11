@@ -27,6 +27,7 @@ public class ImportDataRepository extends BaseRepository {
 	private final CreateDescriptorRepository createDescriptorRepository;
 	private final CreateRelationshipRepository createRelationshipRepository;
 	private final CreateClassRelationshipRepository createClassRelationshipRepository;
+	private final CreateUserToolRepository createUserToolRepository;
 		
 	private ImportDataRepository() {
 		this.getObjectsByDataRepository = GetObjectsByDataRepository.getInstance();
@@ -41,6 +42,7 @@ public class ImportDataRepository extends BaseRepository {
 		this.createDescriptorRepository = CreateDescriptorRepository.getInstance();
 		this.createRelationshipRepository = CreateRelationshipRepository.getInstance();
 		this.createClassRelationshipRepository = CreateClassRelationshipRepository.getInstance();
+		this.createUserToolRepository = CreateUserToolRepository.getInstance();
 	}
 	
 	public static synchronized ImportDataRepository getInstance() {
@@ -59,7 +61,7 @@ public class ImportDataRepository extends BaseRepository {
 		Map<String, GraphSONData.GraphsonUserTool> graphSONUserTools = (Map<String, GraphSONData.GraphsonUserTool>) parsed.get("userTools");
 		Set<String> classesWithDuplicates = getExistingClassesWithDuplicates(tx, namespaceName, graphSONObjects);
 		Set<String> toCreateObjects = new HashSet<>(); // Set of dataIds of Objects to create in the database
-		Set<String> toOverwriteObjects = getObjectsToOverwrite(graphSONObjects, overwrite); // Set of dataIds of Objects to overwrite in the database
+		Set<String> toOverwriteObjects = getObjectsToOverwrite(tx, namespaceName, graphSONObjects, overwrite); // Set of dataIds of Objects to overwrite in the database
 		Map<String, String> objectIdMap = new HashMap<>(); // Matched Object ids for dataIds {dataId: Object id, ...}
 		Set<String> allMatchedByDescriptors = new HashSet<>();
 		Map<String, List<String>> createdByClass = new HashMap<>();
@@ -79,14 +81,37 @@ public class ImportDataRepository extends BaseRepository {
 		createUserTools(tx, timeStamp, username, namespaceName, versioningType, graphSONUserTools);
 	}
 	
-	private Set<String> getObjectsToOverwrite(Map<String, GraphSONData.GraphsonObject> graphSONObjects, List<String> overwrite) {
-		// TODO check if originalIds exist in the database and if not, throw an exception
+	private Set<String> getObjectsToOverwrite(Transaction tx, String namespaceName, Map<String, GraphSONData.GraphsonObject> graphSONObjects, List<String> overwrite) {
 		Set<String> toOverwriteObjects = new HashSet<>();
+		List<String> checkIds = new ArrayList<>();
 		for (GraphSONData.GraphsonObject graphSONObject : graphSONObjects.values()) {
 			if (overwrite.contains(graphSONObject.originalId)) {
 				toOverwriteObjects.add(graphSONObject.id);
+				checkIds.add(graphSONObject.originalId);
 			}
 		}
+		if (checkIds.isEmpty()) {
+			return toOverwriteObjects;
+		}
+		String query = """
+			WITH $checkIds AS checkIds
+			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(o:Object)
+			WHERE o.id IN checkIds
+			WITH collect(o.id) AS existingIds, checkIds
+			RETURN size(existingIds) = size(checkIds) AS allExist
+		""";
+		Result result = tx.execute(query, Map.of(
+			"namespaceName", namespaceName,
+			"checkIds", checkIds
+		));
+		boolean allExist = false;
+		if (result.hasNext()) {
+			allExist = (boolean) result.next().get("allExist");
+		}
+		if (!allExist) {
+			throwException("Some Object Ids specified in overwrite do not exist in the database.");
+		}
+		
 		return toOverwriteObjects;
 	}
 	
@@ -100,7 +125,7 @@ public class ImportDataRepository extends BaseRepository {
 				tx, namespaceName, subGraph, overwrite, matchEmpty);
 		if (!objectIdMapSubgraph.isEmpty()) {
 			if (objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
-				throwException("Ambiguous match detected");
+				throwException("Ambiguous match detected.");
 			}
 			objectIdMap.putAll(objectIdMapSubgraph.entrySet().stream()
 					.collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get(0))));
@@ -290,7 +315,7 @@ public class ImportDataRepository extends BaseRepository {
 			String versioningType, Map<String, GraphSONData.GraphsonObject> graphSONObjects,
 			Map<String, GraphSONData.GraphsonClass> graphSONClasses, Set<String> toCreateObjects) {
 
-		// Find highest Class order
+		// Find the highest Class order
 		List<Node> classNodes = getClassRepository.getClass(tx, namespaceName, "").collect(Collectors.toList());
 		Set<String> existingClasses = new HashSet<>();
 		Long classOrder = 0L;
@@ -323,72 +348,234 @@ public class ImportDataRepository extends BaseRepository {
 			String className = entry.getKey();
 			Set<String> descriptors = entry.getValue();
 			
-			// Find highest Class Descriptor order
-			Long descrOrder = 1L;
-			Set<String> toCreateDescriptors = new HashSet<>(descriptors);
-			if (!descriptors.isEmpty()) {
-				List<Node> descriptorNodes = getClassDescriptorRepository.getClassDescriptor(tx, namespaceName, className, "").collect(Collectors.toList());
-				for (Node node : descriptorNodes) {
-					Long order = (Long) node.getProperty("order", 0L);
-					descrOrder = order > descrOrder ? order : descrOrder;
-					toCreateDescriptors.remove((String) node.getProperty("name"));
-				}
-				descrOrder++;
-			}
-
-			List<Double> position = List.of();
-			String comment = "";
-			Map<String, GraphSONData.ClassDescriptor> classDescriptors = new HashMap<>();
-			if (graphSONClassesByName.containsKey(className)) {
-				GraphSONData.GraphsonClass graphSONClass = graphSONClassesByName.get(className);
-				position = graphSONClass.position;
-				comment = graphSONClass.comment;
-				for (GraphSONData.ClassDescriptor classDescriptor : graphSONClass.descriptors) {
-					classDescriptors.put(classDescriptor.name, classDescriptor);
-				}
-			}
-
-			// TODO create Class (including order, position, comment)
-			System.out.println("\nCREATE CLASS: " + graphSONClassesByName.get(className)); // DEBUG
-
-			for (String descriptorName: toCreateDescriptors) {
-				String descriptorType = "String";
-				String descriptorComment = "";
-				if (classDescriptors.containsKey(descriptorName)) {
-					descriptorType = classDescriptors.get(descriptorName).type;
-					descriptorComment = classDescriptors.get(descriptorName).comment;
-				}
-
-				// TODO create Class Descriptor (including type, order, comment)
-				System.out.println("\tCREATE CLS DESCR: " + classDescriptors.get(descriptorName)); // DEBUG
-
-				descrOrder++;
-			}
+			createClass(tx, timeStamp, username, namespaceName, versioningType, 
+					graphSONClassesByName, className, descriptors, classOrder);
+			
 			classOrder++;
 		}
 		
-		// TODO create Class Relationships (for all graphSONClasses where they don't exist, not just toCreateClasses)
+		// Create Class Relationships
+		createClassRelationships(tx, timeStamp, username, namespaceName, versioningType, graphSONClasses);
+	}
+	
+	private void createClass(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
+			String versioningType, Map<String, GraphSONData.GraphsonClass> graphSONClassesByName, String className, Set<String> descriptors, Long classOrder) {
+		
+		// Find highest Class Descriptor order
+		Long descrOrder = 0L;
+		Set<String> toCreateDescriptors = new HashSet<>(descriptors);
+		if (!descriptors.isEmpty()) {
+			List<Node> descriptorNodes = getClassDescriptorRepository.getClassDescriptor(tx, namespaceName, className, "").collect(Collectors.toList());
+			for (Node node : descriptorNodes) {
+				Long order = (Long) node.getProperty("order", 0L);
+				descrOrder = order > descrOrder ? order : descrOrder;
+				toCreateDescriptors.remove((String) node.getProperty("name"));
+			}
+		}
+		descrOrder++;
+		
+		// Collect Class data and create it
+		List<Double> position = List.of();
+		String comment = "";
+		Map<String, GraphSONData.ClassDescriptor> classDescriptors = new HashMap<>();
+		if (graphSONClassesByName.containsKey(className)) {
+			GraphSONData.GraphsonClass graphSONClass = graphSONClassesByName.get(className);
+			position = graphSONClass.position;
+			comment = graphSONClass.comment;
+			for (GraphSONData.ClassDescriptor classDescriptor : graphSONClass.descriptors) {
+				classDescriptors.put(classDescriptor.name, classDescriptor);
+			}
+		}
+		createClassRepository.createClass(tx, timeStamp, username, namespaceName, versioningType, className, classOrder, position, comment);
+		
+		// Create Class Descriptors
+		for (String descriptorName: toCreateDescriptors) {
+			String descriptorType = "String";
+			String descriptorComment = "";
+			if (classDescriptors.containsKey(descriptorName)) {
+				descriptorType = classDescriptors.get(descriptorName).type;
+				descriptorComment = classDescriptors.get(descriptorName).comment;
+			}
+			createClassDescriptorRepository.createClassDescriptor(tx, timeStamp, username, namespaceName, versioningType, className, descriptorName, descriptorType, descrOrder, descriptorComment);
+			descrOrder++;
+		}		
+	}
+	
+	private void createClassRelationships(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
+			String versioningType, Map<String, GraphSONData.GraphsonClass> graphSONClasses) {
+		
+		// Check which Class Relationships don't exist in the database and create them
+		List<Map<String, String>> relationshipInfoList = new ArrayList<>();
+		for (GraphSONData.GraphsonClass graphsonClass : graphSONClasses.values()) {
+			for (GraphSONData.ClassRelationship relationship : graphsonClass.relationships) {
+				Map<String, String> relationshipInfo = new HashMap<>();
+				relationshipInfo.put("source", graphsonClass.name);
+				relationshipInfo.put("target", graphSONClasses.get(relationship.targetId).name);
+				relationshipInfo.put("label", relationship.label);
+				relationshipInfo.put("comment", relationship.comment);
+				relationshipInfoList.add(relationshipInfo);
+			}
+		}
+		String query = """
+			MATCH (ns:Namespace {name: $namespaceName})
+			WITH ns, $relationshipInfoList as relationshipInfoList
+			UNWIND relationshipInfoList AS relationshipInfo
+			WITH ns, relationshipInfo
+			WHERE NOT EXISTS {
+				MATCH (ns)-[:CONTAINS]->(:Class {name: relationshipInfo.source})-[:RELATED_TO {label: relationshipInfo.label}]->(:Class {name: relationshipInfo.target})
+			}
+			RETURN relationshipInfo.source AS source, relationshipInfo.target AS target, relationshipInfo.label AS label, relationshipInfo.comment AS comment
+		""";
+		try {
+			Result result = tx.execute(query, Map.of(
+					"namespaceName", namespaceName,
+					"relationshipInfoList", relationshipInfoList
+			));
+			while (result.hasNext()) {
+				Map<String, Object> row = result.next();
+				String source = row.get("source").toString();
+				String target = row.get("target").toString();
+				String label = row.get("label").toString();
+				String comment = row.get("comment").toString();
+				createClassRelationshipRepository.createClassRelationship(tx, timeStamp, username, namespaceName, versioningType, source, target, label, comment);
+			}
+		} catch (Exception e) {
+			throwException("Error creating Class Relationships", e);
+		}
 	}
 	
 	private void createObjects(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
 			String versioningType, Map<String, GraphSONData.GraphsonObject> graphSONObjects, Set<String> toCreateObjects,
 			Set<String> toOverwriteObjects, Map<String, String> objectIdMap) {
-
+		
+		// Create Objects
 		for (String dataId : toCreateObjects) {
 			GraphSONData.GraphsonObject graphSONObject = graphSONObjects.get(dataId);
-			String className = graphSONObject.className;
-			// TODO create Object (including position, add id to objectIdMap)
-			// TODO create Descriptors
-			System.out.println("CREATE OBJECT: " + graphSONObject);
+			Node node = createObjectRepository.createObject(tx, timeStamp, username, namespaceName, versioningType, graphSONObject.position);
+			String objectId = node.getProperty("id").toString();
+			setMembershipRepository.setMembership(tx, timeStamp, username, namespaceName, versioningType, graphSONObject.className, objectId);
+			objectIdMap.put(dataId, objectId);
 		}
-		// TODO delete Descriptors and create new ones for Objects from the toOverwriteObjects list
 		
-		// TODO create Relationships (for all graphSONObjects where they don't exist, not just toCreateObjects)
+		// Delete existing Descriptors for Objects in the overwrite list
+		for (String dataId : toOverwriteObjects) {
+			String objectId = objectIdMap.get(dataId);
+			deleteObjectDescriptors(tx, timeStamp, username, namespaceName, versioningType, objectId);
+		}
+		
+		// Create or update Descriptors for each imported Object
+		for (Map.Entry<String, String> entry : objectIdMap.entrySet()) {
+			for (GraphSONData.Descriptor descriptor : graphSONObjects.get(entry.getKey()).descriptors) {
+				createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, entry.getValue(), descriptor.name, descriptor.value, true);
+			}
+		}
+		
+		createObjectRelationships(tx, timeStamp, username, namespaceName, versioningType, graphSONObjects, objectIdMap);
 	}
-
+	
+	private void deleteObjectDescriptors(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
+			String versioningType, String objectId) {
+		
+		String query = """
+			MATCH (ns:Namespace {name: $namespaceName})-[:CONTAINS]->(obj:Object {id: $objectId})
+			OPTIONAL MATCH (obj)-[:HAS_DESCRIPTOR]->(descr:Descriptor)
+			WITH COLLECT(DISTINCT descr.id) AS descriptorIds
+			RETURN descriptorIds
+		""";
+		List<String> descriptorIds = new ArrayList<>();
+		try {
+			Result result = tx.execute(query, Map.of("namespaceName", namespaceName, "objectId", objectId));
+			if (result.hasNext()) {
+				Map<String, Object> row = result.next();
+				descriptorIds = (List<String>) row.get("descriptorIds");
+			}
+		} catch (Exception e) {
+			throwException("Error finding Descriptors in TempNamespace", e);
+		}
+		for (String descriptorId : descriptorIds) {
+			deleteDescriptorByIdRepository.deleteDescriptorById(tx, timeStamp, username, namespaceName, versioningType, descriptorId);
+		}
+	}
+	
+	private void createObjectRelationships(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
+			String versioningType, Map<String, GraphSONData.GraphsonObject> graphSONObjects, Map<String, String> objectIdMap) {
+		
+		// Check which Relationships don't exist in the database and create them
+		List<Map<String, String>> relationshipInfoList = new ArrayList<>();
+		for (GraphSONData.GraphsonObject graphsonObject : graphSONObjects.values()) {
+			for (GraphSONData.Relationship relationship : graphsonObject.relationships) {
+				Map<String, String> relationshipInfo = new HashMap<>();
+				relationshipInfo.put("source", objectIdMap.get(graphsonObject.id));
+				relationshipInfo.put("target", objectIdMap.get(graphSONObjects.get(relationship.targetId).id));
+				relationshipInfo.put("label", relationship.label);
+				relationshipInfo.put("weight", relationship.weight.toString());
+				relationshipInfoList.add(relationshipInfo);
+			}
+		}
+		String query = """
+			MATCH (ns:Namespace {name: $namespaceName})
+			WITH ns, $relationshipInfoList as relationshipInfoList
+			UNWIND relationshipInfoList AS relationshipInfo
+			WITH ns, relationshipInfo
+			WHERE NOT EXISTS {
+				MATCH (ns)-[:CONTAINS]->(:Object {id: relationshipInfo.source})-[:RELATED_TO {label: relationshipInfo.label}]->(:Object {id: relationshipInfo.target})
+			}
+			RETURN relationshipInfo.source AS source, relationshipInfo.target AS target, relationshipInfo.label AS label, relationshipInfo.weight AS weight
+		""";
+		try {
+			Result result = tx.execute(query, Map.of(
+					"namespaceName", namespaceName,
+					"relationshipInfoList", relationshipInfoList
+			));
+			while (result.hasNext()) {
+				Map<String, Object> row = result.next();
+				String source = row.get("source").toString();
+				String target = row.get("target").toString();
+				String label = row.get("label").toString();
+				Double weight = Double.valueOf(row.get("weight").toString());
+				createRelationshipRepository.createRelationship(tx, timeStamp, username, namespaceName, versioningType, source, target, label, weight);
+			}
+		} catch (Exception e) {
+			throwException("Error creating Relationships", e);
+		}
+	}
+	
 	private void createUserTools(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
 			String versioningType, Map<String, GraphSONData.GraphsonUserTool> graphSONUserTools) {
 
-		// TODO create UserTools which do not already exist in the database
+		// Check which User Tools don't exist in the database and create them
+		List<Map<String, String>> userToolInfoList = new ArrayList<>();
+		for (GraphSONData.GraphsonUserTool graphsonUserTool : graphSONUserTools.values()) {
+			Map<String, String> userToolInfo = new HashMap<>();
+			userToolInfo.put("name", graphsonUserTool.name);
+			userToolInfo.put("data", graphsonUserTool.data);
+			userToolInfo.put("comment", graphsonUserTool.comment);
+			userToolInfoList.add(userToolInfo);
+		}
+		String query = """
+			MATCH (ns:Namespace {name: $namespaceName})
+			WITH ns, $userToolInfoList as userToolInfoList
+			UNWIND userToolInfoList AS userToolInfo
+			WITH ns, userToolInfo
+			WHERE NOT EXISTS {
+				MATCH (ns)-[:CONTAINS]->(:UserTool {name: userToolInfo.name})
+			}
+			RETURN userToolInfo.name AS name, userToolInfo.data AS data, userToolInfo.comment AS comment
+		""";
+		try {
+			Result result = tx.execute(query, Map.of(
+					"namespaceName", namespaceName,
+					"userToolInfoList", userToolInfoList
+			));
+			while (result.hasNext()) {
+				Map<String, Object> row = result.next();
+				String name = row.get("name").toString();
+				String data = row.get("data").toString();
+				String comment = row.get("comment").toString();
+				createUserToolRepository.createUserTool(tx, timeStamp, username, namespaceName, versioningType, name, data, comment);
+			}
+		} catch (Exception e) {
+			throwException("Error creating User Tools", e);
+		}		
 	}
 }
