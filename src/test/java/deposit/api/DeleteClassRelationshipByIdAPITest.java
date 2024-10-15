@@ -44,20 +44,6 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private String createClassRelationship(Session session, String startClassName, String endClassName, String label, String comment) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, $label, $comment, $token) YIELD rel RETURN rel.id AS relationshipId",
-					Map.of("startClassName", startClassName,
-							"endClassName", endClassName,
-							"label", label,
-							"comment", comment,
-							"token", token));
-			String relationshipId = result.single().get("relationshipId").asString();
-			tx.commit();
-			return relationshipId;
-		});
-	}
-
 	@Test
 	public void shouldDeleteClassRelationshipById() {
 		try (Session session = driver.session()) {
@@ -68,7 +54,7 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 			String comment = "This is a test relationship.";
 
 			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
-			String relationshipId = createClassRelationship(session, startClassName, endClassName, label, comment);
+			String relationshipId = createClassRelationship(session, startClassName, label, endClassName, comment, token);
 
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.delete.classRelationshipById($relationshipId, $token)",
@@ -97,7 +83,7 @@ public class DeleteClassRelationshipByIdAPITest extends BaseNeo4jTest {
 
 			// Step 1: Create Namespace, Classes, and Class Relationship
 			createNamespaceAndClasses(session, namespaceName, startClassName, endClassName);
-			createClassRelationship(session, startClassName, endClassName, label, comment);
+			createClassRelationship(session, startClassName, endClassName, label, comment, token);
 
 			// Step 2: Create Objects for Start and End Classes
 			session.writeTransaction(tx -> {

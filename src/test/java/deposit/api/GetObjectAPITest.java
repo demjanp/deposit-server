@@ -23,57 +23,26 @@ public class GetObjectAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
-	private void createNamespace(Session session, String namespaceName, String versioningType) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', $versioningType, $token)",
-					Map.of("namespaceName", namespaceName, "versioningType", versioningType, "token", token));
-			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
-					Map.of("namespaceName", namespaceName, "token", token));
-			ServerContext.setActiveNamespace(namespaceName, token);
-			tx.commit();
-			return null;
-		});
-	}
-
-	private String createObject(Session session, String className) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
-					Map.of("className", className, "token", token));
-			String objectId = result.single().get("objectId").asString();
-			tx.commit();
-			return objectId;
-		});
-	}
-
-	private void createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
-					Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
-			tx.commit();
-			return null;
-		});
-	}
-
 	@Test
 	public void shouldFilterCorrectObjectsBasedOnClassAndDescriptor() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
-			createNamespace(session, namespaceName, "transient");
+			createNamespace(session, namespaceName, "transient", token);
 			
 			// Create first object with class "ClassA" and descriptor "DescriptorA" with value "ValueA"
 			String classA = "ClassA";
-			String objectIdA = createObject(session, classA);
-			createDescriptor(session, objectIdA, "DescriptorA", "ValueA");
+			String objectIdA = createObject(session, classA, token);
+			createDescriptor(session, objectIdA, "DescriptorA", "ValueA", token);
 
 			// Create second object with class "ClassB" and descriptor "DescriptorB" with value "ValueB"
 			String classB = "ClassB";
-			String objectIdB = createObject(session, classB);
-			createDescriptor(session, objectIdB, "DescriptorB", "ValueB");
+			String objectIdB = createObject(session, classB, token);
+			createDescriptor(session, objectIdB, "DescriptorB", "ValueB", token);
 
 			// Create third object with class "ClassC" and descriptor "DescriptorC" with value "ValueC"
 			String classC = "ClassC";
-			String objectIdC = createObject(session, classC);
-			createDescriptor(session, objectIdC, "DescriptorC", "ValueC");
+			String objectIdC = createObject(session, classC, token);
+			createDescriptor(session, objectIdC, "DescriptorC", "ValueC", token);
 
 			// Test case: Filter by class "ClassB"
 			Result resultClassB = session.run("CALL deposit.get.object($className, [], $token) YIELD node RETURN node.id AS objectId",
@@ -108,22 +77,22 @@ public class GetObjectAPITest extends BaseNeo4jTest {
 	public void shouldReturnAllObjectsWhenNoParametersSpecified() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
-			createNamespace(session, namespaceName, "transient");
+			createNamespace(session, namespaceName, "transient", token);
 
 			// Create first object with class "ClassA" and descriptor "DescriptorA" with value "ValueA"
 			String classA = "ClassA";
-			String objectIdA = createObject(session, classA);
-			createDescriptor(session, objectIdA, "DescriptorA", "ValueA");
+			String objectIdA = createObject(session, classA, token);
+			createDescriptor(session, objectIdA, "DescriptorA", "ValueA", token);
 
 			// Create second object with class "ClassB" and descriptor "DescriptorB" with value "ValueB"
 			String classB = "ClassB";
-			String objectIdB = createObject(session, classB);
-			createDescriptor(session, objectIdB, "DescriptorB", "ValueB");
+			String objectIdB = createObject(session, classB, token);
+			createDescriptor(session, objectIdB, "DescriptorB", "ValueB", token);
 
 			// Create third object with class "ClassC" and descriptor "DescriptorC" with value "ValueC"
 			String classC = "ClassC";
-			String objectIdC = createObject(session, classC);
-			createDescriptor(session, objectIdC, "DescriptorC", "ValueC");
+			String objectIdC = createObject(session, classC, token);
+			createDescriptor(session, objectIdC, "DescriptorC", "ValueC", token);
 
 			// Test case: Return all objects when no parameters are specified
 			Result result = session.run("CALL deposit.get.object('', [], $token) YIELD node RETURN node.id AS objectId",

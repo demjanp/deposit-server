@@ -44,20 +44,6 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private void createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		session.writeTransaction(tx -> {
-			if (descriptorName.equals("PointDescriptor")) {
-				tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, point({x: 40.785091, y: -73.968285, srid: 4326}), $token)",
-						Map.of("objectId", objectId, "descriptorName", descriptorName, "token", token));
-			} else {
-				tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
-						Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
-			}
-			tx.commit();
-			return null;
-		});
-	}
-
 	@Test
 	public void shouldCreateWKTDescriptor() {
 		try (Session session = driver.session()) {
@@ -119,7 +105,16 @@ public class CreateDescriptorAPITest extends BaseNeo4jTest {
 				});
 
 				// Create each descriptor in a separate transaction
-				createDescriptor(session, objectId, descriptorName, value);
+				if (descriptorName.equals("PointDescriptor")) {
+					session.writeTransaction(tx -> {
+						tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, point({x: 40.785091, y: -73.968285, srid: 4326}), $token)",
+								Map.of("objectId", objectId, "descriptorName", descriptorName, "token", token));
+						tx.commit();
+						return null;
+					});
+				} else {
+					createDescriptor(session, objectId, descriptorName, value, token);
+					}
 
 				// Verify: Descriptor node was created
 				session.writeTransaction(tx -> {

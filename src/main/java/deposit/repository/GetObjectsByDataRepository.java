@@ -25,14 +25,15 @@ public class GetObjectsByDataRepository extends BaseRepository {
 	}
 	
 	public Map<String, List<String>> getObjectsByData(Transaction tx, String namespaceName,
-													  List<GraphSONData.GSObject> gsObjects, List<String> overwrite, boolean matchEmpty) {
+													  List<GraphSONData.GSElement> gsObjects, List<String> overwrite, boolean matchEmpty) {
 		
 		Map<String, List<String>> objectIdMap = new HashMap<>();
 		StringBuilder query = new StringBuilder();
 		Map<String, Object> params = new HashMap<>();
 		
 		List<Map<String, Object>> objectInfoList = new ArrayList<>();
-		for (GraphSONData.GSObject gsObject : gsObjects) {
+		for (GraphSONData.GSElement element : gsObjects) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) element;
 			if (overwrite.contains(gsObject.originalId)) {
 				objectIdMap.put(gsObject.id, List.of(gsObject.originalId));
 				continue;
@@ -101,13 +102,15 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		
 		// Match Relationships
 		query.append("MATCH (ns:Namespace {name: $namespaceName})\n");
-		for (GraphSONData.GSObject gsObject : gsObjects) {
+		for (GraphSONData.GSElement element : gsObjects) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) element;
 			String dataId = gsObject.id;
 			query.append(String.format("MATCH (ns)-[:CONTAINS]->(obj%s:Object) WHERE obj%s.id IN descrResults[\"%s\"]\n", dataId, dataId, dataId));
 		}
 
 		List<String> relationshipMatchItems = new ArrayList<>();
-		for (GraphSONData.GSObject gsObject : gsObjects) {
+		for (GraphSONData.GSElement element : gsObjects) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) element;
 			if (!gsObject.relationships.isEmpty()) {
 				String dataId = gsObject.id;
 				int index = 1;
@@ -127,7 +130,8 @@ public class GetObjectsByDataRepository extends BaseRepository {
 		// Collect and return results
 		List<String> objCollectItems = new ArrayList<>();
 		List<String> objMapItems = new ArrayList<>();
-		for (GraphSONData.GSObject gsObject : gsObjects) {
+		for (GraphSONData.GSElement element : gsObjects) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) element;
 			String dataId = gsObject.id;
 			objCollectItems.add(String.format("COLLECT(DISTINCT obj%s.id) AS objIds%s", dataId, dataId));
 			objMapItems.add(String.format("\"%s\", objIds%s", dataId, dataId));

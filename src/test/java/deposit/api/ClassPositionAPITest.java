@@ -32,7 +32,7 @@ public class ClassPositionAPITest extends BaseNeo4jTest {
 			String namespaceName = "TestNamespace";
 			String className = "TestClass";
 			List<Double> position = List.of(100.0, 200.0);
-
+			
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)",
 					Map.of("namespaceName", namespaceName, "token", token));
@@ -43,7 +43,7 @@ public class ClassPositionAPITest extends BaseNeo4jTest {
 				tx.commit();
 				return null;
 			});
-
+			
 			// Test: Set class position
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.set.classPosition($className, $position, $token)",

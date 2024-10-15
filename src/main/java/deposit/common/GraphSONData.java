@@ -9,10 +9,10 @@ public class GraphSONData {
 	 * @param data Map<String, Object> The GraphSON data to parse
 	 * @return Map<String, Map < String, Object>> {"objects": {dataId: GSObject, ...}, "classes": {dataId: GSClass, ...}, "userTools": {dataId: GSUserTool, ...}}
 	 */
-	public static Map<String, Map<String, ?>> parseData(Map<String, Object> data) {
-		Map<String, GSObject> gsObjectsById = new HashMap<>();
-		Map<String, GSClass> gsClassesById = new HashMap<>();
-		Map<String, GSUserTool> gsUserToolsById = new HashMap<>();
+	public static Map<String, Map<String, GSElement>> parseData(Map<String, Object> data) {
+		Map<String, GSElement> gsObjectsById = new HashMap<>();
+		Map<String, GSElement> gsClassesById = new HashMap<>();
+		Map<String, GSElement> gsUserToolsById = new HashMap<>();
 		Map<String, GSDescriptor> gsDescriptorsById = new HashMap<>();
 		Map<String, GSDResource> gsDResourcesById = new HashMap<>();
 		Map<String, GSClassDescriptor> gsClassDescriptorsById = new HashMap<>();
@@ -100,16 +100,16 @@ public class GraphSONData {
 			Map<String, Object> edgeProperties = (Map<String, Object>) edge.get("properties");
 			
 			if (type.equals("MEMBER_OF") && gsObjectsById.containsKey(startId) && gsClassesById.containsKey(endId)) {
-				gsObjectsById.get(startId).className = gsClassesById.get(endId).name;
+				((GSObject) gsObjectsById.get(startId)).className = ((GSClass) gsClassesById.get(endId)).name;
 			} else if (type.equals("HAS_DESCRIPTOR")) {
 				
 				// Object Descriptor
 				if (gsObjectsById.containsKey(startId) && gsDescriptorsById.containsKey(endId)) {
-					gsObjectsById.get(startId).descriptors.add(gsDescriptorsById.get(endId));
+					((GSObject) gsObjectsById.get(startId)).descriptors.add(gsDescriptorsById.get(endId));
 				
 				// Class Descriptor
 				} else if (gsClassesById.containsKey(startId) && gsClassDescriptorsById.containsKey(endId)) {
-					gsClassesById.get(startId).descriptors.add(gsClassDescriptorsById.get(endId));
+					((GSClass) gsClassesById.get(startId)).descriptors.add(gsClassDescriptorsById.get(endId));
 				}
 			
 			} else if (type.equals("HAS_RESOURCE") && gsDescriptorsById.containsKey(startId) && gsDResourcesById.containsKey(endId)) {
@@ -123,7 +123,7 @@ public class GraphSONData {
 					relationship.label = edgeProperties.get("label").toString();
 					relationship.targetId = endId;
 					relationship.weight = (edgeProperties.get("weight") instanceof Double) ? (Double) edgeProperties.get("weight") : 0.0;
-					gsObjectsById.get(startId).relationships.add(relationship);
+					((GSObject) gsObjectsById.get(startId)).relationships.add(relationship);
 				
 				// Class Relationship
 				} else if (gsClassesById.containsKey(startId) && gsClassesById.containsKey(endId)) {
@@ -131,7 +131,7 @@ public class GraphSONData {
 					relationship.label = edgeProperties.get("label").toString();
 					relationship.targetId = endId;
 					relationship.comment = edgeProperties.getOrDefault("comment", "").toString();
-					gsClassesById.get(startId).relationships.add(relationship);
+					((GSClass) gsClassesById.get(startId)).relationships.add(relationship);
 				}
 			}
 		}
@@ -149,12 +149,13 @@ public class GraphSONData {
 	 * @param graphsonObjects Map<String, GSObject> graph represented by a Map of {dataId: GSObject, ...}
 	 * @return List<List<GSObject>> list of weakly connected components (disconnected graph subtrees)
 	 */
-	public static List<List<GSObject>> findSubgraphs(Map<String, GSObject> graphsonObjects) {
+	public static List<List<GSElement>> findSubgraphs(Map<String, GSElement> graphsonObjects) {
 		// Step 1: Build the adjacency list and map of GSObject by id
 		Map<String, Set<String>> adjacencyList = new HashMap<>();
 
 		// Populate the adjacency list
-		for (GSObject obj : graphsonObjects.values()) {
+		for (GSElement element : graphsonObjects.values()) {
+			GSObject obj = (GSObject) element;
 			adjacencyList.putIfAbsent(obj.id, new HashSet<>());
 			for (GSRelationship relationship : obj.relationships) {
 				adjacencyList.putIfAbsent(relationship.targetId, new HashSet<>());
@@ -165,26 +166,57 @@ public class GraphSONData {
 		}
 
 		// Step 2: Find weakly connected components using BFS/DFS
-		List<List<GSObject>> components = new ArrayList<>();
+		List<List<GSElement>> components = new ArrayList<>();
 		Set<String> visited = new HashSet<>();
 		for (String nodeId : adjacencyList.keySet()) {
 			if (!visited.contains(nodeId)) {
 				// New component found
-				List<GSObject> component = new ArrayList<>();
+				List<GSElement> component = new ArrayList<>();
 				bfs(nodeId, adjacencyList, graphsonObjects, visited, component);
 				components.add(component);
 			}
 		}
 		return components;
 	}
-	
-	public static class GSObject {
+
+	public static class GSElement{
+		public String toValues(Map<String, GSElement> gsMap){
+			return toString();
+		}
+
+		public String toValuesIndented(Map<String, GSElement> gsMap, int indent) {
+			return toString();
+		}
+	}
+
+	public static class GSObject extends GSElement {
 		public String id;
 		public String className;
 		public String originalId;
 		public List<Double> position;
 		public List<GSDescriptor> descriptors;
 		public List<GSRelationship> relationships;
+
+		@Override
+		public String toValues(Map<String, GSElement> graphsonObjects) {
+			return toValuesIndented(graphsonObjects, 0);
+		}
+
+		public String toValuesIndented(Map<String, GSElement> graphsonObjects, int indent) {
+			StringBuilder toReturn = new StringBuilder();
+			toReturn.append("Object (").append(className).append(")");
+			List<String> descriptorStrings = new ArrayList<>();
+			for (GSDescriptor descriptor : descriptors) {
+				descriptorStrings.add(descriptor.toString());
+			}
+			if (!descriptorStrings.isEmpty()) {
+				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
+			}
+			for (GSRelationship relationship : relationships) {
+				toReturn.append("\n\t").append(relationship.toValuesIndented(graphsonObjects, indent));
+			}
+			return toReturn.toString();
+		}
 		
 		@Override
 		public String toString() {
@@ -201,7 +233,6 @@ public class GraphSONData {
 			for (GSRelationship relationship : relationships) {
 				toReturn.append("\n\t").append(relationship.toString());
 			}
-			toReturn.append("\n");
 			return toReturn.toString();
 		}
 	}
@@ -228,10 +259,19 @@ public class GraphSONData {
 		}
 	}
 	
-	public static class GSRelationship {
+	public static class GSRelationship extends GSElement {
 		public String label;
 		public String targetId;
 		public Double weight;
+
+		@Override
+		public String toValues(Map<String, GSElement> graphsonObjects) {
+			return toValuesIndented(graphsonObjects, 0);
+		}
+
+		public String toValuesIndented(Map<String, GSElement> graphsonObjects, int indent) {
+			return "\t".repeat(indent + 1) + "-[" + label + "]->(" + graphsonObjects.get(targetId).toValuesIndented(graphsonObjects, indent + 1) + ")";
+		}
 		
 		@Override
 		public String toString() {
@@ -239,7 +279,7 @@ public class GraphSONData {
 		}
 	}
 	
-	public static class GSClass {
+	public static class GSClass extends GSElement {
 		public String id;
 		public String name;
 		public Long order;
@@ -247,7 +287,28 @@ public class GraphSONData {
 		public String comment;
 		public List<GSClassDescriptor> descriptors;
 		public List<GSClassRelationship> relationships;
-		
+
+		@Override
+		public String toValues(Map<String, GSElement> graphsonClasses) {
+			return toValuesIndented(graphsonClasses, 0);
+		}
+
+		public String toValuesIndented(Map<String, GSElement> graphsonClasses, int indent) {
+			StringBuilder toReturn = new StringBuilder();
+			toReturn.append("Class : ").append(name);
+			List<String> descriptorStrings = new ArrayList<>();
+			for (GSClassDescriptor descriptor : descriptors) {
+				descriptorStrings.add(descriptor.toString());
+			}
+			if (!descriptorStrings.isEmpty()) {
+				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
+			}
+			for (GSClassRelationship relationship : relationships) {
+				toReturn.append("\n\t").append(relationship.toValuesIndented(graphsonClasses, indent));
+			}
+			return toReturn.toString();
+		}
+
 		@Override
 		public String toString() {
 			StringBuilder toReturn = new StringBuilder();
@@ -279,18 +340,27 @@ public class GraphSONData {
 		}
 	}
 	
-	public static class GSClassRelationship {
+	public static class GSClassRelationship extends GSElement {
 		public String label;
 		public String targetId;
 		public String comment;
-		
+
+		@Override
+		public String toValues(Map<String, GSElement> graphsonClasses) {
+			return toValuesIndented(graphsonClasses, 0);
+		}
+
+		public String toValuesIndented(Map<String, GSElement> graphsonClasses, int indent) {
+			return "\t".repeat(indent + 1) + "-[" + label + "]->(" + graphsonClasses.get(targetId).toValuesIndented(graphsonClasses, indent + 1) + ")";
+		}
+
 		@Override
 		public String toString() {
 			return "-[" + label + "]->(" + targetId + ")";
 		}
 	}
 	
-	public static class GSUserTool {
+	public static class GSUserTool extends GSElement {
 		public String id;
 		public String name;
 		public String data;
@@ -303,13 +373,13 @@ public class GraphSONData {
 	}
 	
 	// BFS method to traverse the graph and find all GraphsonObjects in the same component
-	private static void bfs(String startNode, Map<String, Set<String>> adjacencyList, Map<String, GSObject> objectById, Set<String> visited, List<GSObject> component) {
+	private static void bfs(String startNode, Map<String, Set<String>> adjacencyList, Map<String, GSElement> objectById, Set<String> visited, List<GSElement> component) {
 		Queue<String> queue = new LinkedList<>();
 		queue.add(startNode);
 		visited.add(startNode);
 		while (!queue.isEmpty()) {
 			String currentNode = queue.poll();
-			component.add(objectById.get(currentNode));
+			component.add((GSObject) objectById.get(currentNode));
 			for (String neighbor : adjacencyList.get(currentNode)) {
 				if (!visited.contains(neighbor)) {
 					visited.add(neighbor);

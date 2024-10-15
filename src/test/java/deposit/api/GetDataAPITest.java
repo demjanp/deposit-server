@@ -20,28 +20,6 @@ import static org.junit.Assert.*;
 
 public class GetDataAPITest extends BaseNeo4jTest {
 
-	private void createNamespace(Session session, String namespaceName, String versioningType) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', $versioningType, '')",
-					Map.of("namespaceName", namespaceName, "versioningType", versioningType));
-			tx.run("CALL deposit.set.activeNamespace($namespaceName, '')",
-					Map.of("namespaceName", namespaceName));
-			ServerContext.setActiveNamespace(namespaceName, "");
-			tx.commit();
-			return null;
-		});
-	}
-
-	private String createObject(Session session, String className) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.object($className, [], [], '') YIELD node RETURN node.id AS objectId",
-								   Map.of("className", className));
-			String objectId = result.single().get("objectId").asString();
-			tx.commit();
-			return objectId;
-		});
-	}
-
 	private String getClassId(Session session, String className) {
 		return session.writeTransaction(tx -> {
 			Result result = tx.run("CALL deposit.get.class($className, '') YIELD node RETURN node.id AS classId",
@@ -49,50 +27,6 @@ public class GetDataAPITest extends BaseNeo4jTest {
 			String classId = result.single().get("classId").asString();
 			tx.commit();
 			return classId;
-		});
-	}
-
-	private String createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.set.descriptor($objectId, $descriptorName, $value, '') YIELD node RETURN node.id AS descriptorId",
-				   Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value));
-			String descriptorId = result.single().get("descriptorId").asString();
-			tx.commit();
-			return descriptorId;
-		});
-	}
-	
-	private String createResourceDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		String filename = (String) value;
-		String content = "This is a test file.";
-		String base64Content = Base64.getEncoder().encodeToString(content.getBytes());
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("""
-				CALL deposit.utils.upload($stream, $filename, '') YIELD node AS resource
-				WITH resource
-				CALL deposit.create.descriptor($objectId, $descriptorName, resource, '') YIELD node
-				RETURN node.id AS descriptorId
-				""",
-				Map.of(
-					"stream", base64Content,
-					"filename", filename,
-					"objectId", objectId,
-					"descriptorName", descriptorName
-				)
-			);
-			String descriptorId = result.single().get("descriptorId").asString();
-			tx.commit();
-			return descriptorId;
-		});
-	}
-	
-	private String createRelationship(Session session, String objectId1, String label, String objectId2) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.relationship($objectId1, $objectId2, $label, null, '') YIELD rel RETURN rel.id AS relationshipId",
-					   Map.of("objectId1", objectId1, "objectId2", objectId2, "label", label));
-			String relId = result.single().get("relationshipId").asString();
-			tx.commit();
-			return relId;
 		});
 	}
 
@@ -143,131 +77,6 @@ public class GetDataAPITest extends BaseNeo4jTest {
 				}
 			}
 		}
-	}
-
-	private Map<String, String> createDataFromString(Session session, String namespaceName, String versioningType, String definition) {
-		createNamespace(session, namespaceName, versioningType);
-		Map<String, String> objectIdMap = new HashMap<>(); // Maps "Class: Value" to objectId
-		Stack<String> objectStack = new Stack<>();
-		Stack<Integer> indentStack = new Stack<>();
-		String[] lines = definition.split("\n");
-		Set<String> processedObjects = new HashSet<>();
-		for (String line : lines) {
-			String trimmedLine = line.trim();
-			if (trimmedLine.isEmpty()) {
-				continue;
-			}
-			String[] potentialObjects = extractObjectsFromLine(trimmedLine);
-			for (String obj : potentialObjects) {
-				if (!processedObjects.contains(obj)) {
-					String[] parts = obj.split(": ");
-					if (parts.length < 2) continue; // Skip malformed entries
-					String className = parts[0].trim();
-					String value = parts[1].trim();
-					String fullObject = className + ": " + value;
-					String objectId = createObject(session, className);
-					objectIdMap.put(fullObject, objectId);
-					createDescriptor(session, objectId, "Name", value);
-					if (className.equals("Person")) {
-						createResourceDescriptor(session, objectId, "File", value + ".tmp");
-					}
-					processedObjects.add(fullObject);
-				}
-			}
-		}
-		for (String line : lines) {
-			int currentIndent = countLeadingIndents(line);
-			String trimmedLine = line.trim();
-			while (indentStack.size() > currentIndent) {
-				objectStack.pop();
-				indentStack.pop();
-			}
-			if (!trimmedLine.contains("-")) {  // Class name with descriptor value
-				String[] parts = trimmedLine.split(": ");
-				if (parts.length < 2) continue; // Skip malformed lines
-				String className = parts[0].trim();
-				String value = parts[1].trim();
-				String fullObject = className + ": " + value;
-				objectStack.push(fullObject);
-				indentStack.push(currentIndent);
-			} else {
-				String relationshipLabel;
-				String otherObjectPart;
-				String sourceObject;
-				String targetObject;
-				Pattern patternForward = Pattern.compile("-(.*?)->\\s*(.*)");
-				Pattern patternReverse = Pattern.compile("<-(.*?)-\\s*(.*)");
-				Matcher matcherForward = patternForward.matcher(trimmedLine);
-				Matcher matcherReverse = patternReverse.matcher(trimmedLine);
-				if (matcherForward.matches()) {
-					relationshipLabel = matcherForward.group(1).trim();
-					otherObjectPart = matcherForward.group(2).trim();
-					if (objectStack.isEmpty()) {
-						throw new IllegalArgumentException("No source object found for line: " + line);
-					}
-					sourceObject = objectStack.peek();
-					targetObject = otherObjectPart;
-				} else if (matcherReverse.matches()) {
-					relationshipLabel = matcherReverse.group(1).trim();
-					otherObjectPart = matcherReverse.group(2).trim();
-					if (objectStack.isEmpty()) {
-						throw new IllegalArgumentException("No target object found for line: " + line);
-					}
-					sourceObject = otherObjectPart;
-					targetObject = objectStack.peek();
-				} else {
-					continue;
-				}
-				if (!objectIdMap.containsKey(sourceObject)) {
-					throw new IllegalArgumentException("Object not found: " + sourceObject);
-				}
-
-				if (!objectIdMap.containsKey(targetObject)) {
-					throw new IllegalArgumentException("Object not found: " + targetObject);
-				}
-				String srcId = objectIdMap.get(sourceObject);
-				String tgtId = objectIdMap.get(targetObject);
-				createRelationship(session, srcId, relationshipLabel, tgtId);
-				objectStack.push(otherObjectPart);
-				indentStack.push(currentIndent + 1);
-			}
-		}
-		return objectIdMap;
-	}
-	
-	// Helper for createDataFromString
-	private String[] extractObjectsFromLine(String line) {
-		List<String> objects = new ArrayList<>();
-		if (!line.contains("-")) {
-			objects.add(line.trim());
-		} else {
-			Pattern pattern = Pattern.compile("(?:-+|<-)\\s*(.*?)\\s*(?:->|-)\\s*(.*)");
-			Matcher matcher = pattern.matcher(line.trim());
-			if (matcher.matches()) {
-				String label = matcher.group(1).trim();
-				String target = matcher.group(2).trim();
-				objects.add(target);
-				if (label.contains(":")) {
-					objects.add(label);
-				}
-			}
-		}
-		return objects.toArray(new String[0]);
-	}
-
-	// Helper for createDataFromString
-	private int countLeadingIndents(String line) {
-		int indentCount = 0;
-		for (char c : line.toCharArray()) {
-			if (c == '\t') {
-				indentCount++;
-			} else if (c == ' ') {
-				indentCount += 0.25;
-			} else {
-				break;
-			}
-		}
-		return (int) indentCount;
 	}
 	
 	private static String encodeDataToJson(Map<String, Object> data) throws IOException {
@@ -329,7 +138,7 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	
 	// Country-City-Company-Person
 	private Map<String, String> createDataA(Session session, String namespaceName, String versioningType) {
-		return createDataFromString(session, namespaceName, versioningType, """
+		return createDataFromString(session, namespaceName, versioningType, "", """
 			Country: Austria
 				-contains-> City: Vienna
 					-contains-> Company: Velocipeds
@@ -442,40 +251,40 @@ public class GetDataAPITest extends BaseNeo4jTest {
 	
 	// Area - Feature - Find
 	private Map<String, String> createDataB(Session session, String namespaceName, String versioningType) {
-		createNamespace(session, namespaceName, versioningType);
+		createNamespace(session, namespaceName, versioningType, "");
 		Map<String, String> objectIdMap = new HashMap<>();
 		for (int i = 1; i <= 3; i++) {
 			String areaName = String.valueOf(i);
-			String areaId = createObject(session, "Area");
-			createDescriptor(session, areaId, "Name", String.valueOf(i));
+			String areaId = createObject(session, "Area", "");
+			createDescriptor(session, areaId, "Name", String.valueOf(i), "");
 			objectIdMap.put(areaName, areaId);
 			for (int j = 1; j <= 6; j++) {
 				String featureName = areaName + "." + j;
-				String featureId = createObject(session, "Feature");
-				createDescriptor(session, featureId, "Name", String.valueOf(j));
-				createRelationship(session, areaId, "contains", featureId);
+				String featureId = createObject(session, "Feature", "");
+				createDescriptor(session, featureId, "Name", String.valueOf(j), "");
+				createRelationship(session, areaId, "contains", featureId, 0.0, "");
 				objectIdMap.put(featureName, featureId);
 				for (int k = 1; k <= 3; k++) {
 					String findName = featureName + "." + k;
-					String findId = createObject(session, "Find");
-					createDescriptor(session, findId, "Name", String.valueOf(k));
-					createRelationship(session, featureId, "contains", findId);
+					String findId = createObject(session, "Find", "");
+					createDescriptor(session, findId, "Name", String.valueOf(k), "");
+					createRelationship(session, featureId, "contains", findId, 0.0, "");
 					objectIdMap.put(findName, findId);
 				}
 			}
 		}
 		String srcId = objectIdMap.get("2.2");
 		String tgtId = objectIdMap.get("2.3");
-		createRelationship(session, srcId, "disturbs", tgtId);
+		createRelationship(session, srcId, "disturbs", tgtId, 0.0, "");
 		srcId = objectIdMap.get("2.3");
 		tgtId = objectIdMap.get("2.4");
-		createRelationship(session, srcId, "disturbs", tgtId);
+		createRelationship(session, srcId, "disturbs", tgtId, 0.0, "");
 		return objectIdMap;
 	}
 	
 	// Country-City-Company-Person
 	private Map<String, String> createDataC(Session session, String namespaceName, String versioningType) {
-		return createDataFromString(session, namespaceName, versioningType, """
+		return createDataFromString(session, namespaceName, versioningType, "", """
 			Country: Belgium
 				-contains-> City: Antwerp
 				 	-contains-> Company: Alpha

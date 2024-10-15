@@ -23,55 +23,20 @@ public class GetObjectClassDescriptorAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
-	private String createNamespaceAndObject(Session session, String namespaceName, String className) {
-		return session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)", Map.of("namespaceName", namespaceName, "token", token));
-			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)", Map.of("namespaceName", namespaceName, "token", token));
-
-			Result result = tx.run("CALL deposit.create.object($className, [], [], $token) YIELD node RETURN node.id AS objectId",
-					Map.of("className", className, "token", token));
-			String objectId = result.single().get("objectId").asString();
-
-			tx.commit();
-
-			return objectId;
-		});
-	}
-
-	private String createClassDescriptor(Session session, String className, String descriptorName, String type, long order, String comment) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.classDescriptor($className, $descriptorName, $type, $order, $comment, $token) YIELD node RETURN node.id AS descriptorId",
-					Map.of("className", className, "descriptorName", descriptorName, "type", type, "order", order, "comment", comment, "token", token));
-			String descriptorId = result.single().get("descriptorId").asString();
-			tx.commit();
-			return descriptorId;
-		});
-	}
-
-	private String createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token) YIELD node RETURN node.id AS descriptorId",
-					Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
-			String descriptorId = result.single().get("descriptorId").asString();
-			tx.commit();
-
-			return descriptorId;
-		});
-	}
-
 	@Test
 	public void shouldGetObjectClassDescriptorByName() {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String className = "TestClass";
-			String objectId = createNamespaceAndObject(session, namespaceName, className);
-
+			createNamespace(session, namespaceName, "transient", token);
+			String objectId = createObject(session, className, token);
+			
 			// Create a class descriptor
 			String descriptorName = "TestClassDescriptor";
-			String classDescriptorId = createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment");
+			String classDescriptorId = createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment", token);
 
 			// Create an object descriptor with the same name as the class descriptor
-			createDescriptor(session, objectId, descriptorName, "TestValue");
+			createDescriptor(session, objectId, descriptorName, "TestValue", token);
 
 			// Retrieve the class descriptor using the procedure
 			session.readTransaction(tx -> {
@@ -96,15 +61,16 @@ public class GetObjectClassDescriptorAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			String namespaceName = "TestNamespace";
 			String className = "TestClass";
-			String objectId = createNamespaceAndObject(session, namespaceName, className);
+			createNamespace(session, namespaceName, "transient", token);
+			String objectId = createObject(session, className, token);
 
 			// Create a class descriptor
 			String descriptorName = "TestDescriptor";
-			String classDescriptorId = createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment");
+			String classDescriptorId = createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment", token);
 
 			// Create a descriptor linked to the object
 			String descriptorValue = "TestValue";
-			String descriptorId = createDescriptor(session, objectId, descriptorName, descriptorValue);
+			String descriptorId = createDescriptor(session, objectId, descriptorName, descriptorValue, token);
 
 			// Retrieve the object class descriptor by ID using the procedure
 			session.readTransaction(tx -> {

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class GraphSONDataTest {
 
-	private Map<String, GraphSONData.GSObject> graphsonObjects;
+	private Map<String, GraphSONData.GSElement> graphsonObjects;
 
 	@BeforeEach
 	void setUp() {
@@ -27,10 +27,10 @@ class GraphSONDataTest {
 		node.relationships = new ArrayList<>();
 		graphsonObjects.put(node.id, node);
 
-		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSElement>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(1, subgraphs.size(), "There should be 1 component.");
 		assertEquals(1, subgraphs.get(0).size(), "The component should contain 1 node.");
-		assertEquals("1", subgraphs.get(0).get(0).id, "The node ID should be '1'.");
+		assertEquals("1", ((GraphSONData.GSObject) subgraphs.get(0).get(0)).id, "The node ID should be '1'.");
 	}
 
 	@Test
@@ -53,7 +53,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
 
-		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSElement>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(1, subgraphs.size(), "There should be 1 component.");
 		assertEquals(2, subgraphs.get(0).size(), "The component should contain 2 nodes.");
 	}
@@ -73,7 +73,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node1.id, node1);
 		graphsonObjects.put(node2.id, node2);
 
-		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSElement>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(2, subgraphs.size(), "There should be 2 components.");
 		assertEquals(1, subgraphs.get(0).size(), "Each component should contain 1 node.");
 		assertEquals(1, subgraphs.get(1).size(), "Each component should contain 1 node.");
@@ -105,7 +105,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node2.id, node2);
 		graphsonObjects.put(node3.id, node3);
 
-		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSElement>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 		assertEquals(2, subgraphs.size(), "There should be 2 components.");
 		assertEquals(2, subgraphs.get(0).size(), "One component should contain 2 nodes.");
 		assertEquals(1, subgraphs.get(1).size(), "One component should contain 1 node.");
@@ -185,7 +185,7 @@ class GraphSONDataTest {
 		graphsonObjects.put(node7.id, node7);
 
 		// Run the findSubgraphs method
-		List<List<GraphSONData.GSObject>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
+		List<List<GraphSONData.GSElement>> subgraphs = GraphSONData.findSubgraphs(graphsonObjects);
 
 		// Check that there are 2 components (one with nodes 1-3, another with nodes 4-7)
 		assertEquals(2, subgraphs.size(), "There should be 2 components.");
@@ -200,10 +200,10 @@ class GraphSONDataTest {
 	}
 
 	// Helper method to get the IDs of nodes in a component
-	private List<String> getIdsFromComponent(List<GraphSONData.GSObject> component) {
+	private List<String> getIdsFromComponent(List<GraphSONData.GSElement> component) {
 		List<String> ids = new ArrayList<>();
-		for (GraphSONData.GSObject obj : component) {
-			ids.add(obj.id);
+		for (GraphSONData.GSElement obj : component) {
+			ids.add(((GraphSONData.GSObject) obj).id);
 		}
 		return ids;
 	}

@@ -29,14 +29,7 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 		try (Session session = driver.session()) {
 			// Step 1: Create a Namespace
 			String namespaceName = "TestNamespace";
-			session.writeTransaction(tx -> {
-				tx.run("CALL deposit.create.namespace($namespaceName, '', 'transient', $token)",
-						Map.of("namespaceName", namespaceName, "token", token));
-				tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
-						Map.of("namespaceName", namespaceName, "token", token));
-				tx.commit();
-				return null;
-			});
+			createNamespace(session, namespaceName, "transient", token);
 
 			// Step 2: Create Classes and Class Descriptors
 			String className1 = "Class1";
@@ -47,17 +40,17 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 			// Step 3: Create Objects and Descriptors
 			String objectId1 = createObjectWithClass(session, namespaceName, className1);
 			String objectId2 = createObjectWithClass(session, namespaceName, className2);
-			createDescriptor(session, objectId1, "Descriptor1", "Value1");
-			createDescriptor(session, objectId2, "Descriptor2", "Value2");
+			createDescriptor(session, objectId1, "Descriptor1", "Value1", token);
+			createDescriptor(session, objectId2, "Descriptor2", "Value2", token);
 
 			// Step 4: Create Class Relationship
-			createClassRelationship(session, namespaceName, className1, className2);
+			createClassRelationship(session, className1, "RELATES_TO", className2, "", token);
 
 			// Step 5: Create Object Relationship
-			createRelationship(session, namespaceName, objectId1, objectId2, "RELATES_TO", 1.5);
+			createRelationship(session, objectId1, "RELATES_TO", objectId2, 1.5, token);
 
 			// Step 6: Create User Tool
-			createUserTool(session, namespaceName, "UserTool1", "{\"key\":\"value\"}", "Comment");
+			createUserTool(session, "UserTool1", "{\"key\":\"value\"}", "Comment", token);
 
 			// Verify elements were created
 			verifyElementsExist(session, namespaceName);
@@ -110,42 +103,6 @@ public class DeleteAllAPITest extends BaseNeo4jTest {
 
 		assertTrue("Object should be created and linked to class", result.hasNext());
 		return result.next().get("objectId").asString();
-	}
-
-	private void createDescriptor(Session session, String objectId, String descriptorName, String value) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.descriptor($objectId, $descriptorName, $value, $token)",
-					Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value, "token", token));
-			tx.commit();
-			return null;
-		});
-	}
-
-	private void createClassRelationship(Session session, String namespaceName, String startClassName, String endClassName) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.classRelationship($startClassName, $endClassName, 'RELATED_TO', '', $token)",
-					Map.of("startClassName", startClassName, "endClassName", endClassName, "token", token));
-			tx.commit();
-			return null;
-		});
-	}
-
-	private void createRelationship(Session session, String namespaceName, String startObjectId, String endObjectId, String label, double weight) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.relationship($startObjectId, $endObjectId, $label, $weight, $token) YIELD rel RETURN rel",
-					Map.of("startObjectId", startObjectId, "endObjectId", endObjectId, "label", label, "weight", weight, "token", token));
-			tx.commit();
-			return null;
-		});
-	}
-
-	private void createUserTool(Session session, String namespaceName, String userToolName, String data, String comment) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.userTool($userToolName, $data, $comment, $token) YIELD node RETURN node",
-					Map.of("userToolName", userToolName, "data", data, "comment", comment, "token", token));
-			tx.commit();
-			return null;
-		});
 	}
 
 	private void verifyElementsExist(Session session, String namespaceName) {

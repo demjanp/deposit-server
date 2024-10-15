@@ -35,8 +35,8 @@ public class GetObjectsByDataService extends BaseService {
 			throwException("Cannot retrieve Objects without an active Namespace.");
 		}
 
-		Map<String, Map<String, ?>> parsed = GraphSONData.parseData(data);
-		List<GraphSONData.GSObject> gsObjects = new ArrayList<>(((Map<String, GraphSONData.GSObject>) parsed.get("objects")).values());
+		Map<String, Map<String, GraphSONData.GSElement>> parsed = GraphSONData.parseData(data);
+		List<GraphSONData.GSElement> gsObjects = new ArrayList<>(parsed.get("objects").values());
 
 		return new StringMapResult(getObjectsByDataRepository.getObjectsByData(tx, namespaceName, gsObjects, overwrite, matchEmpty));
 	}

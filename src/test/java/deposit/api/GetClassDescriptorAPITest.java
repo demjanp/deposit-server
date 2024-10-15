@@ -32,16 +32,6 @@ public class GetClassDescriptorAPITest extends BaseNeo4jTest {
 		});
 	}
 
-	private String createClassDescriptor(Session session, String className, String descriptorName, String type, long order, String comment) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.classDescriptor($className, $descriptorName, $type, $order, $comment, $token) YIELD node RETURN node.id AS descriptorId",
-					Map.of("className", className, "descriptorName", descriptorName, "type", type, "order", order, "comment", comment, "token", token));
-			String descriptorId = result.single().get("descriptorId").asString();
-			tx.commit();
-			return descriptorId;
-		});
-	}
-
 	@Test
 	public void shouldGetClassDescriptorByName() {
 		try (Session session = driver.session()) {
@@ -52,7 +42,7 @@ public class GetClassDescriptorAPITest extends BaseNeo4jTest {
 
 			// Create a class descriptor
 			String descriptorName = "TestClassDescriptor";
-			createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment");
+			createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment", token);
 
 			// Retrieve the class descriptor using the procedure
 			session.readTransaction(tx -> {
@@ -76,7 +66,7 @@ public class GetClassDescriptorAPITest extends BaseNeo4jTest {
 
 			// Create a class descriptor
 			String descriptorName = "TestClassDescriptor";
-			String descriptorId = createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment");
+			String descriptorId = createClassDescriptor(session, className, descriptorName, "String", 1, "Test descriptor comment", token);
 
 			// Retrieve the class descriptor using the procedure
 			session.readTransaction(tx -> {
@@ -101,8 +91,8 @@ public class GetClassDescriptorAPITest extends BaseNeo4jTest {
 			// Create multiple class descriptors
 			String descriptorName1 = "ClassDescriptor1";
 			String descriptorName2 = "ClassDescriptor2";
-			createClassDescriptor(session, className, descriptorName1, "String", 1, "Comment1");
-			createClassDescriptor(session, className, descriptorName2, "String", 2, "Comment2");
+			createClassDescriptor(session, className, descriptorName1, "String", 1, "Comment1", token);
+			createClassDescriptor(session, className, descriptorName2, "String", 2, "Comment2", token);
 
 			// Retrieve all class descriptors for the class using the procedure
 			session.readTransaction(tx -> {

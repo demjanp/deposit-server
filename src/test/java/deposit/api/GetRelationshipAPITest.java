@@ -24,18 +24,6 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 		token = ServerContext.getInstance().generateToken("testUser");
 	}
 
-	private void createNamespace(Session session, String namespaceName, String versioningType) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', $versioningType, $token)",
-					Map.of("namespaceName", namespaceName, "versioningType", versioningType, "token", token));
-			tx.run("CALL deposit.set.activeNamespace($namespaceName, $token)",
-					Map.of("namespaceName", namespaceName, "token", token));
-			ServerContext.setActiveNamespace(namespaceName, token);
-			tx.commit();
-			return null;
-		});
-	}
-
 	private Map<String, String> createObjects(Session session, String startObjectClassName, String endObjectClassName) {
 		return session.writeTransaction(tx -> {
 			// Create Start Object
@@ -64,7 +52,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
-			createNamespace(session, namespaceName, versioningType);
+			createNamespace(session, namespaceName, versioningType, token);
 			Map<String, String> objectIds = createObjects(session, startObjectClassName, endObjectClassName);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
@@ -117,7 +105,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
-			createNamespace(session, namespaceName, versioningType);
+			createNamespace(session, namespaceName, versioningType, token);
 			Map<String, String> objectIds = createObjects(session, startObjectClassName, endObjectClassName);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");
@@ -154,7 +142,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String endObjectClassName1 = "ClassB";
 			String endObjectClassName2 = "ClassC";
 
-			createNamespace(session, namespaceName, versioningType);
+			createNamespace(session, namespaceName, versioningType, token);
 			Map<String, String> objectIds1 = createObjects(session, startObjectClassName, endObjectClassName1);
 			Map<String, String> objectIds2 = createObjects(session, startObjectClassName, endObjectClassName2);
 			String startObjectId = objectIds1.get("startObjectId");
@@ -207,7 +195,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 			String label = "RELATES_TO";
 			Double weight = 2.5;
 
-			createNamespace(session, namespaceName, versioningType);
+			createNamespace(session, namespaceName, versioningType, token);
 			Map<String, String> objectIds = createObjects(session, startObjectClassName, endObjectClassName);
 			String startObjectId = objectIds.get("startObjectId");
 			String endObjectId = objectIds.get("endObjectId");

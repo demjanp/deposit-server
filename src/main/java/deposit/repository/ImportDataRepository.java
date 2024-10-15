@@ -56,18 +56,18 @@ public class ImportDataRepository extends BaseRepository {
 	public void importData(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, 
 			Map<String, Object> data, List<String> unique, List<String> overwrite, boolean matchEmpty) {
 
-		Map<String, Map<String, ?>> parsed = GraphSONData.parseData(data);
-		Map<String, GraphSONData.GSObject> gsObjects = (Map<String, GraphSONData.GSObject>) parsed.get("objects");
-		Map<String, GraphSONData.GSClass> gsClasses = (Map<String, GraphSONData.GSClass>) parsed.get("classes");
-		Map<String, GraphSONData.GSUserTool> gsUserTools = (Map<String, GraphSONData.GSUserTool>) parsed.get("userTools");
+		Map<String, Map<String, GraphSONData.GSElement>> parsed = GraphSONData.parseData(data);
+		Map<String, GraphSONData.GSElement> gsObjects = parsed.get("objects");
+		Map<String, GraphSONData.GSElement> gsClasses = parsed.get("classes");
+		Map<String, GraphSONData.GSElement> gsUserTools = parsed.get("userTools");
 		Set<String> classesWithDuplicates = getExistingClassesWithDuplicates(tx, namespaceName, gsObjects);
 		Set<String> toCreateObjects = new HashSet<>(); // Set of dataIds of Objects to create in the database
 		Set<String> toOverwriteObjects = getObjectsToOverwrite(tx, namespaceName, gsObjects, overwrite); // Set of dataIds of Objects to overwrite in the database
 		Map<String, String> objectIdMap = new HashMap<>(); // Matched Object ids for dataIds {dataId: Object id, ...}
 		Set<String> allMatchedByDescriptors = new HashSet<>();
 		Map<String, List<String>> createdByClass = new HashMap<>();
-		List<List<GraphSONData.GSObject>> subGraphs = GraphSONData.findSubgraphs(gsObjects);
-		for (List<GraphSONData.GSObject> subGraph : subGraphs) {
+		List<List<GraphSONData.GSElement>> subGraphs = GraphSONData.findSubgraphs(gsObjects);
+		for (List<GraphSONData.GSElement> subGraph : subGraphs) {
 			processSubGraph(tx, namespaceName, gsObjects, subGraph, classesWithDuplicates, objectIdMap,
 					allMatchedByDescriptors, toCreateObjects, toOverwriteObjects, createdByClass, unique, overwrite, matchEmpty);
 		}
@@ -82,10 +82,11 @@ public class ImportDataRepository extends BaseRepository {
 		createUserTools(tx, timeStamp, username, namespaceName, versioningType, gsUserTools);
 	}
 	
-	private Set<String> getObjectsToOverwrite(Transaction tx, String namespaceName, Map<String, GraphSONData.GSObject> gsObjects, List<String> overwrite) {
+	private Set<String> getObjectsToOverwrite(Transaction tx, String namespaceName, Map<String, GraphSONData.GSElement> gsObjects, List<String> overwrite) {
 		Set<String> toOverwriteObjects = new HashSet<>();
 		List<String> checkIds = new ArrayList<>();
-		for (GraphSONData.GSObject gsObject : gsObjects.values()) {
+		for (GraphSONData.GSElement gsElement : gsObjects.values()) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsElement;
 			if (overwrite.contains(gsObject.originalId)) {
 				toOverwriteObjects.add(gsObject.id);
 				checkIds.add(gsObject.originalId);
@@ -116,8 +117,8 @@ public class ImportDataRepository extends BaseRepository {
 		return toOverwriteObjects;
 	}
 	
-	private void processSubGraph(Transaction tx, String namespaceName, Map<String, GraphSONData.GSObject> gsObjects,
-								 List<GraphSONData.GSObject> subGraph, Set<String> classesWithDuplicates, Map<String, String> objectIdMap,
+	private void processSubGraph(Transaction tx, String namespaceName, Map<String, GraphSONData.GSElement> gsObjects,
+								 List<GraphSONData.GSElement> subGraph, Set<String> classesWithDuplicates, Map<String, String> objectIdMap,
 								 Set<String> allMatchedByDescriptors, Set<String> toCreateObjects, Set<String> toOverwriteObjects,
 								 Map<String, List<String>> createdByClass, List<String> unique, List<String> overwrite, boolean matchEmpty) {
 			
@@ -137,7 +138,7 @@ public class ImportDataRepository extends BaseRepository {
 		Set<String> unmatchedByDescriptors = new HashSet<>();
 		List<String> matchedByDescriptors = new ArrayList<>();
 		Set<String> allClasses = new HashSet<>();
-		Map<String, GraphSONData.GSObject> subGraphById = new HashMap<>();
+		Map<String, GraphSONData.GSElement> subGraphById = new HashMap<>();
 		matchByDescriptors(tx, namespaceName, subGraph, subGraphById, unmatchedByDescriptors, matchedByDescriptors, allClasses, unique, overwrite);
 		allMatchedByDescriptors.addAll(matchedByDescriptors);
 		Set<String> subGraphClassesWithDuplicates = new HashSet<>(classesWithDuplicates);
@@ -150,11 +151,12 @@ public class ImportDataRepository extends BaseRepository {
 				createdByClass, subGraphClassesWithDuplicates, overwrite, matchEmpty);
 	}
 	
-	private void matchByDescriptors(Transaction tx, String namespaceName, List<GraphSONData.GSObject> subGraph,
-									Map<String, GraphSONData.GSObject> subGraphById, Set<String> unmatchedByDescriptors,
+	private void matchByDescriptors(Transaction tx, String namespaceName, List<GraphSONData.GSElement> subGraph,
+									Map<String, GraphSONData.GSElement> subGraphById, Set<String> unmatchedByDescriptors,
 									List<String> matchedByDescriptors, Set<String> allClasses, List<String> unique, List<String> overwrite) {
 		
-		for (GraphSONData.GSObject gsObject : subGraph) {
+		for (GraphSONData.GSElement element : subGraph) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) element;
 			subGraphById.put(gsObject.id, gsObject);
 			allClasses.add(gsObject.className);
 			if (overwrite.contains(gsObject.originalId)) {
@@ -178,7 +180,7 @@ public class ImportDataRepository extends BaseRepository {
 	}
 	
 	private void findLargestMatchingSubgraph(Transaction tx, String namespaceName,
-											 Map<String, GraphSONData.GSObject> gsObjects, Map<String, GraphSONData.GSObject> subGraphById,
+											 Map<String, GraphSONData.GSElement> gsObjects, Map<String, GraphSONData.GSElement> subGraphById,
 											 Set<String> classesWithDuplicates, Map<String, String> objectIdMap, Set<String> allMatchedByDescriptors,
 											 List<String> matchedByDescriptors, Set<String> unmatchedByDescriptors, Set<String> allClasses,
 											 Set<String> toCreateObjects, Map<String, List<String>> createdByClass,
@@ -203,7 +205,7 @@ public class ImportDataRepository extends BaseRepository {
 				Map<String, GraphSONData.GSObject> reducedSubGraph = new HashMap<>();
 				for (String dataId : subGraphById.keySet()) {
 					if (!removedIds.contains(dataId)) {
-						reducedSubGraph.put(dataId, subGraphById.get(dataId));
+						reducedSubGraph.put(dataId, (GraphSONData.GSObject) subGraphById.get(dataId));
 					}
 				}
 				// Check if adding Objects to the database will add <= nDuplicates extra Classes with duplicate values
@@ -213,7 +215,7 @@ public class ImportDataRepository extends BaseRepository {
 					continue;
 				}
 				// Check if reduced subGraph exists in the database
-				List<GraphSONData.GSObject> reducedSubGraphList = new ArrayList<>(reducedSubGraph.values());
+				List<GraphSONData.GSElement> reducedSubGraphList = new ArrayList<>(reducedSubGraph.values());
 				Map<String, List<String>> objectIdMapSubgraph = getObjectsByDataRepository.getObjectsByData(
 					tx, namespaceName, reducedSubGraphList, overwrite, matchEmpty);
 				if (objectIdMapSubgraph.isEmpty()) {
@@ -243,15 +245,15 @@ public class ImportDataRepository extends BaseRepository {
 		subGraphClassesWithDuplicates.addAll(newClassesWithDuplicates);
 		toCreateObjects.addAll(toCreateSubgraph);
 		for (String dataId : toCreateSubgraph) {
-			createdByClass.computeIfAbsent(gsObjects.get(dataId).className, key -> new ArrayList<>()).add(dataId);
+			createdByClass.computeIfAbsent(((GraphSONData.GSObject) gsObjects.get(dataId)).className, key -> new ArrayList<>()).add(dataId);
 		}
 	}
 	
 	private Set<String> getExistingClassesWithDuplicates(Transaction tx, String namespaceName,
-														 Map<String, GraphSONData.GSObject> gsObjects) {
+														 Map<String, GraphSONData.GSElement> gsObjects) {
 		
 		Set<String> usedClasses = gsObjects.values().stream()
-			.map(gsObject -> gsObject.className)
+			.map(gsObject -> ((GraphSONData.GSObject) gsObject).className)
 			.collect(Collectors.toSet());
 		Set<String> classesWithDuplicates = new HashSet<>();
 		if (usedClasses.isEmpty()) {
@@ -279,14 +281,14 @@ public class ImportDataRepository extends BaseRepository {
 		return classesWithDuplicates;
 	}
 	
-	private Set<String> getNewClassesWithDuplicates(Map<String, GraphSONData.GSObject> gsObjects,
+	private Set<String> getNewClassesWithDuplicates(Map<String, GraphSONData.GSElement> gsObjects,
 			Set<String> newDataIds, Set<String> matchedDataIds, Map<String, List<String>> createdByClass, 
 			Set<String> classesWithDuplicates) {
 		
 		// Count number of new Classes with duplicate values if Objects from newDataIds are added to the database
 		Set<String> newDuplicates = new HashSet<>();
 		for (String dataId : newDataIds) {
-			String className = gsObjects.get(dataId).className;
+			String className = ((GraphSONData.GSObject) gsObjects.get(dataId)).className;
 			if (!classesWithDuplicates.contains(className)) {
 				if (matchedDataIds.contains(dataId) || duplicateCreatedInClass(gsObjects, dataId, className, createdByClass)) {
 					// New duplicate created
@@ -297,15 +299,15 @@ public class ImportDataRepository extends BaseRepository {
 		return newDuplicates;
 	}
 	
-	private boolean duplicateCreatedInClass(Map<String, GraphSONData.GSObject> gsObjects, String dataId,
+	private boolean duplicateCreatedInClass(Map<String, GraphSONData.GSElement> gsObjects, String dataId,
 											String className, Map<String, List<String>> createdByClass) {
 		
 		if (!createdByClass.containsKey(className)) {
 			return false;
 		}
-		List<GraphSONData.GSDescriptor> descriptors = gsObjects.get(dataId).descriptors;
+		List<GraphSONData.GSDescriptor> descriptors = ((GraphSONData.GSObject) gsObjects.get(dataId)).descriptors;
 		for (String otherId : createdByClass.get(className)) {
-			if (gsObjects.get(otherId).descriptors.equals(descriptors)) {
+			if (((GraphSONData.GSObject) gsObjects.get(otherId)).descriptors.equals(descriptors)) {
 				return true;
 			}
 		}
@@ -313,8 +315,8 @@ public class ImportDataRepository extends BaseRepository {
 	}
 	
 	private void createClasses(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
-							   String versioningType, Map<String, GraphSONData.GSObject> gsObjects,
-							   Map<String, GraphSONData.GSClass> gsClasses, Set<String> toCreateObjects) {
+							   String versioningType, Map<String, GraphSONData.GSElement> gsObjects,
+							   Map<String, GraphSONData.GSElement> gsClasses, Set<String> toCreateObjects) {
 
 		// Find the highest Class order
 		List<Node> classNodes = getClassRepository.getClass(tx, namespaceName, "").collect(Collectors.toList());
@@ -330,7 +332,7 @@ public class ImportDataRepository extends BaseRepository {
 		// Collect Classes & Class Descriptors to create
 		Map<String, Set<String>> toCreateClasses = new HashMap<>(); // {className: [descriptorName, ...], ...}
 		for (String dataId : toCreateObjects) {
-			GraphSONData.GSObject gsObject = gsObjects.get(dataId);
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsObjects.get(dataId);
 			String className = gsObject.className;
 			if (!existingClasses.contains(className) && !toCreateClasses.containsKey(className)) {
 				toCreateClasses.put(className, gsObject.descriptors.stream()
@@ -341,7 +343,8 @@ public class ImportDataRepository extends BaseRepository {
 		}
 
 		Map<String, GraphSONData.GSClass> gsClassesByName = new HashMap<>();
-		for (GraphSONData.GSClass gsClass : gsClasses.values()) {
+		for (GraphSONData.GSElement element : gsClasses.values()) {
+			GraphSONData.GSClass gsClass = (GraphSONData.GSClass) element;
 			gsClassesByName.put(gsClass.name, gsClass);
 		}
 
@@ -403,15 +406,16 @@ public class ImportDataRepository extends BaseRepository {
 	}
 	
 	private void createClassRelationships(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
-			String versioningType, Map<String, GraphSONData.GSClass> gsClasses) {
+			String versioningType, Map<String, GraphSONData.GSElement> gsClasses) {
 		
 		// Check which Class Relationships don't exist in the database and create them
 		List<Map<String, String>> relationshipInfoList = new ArrayList<>();
-		for (GraphSONData.GSClass gsClass : gsClasses.values()) {
+		for (GraphSONData.GSElement element : gsClasses.values()) {
+			GraphSONData.GSClass gsClass = (GraphSONData.GSClass) element;
 			for (GraphSONData.GSClassRelationship relationship : gsClass.relationships) {
 				Map<String, String> relationshipInfo = new HashMap<>();
 				relationshipInfo.put("source", gsClass.name);
-				relationshipInfo.put("target", gsClasses.get(relationship.targetId).name);
+				relationshipInfo.put("target", ((GraphSONData.GSClass) gsClasses.get(relationship.targetId)).name);
 				relationshipInfo.put("label", relationship.label);
 				relationshipInfo.put("comment", relationship.comment);
 				relationshipInfoList.add(relationshipInfo);
@@ -446,12 +450,12 @@ public class ImportDataRepository extends BaseRepository {
 	}
 	
 	private void createObjects(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
-							   String versioningType, Map<String, GraphSONData.GSObject> gsObjects, Set<String> toCreateObjects,
+							   String versioningType, Map<String, GraphSONData.GSElement> gsObjects, Set<String> toCreateObjects,
 							   Set<String> toOverwriteObjects, Map<String, String> objectIdMap) {
 		
 		// Create Objects
 		for (String dataId : toCreateObjects) {
-			GraphSONData.GSObject gsObject = gsObjects.get(dataId);
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsObjects.get(dataId);
 			Node node = createObjectRepository.createObject(tx, timeStamp, username, namespaceName, versioningType, gsObject.position);
 			String objectId = node.getProperty("id").toString();
 			setMembershipRepository.setMembership(tx, timeStamp, username, namespaceName, versioningType, gsObject.className, objectId);
@@ -466,7 +470,7 @@ public class ImportDataRepository extends BaseRepository {
 		
 		// Create or update Descriptors for each imported Object
 		for (Map.Entry<String, String> entry : objectIdMap.entrySet()) {
-			for (GraphSONData.GSDescriptor descriptor : gsObjects.get(entry.getKey()).descriptors) {
+			for (GraphSONData.GSDescriptor descriptor : ((GraphSONData.GSObject) gsObjects.get(entry.getKey())).descriptors) {
 				if (descriptor.resource != null) {
 					Node value = createDResourceNode(tx, descriptor.resource);
 					createDescriptorRepository.createDescriptor(tx, timeStamp, username, namespaceName, versioningType, entry.getValue(), descriptor.name, value, true);
@@ -514,15 +518,16 @@ public class ImportDataRepository extends BaseRepository {
 	}
 	
 	private void createObjectRelationships(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
-										   String versioningType, Map<String, GraphSONData.GSObject> gsObjects, Map<String, String> objectIdMap) {
+										   String versioningType, Map<String, GraphSONData.GSElement> gsObjects, Map<String, String> objectIdMap) {
 		
 		// Check which Relationships don't exist in the database and create them
 		List<Map<String, String>> relationshipInfoList = new ArrayList<>();
-		for (GraphSONData.GSObject gsObject : gsObjects.values()) {
+		for (GraphSONData.GSElement element : gsObjects.values()) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) element;
 			for (GraphSONData.GSRelationship relationship : gsObject.relationships) {
 				Map<String, String> relationshipInfo = new HashMap<>();
 				relationshipInfo.put("source", objectIdMap.get(gsObject.id));
-				relationshipInfo.put("target", objectIdMap.get(gsObjects.get(relationship.targetId).id));
+				relationshipInfo.put("target", objectIdMap.get(((GraphSONData.GSObject) gsObjects.get(relationship.targetId)).id));
 				relationshipInfo.put("label", relationship.label);
 				relationshipInfo.put("weight", relationship.weight.toString());
 				relationshipInfoList.add(relationshipInfo);
@@ -557,11 +562,12 @@ public class ImportDataRepository extends BaseRepository {
 	}
 	
 	private void createUserTools(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
-			String versioningType, Map<String, GraphSONData.GSUserTool> gsUserTools) {
+			String versioningType, Map<String, GraphSONData.GSElement> gsUserTools) {
 
 		// Check which User Tools don't exist in the database and create them
 		List<Map<String, String>> userToolInfoList = new ArrayList<>();
-		for (GraphSONData.GSUserTool userTool : gsUserTools.values()) {
+		for (GraphSONData.GSElement element : gsUserTools.values()) {
+			GraphSONData.GSUserTool userTool = (GraphSONData.GSUserTool) element;
 			Map<String, String> userToolInfo = new HashMap<>();
 			userToolInfo.put("name", userTool.name);
 			userToolInfo.put("data", userTool.data);

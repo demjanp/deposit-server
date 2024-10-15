@@ -14,48 +14,6 @@ import static org.junit.Assert.*;
 
 public class GetQueryAPITest extends BaseNeo4jTest {
 
-	private void createNamespace(Session session, String namespaceName) {
-		session.writeTransaction(tx -> {
-			tx.run("CALL deposit.create.namespace($namespaceName, '', '', '')",
-					Map.of("namespaceName", namespaceName));
-			tx.run("CALL deposit.set.activeNamespace($namespaceName, '')",
-					Map.of("namespaceName", namespaceName));
-			ServerContext.setActiveNamespace(namespaceName, "");
-			tx.commit();
-			return null;
-		});
-	}
-
-	private String createObject(Session session, String className) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.object($className, [], [], '') YIELD node RETURN node.id AS objectId",
-								   Map.of("className", className));
-			String objectId = result.single().get("objectId").asString();
-			tx.commit();
-			return objectId;
-		});
-	}
-
-	private String createDescriptor(Session session, String objectId, String descriptorName, Object value) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.set.descriptor($objectId, $descriptorName, $value, '') YIELD node RETURN node.id AS descriptorId",
-				   Map.of("objectId", objectId, "descriptorName", descriptorName, "value", value));
-			String descriptorId = result.single().get("descriptorId").asString();
-			tx.commit();
-			return descriptorId;
-		});
-	}
-
-	private String createRelationship(Session session, String objectId1, String label, String objectId2) {
-		return session.writeTransaction(tx -> {
-			Result result = tx.run("CALL deposit.create.relationship($objectId1, $objectId2, $label, null, '') YIELD rel RETURN rel.id AS relationshipId",
-					   Map.of("objectId1", objectId1, "objectId2", objectId2, "label", label));
-			String relId = result.single().get("relationshipId").asString();
-			tx.commit();
-			return relId;
-		});
-	}
-
 	private static List<String[]> listOfLists(int groupSize, String... items) {
 		List<String[]> result = new ArrayList<>();
 		for (int i = 0; i < items.length; i += groupSize) {
@@ -132,7 +90,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 		 * returns objectIds:
 		 *   objectId = objectIds.get(row).get(className)
 		 */
-		createNamespace(session, namespaceName);
+		createNamespace(session, namespaceName, "transient", "");
 
 		int nHeaders = headers.size();
 		int nRows = values.size();
@@ -143,7 +101,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 				String className = headers.get(j)[0];
 				String objectId = objectIdsRow.getOrDefault(className, null);
 				if (objectId == null) {
-					objectId = createObject(session, className);
+					objectId = createObject(session, className, "");
 					objectIdsRow.put(className, objectId);
 				}
 				String descriptor = headers.get(j)[1];
@@ -151,7 +109,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 				Number numberValue = parseNumber(value);
 				Object storedValue = numberValue == null ? value : numberValue;
 				if ((descriptor != null) && (storedValue != null)) {
-					createDescriptor(session, objectId, descriptor, storedValue);
+					createDescriptor(session, objectId, descriptor, storedValue, "");
 				}
 			}
 			objectIds.add(objectIdsRow);
@@ -166,7 +124,7 @@ public class GetQueryAPITest extends BaseNeo4jTest {
 			String tgtClass = relationships.get(i)[4];
 			String srcId = objectIds.get(srcRow).get(srcClass);
 			String tgtId = objectIds.get(tgtRow).get(tgtClass);
-			createRelationship(session, srcId, label, tgtId);
+			createRelationship(session, srcId, label, tgtId, 0.0, "");
 		}
 
 		return objectIds;
