@@ -27,6 +27,10 @@ public class GetObjectsByDataRepository extends BaseRepository {
 	public Map<String, List<String>> getObjectsByData(Transaction tx, String namespaceName,
 													  List<GraphSONData.GSElement> gsObjects, List<String> overwrite, boolean matchEmpty) {
 		
+		if (gsObjects.isEmpty()) {
+			throwException("Cannot match an Object to empty data");
+		}
+		
 		Map<String, List<String>> objectIdMap = new HashMap<>();
 		StringBuilder query = new StringBuilder();
 		Map<String, Object> params = new HashMap<>();

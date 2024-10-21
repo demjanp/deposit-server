@@ -144,100 +144,6 @@ public abstract class BaseNeo4jTest {
 		});
 	}
 	
-	public Map<String, String> old_createDataFromString(Session session, String namespaceName, String versioningType, String token, String definition) {
-		createNamespace(session, namespaceName, versioningType, token);
-		Map<String, String> objectIdMap = new HashMap<>(); // Maps "Class: Value" to objectId
-		Stack<String> objectStack = new Stack<>();
-		Stack<Long> indentStack = new Stack<>();
-		String[] lines = definition.split("\n");
-		Set<String> processedObjects = new HashSet<>();
-		for (String line : lines) {
-			String trimmedLine = line.trim();
-			if (trimmedLine.isEmpty()) {
-				continue;
-			}
-			String[] potentialObjects = extractObjectsFromLine(trimmedLine);
-			for (String obj : potentialObjects) {
-				if (!processedObjects.contains(obj)) {
-					String[] parts = obj.split(": ");
-					if (parts.length < 2) continue; // Skip malformed entries
-					String className = parts[0].trim();
-					String value = parts[1].trim();
-					String fullObject = className + ": " + value;
-					// Create Object
-					String objectId = createObject(session, className, token);
-					objectIdMap.put(fullObject, objectId);
-					// Create Descriptor
-					createDescriptor(session, objectId, "Name", value, token);
-					if (className.equals("Person")) {
-						// Create Resource Descriptor
-						createResourceDescriptor(session, objectId, "File", value + ".tmp", token);
-					}
-					processedObjects.add(fullObject);
-				}
-			}
-		}
-		for (String line : lines) {
-			Long currentIndent = countLeadingIndents(line);
-			String trimmedLine = line.trim();
-			while (indentStack.size() > currentIndent) {
-				objectStack.pop();
-				indentStack.pop();
-			}
-			if (!trimmedLine.contains("-")) {  // Class name with descriptor value
-				String[] parts = trimmedLine.split(": ");
-				if (parts.length < 2) continue; // Skip malformed lines
-				String className = parts[0].trim();
-				String value = parts[1].trim();
-				String fullObject = className + ": " + value;
-				objectStack.push(fullObject);
-				indentStack.push(currentIndent);
-			} else {
-				String relationshipLabel;
-				String otherObjectPart;
-				String sourceObject;
-				String targetObject;
-				Pattern patternForward = Pattern.compile("-(.*?)->\\s*(.*)");
-				Pattern patternReverse = Pattern.compile("<-(.*?)-\\s*(.*)");
-				Matcher matcherForward = patternForward.matcher(trimmedLine);
-				Matcher matcherReverse = patternReverse.matcher(trimmedLine);
-				if (matcherForward.matches()) {
-					relationshipLabel = matcherForward.group(1).trim();
-					otherObjectPart = matcherForward.group(2).trim();
-					if (objectStack.isEmpty()) {
-						throw new IllegalArgumentException("No source object found for line: " + line);
-					}
-					sourceObject = objectStack.peek();
-					targetObject = otherObjectPart;
-				} else if (matcherReverse.matches()) {
-					relationshipLabel = matcherReverse.group(1).trim();
-					otherObjectPart = matcherReverse.group(2).trim();
-					if (objectStack.isEmpty()) {
-						throw new IllegalArgumentException("No target object found for line: " + line);
-					}
-					sourceObject = otherObjectPart;
-					targetObject = objectStack.peek();
-				} else {
-					continue;
-				}
-				if (!objectIdMap.containsKey(sourceObject)) {
-					throw new IllegalArgumentException("Object not found: " + sourceObject);
-				}
-
-				if (!objectIdMap.containsKey(targetObject)) {
-					throw new IllegalArgumentException("Object not found: " + targetObject);
-				}
-				String srcId = objectIdMap.get(sourceObject);
-				String tgtId = objectIdMap.get(targetObject);
-				// Create Relationship
-				createRelationship(session, srcId, relationshipLabel, tgtId, 0.0, token);
-				objectStack.push(otherObjectPart);
-				indentStack.push(currentIndent + 1);
-			}
-		}
-		return objectIdMap;
-	}
-	
 	public Map<String, String> createDataFromString(Session session, String namespaceName, String versioningType, String token, String definition) {
 		createNamespace(session, namespaceName, versioningType, token);
 		Map<String, String> objectIdMap = new HashMap<>();
@@ -306,7 +212,7 @@ public abstract class BaseNeo4jTest {
 		return objectIdMap;
 	}
 	
-	public Map<String, Map<String, GraphSONData.GSElement>> createGraphSONFromString(String definition) {
+	public Map<String, Map<String, GraphSONData.GSElement>> stringToGraphSON(String definition) {
 		Map<String, GraphSONData.GSElement> gsObjects = new HashMap<>();
 		Map<String, GraphSONData.GSElement> gsClasses = new HashMap<>();
 		Map<String, String> objectIdMap = new HashMap<>();
@@ -452,7 +358,7 @@ public abstract class BaseNeo4jTest {
 		return (Long) indentCount;
 	}
 
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private String createGSObject(Map<String, GraphSONData.GSElement> gsObjects, Map<String, GraphSONData.GSElement> gsClasses, String className) {
 		if (getGSClass(gsClasses, className) == null) {
 			GraphSONData.GSClass gsClass = new GraphSONData.GSClass();
@@ -476,7 +382,7 @@ public abstract class BaseNeo4jTest {
 		return gsObject.id;
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private GraphSONData.GSDescriptor createGSDescriptor(Map<String, GraphSONData.GSElement> gsObjects, Map<String, GraphSONData.GSElement> gsClasses, String objectId, String descriptorName, Object value, String type) {
 		GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsObjects.get(objectId);
 		GraphSONData.GSDescriptor gsDescriptor = new GraphSONData.GSDescriptor();
@@ -495,7 +401,7 @@ public abstract class BaseNeo4jTest {
 		return gsDescriptor;
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private void createGSResourceDescriptor(Map<String, GraphSONData.GSElement> gsObjects, Map<String, GraphSONData.GSElement> gsClasses, String objectId, String descriptorName, Object value) {
 		GraphSONData.GSDescriptor gsDescriptor = createGSDescriptor(gsObjects, gsClasses, objectId, descriptorName, value, "DResource");
 		gsDescriptor.resource = new GraphSONData.GSDResource();
@@ -505,7 +411,7 @@ public abstract class BaseNeo4jTest {
 		gsDescriptor.resource.storedFilename = baseFilename + "-" + UUID.randomUUID() + extension;
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private GraphSONData.GSRelationship createGSRelationship(Map<String, GraphSONData.GSElement> gsObjects, Map<String, GraphSONData.GSElement> gsClasses, String objectId1, String label, String objectId2, Double weight) {
 		GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsObjects.get(objectId1);
 		GraphSONData.GSRelationship gsRelationship = new GraphSONData.GSRelationship();
@@ -528,7 +434,7 @@ public abstract class BaseNeo4jTest {
 		return gsRelationship;
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private String genGSDataId(Map<String, ?> data) {
 		Set<String> keys = data.keySet();
 		int maxKey = keys.stream()
@@ -538,7 +444,7 @@ public abstract class BaseNeo4jTest {
 		return String.valueOf(maxKey + 1);
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private GraphSONData.GSClass getGSClass(Map<String, GraphSONData.GSElement> gsClasses, String className) {
 		for (GraphSONData.GSElement element : gsClasses.values()) {
 			GraphSONData.GSClass gsClass = (GraphSONData.GSClass) element;
@@ -549,7 +455,7 @@ public abstract class BaseNeo4jTest {
 		return null;
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private boolean existsGSClassDescriptor(GraphSONData.GSClass gsClass, String descriptorName) {
 		for (GraphSONData.GSClassDescriptor gsClassDescriptor : gsClass.descriptors) {
 			if (gsClassDescriptor.name.equals(descriptorName)) {
@@ -559,7 +465,7 @@ public abstract class BaseNeo4jTest {
 		return false;
 	}
 	
-	// Helper for createGraphSONFromString
+	// Helper for stringToGraphSON
 	private boolean existsGSClassRelationship(Map<String, GraphSONData.GSElement> gsClasses, String className1, String label, String className2) {
 		GraphSONData.GSClass gsClass1 = getGSClass(gsClasses, className1);
 		GraphSONData.GSClass gsClass2 = getGSClass(gsClasses, className2);

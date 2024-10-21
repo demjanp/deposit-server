@@ -37,14 +37,9 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 		return result;
 	}
 	
-	@Test
-	public void testSimpleImportData() {
+	private void performImportTest(String databaseDefinition, String importDefinition, String resultDefinition) {
 		try (Session session = driver.session()) {
-			Map<String, String> objectIdMapImport = createDataFromString(session, "TestNamespace", "", "", """
-				1(A,1)
-					-rel-> 2(B,1)
-						-rel-> 3(C,2)
-			""");
+			createDataFromString(session, "TestNamespace", "", "", importDefinition);
 			
 			Map<String, Object> dataImport = session.writeTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
@@ -60,14 +55,7 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 				return null;
 			});
 			
-			Map<String, String> objectIdMapDB = createDataFromString(session, "TestNamespace", "", "", """
-				1(A,1)
-					-rel-> 2(B,1)
-						-rel-> 3(C,1)
-				4(A,2)
-					-rel-> 5(B,1)
-						-rel-> 6(C,2)
-			""");
+			createDataFromString(session, "TestNamespace", "", "", databaseDefinition);
 			
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataImport));
@@ -83,15 +71,7 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 			Set<String> actualClassValues = gsMapToSet(gsClassesActual);
 			Set<String> actualObjectValues = gsMapToSet(gsObjectsActual);
 			
-			Map<String, Map<String, GraphSONData.GSElement>> gsDataExpected = createGraphSONFromString("""
-				1(A,1)
-					-rel-> 2(B,1)
-						-rel-> 3(C,1)
-						-rel-> 4(C,2)
-				5(A,2)
-					-rel-> 6(B,1)
-						-rel-> 7(C,2)
-			""");
+			Map<String, Map<String, GraphSONData.GSElement>> gsDataExpected = stringToGraphSON(resultDefinition);
 			
 			Map<String, GraphSONData.GSElement> gsClassesExpected = gsDataExpected.get("classes");
 			Map<String, GraphSONData.GSElement> gsObjectsExpected = gsDataExpected.get("objects");
@@ -103,13 +83,168 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 			assertEquals(expectedObjectValues, actualObjectValues);
 		}
 	}
+	
+	@Test
+	public void testSimpleImport() {
+		String databaseDefinition = """
+			1(Country,1)
+				-rel-> 2(District,1)
+					-rel-> 3(City,1)
+			4(Country,2)
+				-rel-> 5(District,1)
+					-rel-> 6(City,2)
+		""";
+		String importDefinition = """
+			1(Country,1)
+				-rel-> 2(District,1)
+					-rel-> 3(City,2)
+		""";
+		String resultDefinition = """
+			1(Country,1)
+				-rel-> 2(District,1)
+					-rel-> 3(City,1)
+					-rel-> 4(City,2)
+			5(Country,2)
+				-rel-> 6(District,1)
+					-rel-> 7(City,2)
+		""";
+		performImportTest(databaseDefinition, importDefinition, resultDefinition);
+	}
 
-	/* TODO test:
-	 * import UserTools
-	 * unique
-	 * overwrite
-	 * error on ambiguous matches
-	 * Classes, ClassDescriptors & ClassRelationships not specified in data
-	 */
+	@Test
+	public void testImportTopLevel() {
+		String databaseDefinition = """
+			1(Country,1)
+				-rel-> 2(District,1)
+					-rel-> 3(City,2)
+			4(Country,2)
+				-rel-> 5(District,1)
+					-rel-> 6(City,2)
+		""";
+		String importDefinition = """
+			1(Country,3)
+				-rel-> 2(District,1)
+					-rel-> 3(City,2)
+		""";
+		String resultDefinition = """
+			1(Country,1)
+				-rel-> 2(District,1)
+					-rel-> 3(City,2)
+			4(Country,2)
+				-rel-> 5(District,1)
+					-rel-> 6(City,2)
+			7(Country,3)
+				-rel-> 8(District,1)
+					-rel-> 9(City,2)
+		""";
+		performImportTest(databaseDefinition, importDefinition, resultDefinition);
+	}
+	
+	@Test
+	public void testAddNewTopLevel() {
+		String databaseDefinition = """
+			1(Trench,1)
+				-contains-> 2(Feature,1)
+					-contains-> 3(Find,1)
+			4(Dating,1)
+				-dates-> 3(Find,1)
+			5(Trench,2)
+				-contains-> 6(Feature,1)
+					-contains-> 7(Find,1)
+		""";
+		String importDefinition = """
+			1(Trench,1)
+				-contains-> 2(Feature,1)
+					-contains-> 3(Find,1)
+			4(Dating,2)
+				-dates-> 3(Find,1)
+		""";
+		String resultDefinition = """
+			1(Trench,1)
+				-contains-> 2(Feature,1)
+					-contains-> 3(Find,1)
+			4(Dating,1)
+				-dates-> 3(Find,1)
+			5(Trench,2)
+				-contains-> 6(Feature,1)
+					-contains-> 7(Find,1)
+			8(Dating,2)
+				-dates-> 3(Find,1)
+		""";
+		performImportTest(databaseDefinition, importDefinition, resultDefinition);
+	}
+	
+	@Test
+	public void testEverythingMatches() {
+		String databaseDefinition = """
+			1(A,1)
+				-rel-> 2(B,1)
+					-rel-> 3(C,1)
+			4(A,2)
+				-rel-> 5(B,1)
+					-rel-> 6(C,2)
+		""";
+		String importDefinition = """
+			1(A,1)
+				-rel-> 2(B,1)
+					-rel-> 3(C,1)
+			4(A,2)
+				-rel-> 5(B,1)
+					-rel-> 6(C,2)
+		""";
+		String resultDefinition = """
+			1(A,1)
+				-rel-> 2(B,1)
+					-rel-> 3(C,1)
+			4(A,2)
+				-rel-> 5(B,1)
+					-rel-> 6(C,2)
+		""";
+		performImportTest(databaseDefinition, importDefinition, resultDefinition);
+	}
+	
+	@Test
+	public void testAmbiguousMatch() {
+		try (Session session = driver.session()) {
+			boolean expThrown = false;
+			createDataFromString(session, "TestNamespace", "", "", """
+				1(B,1)
+					-rel-> 2(C,3)
+			""");
 
+			Map<String, Object> dataImport = session.writeTransaction(tx -> {
+				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
+				assertTrue(result.hasNext());
+				Map<String, Object> resultData = result.next().get("data").asMap();
+				tx.commit();
+				return resultData;
+			});
+
+			session.writeTransaction(tx -> {
+				tx.run("MATCH (n) DETACH DELETE n");
+				tx.commit();
+				return null;
+			});
+
+			createDataFromString(session, "TestNamespace", "", "", """
+				1(A,1)
+					-rel-> 2(B,1)
+						-rel-> 3(C,1)
+				4(A,2)
+					-rel-> 5(B,1)
+						-rel-> 6(C,2)
+			""");
+
+			try {
+				session.writeTransaction(tx -> {
+					tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataImport));
+					tx.commit();
+					return null;
+				});
+			} catch (RuntimeException e) {
+				expThrown = e.getMessage().contains("Ambiguous match detected");
+            }
+			assertTrue(expThrown);
+		}
+	}
 }

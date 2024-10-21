@@ -238,6 +238,12 @@ public class ImportDataRepository extends BaseRepository {
 				}
 				
 				// Check if reduced subGraph exists in the database
+				if (reducedSubGraph.isEmpty()) {
+					if (nObjects == 0) {
+						break;
+					}
+					continue;
+				}
 				List<GraphSONData.GSElement> reducedSubGraphList = new ArrayList<>(reducedSubGraph.values());
 				Map<String, List<String>> objectIdMapSubgraph = getObjectsByDataRepository.getObjectsByData(
 					tx, namespaceName, reducedSubGraphList, overwrite, matchEmpty);
@@ -253,13 +259,19 @@ public class ImportDataRepository extends BaseRepository {
 					nDuplicatesOpt = nDuplicates;
 					nInboundRelsOpt = nInboundRelsMax;
 				}
-				int nInboundRels = countNewInboundRelationships(gsObjects, removedIds);
+				
+				int nInboundRels = countNewInboundFromSameClass(tx, namespaceName, gsObjects, removedIds, objectIdMapSubgraph);
 				if (nInboundRels < nInboundRelsOpt) {
 					solutions.clear();
 					nInboundRelsOpt = nInboundRels;
 				}
+				
 				if ((nDuplicates == nDuplicatesOpt) && (nInboundRels == nInboundRelsOpt)) {
-					solutions.add(List.of(removedIds, objectIdMapSubgraph));
+					if (objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
+						throwException("Ambiguous match detected");
+					} else {
+						solutions.add(List.of(removedIds, objectIdMapSubgraph));
+					}
 				}
 				if (nObjects == 0) {
 					break;
@@ -267,7 +279,7 @@ public class ImportDataRepository extends BaseRepository {
 			}
 			
 			// Check if more than one match exists in the database
-			if (hasMultipleSolutions(solutions)) {
+			if (solutions.size() > 1) {
 				throwException("Ambiguous match detected");
 			}
 			
@@ -363,29 +375,52 @@ public class ImportDataRepository extends BaseRepository {
 		return false;
 	}
 	
-	private int countNewInboundRelationships(Map<String, GraphSONData.GSElement> gsObjects, Set<String> newDataIds) {
-		// Count number of inbound Relationships from newly created to existing Objects in the database
-		int nInboundRels = 0;
+	private int countNewInboundFromSameClass(Transaction tx, String namespaceName, 
+			Map<String, GraphSONData.GSElement> gsObjects, Set<String> newDataIds, Map<String, List<String>> objectIdMapSubgraph) {
+		
+		List<String> objectIds = objectIdMapSubgraph.values().stream()
+				.map(list -> list.get(0))
+				.collect(Collectors.toList());		
+		
+		// dataIdMap = {dataId: objectId, ...}
+		Map<String, String> dataIdMap = objectIdMapSubgraph.entrySet().stream()
+				.filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+				.collect(Collectors.toMap(
+						entry -> entry.getValue().get(0),
+						Map.Entry::getKey
+				));
+		
+		Map<String, Set<String>> inboundClassesById = new HashMap<>(); // {dataId: [className, ...], ...}
+		String query = """
+			MATCH (:Namespace {name: $namespaceName})-[:CONTAINS]->(objSrc:Object)-[:RELATED_TO]->(objTgt:Object),
+				(objSrc)-[:MEMBER_OF]->(cls:Class)
+			WHERE objTgt.id IN $objectIds
+			RETURN objTgt.id AS objectId, cls.name AS className
+		""";
+		try {
+			Result result = tx.execute(query, Map.of(
+					"namespaceName", namespaceName,
+					"objectIds", objectIds
+			));
+			while (result.hasNext()) {
+				Map<String, Object> row = result.next();
+				inboundClassesById.computeIfAbsent(dataIdMap.get(row.get("objectId").toString()), k -> new HashSet<>())
+					.add(row.get("className").toString());
+			}
+		} catch (Exception e) {
+			throwException("Error checking inbound Relationships", e);
+		}
+		
+		int nInbound = 0;
 		for (String dataId : newDataIds) {
 			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsObjects.get(dataId);
 			for (GraphSONData.GSRelationship relationship : gsObject.relationships) {
-				if (!newDataIds.contains(relationship.targetId)) {
-					nInboundRels++;
+				if (!newDataIds.contains(relationship.targetId) && inboundClassesById.get(relationship.targetId).contains(gsObject.className)) {
+					nInbound++;
 				}
 			}
 		}
-		return nInboundRels;
-	}
-	
-	private boolean hasMultipleSolutions(List<List<Object>> solutions) {
-		if (solutions.size() > 1) {
-			return true;
-		}
-		Map<String, List<String>> objectIdMapSubgraph = (Map<String, List<String>>) solutions.get(0).get(1);
-		if (objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
-			return true;
-		}
-		return false;
+		return nInbound;
 	}
 	
 	private void createClasses(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName,
