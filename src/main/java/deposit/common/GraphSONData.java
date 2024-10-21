@@ -179,7 +179,7 @@ public class GraphSONData {
 		return components;
 	}
 
-	public static class GSElement{
+	public static class GSElement {
 		public String toValues(Map<String, GSElement> gsMap){
 			return toString();
 		}

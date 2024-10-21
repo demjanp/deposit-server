@@ -247,7 +247,7 @@ public class ImportDataRepository extends BaseRepository {
 				List<GraphSONData.GSElement> reducedSubGraphList = new ArrayList<>(reducedSubGraph.values());
 				Map<String, List<String>> objectIdMapSubgraph = getObjectsByDataRepository.getObjectsByData(
 					tx, namespaceName, reducedSubGraphList, overwrite, matchEmpty);
-				if (objectIdMapSubgraph.isEmpty()) {
+				if (objectIdMapSubgraph.isEmpty() || objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
 					if (nObjects == 0) {
 						break;
 					}
@@ -267,11 +267,7 @@ public class ImportDataRepository extends BaseRepository {
 				}
 				
 				if ((nDuplicates == nDuplicatesOpt) && (nInboundRels == nInboundRelsOpt)) {
-					if (objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
-						throwException("Ambiguous match detected");
-					} else {
-						solutions.add(List.of(removedIds, objectIdMapSubgraph));
-					}
+					solutions.add(List.of(removedIds, objectIdMapSubgraph));
 				}
 				if (nObjects == 0) {
 					break;

@@ -202,49 +202,31 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 		""";
 		performImportTest(databaseDefinition, importDefinition, resultDefinition);
 	}
-	
+
 	@Test
 	public void testAmbiguousMatch() {
-		try (Session session = driver.session()) {
-			boolean expThrown = false;
-			createDataFromString(session, "TestNamespace", "", "", """
-				1(B,1)
-					-rel-> 2(C,3)
-			""");
-
-			Map<String, Object> dataImport = session.writeTransaction(tx -> {
-				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
-				assertTrue(result.hasNext());
-				Map<String, Object> resultData = result.next().get("data").asMap();
-				tx.commit();
-				return resultData;
-			});
-
-			session.writeTransaction(tx -> {
-				tx.run("MATCH (n) DETACH DELETE n");
-				tx.commit();
-				return null;
-			});
-
-			createDataFromString(session, "TestNamespace", "", "", """
-				1(A,1)
-					-rel-> 2(B,1)
-						-rel-> 3(C,1)
-				4(A,2)
-					-rel-> 5(B,1)
-						-rel-> 6(C,2)
-			""");
-
-			try {
-				session.writeTransaction(tx -> {
-					tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataImport));
-					tx.commit();
-					return null;
-				});
-			} catch (RuntimeException e) {
-				expThrown = e.getMessage().contains("Ambiguous match detected");
-            }
-			assertTrue(expThrown);
-		}
+		String databaseDefinition = """
+			1(A,1)
+				-rel-> 2(B,1)
+					-rel-> 3(C,1)
+			4(A,2)
+				-rel-> 5(B,1)
+					-rel-> 6(C,2)
+		""";
+		String importDefinition = """
+			1(B,1)
+				-rel-> 2(C,3)
+		""";
+		String resultDefinition = """
+			1(A,1)
+				-rel-> 2(B,1)
+					-rel-> 3(C,1)
+			4(A,2)
+				-rel-> 5(B,1)
+					-rel-> 6(C,2)
+			7(B,1)
+				-rel-> 8(C,3)
+		""";
+		performImportTest(databaseDefinition, importDefinition, resultDefinition);
 	}
 }
