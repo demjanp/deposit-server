@@ -2,13 +2,12 @@ package deposit.service;
 
 import deposit.common.ExceptionHandler;
 import deposit.common.ServerContext;
+import deposit.common.PatternData;
 
+import java.util.*;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
 import java.time.*;
 
 import org.neo4j.graphdb.Label;
@@ -67,7 +66,7 @@ public abstract class BaseService {
 	
 	protected void validateName(String name) {
 		Matcher matcher = pattern.matcher(name);
-		if (!matcher.matches()) {
+		if (!matcher.matches() || name == null) {
 			throwException("Invalid name: " + name + 
 				". Allowed characters are Unicode letters, digits, spaces, hyphens, underscores, dots, and tildes.");
 		}
@@ -251,6 +250,46 @@ public abstract class BaseService {
 
 		if (filename.length() > MAX_FILENAME_LENGTH) {
 			throwException("Filename exceeds the maximum length of " + MAX_FILENAME_LENGTH + " characters: " + filename);
+		}
+	}
+	
+	protected void validatePattern(PatternData.Pattern pattern) {
+		if (pattern == null) {
+			throwException("The provided Pattern is null");
+		}
+		validateName(pattern.name);
+		Map<String, PatternData.PObject> pObjects = pattern.objects;
+		Set<String> objectNames = new HashSet<>();
+		for (PatternData.PObject pObject : pObjects.values()) {
+			if (objectNames.contains(pObject.name)) {
+				throwException("Duplicate Pattern Object name: " + pObject.name);
+			}
+			objectNames.add(pObject.name);
+			validateName(pObject.name);
+			validateName(pObject.className);
+			List<PatternData.PDescriptor> descriptors = pObject.descriptors;
+			Set<String> desciptorNames = new HashSet<>();
+			for (PatternData.PDescriptor descriptor : descriptors) {
+				if (desciptorNames.contains(descriptor.name)) {
+					throwException("Duplicate Pattern Descriptor name: " + descriptor.name);
+				}
+				desciptorNames.add(descriptor.name);
+				validateName(descriptor.name);
+				validateDescriptorTypeName(descriptor.type);
+			}
+			List<PatternData.PRelationship> relationships = pObject.relationships;
+			Set<String> relHashes = new HashSet<>();
+			for (PatternData.PRelationship relationship : relationships) {
+				String relHash = relationship.label + "@" + relationship.targetName;
+				if (relHashes.contains(relHash)) {
+					throwException("Duplicate Pattern Relationship: " + relationship);
+				}
+				relHashes.add(relHash);
+				validateName(relationship.label);
+				if (!pObjects.containsKey(relationship.targetName)) {
+					throwException("Pattern Relationship links to non-existing Pattern Object: " + relationship);
+				}
+			}
 		}
 	}
 }

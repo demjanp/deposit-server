@@ -7,8 +7,8 @@ public class Versioning {
 	/**
 	 * Generates Cypher code to append to a query used to create or update a Deposit element to handle versioning.
 	 * Assumes that the existing query ends with a specific statement depending on elementType:
-	 *  Object / Class / UserTool: 'WITH namespace, updated'
-	 *	Descriptor / ClassDescriptor: 'WITH namespace, parent, updated'
+	 *  Object / Class / UserTool / Pattern / PatternObject: 'WITH namespace, updated'
+	 *	Descriptor / ClassDescriptor / PatternDescriptor: 'WITH namespace, parent, updated'
 	 *	Membership / Relationship / ClassRelationship: 'WITH namespace, source, target, updated'
 	 * Assumes that the following parameters are passed to the query:
 	 *	$timeStamp: ZonedDateTime, the current timestamp.
@@ -24,13 +24,13 @@ public class Versioning {
 
 		String updated = "";
 		switch (elementType) {
-			case "Object", "Class", "UserTool":
+			case "Object", "Class", "UserTool", "Pattern":
 				updated = "updated";
 				break;
-			case "Descriptor", "ClassDescriptor":
+			case "Descriptor", "ClassDescriptor", "PatternObject", "PatternDescriptor":
 				updated = "parent, updated";
 				break;
-			case "Membership", "Relationship", "ClassRelationship":
+			case "Membership", "Relationship", "ClassRelationship", "PatternRelationship":
 				updated = "source, target, updated";
 				break;
 			default:
@@ -83,21 +83,21 @@ public class Versioning {
 			
 			// Find latest version of the updated node(s) in the archive
 			switch (elementType) {
-				case "Object", "Class", "UserTool":
+				case "Object", "Class", "UserTool", "Pattern":
 					queryString += """
 						// Find the latest version of the node in the Archive
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prev '{'id: updated.id'}')
 						WITH prev, {0}, archive ORDER BY prev.updatedAt DESC LIMIT 1
 					""";
 					break;
-				case "Descriptor", "ClassDescriptor":
+				case "Descriptor", "ClassDescriptor", "PatternObject", "PatternDescriptor":
 					queryString += """
 						// Find the latest parent
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevParent '{'id: parent.id'}')
 						WITH prevParent, {0}, archive ORDER BY prevParent.updatedAt DESC LIMIT 1
 					""";
 					break;
-				case "Relationship", "ClassRelationship", "Membership":
+				case "Relationship", "ClassRelationship", "PatternRelationship", "Membership":
 					queryString += """
 						// Find the latest source
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevSource '{'id: source.id'}')
@@ -111,31 +111,26 @@ public class Versioning {
 			
 			// Create a new node in the Archive
 			switch (elementType) {
-				case "Object":
-					queryString += """
-						CREATE (archive)-[:CONTAINS]->(newVersion:Object)
-					""";
+				case "Object", "Class", "UserTool", "Pattern":
+					queryString += String.format("""
+						CREATE (archive)-[:CONTAINS]->(newVersion:%s)
+					""", elementType);
 					break;
-				case "Class":
-					queryString += """
-						CREATE (archive)-[:CONTAINS]->(newVersion:Class)
-					""";
-					break;
-				case "UserTool":
-					queryString += """
-						CREATE (archive)-[:CONTAINS]->(newVersion:UserTool)
-					""";
-					break;
-				case "Descriptor":
-				case "ClassDescriptor":
+				case "Descriptor", "ClassDescriptor", "PatternDescriptor":
 					queryString += """
 						CREATE (newVersion:Descriptor)
 						WITH prevParent, newVersion, {0}, archive
 						CREATE (prevParent)-[:HAS_DESCRIPTOR]->(newVersion)
 					""";
 					break;
-				case "Relationship":
-				case "ClassRelationship":
+				case "PatternObject":
+					queryString += """
+						CREATE (newVersion:PatternObject)
+						WITH prevParent, newVersion, {0}, archive
+						CREATE (prevParent)-[:CONTAINS]->(newVersion)
+					""";
+					break;
+				case "Relationship", "ClassRelationship", "PatternRelationship":
 					queryString += """
 						CREATE (prevSource)-[newVersion:RELATED_TO]->(prevTarget)
 					""";

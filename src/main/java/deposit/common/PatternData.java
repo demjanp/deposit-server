@@ -10,10 +10,10 @@ public class PatternData {
 	 * @param data Map<String, Object> {
 	 *		id, name, comment, 
 	 *		objects: {
-	 *			id: {
-	 *				id, name, className, root, unique, matchEmpty, comment,
+	 *			name: {
+	 *				name, className, root, unique, matchEmpty, comment,
 	 *				descriptors: [{name, type, comment}, ...],
-	 *				relationships: [{label, targetId, comment}, ...]
+	 *				relationships: [{label, targetName, comment}, ...]
 	 *			}
 	 *		}
 	 *	}
@@ -22,14 +22,12 @@ public class PatternData {
 	public static Pattern parseData(Map<String, Object> data) {
 		try {
 			Pattern pattern = new Pattern();
-			pattern.id = (String) data.getOrDefault("id", null);
 			pattern.name = (String) ensureValue(data, "name");
 			pattern.comment = (String) data.getOrDefault("comment", "");
 			pattern.objects = new HashMap<>();
 			Map<String, Map<String, Object>> objects = (Map<String, Map<String, Object>>) data.getOrDefault("objects", Map.of());
 			for (Map<String, Object> objectData : objects.values()) {
 				PObject pObject = new PObject();
-				pObject.id = (String) ensureValue(objectData, "id");
 				pObject.name = (String) ensureValue(objectData, "name");
 				pObject.className = (String) ensureValue(objectData, "className");
 				pObject.root = (Boolean) objectData.getOrDefault("root", false);
@@ -48,11 +46,11 @@ public class PatternData {
 				for (Map<String, String> relData : (List<Map<String, String>>) objectData.getOrDefault("relationships", List.of())) {
 					PRelationship pRelationship = new PRelationship();
 					pRelationship.label = (String) ensureValue(relData, "label");
-					pRelationship.targetId = (String) ensureValue(relData, "targetId");
+					pRelationship.targetName = (String) ensureValue(relData, "targetName");
 					pRelationship.comment = relData.getOrDefault("comment", "");
 					pObject.relationships.add(pRelationship);
 				}
-				pattern.objects.put(pObject.id, pObject);
+				pattern.objects.put(pObject.name, pObject);
 			}
 			return pattern;
 		} catch (Exception e) {
@@ -69,7 +67,6 @@ public class PatternData {
 	}
 	
 	public static class Pattern {
-		public String id;
 		public String name;
 		public String comment;
 		public Map<String, PObject> objects;
@@ -81,7 +78,6 @@ public class PatternData {
 	}
 	
 	public static class PObject {
-		public String id;
 		public String name;
 		public String className;
 		public Boolean root;
@@ -110,7 +106,7 @@ public class PatternData {
 	
 	public static class PRelationship {
 		public String label;
-		public String targetId;
+		public String targetName;
 		public String comment;
 		
 		@Override
