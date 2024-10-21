@@ -71,13 +71,13 @@ public class ImportDataRepository extends BaseRepository {
 			processSubGraph(tx, namespaceName, gsObjects, subGraph, classesWithDuplicates, objectIdMap,
 					allMatchedByDescriptors, toCreateObjects, toOverwriteObjects, createdByClass, unique, overwrite, matchEmpty);
 		}
-
+		
 		// Create Classes in the database
 		createClasses(tx, timeStamp, username, namespaceName, versioningType, gsObjects, gsClasses, toCreateObjects);
 		
 		// Create Objects in the database
 		createObjects(tx, timeStamp, username, namespaceName, versioningType, gsObjects, toCreateObjects, toOverwriteObjects, objectIdMap);
-
+		
 		// Create UserTools in the database
 		createUserTools(tx, timeStamp, username, namespaceName, versioningType, gsUserTools);
 	}
@@ -186,57 +186,106 @@ public class ImportDataRepository extends BaseRepository {
 											 Set<String> toCreateObjects, Map<String, List<String>> createdByClass,
 											 Set<String> subGraphClassesWithDuplicates, List<String> overwrite, boolean matchEmpty) {
 		
+		if (matchedByDescriptors.isEmpty() && unmatchedByDescriptors.isEmpty()) {
+			return;
+		}
+		
 		// Find a match for the largest possible subset of the subGraph in the database whilst minimizing number of Classes containing Objects with duplicate Descriptor values
-		int nObjects = !unmatchedByDescriptors.isEmpty() ? 0 : 1; // Number of Objects matched by Descriptors to remove from the subGraph
-		int nDuplicates = 0; // Acceptable number of extra Classes with duplicate values due to adding Objects
+		int nObjects = unmatchedByDescriptors.isEmpty() ? 1 : 0; // Number of Objects matched by Descriptors to remove from the subGraph
 		Set<String> toCreateSubgraph = new HashSet<>();
 		while (toCreateSubgraph.isEmpty()) {
-
+			int nDuplicatesOpt = subGraphById.size(); // Optimal (minimum) number of extra Classes with duplicate values due to adding Objects
+			int nInboundRelsMax = nDuplicatesOpt * nDuplicatesOpt;
+			int nInboundRelsOpt = nInboundRelsMax; // Optimal (minimum) number of inbound Relationships from newly created to existing Objects
+			List<List<Object>> solutions = new ArrayList<>();
+			
 			// Iterate over all combinations of nObjects from matchedByDescriptors
 			Iterator<int[]> combinationsIterator = CombinatoricsUtils.combinationsIterator(matchedByDescriptors.size(), nObjects);
-			while (combinationsIterator.hasNext()) {
+			while (combinationsIterator.hasNext() || (nObjects == 0)) {
 				// Remove all Objects from unmatchedByDescriptors and selected Objects from matchedByDescriptors from the subGraph
 				Set<String> removedIds = new HashSet<>(unmatchedByDescriptors);
-				int[] combinationIndices = combinationsIterator.next();
-				for (int index : combinationIndices) {
-					String dataId = matchedByDescriptors.get(index);
-					removedIds.add(dataId);
+				if (nObjects > 0) {
+					int[] combinationIndices = combinationsIterator.next();
+					for (int index : combinationIndices) {
+						String dataId = matchedByDescriptors.get(index);
+						removedIds.add(dataId);
+					}
 				}
-				Map<String, GraphSONData.GSObject> reducedSubGraph = new HashMap<>();
+				Map<String, GraphSONData.GSElement> reducedSubGraph = new HashMap<>();
 				for (String dataId : subGraphById.keySet()) {
 					if (!removedIds.contains(dataId)) {
 						reducedSubGraph.put(dataId, (GraphSONData.GSObject) subGraphById.get(dataId));
 					}
 				}
-				// Check if adding Objects to the database will add <= nDuplicates extra Classes with duplicate values
-				if (getNewClassesWithDuplicates(
-						gsObjects, removedIds, allMatchedByDescriptors, createdByClass, subGraphClassesWithDuplicates
-					).size() > nDuplicates) {
+				
+				// Check if removing Objects doesn't split the subgraph
+				if (GraphSONData.findSubgraphs(reducedSubGraph).size() > 1) {
+					if (nObjects == 0) {
+						break;
+					}
 					continue;
 				}
+				
+				// Check if adding Objects to the database will add extra Classes with duplicate values
+				int nDuplicates = getNewClassesWithDuplicates(
+						gsObjects, removedIds, allMatchedByDescriptors, createdByClass, subGraphClassesWithDuplicates
+					).size();
+				if (nDuplicates > nDuplicatesOpt) {
+					if (nObjects == 0) {
+						break;
+					}
+					continue;
+				}
+				
 				// Check if reduced subGraph exists in the database
 				List<GraphSONData.GSElement> reducedSubGraphList = new ArrayList<>(reducedSubGraph.values());
 				Map<String, List<String>> objectIdMapSubgraph = getObjectsByDataRepository.getObjectsByData(
 					tx, namespaceName, reducedSubGraphList, overwrite, matchEmpty);
 				if (objectIdMapSubgraph.isEmpty()) {
+					if (nObjects == 0) {
+						break;
+					}
 					continue;
 				}
-				// Check if more than one match exists in the database
-				if (!toCreateSubgraph.isEmpty() || objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
-					throwException("Ambiguous match detected");
+				
+				if (nDuplicates < nDuplicatesOpt) {
+					solutions.clear();
+					nDuplicatesOpt = nDuplicates;
+					nInboundRelsOpt = nInboundRelsMax;
 				}
+				int nInboundRels = countNewInboundRelationships(gsObjects, removedIds);
+				if (nInboundRels < nInboundRelsOpt) {
+					solutions.clear();
+					nInboundRelsOpt = nInboundRels;
+				}
+				if ((nDuplicates == nDuplicatesOpt) && (nInboundRels == nInboundRelsOpt)) {
+					solutions.add(List.of(removedIds, objectIdMapSubgraph));
+				}
+				if (nObjects == 0) {
+					break;
+				}
+			}
+			
+			// Check if more than one match exists in the database
+			if (hasMultipleSolutions(solutions)) {
+				throwException("Ambiguous match detected");
+			}
+			
+			if (!solutions.isEmpty()) {
+				Set<String> removedIds = (Set<String>) solutions.get(0).get(0);
+				Map<String, List<String>> objectIdMapSubgraph = (Map<String, List<String>>) solutions.get(0).get(1);
 				toCreateSubgraph.addAll(removedIds);
 				objectIdMap.putAll(objectIdMapSubgraph.entrySet().stream()
 						.collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get(0))));
+				break;
 			}
-			nDuplicates++; // Increase acceptable number of extra Classes with duplicate values
-			if (nDuplicates > allClasses.size() - subGraphClassesWithDuplicates.size()) {
-				nDuplicates = 0;
-				nObjects++; // Increase number of created Objects
-			}
+			
+			nObjects++; // Increase number of created Objects
+			
+			// Failsafe if no match found in the database
 			if (nObjects > matchedByDescriptors.size()) {
-				// Failsafe if no match found in the database
 				toCreateSubgraph.addAll(subGraphById.keySet());
+				break;
 			}
 		}
 		Set<String> newClassesWithDuplicates = getNewClassesWithDuplicates(
@@ -310,6 +359,31 @@ public class ImportDataRepository extends BaseRepository {
 			if (((GraphSONData.GSObject) gsObjects.get(otherId)).descriptors.equals(descriptors)) {
 				return true;
 			}
+		}
+		return false;
+	}
+	
+	private int countNewInboundRelationships(Map<String, GraphSONData.GSElement> gsObjects, Set<String> newDataIds) {
+		// Count number of inbound Relationships from newly created to existing Objects in the database
+		int nInboundRels = 0;
+		for (String dataId : newDataIds) {
+			GraphSONData.GSObject gsObject = (GraphSONData.GSObject) gsObjects.get(dataId);
+			for (GraphSONData.GSRelationship relationship : gsObject.relationships) {
+				if (!newDataIds.contains(relationship.targetId)) {
+					nInboundRels++;
+				}
+			}
+		}
+		return nInboundRels;
+	}
+	
+	private boolean hasMultipleSolutions(List<List<Object>> solutions) {
+		if (solutions.size() > 1) {
+			return true;
+		}
+		Map<String, List<String>> objectIdMapSubgraph = (Map<String, List<String>>) solutions.get(0).get(1);
+		if (objectIdMapSubgraph.values().stream().anyMatch(list -> list.size() > 1)) {
+			return true;
 		}
 		return false;
 	}

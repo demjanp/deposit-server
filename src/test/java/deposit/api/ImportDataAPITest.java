@@ -45,7 +45,7 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 					-rel-> 2(B,1)
 						-rel-> 3(C,2)
 			""");
-
+			
 			Map<String, Object> dataImport = session.writeTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
 				assertTrue(result.hasNext());
@@ -53,7 +53,7 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 				tx.commit();
 				return resultData;
 			});
-
+			
 			session.writeTransaction(tx -> {
 				tx.run("MATCH (n) DETACH DELETE n");
 				tx.commit();
@@ -68,35 +68,21 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 					-rel-> 5(B,1)
 						-rel-> 6(C,2)
 			""");
-
+			
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataImport));
 				tx.commit();
 				return null;
 			});
-
+			
 			Map<String, Map<String, GraphSONData.GSElement>> gsDataActual = sessionToGSData(session);
-
+			
 			Map<String, GraphSONData.GSElement> gsClassesActual = gsDataActual.get("classes");
 			Map<String, GraphSONData.GSElement> gsObjectsActual = gsDataActual.get("objects");
-
+			
 			Set<String> actualClassValues = gsMapToSet(gsClassesActual);
 			Set<String> actualObjectValues = gsMapToSet(gsObjectsActual);
-
-			System.out.println(); // DEBUG
-			System.out.println("--- ACTUAL ---"); // DEBUG
-			System.out.println(" -- Classes --"); // DEBUG
-//			printGSMap(gsClassesActual);
-			actualClassValues.stream().sorted().forEach(
-					value -> System.out.println(value)
-			);
-			System.out.println("\n -- Objects --"); // DEBUG
-//			printGSMap(gsObjectsActual);
-			actualObjectValues.stream().sorted().forEach(
-					value -> System.out.println(value)
-			);
-			System.out.println(); // DEBUG
-
+			
 			Map<String, Map<String, GraphSONData.GSElement>> gsDataExpected = createGraphSONFromString("""
 				1(A,1)
 					-rel-> 2(B,1)
@@ -106,27 +92,13 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 					-rel-> 6(B,1)
 						-rel-> 7(C,2)
 			""");
-
+			
 			Map<String, GraphSONData.GSElement> gsClassesExpected = gsDataExpected.get("classes");
 			Map<String, GraphSONData.GSElement> gsObjectsExpected = gsDataExpected.get("objects");
-
+			
 			Set<String> expectedClassValues = gsMapToSet(gsClassesExpected);
 			Set<String> expectedObjectValues = gsMapToSet(gsObjectsExpected);
-
-			System.out.println(); // DEBUG
-			System.out.println("--- EXPECTED ---"); // DEBUG
-			System.out.println(" -- Classes --"); // DEBUG
-//			printGSMap(gsClassesExpected);
-			expectedClassValues.stream().sorted().forEach(
-					value -> System.out.println(value)
-			);
-			System.out.println("\n -- Objects --"); // DEBUG
-//			printGSMap(gsObjectsExpected);
-			expectedObjectValues.stream().sorted().forEach(
-					value -> System.out.println(value)
-			);
-			System.out.println(); // DEBUG
-
+			
 			assertEquals(expectedClassValues, actualClassValues);
 			assertEquals(expectedObjectValues, actualObjectValues);
 		}

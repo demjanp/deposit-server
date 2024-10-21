@@ -210,10 +210,14 @@ public class GraphSONData {
 				descriptorStrings.add(descriptor.toString());
 			}
 			if (!descriptorStrings.isEmpty()) {
-				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
+				toReturn.append(" {" + String.join(", ", descriptorStrings.stream().sorted().toList()) + "}");
 			}
+			List<String> relationshipStrings = new ArrayList<>();
 			for (GSRelationship relationship : relationships) {
-				toReturn.append("\n\t").append(relationship.toValuesIndented(graphsonObjects, indent));
+				relationshipStrings.add("\n\t" + relationship.toValuesIndented(graphsonObjects, indent));
+			}
+			if (!relationshipStrings.isEmpty()) {
+				toReturn.append(String.join("", relationshipStrings.stream().sorted().toList()));
 			}
 			return toReturn.toString();
 		}
@@ -301,10 +305,14 @@ public class GraphSONData {
 				descriptorStrings.add(descriptor.toString());
 			}
 			if (!descriptorStrings.isEmpty()) {
-				toReturn.append(" {" + String.join(", ", descriptorStrings) + "}");
+				toReturn.append(" {" + String.join(", ", descriptorStrings.stream().sorted().toList()) + "}");
 			}
+			List<String> relationshipStrings = new ArrayList<>();
 			for (GSClassRelationship relationship : relationships) {
-				toReturn.append("\n\t").append(relationship.toValuesIndented(graphsonClasses, indent));
+				relationshipStrings.add("\n\t" + relationship.toValuesIndented(graphsonClasses, indent));
+			}
+			if (!relationshipStrings.isEmpty()) {
+				toReturn.append(String.join("", relationshipStrings.stream().sorted().toList()));
 			}
 			return toReturn.toString();
 		}

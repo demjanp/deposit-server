@@ -244,7 +244,6 @@ public abstract class BaseNeo4jTest {
 		Map<Long, String> lastIdByIndent = new HashMap<>();
 		lastIdByIndent.put(0L, null);
 		String[] lines = definition.split("\n");
-		Long parentIndent = 0L;
 		Long minIndent = -1L;
 		Pattern objPattern = Pattern.compile("(\\w+)\\((\\w+),(\\w+)\\)");
 		for (String line : lines) {
@@ -261,9 +260,9 @@ public abstract class BaseNeo4jTest {
 			for (String obj : potentialObjects) {
 				Matcher matcher = objPattern.matcher(obj);
 				if (matcher.matches()) {
-					String dataId = matcher.group(1);
-					String className = matcher.group(2);
-					String value = matcher.group(3);
+					String dataId = matcher.group(1).trim();
+					String className = matcher.group(2).trim();
+					String value = matcher.group(3).trim();
 					if (!objectIdMap.containsKey(dataId)) {
 						String objectId = createObject(session, className, token);
 						objectIdMap.put(dataId, objectId);
@@ -308,14 +307,12 @@ public abstract class BaseNeo4jTest {
 	}
 	
 	public Map<String, Map<String, GraphSONData.GSElement>> createGraphSONFromString(String definition) {
-
 		Map<String, GraphSONData.GSElement> gsObjects = new HashMap<>();
 		Map<String, GraphSONData.GSElement> gsClasses = new HashMap<>();
 		Map<String, String> objectIdMap = new HashMap<>();
 		Map<Long, String> lastIdByIndent = new HashMap<>();
 		lastIdByIndent.put(0L, null);
 		String[] lines = definition.split("\n");
-		Long parentIndent = 0L;
 		Long minIndent = -1L;
 		Pattern objPattern = Pattern.compile("(\\w+)\\((\\w+),(\\w+)\\)");
 		for (String line : lines) {
