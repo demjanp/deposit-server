@@ -25,6 +25,8 @@ public class SetClassDescriptorOrderService extends BaseService {
 	public void setClassDescriptorOrder(Transaction tx, String className, String descriptorName, Long order, String token) {
 		
 		validateToken(token);
+		validateName(className);
+		validateName(descriptorName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

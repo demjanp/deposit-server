@@ -25,6 +25,7 @@ public class GetObjectByIdService extends BaseService {
 	public Node getObjectById(Transaction tx, String objectId, String token) {
 		
 		validateToken(token);
+		validateId(objectId);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve Object without an active Namespace.");

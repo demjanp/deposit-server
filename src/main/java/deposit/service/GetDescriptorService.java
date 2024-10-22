@@ -28,6 +28,9 @@ public class GetDescriptorService extends BaseService {
 		
 		validateToken(token);
 		validateId(objectId);
+		if (!descriptorName.isEmpty()) {
+			validateName(descriptorName);
+		}
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Descriptor without an active Namespace.");

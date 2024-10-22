@@ -27,6 +27,7 @@ public class SetClassPositionService extends BaseService {
 	public void setClassPosition(Transaction tx, String className, List<Double> position, String token) {
 		
 		validateToken(token);
+		validateName(className);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

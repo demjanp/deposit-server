@@ -26,6 +26,9 @@ public class GetClassService extends BaseService {
 
 	public Stream<Node> getClass(Transaction tx, String className, String token) {
 		validateToken(token);
+		if (!className.isEmpty()) {
+			validateName(className);
+		}
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve Class without an active Namespace.");

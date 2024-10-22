@@ -24,7 +24,7 @@ public class GetUserByIdService extends BaseService {
 	public Node getUserById(Transaction tx, String userId, String token) {
 		
 		validateToken(token);
-		
+		validateId(userId);
 		return getUserByIdRepository.getUserById(tx, userId);
 	}
 }

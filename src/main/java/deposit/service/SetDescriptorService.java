@@ -27,6 +27,7 @@ public class SetDescriptorService extends BaseService {
 		
 		validateToken(token);
 		validateId(objectId);
+		validateName(descriptorName);
 		validateValue(value);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);

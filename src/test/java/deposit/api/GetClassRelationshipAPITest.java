@@ -9,6 +9,7 @@ import org.neo4j.driver.Result;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -77,7 +78,7 @@ public class GetClassRelationshipAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldReturnNullForNonExistentClassRelationshipById() {
 		try (Session session = driver.session()) {
-			String nonExistentRelationshipId = "non-existent-id";
+			String nonExistentRelationshipId = String.valueOf(UUID.randomUUID());
 
 			// Call the get.classRelationshipById procedure with a non-existent ID
 			Result result = session.run("CALL deposit.get.classRelationshipById($relationshipId, $token) YIELD rel RETURN rel",

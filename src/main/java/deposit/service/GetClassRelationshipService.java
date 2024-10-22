@@ -30,6 +30,9 @@ public class GetClassRelationshipService extends BaseService {
 			throwException("Cannot retrieve a Relationship of a Class with itself.");
 		}
 		validateToken(token);
+		validateName(startClassName);
+		validateName(endClassName);
+		validateName(label);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Class Relationship without an active Namespace.");

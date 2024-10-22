@@ -24,6 +24,7 @@ public class GetClassPositionService extends BaseService {
 	public double[] getClassPosition(Transaction tx, String className, String token) {
 		
 		validateToken(token);
+		validateName(className);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve Class position without an active Namespace.");

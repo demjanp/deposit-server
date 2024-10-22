@@ -28,6 +28,7 @@ public class SetClassOrderService extends BaseService {
 	public void setClassOrder(Transaction tx, String className, Long order, String token) {
 
 		validateToken(token);
+		validateName(className);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

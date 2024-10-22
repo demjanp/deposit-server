@@ -27,6 +27,7 @@ public class GetUserToolService extends BaseService {
 	public Stream<Node> getUserTool(Transaction tx, String userToolName, String token) {
 		
 		validateToken(token);
+		validateName(userToolName);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a User Tool without an active Namespace.");

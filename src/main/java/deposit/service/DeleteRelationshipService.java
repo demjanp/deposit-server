@@ -37,6 +37,7 @@ public class DeleteRelationshipService extends BaseService {
 		validateToken(token);
 		validateId(startObjectId);
 		validateId(endObjectId);
+		validateName(label);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

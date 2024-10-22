@@ -9,6 +9,7 @@ import org.neo4j.driver.Result;
 import org.neo4j.driver.types.Relationship;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -84,7 +85,7 @@ public class GetRelationshipAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldReturnNullForNonExistentRelationshipById() {
 		try (Session session = driver.session()) {
-			String nonExistentRelationshipId = "non-existent-id";
+			String nonExistentRelationshipId = String.valueOf(UUID.randomUUID());
 
 			// Call the get.relationshipById procedure with a non-existent ID
 			Result result = session.run("CALL deposit.get.relationshipById($relationshipId, $token) YIELD rel RETURN rel",

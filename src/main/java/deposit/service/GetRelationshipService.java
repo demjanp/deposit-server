@@ -34,6 +34,9 @@ public class GetRelationshipService extends BaseService {
 		if (!endObjectId.isEmpty()) {
 			validateId(endObjectId);
 		}
+		if (!label.isEmpty()) {
+			validateName(label);
+		}
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Relationship without an active Namespace.");

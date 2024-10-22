@@ -26,6 +26,8 @@ public class SetClassDescriptorCommentService extends BaseService {
 	public void setClassDescriptorComment(Transaction tx, String className, String descriptorName, String comment, String token) {
 		
 		validateToken(token);
+		validateName(className);
+		validateName(descriptorName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

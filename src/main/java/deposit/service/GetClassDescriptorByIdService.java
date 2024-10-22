@@ -25,6 +25,7 @@ public class GetClassDescriptorByIdService extends BaseService {
 	public Node getClassDescriptorById(Transaction tx, String descriptorId, String token) {
 		
 		validateToken(token);
+		validateId(descriptorId);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Class Descriptor without an active Namespace.");

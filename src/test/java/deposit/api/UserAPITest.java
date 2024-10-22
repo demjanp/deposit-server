@@ -7,8 +7,8 @@ import org.junit.Test;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Result;
 
-import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertFalse;
@@ -242,7 +242,7 @@ public class UserAPITest extends BaseNeo4jTest {
 	@Test
 	public void shouldReturnEmptyForInvalidUserId() {
 		try (Session session = driver.session()) {
-			String invalidUserId = "nonExistentUserId";
+			String invalidUserId = String.valueOf(UUID.randomUUID());
 
 			// Test: Try to retrieve a user with an invalid userId
 			Result result = session.run("CALL deposit.get.userById($userId, $token) YIELD node RETURN node AS node",

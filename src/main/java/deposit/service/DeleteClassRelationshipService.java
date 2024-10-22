@@ -28,6 +28,9 @@ public class DeleteClassRelationshipService extends BaseService {
 			throwException("Cannot delete a Class Relationship within the same Class.");
 		}
 		validateToken(token);
+		validateName(startClassName);
+		validateName(endClassName);
+		validateName(label);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

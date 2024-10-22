@@ -24,6 +24,7 @@ public class GetObjectPositionService extends BaseService {
 	public double[] getObjectPosition(Transaction tx, String objectId, String token) {
 		
 		validateToken(token);
+		validateId(objectId);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve Object position without an active Namespace.");

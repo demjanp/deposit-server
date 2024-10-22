@@ -25,6 +25,7 @@ public class DeleteClassService extends BaseService {
 	public void deleteClass(Transaction tx, String className, String token) {
 		
 		validateToken(token);
+		validateName(className);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

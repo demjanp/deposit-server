@@ -27,6 +27,10 @@ public class GetClassDescriptorService extends BaseService {
 	public Stream<Node> getClassDescriptor(Transaction tx, String className, String descriptorName, String token) {
 		
 		validateToken(token);
+		validateName(className);
+		if (!descriptorName.isEmpty()) {
+			validateName(descriptorName);
+		}
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Class Descriptor without an active Namespace.");

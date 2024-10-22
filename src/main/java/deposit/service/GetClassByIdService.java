@@ -25,6 +25,7 @@ public class GetClassByIdService extends BaseService {
 	public Node getClassById(Transaction tx, String classId, String token) {
 		
 		validateToken(token);
+		validateId(classId);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Class without an active Namespace.");

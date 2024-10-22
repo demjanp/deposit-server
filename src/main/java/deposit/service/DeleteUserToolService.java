@@ -26,6 +26,7 @@ public class DeleteUserToolService extends BaseService {
 	public void deleteUserTool(Transaction tx, String userToolName, String token) {
 		
 		validateToken(token);
+		validateName(userToolName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

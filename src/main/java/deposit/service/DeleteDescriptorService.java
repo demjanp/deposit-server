@@ -33,6 +33,7 @@ public class DeleteDescriptorService extends BaseService {
 		
 		validateToken(token);
 		validateId(objectId);
+		validateName(descriptorName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

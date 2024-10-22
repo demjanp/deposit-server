@@ -25,6 +25,7 @@ public class GetRelationshipByIdService extends BaseService {
 	public Relationship getRelationshipById(Transaction tx, String relationshipId, String token) {
 		
 		validateToken(token);
+		validateId(relationshipId);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a Relationship without an active Namespace.");

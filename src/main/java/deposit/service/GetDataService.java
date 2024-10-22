@@ -27,6 +27,7 @@ public class GetDataService extends BaseService {
 	public MapResult getData(Transaction tx, List<String> rootIds, String token) {
 		
 		validateToken(token);
+		validateIds(rootIds);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve data without an active Namespace.");

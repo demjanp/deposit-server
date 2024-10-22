@@ -31,6 +31,7 @@ public class DeletePatternService extends BaseService {
 	public void deletePattern(Transaction tx, String patternName, String token) {
 		
 		validateToken(token);
+		validateName(patternName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

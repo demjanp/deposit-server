@@ -65,6 +65,9 @@ public abstract class BaseService {
 	}
 	
 	protected void validateName(String name) {
+		//if (name.isEmpty()) {
+		//	return;
+		//}
 		Matcher matcher = pattern.matcher(name);
 		if (!matcher.matches() || name == null) {
 			throwException("Invalid name: " + name + 
@@ -77,6 +80,12 @@ public abstract class BaseService {
 			UUID.fromString(uuid);
 		} catch (IllegalArgumentException e) {
 			throwException("Invalid ID: " + uuid + ". The ID must be in the format xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx.");
+		}
+	}
+	
+	protected void validateIds(List<String> uuids) {
+		for (String uuid : uuids) {
+			validateId(uuid);
 		}
 	}
 	

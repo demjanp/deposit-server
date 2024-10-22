@@ -31,6 +31,8 @@ public class DeleteClassDescriptorService extends BaseService {
 	public void deleteClassDescriptor(Transaction tx, String className, String descriptorName, String token) {
 		
 		validateToken(token);
+		validateName(className);
+		validateName(descriptorName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

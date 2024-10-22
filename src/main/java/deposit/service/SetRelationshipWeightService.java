@@ -29,6 +29,9 @@ public class SetRelationshipWeightService extends BaseService {
 			throwException("Cannot create a Relationship of an Object with itself.");
 		}
 		validateToken(token);
+		validateId(startObjectId);
+		validateId(endObjectId);
+		validateName(label);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

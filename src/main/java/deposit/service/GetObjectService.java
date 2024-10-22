@@ -28,6 +28,10 @@ public class GetObjectService extends BaseService {
 	public Stream<Node> getObject(Transaction tx, String className, List<List<Object>> descriptors, String token) {
 		
 		validateToken(token);
+		if (!className.isEmpty()) {
+			validateName(className);
+		}
+		validateDescriptors(descriptors);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve Objects without an active Namespace.");

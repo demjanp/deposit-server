@@ -27,6 +27,7 @@ public class GetPatternService extends BaseService {
 	public MapResult getPattern(Transaction tx, String patternName, String token) {
 		
 		validateToken(token);
+		validateName(patternName);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve pattern without an active Namespace.");

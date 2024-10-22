@@ -27,6 +27,7 @@ public class SetActiveNamespaceService extends BaseService {
 	public void setActiveNamespace(Transaction tx, String namespaceName, String token) {
 		
 		validateToken(token);
+		validateName(namespaceName);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		

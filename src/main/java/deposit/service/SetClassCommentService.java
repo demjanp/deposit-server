@@ -26,6 +26,7 @@ public class SetClassCommentService extends BaseService {
 	public void setClassComment(Transaction tx, String className, String comment, String token) {
 		
 		validateToken(token);
+		validateName(className);
 		ZonedDateTime timeStamp = ZonedDateTime.now();
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);

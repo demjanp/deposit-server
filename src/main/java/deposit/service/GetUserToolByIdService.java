@@ -25,6 +25,7 @@ public class GetUserToolByIdService extends BaseService {
 	public Node getUserToolById(Transaction tx, String userToolId, String token) {
 		
 		validateToken(token);
+		validateId(userToolId);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		if (namespaceName == null) {
 			throwException("Cannot retrieve a User Tool without an active Namespace.");

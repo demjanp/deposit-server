@@ -23,6 +23,7 @@ public class DeleteNamespaceService extends BaseService {
 	public void deleteNamespace(Transaction tx, String namespaceName, String token) {
 		
 		validateToken(token);
+		validateName(namespaceName);
 		
 		deleteNamespaceRepository.deleteNamespace(tx, namespaceName);
 	}

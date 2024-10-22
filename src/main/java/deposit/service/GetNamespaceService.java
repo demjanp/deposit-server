@@ -26,7 +26,9 @@ public class GetNamespaceService extends BaseService {
 	public Stream<Node> getNamespace(Transaction tx, String namespaceName, String token) {
 		
 		validateToken(token);
-		
+		if (!namespaceName.isEmpty()) {
+			validateName(namespaceName);
+		}
 		return getNamespaceRepository.getNamespace(tx, namespaceName);
 	}
 }
