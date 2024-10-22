@@ -18,6 +18,7 @@ public class CreatePatternAPI extends BaseAPI {
 
 	@Context
 	public Transaction tx;
+    
 	/**
 	 * Create a Pattern.
 	 *

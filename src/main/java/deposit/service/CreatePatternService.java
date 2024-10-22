@@ -33,6 +33,9 @@ public class CreatePatternService extends BaseService {
 		String username = ServerContext.getActiveUsername(token);
 		String namespaceName = ServerContext.getActiveNamespace(token);
 		String versioningType = ServerContext.getVersioningType(token);
+		if (namespaceName == null) {
+			throwException("Cannot create Pattern without an active Namespace.");
+		}
 		
 		PatternData.Pattern pattern = PatternData.parseData(data);
 		validatePattern(pattern);

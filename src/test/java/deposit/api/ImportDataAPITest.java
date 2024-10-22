@@ -39,7 +39,7 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 	
 	private void performImportTest(String databaseDefinition, String importDefinition, String resultDefinition) {
 		try (Session session = driver.session()) {
-			createDataFromString(session, "TestNamespace", "", "", importDefinition);
+			createDataFromString(session, "TestNamespace", "transient", "", importDefinition);
 			
 			Map<String, Object> dataImport = session.writeTransaction(tx -> {
 				Result result = tx.run("CALL deposit.get.data([], '') YIELD data RETURN data");
@@ -55,7 +55,7 @@ public class ImportDataAPITest extends BaseNeo4jTest {
 				return null;
 			});
 			
-			createDataFromString(session, "TestNamespace", "", "", databaseDefinition);
+			createDataFromString(session, "TestNamespace", "transient", "", databaseDefinition);
 			
 			session.writeTransaction(tx -> {
 				tx.run("CALL deposit.import.data($data, [], [], false, '')", Map.of("data", dataImport));

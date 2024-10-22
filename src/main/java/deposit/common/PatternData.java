@@ -1,6 +1,7 @@
 package deposit.common;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class PatternData {
 	
@@ -68,22 +69,37 @@ public class PatternData {
 	
 	public static class Pattern {
 		public String name;
-		public String comment;
+		public String comment = "";
 		public Map<String, PObject> objects;
 		
 		@Override
 		public String toString() {
 			return this.toString();
 		}
+		
+		public Map<String, Object> toMap() {
+			Map<String, Object> result = new HashMap<>();
+			result.put("name", this.name);
+			result.put("comment", this.comment);
+
+			Map<String, Map<String, Object>> objectMap = this.objects.entrySet().stream()
+				.collect(Collectors.toMap(
+					Map.Entry::getKey,
+					entry -> entry.getValue().toMap()
+				));
+			
+			result.put("objects", objectMap);
+			return result;
+		}
 	}
 	
 	public static class PObject {
 		public String name;
 		public String className;
-		public Boolean root;
-		public Boolean unique;
-		public Boolean matchEmpty;
-		public String comment;
+		public Boolean root = false;
+		public Boolean unique = false;
+		public Boolean matchEmpty = false;
+		public String comment = "";
 		public List<PDescriptor> descriptors;
 		public List<PRelationship> relationships;
 		
@@ -91,27 +107,65 @@ public class PatternData {
 		public String toString() {
 			return this.toString();
 		}
+		
+		public Map<String, Object> toMap() {
+			Map<String, Object> result = new HashMap<>();
+			result.put("name", this.name);
+			result.put("className", this.className);
+			result.put("root", this.root);
+			result.put("unique", this.unique);
+			result.put("matchEmpty", this.matchEmpty);
+			result.put("comment", this.comment);
+
+			List<Map<String, Object>> descriptorList = this.descriptors.stream()
+				.map(PDescriptor::toMap)
+				.collect(Collectors.toList());
+			result.put("descriptors", descriptorList);
+
+			List<Map<String, Object>> relationshipList = this.relationships.stream()
+				.map(PRelationship::toMap)
+				.collect(Collectors.toList());
+			result.put("relationships", relationshipList);
+			
+			return result;
+		}
 	}
 	
 	public static class PDescriptor {
 		public String name;
-		public String type;
-		public String comment;
+		public String type = "String";
+		public String comment = "";
 		
 		@Override
 		public String toString() {
 			return this.toString();
+		}
+		
+		public Map<String, Object> toMap() {
+			Map<String, Object> result = new HashMap<>();
+			result.put("name", this.name);
+			result.put("type", this.type);
+			result.put("comment", this.comment);
+			return result;
 		}
 	}
 	
 	public static class PRelationship {
 		public String label;
 		public String targetName;
-		public String comment;
+		public String comment = "";
 		
 		@Override
 		public String toString() {
 			return this.toString();
+		}
+		
+		public Map<String, Object> toMap() {
+			Map<String, Object> result = new HashMap<>();
+			result.put("label", this.label);
+			result.put("targetName", this.targetName);
+			result.put("comment", this.comment);
+			return result;
 		}
 	}
 }

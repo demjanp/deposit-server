@@ -27,10 +27,10 @@ public class Versioning {
 			case "Object", "Class", "UserTool", "Pattern":
 				updated = "updated";
 				break;
-			case "Descriptor", "ClassDescriptor", "PatternObject", "PatternDescriptor":
+			case "Descriptor", "ClassDescriptor":
 				updated = "parent, updated";
 				break;
-			case "Membership", "Relationship", "ClassRelationship", "PatternRelationship":
+			case "Membership", "Relationship", "ClassRelationship":
 				updated = "source, target, updated";
 				break;
 			default:
@@ -90,14 +90,21 @@ public class Versioning {
 						WITH prev, {0}, archive ORDER BY prev.updatedAt DESC LIMIT 1
 					""";
 					break;
-				case "Descriptor", "ClassDescriptor", "PatternObject", "PatternDescriptor":
+				case "Descriptor", "ClassDescriptor":
 					queryString += """
 						// Find the latest parent
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevParent '{'id: parent.id'}')
 						WITH prevParent, {0}, archive ORDER BY prevParent.updatedAt DESC LIMIT 1
 					""";
 					break;
-				case "Relationship", "ClassRelationship", "PatternRelationship", "Membership":
+				case "PatternDescriptor":
+					queryString += """
+						// Find the latest parent
+						OPTIONAL MATCH (archive)-[:CONTAINS]->(:Pattern)-[:CONTAINS]->(prevParent '{'id: parent.id'}')
+						WITH prevParent, {0}, archive ORDER BY prevParent.updatedAt DESC LIMIT 1
+					""";
+					break;
+				case "Relationship", "ClassRelationship", "Membership":
 					queryString += """
 						// Find the latest source
 						OPTIONAL MATCH (archive)-[:CONTAINS]->(prevSource '{'id: source.id'}')
@@ -116,21 +123,14 @@ public class Versioning {
 						CREATE (archive)-[:CONTAINS]->(newVersion:%s)
 					""", elementType);
 					break;
-				case "Descriptor", "ClassDescriptor", "PatternDescriptor":
+				case "Descriptor", "ClassDescriptor":
 					queryString += """
 						CREATE (newVersion:Descriptor)
 						WITH prevParent, newVersion, {0}, archive
 						CREATE (prevParent)-[:HAS_DESCRIPTOR]->(newVersion)
 					""";
 					break;
-				case "PatternObject":
-					queryString += """
-						CREATE (newVersion:PatternObject)
-						WITH prevParent, newVersion, {0}, archive
-						CREATE (prevParent)-[:CONTAINS]->(newVersion)
-					""";
-					break;
-				case "Relationship", "ClassRelationship", "PatternRelationship":
+				case "Relationship", "ClassRelationship":
 					queryString += """
 						CREATE (prevSource)-[newVersion:RELATED_TO]->(prevTarget)
 					""";

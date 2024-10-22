@@ -154,6 +154,16 @@ public abstract class BaseNeo4jTest {
 		});
 	}
 	
+	public Map<String, Object> getPattern(Session session, String patternName, String token) {
+		return session.writeTransaction(tx -> {
+			Result result = tx.run("CALL deposit.get.pattern($patternName, $token) YIELD data RETURN data",
+					Map.of("patternName", patternName, "token", token));
+			Map<String, Object> data = result.single().get("data").asMap();
+			tx.commit();
+			return data;
+		});
+	}
+	
 	public Map<String, String> createDataFromString(Session session, String namespaceName, String versioningType, String token, String definition) {
 		createNamespace(session, namespaceName, versioningType, token);
 		Map<String, String> objectIdMap = new HashMap<>();
