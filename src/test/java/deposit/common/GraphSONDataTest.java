@@ -37,12 +37,12 @@ class GraphSONDataTest {
 	void testFindSubgraphs_twoConnectedNodes() {
 		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
-		node1.className = "NodeClass";
+		node1.className = "NodeClass1";
 		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
-		node2.className = "NodeClass";
+		node2.className = "NodeClass2";
 		node2.relationships = new ArrayList<>();
 
 		GraphSONData.GSRelationship relationship = new GraphSONData.GSRelationship();
@@ -62,12 +62,12 @@ class GraphSONDataTest {
 	void testFindSubgraphs_twoDisconnectedNodes() {
 		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
-		node1.className = "NodeClass";
+		node1.className = "NodeClass1";
 		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
-		node2.className = "NodeClass";
+		node2.className = "NodeClass2";
 		node2.relationships = new ArrayList<>();
 
 		graphsonObjects.put(node1.id, node1);
@@ -83,17 +83,17 @@ class GraphSONDataTest {
 	void testFindSubgraphs_threeNodesTwoConnected() {
 		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
-		node1.className = "NodeClass";
+		node1.className = "NodeClass1";
 		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
-		node2.className = "NodeClass";
+		node2.className = "NodeClass2";
 		node2.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node3 = new GraphSONData.GSObject();
 		node3.id = "3";
-		node3.className = "NodeClass";
+		node3.className = "NodeClass3";
 		node3.relationships = new ArrayList<>();
 
 		GraphSONData.GSRelationship relationship = new GraphSONData.GSRelationship();
@@ -116,37 +116,37 @@ class GraphSONDataTest {
 		// Create multiple nodes
 		GraphSONData.GSObject node1 = new GraphSONData.GSObject();
 		node1.id = "1";
-		node1.className = "NodeClass";
+		node1.className = "NodeClass1";
 		node1.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node2 = new GraphSONData.GSObject();
 		node2.id = "2";
-		node2.className = "NodeClass";
+		node2.className = "NodeClass2";
 		node2.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node3 = new GraphSONData.GSObject();
 		node3.id = "3";
-		node3.className = "NodeClass";
+		node3.className = "NodeClass3";
 		node3.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node4 = new GraphSONData.GSObject();
 		node4.id = "4";
-		node4.className = "NodeClass";
+		node4.className = "NodeClass4";
 		node4.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node5 = new GraphSONData.GSObject();
 		node5.id = "5";
-		node5.className = "NodeClass";
+		node5.className = "NodeClass5";
 		node5.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node6 = new GraphSONData.GSObject();
 		node6.id = "6";
-		node6.className = "NodeClass";
+		node6.className = "NodeClass6";
 		node6.relationships = new ArrayList<>();
 
 		GraphSONData.GSObject node7 = new GraphSONData.GSObject();
 		node7.id = "7";
-		node7.className = "NodeClass";
+		node7.className = "NodeClass7";
 		node7.relationships = new ArrayList<>();
 
 		// Create GSRelationships between nodes

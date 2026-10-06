@@ -269,6 +269,8 @@ public abstract class BaseService {
 		validateName(pattern.name);
 		Map<String, PatternData.PObject> pObjects = pattern.objects;
 		Set<String> objectNames = new HashSet<>();
+		int rootCount = 0;
+		
 		for (PatternData.PObject pObject : pObjects.values()) {
 			if (objectNames.contains(pObject.name)) {
 				throwException("Duplicate Pattern Object name: " + pObject.name);
@@ -276,6 +278,11 @@ public abstract class BaseService {
 			objectNames.add(pObject.name);
 			validateName(pObject.name);
 			validateName(pObject.className);
+			
+			if (Boolean.TRUE.equals(pObject.root)) {
+				rootCount++;
+			}
+			
 			List<PatternData.PDescriptor> descriptors = pObject.descriptors;
 			Set<String> desciptorNames = new HashSet<>();
 			for (PatternData.PDescriptor descriptor : descriptors) {
@@ -299,6 +306,10 @@ public abstract class BaseService {
 					throwException("Pattern Relationship links to non-existing Pattern Object: " + relationship);
 				}
 			}
+		}
+		
+		if (rootCount != 1) {
+			throwException("Pattern must have exactly one root object. Found: " + rootCount);
 		}
 	}
 }

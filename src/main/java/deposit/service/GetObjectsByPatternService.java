@@ -47,6 +47,7 @@ public class GetObjectsByPatternService extends BaseService {
 		Map<String, Object> patternData = (Map<String, Object>) result.data.get(patternName);
 
 		PatternData.Pattern pattern = PatternData.parseData(patternData);
+		validatePattern(pattern);
 		
 		return getObjectsByPatternRepository.getObjectsByPattern(tx, namespaceName, pattern, data);
 	}

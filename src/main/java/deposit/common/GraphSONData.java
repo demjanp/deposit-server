@@ -158,6 +158,10 @@ public class GraphSONData {
 			GSObject obj = (GSObject) element;
 			adjacencyList.putIfAbsent(obj.id, new HashSet<>());
 			for (GSRelationship relationship : obj.relationships) {
+				// Ignore within-class Relationships
+				if (graphsonObjects.containsKey(relationship.targetId) && obj.className.equals(((GSObject) graphsonObjects.get(relationship.targetId)).className)) {
+					continue;
+				}
 				adjacencyList.putIfAbsent(relationship.targetId, new HashSet<>());
 				// Add both directions (ignoring the direction of edges for weakly connected components)
 				adjacencyList.get(obj.id).add(relationship.targetId);
@@ -177,6 +181,23 @@ public class GraphSONData {
 			}
 		}
 		return components;
+	}
+	
+	// Helper for findSubgraphs. BFS method to traverse the graph and find all GraphsonObjects in the same component
+	private static void bfs(String startNode, Map<String, Set<String>> adjacencyList, Map<String, GSElement> objectById, Set<String> visited, List<GSElement> component) {
+		Queue<String> queue = new LinkedList<>();
+		queue.add(startNode);
+		visited.add(startNode);
+		while (!queue.isEmpty()) {
+			String currentNode = queue.poll();
+			component.add((GSObject) objectById.get(currentNode));
+			for (String neighbor : adjacencyList.get(currentNode)) {
+				if (!visited.contains(neighbor)) {
+					visited.add(neighbor);
+					queue.add(neighbor);
+				}
+			}
+		}
 	}
 
 	public static class GSElement {
@@ -380,20 +401,4 @@ public class GraphSONData {
 		}
 	}
 	
-	// BFS method to traverse the graph and find all GraphsonObjects in the same component
-	private static void bfs(String startNode, Map<String, Set<String>> adjacencyList, Map<String, GSElement> objectById, Set<String> visited, List<GSElement> component) {
-		Queue<String> queue = new LinkedList<>();
-		queue.add(startNode);
-		visited.add(startNode);
-		while (!queue.isEmpty()) {
-			String currentNode = queue.poll();
-			component.add((GSObject) objectById.get(currentNode));
-			for (String neighbor : adjacencyList.get(currentNode)) {
-				if (!visited.contains(neighbor)) {
-					visited.add(neighbor);
-					queue.add(neighbor);
-				}
-			}
-		}
-	}
 }

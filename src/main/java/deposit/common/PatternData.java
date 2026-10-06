@@ -60,11 +60,68 @@ public class PatternData {
 		}
 	}
 	
+	/**
+	 * Find weakly connected components in the graph, returning instances of Pattern
+	 *
+	 * @param pattern
+	 * @return List<Pattern> list of weakly connected components (disconnected graph subtrees of the supplied Pattern)
+	 */
+	public static List<Pattern> findSubgraphs(Pattern pattern) {
+		// Step 1: Build the adjacency list and map of PObject by name
+		Map<String, Set<String>> adjacencyList = new HashMap<>();
+
+		// Populate the adjacency list
+		for (PObject pObject : pattern.objects.values()) {
+			adjacencyList.putIfAbsent(pObject.name, new HashSet<>());
+			for (PRelationship relationship : pObject.relationships) {
+				// Ignore within-class Relationships
+				if (pattern.objects.containsKey(relationship.targetName) && pObject.className.equals(pattern.objects.get(relationship.targetName).className)) {
+					continue;
+				}
+				adjacencyList.putIfAbsent(relationship.targetName, new HashSet<>());
+				// Add both directions (ignoring the direction of edges for weakly connected components)
+				adjacencyList.get(pObject.name).add(relationship.targetName);
+				adjacencyList.get(relationship.targetName).add(pObject.name);
+			}
+		}
+
+		// Step 2: Find weakly connected components using BFS/DFS
+		List<Pattern> components = new ArrayList<>();
+		Set<String> visited = new HashSet<>();
+		for (String nodeId : adjacencyList.keySet()) {
+			if (!visited.contains(nodeId)) {
+				// New component found
+				Pattern component = new Pattern();
+				bfs(nodeId, adjacencyList, pattern, visited, component);
+				components.add(component);
+			}
+		}
+		return components;
+	}
+	
+	// Helper method for parseData
 	private static Object ensureValue(Map<String, ?> data, String key) {
 		if (!data.containsKey(key)) {
 			ExceptionHandler.throwException("Error parsing Pattern data, key missing: " + key);
 		}
 		return data.get(key);
+	}
+	
+	// Helper for findSubgraphs. BFS method to traverse the graph and find all PObjects in the same component
+	private static void bfs(String startNode, Map<String, Set<String>> adjacencyList, Pattern pattern, Set<String> visited, Pattern component) {
+		Queue<String> queue = new LinkedList<>();
+		queue.add(startNode);
+		visited.add(startNode);
+		while (!queue.isEmpty()) {
+			String currentNode = queue.poll();
+			component.objects.put(currentNode, pattern.objects.get(currentNode));
+			for (String neighbor : adjacencyList.get(currentNode)) {
+				if (!visited.contains(neighbor)) {
+					visited.add(neighbor);
+					queue.add(neighbor);
+				}
+			}
+		}
 	}
 	
 	public static class Pattern {
