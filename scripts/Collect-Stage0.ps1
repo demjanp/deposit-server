@@ -70,6 +70,11 @@ if($actualNames -contains 'stage4-storage-faults-and-invariants') {
         $name='stage4-crash-'+$point;$expectedNames+=@($name);$contracts[$name]=@('Test:passed','Start:passed','Test:passed')
     }
 }
+if($actualNames -contains 'stage5-history-faults-and-invariants') {
+    $expectedNames+=@('stage5-history-faults-and-invariants');$contracts['stage5-history-faults-and-invariants']=@('Test:passed');$selections['stage5-history-faults-and-invariants']='Stage5ProbeIT'
+    foreach($point in @('history-before-receipt','history-after-commit')) {$name='stage5-crash-'+$point;$expectedNames+=@($name);$contracts[$name]=@('Test:passed','Start:passed','Test:passed')}
+    foreach($point in @('history-invalidated','history-cleanup-batch','history-before-baseline','history-after-baseline')) {$name='stage5-crash-'+$point;$expectedNames+=@($name);$contracts[$name]=@('Test:passed','Stop:passed','Start:failed','Start:passed','Test:passed');Require-File "$directory\$point-barrier.txt"}
+}
 if(@(Compare-Object $actualNames $expectedNames).Count -or @($actualNames | Sort-Object -Unique).Count -ne $actualNames.Count) {throw 'Scenario coverage is incomplete or duplicated'}
 $testCases=New-Object System.Collections.Generic.List[object]
 $files=New-Object System.Collections.Generic.List[object]
@@ -104,6 +109,7 @@ foreach($scenario in $gate.results) {
         if($phase.phase -eq 'Package') {$packagePhase=$phase}
         if($phase.phase -eq 'Test') {
             if($scenario.name -like 'stage4-crash-*') {if($phase.testSelection -notin @('Stage4CrashIT#trigger','Stage4CrashIT#verify')) {throw 'Wrong crash suite'}}
+            elseif($scenario.name -like 'stage5-crash-*') {if($phase.testSelection -notin @('Stage5CrashIT#triggerAction','Stage5CrashIT#verifyAction','Stage5CrashIT#seedStartup','Stage5CrashIT#verifyStartup')) {throw 'Wrong history crash suite'}}
             elseif($phase.testSelection -ne $selections[$scenario.name]) {throw 'Wrong test selection for scenario'}
             $expectedMode=if($scenario.name -in @('graceful-restart-and-persistent-uuid-maps','actual-termination-and-recovery')) {'verify'} else {'seed'}
             if($phase.testMode -ne $expectedMode) {throw 'Persistence scenario did not verify its baseline'}
@@ -114,6 +120,8 @@ foreach($scenario in $gate.results) {
                 elseif($selection -eq 'Stage2ProbeIT') {foreach($name in @('competingBootstrapAfterRollback','idleAndAbsoluteExpiryUseFixedProductionLimits','expiryBeforeCommitRollsBackDataRevisionAndReceipt','failedPasswordCommitDoesNotRevokeOrAdvance','failedDeletionCommitPreservesSelectionGraphAndReceipt','loginWaitsForPasswordResetCommit','tokensAreBoundToAuthenticatedNeo4jPrincipal')) {$expectedCases.Add('org.deposit.it.Stage2ProbeIT::'+$name)}}
                 elseif($selection -eq 'Stage3ProbeIT') {foreach($name in @('failedBatchCommitRollsBackAllCategoriesAndReceiptThenRetries','expiryAfterBatchReturnPreventsCommit')) {$expectedCases.Add('org.deposit.it.Stage3ProbeIT::'+$name)}}
                 elseif($selection -eq 'Stage4ProbeIT') {foreach($name in @('spatialFailuresRollbackCompleteDomainAction','geometryIndexBoundsIdentityRebuildAndNamespaceDeletion','expiryResumptionNonRenewalAndReadyLeasePlacement','exportGrantRemainsPrivateAndRechecksCurrentRole','publicationFaultsRecoverWithoutRepeatingEffects','readLeaseBlocksRelocationUntilTransactionCompletes')) {$expectedCases.Add('org.deposit.it.Stage4ProbeIT::'+$name)}}
+                elseif($selection -eq 'Stage5ProbeIT') {foreach($name in @('historyFailureRollsBackDomainRetentionSequenceAndReceipt','expiryBeforeCommitAndCancellationRollbackHistory','geometryReversalFaultsAndSingleLiveIndex','corruptHistoricalCategoryAndMissingSchemaRejectWithoutWrites','historyOnlyEditorReattachmentAndRevocation','historyReadRejectsConcurrentSequenceChange','historyReadSerializesReattachmentAndCollection','corruptionBeforeRetentionFailsWholeAction')) {$expectedCases.Add('org.deposit.it.Stage5ProbeIT::'+$name)}}
+                elseif($selection.StartsWith('Stage5CrashIT#')) {$expectedCases.Add('org.deposit.it.Stage5CrashIT::'+$selection.Split('#')[1])}
                 elseif($selection.StartsWith('Stage4CrashIT#')) {$expectedCases.Add('org.deposit.it.Stage4CrashIT::'+$selection.Split('#')[1])}
                 elseif($selection.StartsWith('EnvironmentIT#')) {foreach($name in $selection.Substring(14).Split('+')) {$expectedCases.Add('org.deposit.it.EnvironmentIT::'+$name)}}
                 else {throw 'Unrecognized acceptance suite'}

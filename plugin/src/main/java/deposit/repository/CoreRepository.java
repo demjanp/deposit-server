@@ -53,8 +53,11 @@ public final class CoreRepository {
         result.sort(Comparator.comparing(m->(String)m.get("userId")));return result;
     }
     public Node create(String label,String namespace,String actor,Map<String,Object> properties) {
+        return createRestored(label,namespace,actor,properties,UUID.randomUUID().toString());
+    }
+    public Node createRestored(String label,String namespace,String actor,Map<String,Object> properties,String restoredId) {
         Node n=namespace==null?tx.createNode(Label.label(label)):tx.createNode(Label.label(label),Label.label("DepositLive"));
-        n.setProperty("id",UUID.randomUUID().toString());
+        n.setProperty("id",restoredId);
         if(label.equals("Namespace"))tx.createNode(Label.label("DepositNamespaceLock")).setProperty("id",id(n));
         if(namespace!=null) n.setProperty("namespaceId",namespace);
         var now=timestamp;n.setProperty("createdAt",now);n.setProperty("createdBy",actor==null?id(n):actor);
@@ -78,9 +81,12 @@ public final class CoreRepository {
     public Relationship membership(Node object) {return object.getSingleRelationship(RelationshipType.withName("MEMBER_OF"),Direction.OUTGOING);}
     public Node objectClass(Node object) {var membership=membership(object);if(membership==null) throw new IllegalStateException("Object has no Class");return membership.getEndNode();}
     public Relationship assign(Node object,Node clazz,String actor) {
+        return assignRestored(object,clazz,actor,null);
+    }
+    public Relationship assignRestored(Node object,Node clazz,String actor,String restoredId) {
         Relationship existing=membership(object);
         if(existing!=null && existing.getEndNode().equals(clazz)) return existing;
-        String id=existing==null?UUID.randomUUID().toString():id(existing);
+        String id=restoredId!=null?restoredId:existing==null?UUID.randomUUID().toString():id(existing);
         var properties=existing==null?new HashMap<String,Object>():new HashMap<>(existing.getAllProperties());
         if(existing!=null)existing.delete();
         String key=object.getProperty("namespaceId")+"/Membership/"+id(object);
@@ -95,8 +101,11 @@ public final class CoreRepository {
         return nodes(label,Map.of("namespaceId",owner.getProperty("namespaceId"),"ownerId",id(owner)));
     }
     public Node attach(String label,Node owner,String actor,Map<String,Object> props) {
+        return attachRestored(label,owner,actor,props,UUID.randomUUID().toString());
+    }
+    public Node attachRestored(String label,Node owner,String actor,Map<String,Object> props,String restoredId) {
         var fields=new LinkedHashMap<>(props);fields.put("ownerId",id(owner));
-        Node n=create(label,(String)owner.getProperty("namespaceId"),actor,fields);owner.createRelationshipTo(n,RelationshipType.withName("HAS_DESCRIPTOR"));return n;
+        Node n=createRestored(label,(String)owner.getProperty("namespaceId"),actor,fields,restoredId);owner.createRelationshipTo(n,RelationshipType.withName("HAS_DESCRIPTOR"));return n;
     }
     public List<Node> members(Node clazz) {
         var result=new ArrayList<Node>();try(var edges=clazz.getRelationships(Direction.INCOMING,RelationshipType.withName("MEMBER_OF"))) {for(var edge:edges) result.add(edge.getStartNode());}
@@ -187,8 +196,11 @@ public final class CoreRepository {
         }return null;
     }
     public Relationship createRelationship(Node source,Node target,String label,Map<String,Object> properties,String actor) {
+        return createRelationshipRestored(source,target,label,properties,actor,UUID.randomUUID().toString());
+    }
+    public Relationship createRelationshipRestored(Node source,Node target,String label,Map<String,Object> properties,String actor,String restoredId) {
         Relationship rel=source.createRelationshipTo(target,RelationshipType.withName("RELATED_TO"));
-        rel.setProperty("id",UUID.randomUUID().toString());rel.setProperty("namespaceId",source.getProperty("namespaceId"));rel.setProperty("label",label);
+        rel.setProperty("id",restoredId);rel.setProperty("namespaceId",source.getProperty("namespaceId"));rel.setProperty("label",label);
         rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);audit(rel,actor);
         properties.forEach((key,value)->{if(value!=null)rel.setProperty(key,value);});
         Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",edgeKey(rel));registry.setProperty("id",id(rel));return rel;
@@ -197,6 +209,12 @@ public final class CoreRepository {
         Node registry=find("DepositEdgeIdentity","key",edgeKey(rel));
         if(registry==null||!id(rel).equals(registry.getProperty("id")))throw new IllegalStateException("Missing edge identity");
         registry.delete();deleted.add(id(rel));rel.delete();
+    }
+    /** Restoration only: preserve the portable edge identity and its uniqueness registry together. */
+    public void restoreEdgeId(Relationship rel,String id) {
+        Node registry=find("DepositEdgeIdentity","key",edgeKey(rel));
+        if(registry==null)throw new IllegalStateException("Missing restored edge registry");
+        registry.setProperty("id",id);rel.setProperty("id",id);
     }
     public void remove(Node node,List<String> deleted) {
         deleted.add(id(node));
@@ -240,6 +258,7 @@ public final class CoreRepository {
     }
     public List<String> deleteNamespace(String namespace) {
         var deleted=new TreeSet<String>();
+        new HistoryRepository(tx,this).deleteNamespace(namespace);
         // Remove owned values while ownership/declarations still exist; operational records survive.
         for(Node descriptor:nodes("Descriptor",Map.of("namespaceId",namespace))) {var ids=new ArrayList<String>();removeValue(descriptor,ids);deleted.addAll(ids);}
         geometry().deleteLayers(namespace);

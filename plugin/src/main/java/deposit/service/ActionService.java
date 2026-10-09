@@ -29,11 +29,16 @@ public abstract class ActionService extends BaseService {
             return repo.replay(receipt,scope);
         }
         c.revision=serverScope?c.server.revision(c.state):repo.sequence(scope);checkRevision();
+        boolean scientific=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")||Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure));
+        var history=new deposit.repository.HistoryRepository(c.tx,repo);
+        if(scientific&&!"disabled".equals(repo.namespace(scope).getProperty("historyMode")))c.journal=new ChangeSet(history.capture(scope));
         Change change=work.get();
         if(change.changed()) {
             if(serverScope) {c.state.serverChanged=true;c.revision=c.server.revision(c.state);}
             else {repo.advanceNamespace(scope,c.actorId);c.revision=repo.sequence(scope);}
+            if(c.journal!=null){c.journal.checkpoint(history.capture(scope));Revision revision=history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp);change.outcome().data().put("revisionId",revision.id());}
         } else change.outcome().data().put("changed",false);
+        if(scientific){c.server.storagePoint("history-before-receipt");c.state.afterCommit.add(()->c.server.storagePoint("history-after-commit"));}
         repo.saveReceipt(c,scope,hash,change.outcome());return change.outcome();
     }
     protected Outcome outcome(Node node) {return new Outcome(node,null,repo.data(node));}

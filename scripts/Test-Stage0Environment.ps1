@@ -6,7 +6,8 @@ param(
     [switch]$Build,
     [switch]$Stage2Checks,
     [switch]$Stage3Checks,
-    [switch]$Stage4Checks
+    [switch]$Stage4Checks,
+    [switch]$Stage5Checks
 )
 # Final Windows environment suite; collection also requires the live runner fixture.
 . "$PSScriptRoot\Inputs.ps1"
@@ -74,6 +75,43 @@ try {
                 }
             }
         } finally {[Environment]::SetEnvironmentVariable('STAGE4_CRASH_POINT',$savedCrashPoint,'Process')}
+    }
+    if($Stage5Checks) {
+        Scenario 'stage5-history-faults-and-invariants' {Phase Test -Options @{TestSelection='Stage5ProbeIT'}}
+        $savedStage5Point=$env:STAGE5_CRASH_POINT
+        try {
+            foreach($point in @('history-before-receipt','history-after-commit')) {
+                $env:STAGE5_CRASH_POINT=$point
+                Scenario ('stage5-crash-'+$point) {
+                    Phase Test -Options @{TestSelection='Stage5CrashIT#triggerAction'}
+                    Phase Start
+                    Phase Test -Options @{TestSelection='Stage5CrashIT#verifyAction'}
+                }
+            }
+            foreach($point in @('history-invalidated','history-cleanup-batch','history-before-baseline','history-after-baseline')) {
+                $env:STAGE5_CRASH_POINT=$point
+                Scenario ('stage5-crash-'+$point) {
+                    Phase Test -Options @{TestSelection='Stage5CrashIT#seedStartup'}
+                    Phase Stop
+                    # Probe provider blocks initialization; the ordinary readiness phase must fail when killed.
+                    $starter=Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile','-File',("`"$PSScriptRoot\Stage0.ps1`""),'-Phase','Start','-RunId',$primary,'-Port',$Port,'-EvidenceGroup',$RunPrefix,'-InputsFile',("`"$InputsFile`"")) -RedirectStandardOutput "$directory\$point-start.out.log" -RedirectStandardError "$directory\$point-start.err.log"
+                    try {
+                        $marker=Join-Path $root "runs\$primary\stage5-startup-paused.txt"
+                        $deadline=[DateTime]::UtcNow.AddSeconds(60)
+                        while(!(Test-Path -LiteralPath $marker) -and [DateTime]::UtcNow -lt $deadline -and !$starter.HasExited){Start-Sleep -Milliseconds 100;$starter.Refresh()}
+                        if(!(Test-Path -LiteralPath $marker) -or !(Get-Content -LiteralPath $marker -Raw).StartsWith($point+'/')){throw 'History startup barrier not reached'}
+                        Copy-Item -LiteralPath $marker -Destination "$directory\$point-barrier.txt"
+                        & "$PSScriptRoot\Kill-TestOwnedJvm.ps1"
+                        if(!$starter.WaitForExit(60000)){throw 'Killed startup launcher did not finish'}
+                        $phase=Get-Content "$root\runs\$primary\checkpoint.json" -Raw|ConvertFrom-Json
+                        if($phase.phase -ne 'Start' -or $phase.status -ne 'failed'){throw 'Killed startup must record a failed readiness phase'}
+                        $script:scenarioPhases.Add(@{runId=$primary;phase='Start';status='failed';path=(Join-Path $phase.evidence 'checkpoint-Start.json')})
+                    } finally {if(!$starter.HasExited){& "$PSScriptRoot\Kill-TestOwnedJvm.ps1";$null=$starter.WaitForExit(60000)}}
+                    Phase Start
+                    Phase Test -Options @{TestSelection='Stage5CrashIT#verifyStartup'}
+                }
+            }
+        } finally {[Environment]::SetEnvironmentVariable('STAGE5_CRASH_POINT',$savedStage5Point,'Process')}
     }
     Scenario 'graceful-restart-and-persistent-uuid-maps' {
         Phase Stop; Phase Start

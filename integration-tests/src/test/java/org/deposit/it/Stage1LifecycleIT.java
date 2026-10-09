@@ -30,7 +30,7 @@ class Stage1LifecycleIT {
     static void error(String code,Runnable action) {var e=assertThrows(org.neo4j.driver.exceptions.ClientException.class,action::run);assertTrue(e.getMessage().contains("\"code\":\""+code+"\""),e.getMessage());}
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
-        assertEquals("0.0.0-stage4",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
+        assertEquals("0.0.0-stage5",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
         String secret=Files.readString(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")).trim();
         var request=m("bootstrapSecret",secret,"username",ACCOUNT,"password",PASSWORD);
         try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(1,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("meta").get("revision").asLong());tx.rollback();}
@@ -58,7 +58,7 @@ class Stage1LifecycleIT {
         try(var s=driver.session();var tx=s.beginTransaction()) {tx.run("CALL deposit.create.namespace($r,$c)",m("r",m("name","rolled-back","historyMode","disabled"),"c",write(token,serverRevision))).consume();tx.rollback();}
         var result=call("deposit.create.namespace",m("name","N2","historyMode","disabled"),write(token,serverRevision));otherNs=id(result);serverRevision=revision(result);
         var replay=call("deposit.create.namespace",request,context);assertEquals(ns,id(replay));assertEquals(serverRevision,revision(replay));
-        error("HISTORY_UNAVAILABLE",()->call("deposit.create.namespace",m("name","default-history"),write(token,serverRevision)));
+        var persistent=call("deposit.create.namespace",m("name","default-history"),write(token,serverRevision));serverRevision=revision(persistent);assertEquals("persistent",persistent.get("data").get("historyMode").asString());
     }
     @Test @Order(3) void selectionCommitRollbackAndIndependentTokens() {
         call("deposit.set.activeNamespace",m("id",ns),ctx(token));call("deposit.set.activeNamespace",m("name","N2"),ctx(otherToken));

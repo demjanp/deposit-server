@@ -15,6 +15,8 @@ public final class RequestContext {
     public ServerContext.Session session;
     public String actorId, namespaceId;
     public long revision;
+    public ChangeSet journal;
+    public String historyKind="edit",historyLink,historyTarget;
     public RequestContext(Transaction tx,Map<String,Object> context) {
         this.tx=tx;
         if(context==null)throw ExceptionHandler.fail("VALIDATION_FAILED","context must be a map");

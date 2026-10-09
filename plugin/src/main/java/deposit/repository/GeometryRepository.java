@@ -62,11 +62,15 @@ public final class GeometryRepository {
         server.storagePoint("geometry-removal");
     }
     public boolean write(Node descriptor,Object normalized,String actor) {
-        Node node=geometry(descriptor);if(node!=null&&Objects.equals(value(node),normalized)){verifyIndex(node);return false;}
+        return writeRestored(descriptor,normalized,actor,null);
+    }
+    public boolean writeRestored(Node descriptor,Object normalized,String actor,String restoredId) {
+        Node node=geometry(descriptor);if(node!=null&&Objects.equals(value(node),normalized)&&(restoredId==null||restoredId.equals(CoreRepository.id(node)))){verifyIndex(node);return false;}
         if(node!=null)removeIndex(node);
         if(normalized==null) {if(node==null)return false;descriptor.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.OUTGOING).delete();node.delete();return true;}
         var data=ValueCodec.map(normalized);
-        if(node==null) {node=core.create("DGeometry",(String)descriptor.getProperty("namespaceId"),actor,Map.of());descriptor.createRelationshipTo(node,RelationshipType.withName("HAS_GEOMETRY"));}
+        if(node==null) {node=core.createRestored("DGeometry",(String)descriptor.getProperty("namespaceId"),actor,Map.of(),restoredId==null?UUID.randomUUID().toString():restoredId);descriptor.createRelationshipTo(node,RelationshipType.withName("HAS_GEOMETRY"));}
+        else if(restoredId!=null&&!restoredId.equals(CoreRepository.id(node)))node.setProperty("id",restoredId);
         core.update(node,data,actor);node.setProperty("geometryType",GeometryCodec.fromWkt(data.get("wkt"),data.get("srid"),data.get("verticalSrid")).get("geometryType"));node.removeProperty("bbox");server.storagePoint("geometry-update");
         var layer=layer(layerName((String)descriptor.getProperty("namespaceId"),data.get("srid")),data.get("srid"),true);
         layer.add(tx,node);server.storagePoint("geometry-registration");layer.finalizeTransaction(tx);return true;

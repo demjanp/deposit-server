@@ -133,7 +133,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             if(!bootstrapped) {
                 bootstrapHash=Json.hash(secret(secretPath));
             }
-            storage=new StorageManager(this,db);storage.recover();storage.start();
+            storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();storage.start();
             initialized=true;
             readiness.complete(null);
         } catch(Exception e) {throw new IllegalStateException("Cannot initialize Deposit bootstrap credential",e);}

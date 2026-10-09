@@ -24,8 +24,9 @@ public final class ResourceRepository {
     public boolean live(String id){Node loc=location(id);if(loc==null)return false;Node r=resource(text(loc,"namespaceId"),id);return r!=null&&r.hasRelationship(Direction.INCOMING,RelationshipType.withName("HAS_RESOURCE"));}
     public boolean protectedContent(Node loc) {
         if(live(CoreRepository.id(loc)))return true;
+        if(retained(CoreRepository.id(loc)))return true;
         if(number(loc,"leaseUntil",0)>now())return true;
-        for(Node lease:core.nodes("DepositResourceLease",Map.of("resourceId",CoreRepository.id(loc))))if(number(lease,"expires",Long.MAX_VALUE)>now())return true;
+        for(Node lease:core.nodes("DepositResourceLease",Map.of("resourceId",CoreRepository.id(loc))))if(!"history".equals(lease.getProperty("type",""))&&number(lease,"expires",Long.MAX_VALUE)>now())return true;
         for(Node grant:core.nodes("DepositExportGrant",Map.of("resourceId",CoreRepository.id(loc))))if(number(grant,"expires",0)>now())return true;
         return false;
     }
@@ -36,7 +37,7 @@ public final class ResourceRepository {
     public boolean accessible(Node resource,String actor,String role,boolean renew) {
         String id=CoreRepository.id(resource);Node loc=location(id);if(loc==null||loc.hasProperty("deleting"))return false;
         if(live(id))return true;
-        for(Node lease:core.nodes("DepositResourceLease",Map.of("resourceId",id)))if("history".equals(lease.getProperty("type",""))&&role.equals("owner")&&number(lease,"expires",Long.MAX_VALUE)>now())return true;
+        if(Set.of("viewer","editor","owner").contains(role)&&retained(id))return true;
         if(actor.equals(resource.getProperty("createdBy"))&&number(loc,"leaseUntil",0)>now()) {
             if(renew){Node t=transfer(text(loc,"uploadId"));if(t!=null)renew(t);}return true;
         }
@@ -45,6 +46,11 @@ public final class ResourceRepository {
                 if(renew){grant.setProperty("expires",now()+ResourceFiles.LEASE);loc.removeProperty("orphanSince");}return true;
             }
         }return false;
+    }
+    public boolean retained(String id) {
+        Node loc=location(id);if(loc==null)return false;Node resource=resource(text(loc,"namespaceId"),id);if(resource==null)return false;
+        try(var edges=resource.getRelationships(Direction.INCOMING,RelationshipType.withName("RETAINS_RESOURCE"))){for(var edge:edges){Node snapshot=edge.getStartNode();Node epoch=core.entity("DepositHistoryEpoch",text(loc,"namespaceId"),(String)snapshot.getProperty("historyEpochId"));if(epoch!=null&&!Boolean.TRUE.equals(epoch.getProperty("expired",false)))return true;}}
+        return false;
     }
     public Node linked(Node descriptor) {var e=descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING);return e==null?null:e.getEndNode();}
     public void changed(Node r){Node loc=location(CoreRepository.id(r));loc.setProperty("pending",true);orphan(loc);}

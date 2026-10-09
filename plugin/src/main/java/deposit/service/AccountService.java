@@ -68,10 +68,9 @@ public final class AccountService extends ActionService {
         return action("deposit.create.namespace",request,true,null,()->{
             String name=name(request.get("name")),mode=string(request.getOrDefault("historyMode","persistent"));
             if(!Set.of("disabled","transient","persistent").contains(mode))c.fail("VALIDATION_FAILED","Invalid historyMode");
-            if(!mode.equals("disabled"))c.fail("HISTORY_UNAVAILABLE","Stage 1 supports explicitly disabled history only");
             if(repo.find("Namespace","name",name)!=null)c.fail("DUPLICATE","Namespace name exists");
             Node ns=repo.create("Namespace",null,c.actorId,Json.map("name",name,"description",string(request.getOrDefault("description","")),"historyMode",mode,"historyEpochId",UUID.randomUUID().toString(),"sequence",0L,"depositVersion",DepositInfo.version()));
-            repo.setRole(c.actorId,CoreRepository.id(ns),"owner");var data=repo.data(ns);data.put("role","owner");return new Change(new Outcome(ns,null,data),true);
+            repo.setRole(c.actorId,CoreRepository.id(ns),"owner");new deposit.repository.HistoryRepository(c.tx,repo).baseline(CoreRepository.id(ns),c.actorId,0,c.server.runId,c.timestamp);var data=repo.data(ns);data.put("role","owner");return new Change(new Outcome(ns,null,data),true);
         });
     }
     private static boolean matchesPassword(Node user, String password) {

@@ -8,6 +8,11 @@ public final class SchemaRepository {
     private SchemaRepository() {}
     public static void initialize(GraphDatabaseService db) {
         try(var tx=db.beginTx()) {
+            for(String label:List.of("Revision","DepositSnapshot","DepositHistoryEpoch"))tx.execute("CREATE CONSTRAINT deposit_"+label+"_identity IF NOT EXISTS FOR (n:"+label+") REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
+            tx.execute("CREATE CONSTRAINT deposit_revision_tag IF NOT EXISTS FOR (n:RevisionTag) REQUIRE (n.namespaceId,n.revisionId) IS UNIQUE").close();
+            tx.execute("CREATE INDEX deposit_revision_sequence IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.sequence)").close();
+            tx.execute("CREATE INDEX deposit_revision_epoch_sequence IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.historyEpochId,n.sequence)").close();
+            tx.execute("CREATE INDEX deposit_snapshot_epoch IF NOT EXISTS FOR (n:DepositSnapshot) ON (n.namespaceId,n.historyEpochId)").close();
             for(String label:List.of("Class","Object","Descriptor","ClassDescriptor","UserTool","DGeometry","DResource")) {
                 tx.execute("CREATE CONSTRAINT deposit_"+label+"_id IF NOT EXISTS FOR (n:`"+label+"`) REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
             }

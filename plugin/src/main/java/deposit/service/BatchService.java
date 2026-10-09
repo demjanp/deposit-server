@@ -41,6 +41,7 @@ public final class BatchService extends ActionService {
                         resolved.put(field,((Map<?,?>)previous).get("id"));
                     }
                     Change step=domain.command(command.procedure(),resolved);changed|=step.changed();
+                    if(c.journal!=null)c.journal.checkpoint(new deposit.repository.HistoryRepository(c.tx,repo).capture(c.namespaceId));
                     var saved=Json.read(Json.write(step.outcome().data()));if(!step.changed())saved.put("changed",false);
                     results.put(command.key(),saved);
                 }catch(ExceptionHandler.DepositException failure) {throw commandError(failure,command.key(),index);}
