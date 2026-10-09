@@ -1,8 +1,9 @@
 function Get-Stage0Inputs([string]$Repo) {
     $records = New-Object System.Collections.Generic.List[object]
     foreach ($entry in @(@{name='server';path=$Repo},@{name='hub';path=(Join-Path $Repo '..\deposit-hub')})) {
-        $files = & git -C $entry.path ls-files --cached --others --exclude-standard
-        if ($LASTEXITCODE -ne 0) {throw 'Cannot capture repository inputs'}
+        $base = [IO.Path]::GetFullPath($entry.path).TrimEnd('\')
+        # Enumerate the filesystem, including new files, without consulting Git.
+        $files = @(Get-SourceFiles $base $base)
         foreach ($relative in ($files | Sort-Object -Unique)) {
             if($entry.name -eq 'hub' -and $relative -eq 'implementation_status.md') {continue}
             $file=Join-Path $entry.path $relative
@@ -17,7 +18,27 @@ function Get-Stage0Inputs([string]$Repo) {
     $algorithm=[Security.Cryptography.SHA256]::Create()
     try {$hash=[BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($json))).Replace('-','').ToLowerInvariant()}
     finally {$algorithm.Dispose()}
-    return @{sha256=$hash;files=$records.ToArray();serverBaseline=(& git -C $Repo rev-parse HEAD);hubBaseline=(& git -C (Join-Path $Repo '..\deposit-hub') rev-parse HEAD)}
+    $repositoryHashes=@{}
+    foreach($name in @('server','hub')) {
+        $bytes=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject @($records.ToArray() | Where-Object repository -eq $name) -Depth 5 -Compress))
+        $algorithm=[Security.Cryptography.SHA256]::Create()
+        try {$repositoryHashes[$name]=[BitConverter]::ToString($algorithm.ComputeHash($bytes)).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose()}
+    }
+    return @{schemaVersion=2;sha256=$hash;files=$records.ToArray();serverFingerprint=$repositoryHashes.server;hubFingerprint=$repositoryHashes.hub;serverBaseline=('filesystem:'+$repositoryHashes.server);hubBaseline=('filesystem:'+$repositoryHashes.hub)}
+}
+
+function Get-SourceFiles([string]$Base,[string]$Directory) {
+    foreach($item in Get-ChildItem -LiteralPath $Directory -Force) {
+        if($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {throw "Source links require explicit review: $($item.FullName)"}
+        if($item.PSIsContainer) {
+            if($item.Name -in @('.git','.idea','.vscode','.cache','.generated','node_modules','target','build','__pycache__')) {continue}
+            Get-SourceFiles $Base $item.FullName
+        } else {
+            $relative=$item.FullName.Substring($Base.Length+1).Replace('\','/')
+            if($item.Extension -in @('.log','.class','.pyc','.zip','.jar') -and $relative -ne '.mvn/wrapper/maven-wrapper.jar') {continue}
+            $relative
+        }
+    }
 }
 
 function Save-Stage0SourceSnapshot([string]$Repo,[string]$Root,$Inputs) {
@@ -34,8 +55,11 @@ function Save-Stage0SourceSnapshot([string]$Repo,[string]$Root,$Inputs) {
                 if($record.repository -eq 'hub') {$source=Join-Path $Repo '..\deposit-hub'}
                 $entry=$zip.CreateEntry($record.repository+'/'+$record.path.Replace('\','/'))
                 $entry.LastWriteTime=[DateTimeOffset]'2026-10-08T00:00:00Z'
-                $input=[IO.File]::OpenRead((Join-Path $source $record.path)); $output=$entry.Open()
-                try {$input.CopyTo($output)} finally {$output.Dispose();$input.Dispose()}
+                $bytes=[IO.File]::ReadAllBytes((Join-Path $source $record.path));$algorithm=[Security.Cryptography.SHA256]::Create()
+                try {$actual=[BitConverter]::ToString($algorithm.ComputeHash($bytes)).Replace('-','').ToLowerInvariant()} finally {$algorithm.Dispose()}
+                if($actual -ne $record.sha256) {throw 'Source changed while capturing snapshot'}
+                $output=$entry.Open()
+                try {$output.Write($bytes,0,$bytes.Length)} finally {$output.Dispose()}
             }
         } finally {$zip.Dispose()}
         [IO.File]::Move($temporary,$archive)

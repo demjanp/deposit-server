@@ -1,0 +1,37 @@
+package deposit.api;
+
+import deposit.common.*;
+import org.neo4j.graphdb.Transaction;
+import org.neo4j.procedure.Context;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public abstract class BaseAPI {
+    @Context public Transaction tx;
+    @Context public org.neo4j.logging.Log log;
+    protected RequestContext context(java.util.Map<String,Object> context) {return new RequestContext(tx,context);}
+    protected <T> Stream<T> invoke(Map<String,Object> context,Function<RequestContext,Stream<T>> action) {
+        RequestContext c;
+        try {c=context(context);}catch(RuntimeException failure) {throw safe(failure,null);}
+        final Stream<T> source;
+        try {source=action.apply(c);}catch(RuntimeException failure) {throw safe(failure,c);}
+        var iterator=source.iterator();
+        return StreamSupport.stream(new Spliterators.AbstractSpliterator<T>(Long.MAX_VALUE,Spliterator.ORDERED) {
+            @Override public boolean tryAdvance(Consumer<? super T> consumer) {
+                try {if(!iterator.hasNext()) {source.close();return false;}consumer.accept(iterator.next());return true;}
+                catch(RuntimeException failure) {try {source.close();}catch(RuntimeException ignored){}throw safe(failure,c);}
+            }
+        },false).onClose(()->{try {source.close();}catch(RuntimeException failure) {throw safe(failure,c);}});
+    }
+    private RuntimeException safe(RuntimeException failure,RequestContext c) {
+        tx.terminate();
+        if(failure instanceof ExceptionHandler.DepositException) {
+            var error=Json.read(failure.getMessage().substring("DEPOSIT_ERROR ".length()));
+            return ExceptionHandler.error((String)error.get("code"),(String)error.get("message"),c,Boolean.TRUE.equals(error.get("retryable")),ValueCodec.map(error.get("details")));
+        }
+        if(failure instanceof org.neo4j.graphdb.TransactionTerminatedException) return ExceptionHandler.error("CANCELLED","Transaction terminated",c,false,Map.of());
+        String reference=UUID.randomUUID().toString();log.error("Deposit internal failure reference="+reference+" requestId="+(c==null?"unknown":c.requestId)+" exception="+failure.getClass().getName());
+        return ExceptionHandler.error("INTERNAL_ERROR","Internal error; consult restricted diagnostics",c,false,Map.of("diagnosticReference",reference));
+    }
+}

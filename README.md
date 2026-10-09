@@ -2,11 +2,13 @@
 
 Deposit's Stage 0 runtime foundation uses published Neo4j/APOC Core **2026.05.0**, Spatial **2025.10.0**, Temurin **21.0.12.1+1** and explicitly selected **Cypher 25**. This is the highest compatible published Neo4j/Spatial combination verified on 9 October 2026. [Selection, implementation and evidence](../deposit-hub/implementation_status.md#stage-0-implementation-and-evidence).
 
-The development plugin `0.0.0-stage0` provides only `CALL deposit.get.info() YIELD data, meta`. Domain APIs remain later-stage work. The old implementation remains in Git history at `988e21b`; no compatibility layer is maintained.
+The development plugin `0.0.0-stage1` adds the layered core: bootstrap/login, independent Namespace sessions, history-disabled typed Class/Object/Descriptor CRUD, native streams, portable pages, revisions and receipts. [Architecture, supported scope and reuse decisions](docs/stage1-foundation.md). Historical root `src` remains inactive reference material; no compatibility layer is maintained.
+
+Run the cumulative Stage 1 gate with `scripts/Invoke-Stage1Gate.ps1 -RunPrefix <fresh-id> -Port 17770`. Its authoritative checkpoint is `C:\data_processed\Deposit_v2\stage0\stage1-checkpoint.json`; it preserves the accepted Stage 0 checkpoint. Stage 1 supports explicit `historyMode: disabled`, all native scalar types, List and DDict. History, DGeometry and DResource remain later-stage work.
 
 ## Windows commands
 
-Requirements: Windows PowerShell 5.1, Git and network access to the pinned official artifact URLs. All tools, caches, the single installation, databases, resource directories, temporary files and evidence use **`C:\data_processed\Deposit_v2\stage0`**. Provisioning does not change the machine's Java or PATH.
+Requirements: Windows PowerShell 5.1 and network access to the pinned official artifact URLs. All tools, caches, the single installation, databases, resource directories, temporary files and evidence use **`C:\data_processed\Deposit_v2\stage0`**. Provisioning does not change the machine's Java or PATH.
 
 ```powershell
 .\scripts\Stage0.ps1 -Phase Provision -RunId stage0-host

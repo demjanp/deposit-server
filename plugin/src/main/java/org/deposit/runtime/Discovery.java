@@ -12,10 +12,13 @@ import org.neo4j.procedure.Procedure;
 
 /** The only public API supplied by the Stage 0 development artifact. */
 public class Discovery {
+    @org.neo4j.procedure.Context public org.neo4j.graphdb.GraphDatabaseService db;
     @Procedure(name = "deposit.get.info", mode = Mode.READ)
     @Description("Return the Deposit development version. No Deposit login is required.")
     public Stream<Info> info() {
         RuntimeReadiness.requireReady();
+        var database=(org.neo4j.kernel.internal.GraphDatabaseAPI)db;
+        deposit.common.ServerContext.forDatabase(database.databaseId().databaseId().uuid()).requireReady();
         Properties build = new Properties();
         try (var stream = Discovery.class.getResourceAsStream("/deposit-build.properties")) {
             if (stream == null) throw new IllegalStateException("Missing Deposit build metadata");

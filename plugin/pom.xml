@@ -1,7 +1,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage0</version></parent>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage1</version></parent>
   <artifactId>deposit-plugin</artifactId>
-  <dependencies><dependency><groupId>org.neo4j</groupId><artifactId>neo4j</artifactId></dependency></dependencies>
+  <dependencies>
+    <dependency><groupId>org.neo4j</groupId><artifactId>neo4j</artifactId></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.21.2</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>1.82</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
+  </dependencies>
   <build><resources><resource><directory>src/main/resources</directory><filtering>true</filtering></resource></resources></build>
 </project>

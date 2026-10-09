@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [ValidateSet(0,1)][int]$Stage=0,
     [ValidateSet('Work','Resume','Review')][string]$Mode='Review',
     [Parameter(Mandatory=$true)][string]$WorkPackage,
     [string]$Root='C:\data_processed\Deposit_v2\stage0',
@@ -33,6 +34,9 @@ try {
     if (Test-Path $stateFile) {$previous=Get-Content $stateFile -Raw | ConvertFrom-Json}
     if ($Mode -eq 'Resume') {
         if (!$previous -or !$previous.sessionId) {throw 'An explicit saved session ID is required'}
+        $savedStage=if($previous.PSObject.Properties['stage']) {[int]$previous.stage} else {0}
+        if($PSBoundParameters.ContainsKey('Stage') -and $Stage -ne $savedStage) {throw 'Cannot change stage when resuming'}
+        $Stage=$savedStage
         if ($previous.inputs -ne $inputs.sha256) {throw 'Inputs changed: use a new work package/name; stale evidence cannot be resumed'}
         if (!$previous.PSObject.Properties['workPackageHash'] -or $previous.workPackageHash -ne $workPackageHash) {throw 'Work package changed or is unbound; start a new work package/name'}
         if ($previous.PSObject.Properties['failureCause'] -and $previous.failureCause -and $counts.ContainsKey($previous.failureCause) -and $counts[$previous.failureCause] -ge 3) {throw 'Three failures of the same cause require reassessment'}
@@ -46,14 +50,14 @@ try {
     $errors=Join-Path $directory "$attempt.stderr.log"
     $resultFile=Join-Path $directory "$attempt.result.json"
     $prompt=Get-Content -LiteralPath $WorkPackage -Raw
-    $prompt="Stage 0 only. Do not stage, commit or push to Git. Do not change the pinned runtime or port Spatial. Stop on compatibility blockers. Keep secrets out of logs. Work package:`n"+$prompt
+    $prompt="Stage $Stage only. Perform no Git operations. Use filesystem source fingerprints. Do not change the pinned runtime or port Spatial. Stop on compatibility blockers. Keep secrets out of logs. Work package:`n"+$prompt
     $prompt+="`nReport failed tests or unresolved blockers as status failed/blocked, even if you completed your agent turn. failureCause must be a stable lowercase hyphenated cause identifier, independent of timestamps/log wording. Use null only when completed. Expected repair cause: $RepairCause."
     $arguments=@('exec','--json','--sandbox',$(if($Mode -eq 'Review'){'read-only'}else{'workspace-write'}),'-C',$repo,'--output-schema',"$repo\runtime\runner-result.schema.json",'--output-last-message',$resultFile)
     if ($Mode -ne 'Review') {$arguments+=@('--add-dir',$Root,'--add-dir',"$repo\..\deposit-hub")}
     if ($Mode -eq 'Resume') {$arguments+=@('resume',$previous.sessionId,'-')}
     else {$arguments+='-'}
     if ($Mode -eq 'Review') {$prompt="Read-only review. Do not modify files. Inspect the implementation and available evidence; report concrete defects and pending acceptance. `n"+$prompt}
-    $state=@{sessionId=$null;inputs=$inputs.sha256;workPackageHash=$workPackageHash;mode=$Mode;status='running';events=$events;repairCause=$RepairCause;failureCause=$null;nextAction='Resume the explicit session after revalidating inputs'}
+    $state=@{stage=$Stage;sessionId=$null;inputs=$inputs.sha256;workPackageHash=$workPackageHash;mode=$Mode;status='running';events=$events;repairCause=$RepairCause;failureCause=$null;nextAction='Resume the explicit session after revalidating inputs'}
     if($Mode -eq 'Resume') {$state.sessionId=$previous.sessionId}
     Save-State $state
     $eventWriter=New-Object IO.StreamWriter($events,$false,(New-Object Text.UTF8Encoding($false)))

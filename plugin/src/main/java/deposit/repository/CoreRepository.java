@@ -1,0 +1,153 @@
+package deposit.repository;
+
+import deposit.common.*;
+import deposit.common.Results.Outcome;
+import java.time.*;
+import java.util.*;
+import org.neo4j.graphdb.*;
+
+/** Graph storage only. Authorization and action boundaries belong to services. */
+public final class CoreRepository {
+    private final Transaction tx;
+    private final ZonedDateTime timestamp;
+    public CoreRepository(Transaction tx,ZonedDateTime timestamp) {this.tx=tx;this.timestamp=timestamp;}
+    public Node find(String label,String property,Object value) {return tx.findNode(Label.label(label),property,value);}
+    public Node find(String label,Map<String,Object> properties) {
+        try(var nodes=tx.findNodes(Label.label(label),properties)) {return nodes.hasNext()?nodes.next():null;}
+    }
+    public Node entity(String label,String namespace,String id) {return find(label,Map.of("namespaceId",namespace,"id",id));}
+    public List<Node> nodes(String label,Map<String,Object> properties) {
+        try(var nodes=properties.isEmpty()?tx.findNodes(Label.label(label)):tx.findNodes(Label.label(label),properties)) {return nodes.stream().sorted(Comparator.comparing(n->(String)n.getProperty("id",""))).toList();}
+    }
+    public static String id(Entity n) {return (String)n.getProperty("id");}
+    public static String kind(Node node) {
+        for(String label:List.of("Namespace","User","Class","Object","ClassDescriptor","Descriptor")) if(node.hasLabel(Label.label(label))) return label;
+        throw new IllegalStateException("Unknown domain label");
+    }
+    public Node namespace(String id) {return find("Namespace","id",id);}
+    public long sequence(String id) {Node ns=namespace(id);if(ns==null) throw ExceptionHandler.fail("NOT_FOUND","Namespace not found");return ((Number)ns.getProperty("sequence")).longValue();}
+    public void lockNamespace(String id) {tx.acquireWriteLock(namespace(id));}
+    public void lockActor(String id) {tx.acquireWriteLock(find("DepositActorLock","id",id));}
+    public String role(String actor,String namespace) {
+        Node user=find("User","id",actor);if(user==null) return null;
+        try(var edges=user.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_NAMESPACE_ROLE"))) {
+            for(Relationship edge:edges) if(namespace.equals(edge.getEndNode().getProperty("id",null))) return (String)edge.getProperty("role");
+        }return null;
+    }
+    public boolean setRole(String actor,String namespace,String role) {
+        Node user=find("User","id",actor);Node ns=namespace(namespace);
+        try(var edges=user.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_NAMESPACE_ROLE"))) {
+            for(Relationship edge:edges) if(edge.getEndNode().equals(ns)) {
+                if(Objects.equals(edge.getProperty("role"),role)) return false;
+                if(role==null) edge.delete();else edge.setProperty("role",role);return true;
+            }
+        }
+        if(role==null) return false;
+        user.createRelationshipTo(ns,RelationshipType.withName("HAS_NAMESPACE_ROLE")).setProperty("role",role);return true;
+    }
+    public List<Map<String,Object>> roles(String namespace) {
+        var result=new ArrayList<Map<String,Object>>();
+        try(var edges=namespace(namespace).getRelationships(Direction.INCOMING,RelationshipType.withName("HAS_NAMESPACE_ROLE"))) {
+            for(Relationship edge:edges) result.add(Json.map("userId",id(edge.getStartNode()),"role",edge.getProperty("role")));
+        }
+        result.sort(Comparator.comparing(m->(String)m.get("userId")));return result;
+    }
+    public Node create(String label,String namespace,String actor,Map<String,Object> properties) {
+        Node n=namespace==null?tx.createNode(Label.label(label)):tx.createNode(Label.label(label),Label.label("DepositLive"));
+        n.setProperty("id",UUID.randomUUID().toString());
+        if(namespace!=null) n.setProperty("namespaceId",namespace);
+        var now=timestamp;n.setProperty("createdAt",now);n.setProperty("createdBy",actor==null?id(n):actor);
+        n.setProperty("updatedAt",now);n.setProperty("updatedBy",actor==null?id(n):actor);
+        properties.forEach((k,v)->{if(v!=null)n.setProperty(k,property(v));});
+        if(label.equals("User"))tx.createNode(Label.label("DepositActorLock")).setProperty("id",id(n));
+        if(namespace!=null && Set.of("Class","Object").contains(label)) namespace(namespace).createRelationshipTo(n,RelationshipType.withName("CONTAINS"));
+        return n;
+    }
+    private static Object property(Object v) {if(v instanceof List<?> list) return list.stream().mapToDouble(x->((Number)x).doubleValue()).toArray();return v;}
+    public boolean update(Node node,Map<String,Object> values,String actor) {
+        boolean changed=false;
+        for(var entry:values.entrySet()) {
+            Object value=entry.getValue()==null?null:property(entry.getValue());Object old=node.getProperty(entry.getKey(),null);
+            if(!Objects.deepEquals(old,value)) {changed=true;if(value==null)node.removeProperty(entry.getKey());else node.setProperty(entry.getKey(),value);}
+        }
+        if(changed) audit(node,actor);return changed;
+    }
+    public void audit(Entity node,String actor) {node.setProperty("updatedAt",timestamp);node.setProperty("updatedBy",actor);}
+    public void advanceNamespace(String namespace,String actor) {Node ns=namespace(namespace);ns.setProperty("sequence",sequence(namespace)+1);audit(ns,actor);}
+    public Relationship membership(Node object) {return object.getSingleRelationship(RelationshipType.withName("MEMBER_OF"),Direction.OUTGOING);}
+    public Node objectClass(Node object) {var membership=membership(object);if(membership==null) throw new IllegalStateException("Object has no Class");return membership.getEndNode();}
+    public Relationship assign(Node object,Node clazz,String actor) {
+        Relationship existing=membership(object);
+        if(existing!=null && existing.getEndNode().equals(clazz)) return existing;
+        String id=existing==null?UUID.randomUUID().toString():id(existing);
+        var properties=existing==null?new HashMap<String,Object>():new HashMap<>(existing.getAllProperties());
+        if(existing!=null)existing.delete();
+        String key=object.getProperty("namespaceId")+"/Membership/"+id(object);
+        if(find("DepositEdgeIdentity","key",key)==null) {Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",key);registry.setProperty("id",id);}
+        Relationship rel=object.createRelationshipTo(clazz,RelationshipType.withName("MEMBER_OF"));properties.forEach(rel::setProperty);
+        rel.setProperty("id",id);rel.setProperty("namespaceId",object.getProperty("namespaceId"));
+        if(existing==null) {rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);}audit(rel,actor);return rel;
+    }
+    public Node declaration(Node clazz,String name) {return find("ClassDescriptor",Map.of("namespaceId",clazz.getProperty("namespaceId"),"ownerId",id(clazz),"name",name));}
+    public Node descriptor(Node object,String name) {return find("Descriptor",Map.of("namespaceId",object.getProperty("namespaceId"),"ownerId",id(object),"name",name));}
+    public List<Node> children(Node owner,String label) {
+        return nodes(label,Map.of("namespaceId",owner.getProperty("namespaceId"),"ownerId",id(owner)));
+    }
+    public Node attach(String label,Node owner,String actor,Map<String,Object> props) {
+        var fields=new LinkedHashMap<>(props);fields.put("ownerId",id(owner));
+        Node n=create(label,(String)owner.getProperty("namespaceId"),actor,fields);owner.createRelationshipTo(n,RelationshipType.withName("HAS_DESCRIPTOR"));return n;
+    }
+    public List<Node> members(Node clazz) {
+        var result=new ArrayList<Node>();try(var edges=clazz.getRelationships(Direction.INCOMING,RelationshipType.withName("MEMBER_OF"))) {for(var edge:edges) result.add(edge.getStartNode());}
+        result.sort(Comparator.comparing(CoreRepository::id));return result;
+    }
+    public Node owner(Node descriptor) {return descriptor.getSingleRelationship(RelationshipType.withName("HAS_DESCRIPTOR"),Direction.INCOMING).getStartNode();}
+    public String descriptorType(Node descriptor) {return (String)declaration(objectClass(owner(descriptor)),(String)descriptor.getProperty("name")).getProperty("type");}
+    public Map<String,Object> data(Node node) {
+        String kind=kind(node);var result=new LinkedHashMap<String,Object>();
+        if(!kind.equals("User")) result.put("kind",kind);
+        for(String key:List.of("id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","username","enabled","serverRole","description","depositVersion","historyMode","historyEpochId","sequence","order","comment","type")) {
+            if(node.hasProperty(key)) {Object v=node.getProperty(key);result.put(key,v instanceof java.time.temporal.TemporalAccessor?v.toString():v);}
+        }
+        if(!kind.equals("User") && !result.containsKey("namespaceId"))result.put("namespaceId",kind.equals("Namespace")?id(node):null);
+        if(node.hasProperty("position"))result.put("position",Arrays.stream((double[])node.getProperty("position")).boxed().toList());
+        if(kind.equals("Object")) {result.put("classId",id(objectClass(node)));var descriptors=new LinkedHashMap<String,Object>();for(Node d:children(node,"Descriptor")) descriptors.put((String)d.getProperty("name"),ValueCodec.decode(descriptorType(d),d.getProperty("value",null)));result.put("descriptors",descriptors);}
+        if(kind.equals("Class"))result.put("descriptors",children(node,"ClassDescriptor").stream().map(this::data).toList());
+        if(kind.equals("Descriptor")) {result.put("objectId",node.getProperty("ownerId"));result.put("value",ValueCodec.decode(descriptorType(node),node.getProperty("value",null)));}
+        if(kind.equals("ClassDescriptor"))result.put("classId",node.getProperty("ownerId"));
+        return result;
+    }
+    public Map<String,Object> data(Relationship rel) {
+        var result=new LinkedHashMap<String,Object>();result.put("kind","Membership");
+        rel.getAllProperties().forEach((k,v)->result.put(k,v instanceof java.time.temporal.TemporalAccessor?v.toString():v));
+        result.put("objectId",id(rel.getStartNode()));result.put("classId",id(rel.getEndNode()));return result;
+    }
+    public void remove(Node node,List<String> deleted) {
+        deleted.add(id(node));
+        if(kind(node).equals("Object")) {
+            for(Node d:children(node,"Descriptor"))remove(d,deleted);
+            Node registry=find("DepositEdgeIdentity","key",node.getProperty("namespaceId")+"/Membership/"+id(node));if(registry!=null)registry.delete();
+        }
+        if(kind(node).equals("Class")) for(Node d:children(node,"ClassDescriptor"))remove(d,deleted);
+        try(var edges=node.getRelationships()) {for(var rel:edges) {if(rel.hasProperty("id"))deleted.add(id(rel));rel.delete();}}
+        node.delete();
+    }
+    public Node receipt(String scope,String operation) {return find("DepositReceipt",Map.of("scope",scope,"operationId",operation));}
+    public Node binding(String actor,String operation) {return find("DepositOperationBinding",Map.of("actorId",actor,"operationId",operation));}
+    public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {
+        Node receipt=tx.createNode(Label.label("DepositReceipt"));
+        receipt.setProperty("scope",scope);receipt.setProperty("operationId",c.operationId);receipt.setProperty("actorId",c.actorId);receipt.setProperty("requestHash",hash);
+        receipt.setProperty("outcome",Json.write(outcome.data()));receipt.setProperty("revision",c.revision);
+        if(outcome.node()!=null) {receipt.setProperty("nodeKind",kind(outcome.node()));receipt.setProperty("entityId",id(outcome.node()));}
+        if(outcome.rel()!=null) {receipt.setProperty("relId",id(outcome.rel()));receipt.setProperty("objectId",id(outcome.rel().getStartNode()));}
+        Node binding=tx.createNode(Label.label("DepositOperationBinding"));binding.setProperty("actorId",c.actorId);binding.setProperty("operationId",c.operationId);binding.setProperty("scope",scope);
+    }
+    public Outcome replay(Node receipt,String scope) {
+        Node node=null;Relationship rel=null;
+        if(receipt.hasProperty("entityId")) {String label=(String)receipt.getProperty("nodeKind");String id=(String)receipt.getProperty("entityId");node=Set.of("Namespace","User").contains(label)?find(label,"id",id):entity(label,scope,id);}
+        if(receipt.hasProperty("relId")) {Node object=entity("Object",scope,(String)receipt.getProperty("objectId"));if(object!=null) {var candidate=membership(object);if(candidate!=null && receipt.getProperty("relId").equals(id(candidate)))rel=candidate;}}
+        return new Outcome(node,rel,Json.read((String)receipt.getProperty("outcome")));
+    }
+    public boolean bootstrapped() {return find("DepositInitialization","id","bootstrap")!=null || nodes("User",Map.of("serverRole","administrator")).size()>0;}
+    public void markBootstrap() {tx.createNode(Label.label("DepositInitialization")).setProperty("id","bootstrap");}
+}

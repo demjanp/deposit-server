@@ -116,8 +116,9 @@ function Invoke-Build {
         $ErrorActionPreference='Continue'
         & .\mvnw.cmd --batch-mode --no-transfer-progress "-Dmaven.repo.local=$Root\maven-repository" clean verify dependency:tree *> "$evidence\build.log"
         if ($LASTEXITCODE -ne 0) { throw "Maven build failed; see $evidence\build.log" }
-        $artifacts=@('build\deposit-plugin\target\deposit-plugin-0.0.0-stage0.jar','build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage0.jar') | ForEach-Object {@{path=$_;sha256=(Get-FileHash (Join-Path $Root $_) -Algorithm SHA256).Hash.ToLowerInvariant()}}
-        Write-Json @{version='0.0.0-stage0';inputs=$initialInputs.sha256;serverCommit=(& git -C $repo rev-parse HEAD);hubCommit=(& git -C "$repo\..\deposit-hub" rev-parse HEAD);javaHome=$manifest.javaHome;reproducibleTimestamp='2026-10-08T00:00:00Z';artifacts=@($artifacts)} "$Root\build\deposit-plugin\target\build-metadata.json"
+        if(Test-Path "$Root\build\deposit-plugin\target\surefire-reports") {Copy-Item -LiteralPath "$Root\build\deposit-plugin\target\surefire-reports" -Destination "$evidence\unit-junit" -Recurse}
+        $artifacts=@('build\deposit-plugin\target\deposit-plugin-0.0.0-stage1.jar','build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage1.jar') | ForEach-Object {@{path=$_;sha256=(Get-FileHash (Join-Path $Root $_) -Algorithm SHA256).Hash.ToLowerInvariant()}}
+        Write-Json @{version='0.0.0-stage1';inputs=$initialInputs.sha256;sourceIdentity=$initialInputs.sha256;javaHome=$manifest.javaHome;reproducibleTimestamp='2026-10-08T00:00:00Z';artifacts=@($artifacts)} "$Root\build\deposit-plugin\target\build-metadata.json"
         $snapshot=Save-Stage0SourceSnapshot $repo $Root $initialInputs
         Write-Json $snapshot "$evidence\source-snapshot.json"
         Write-Json @{inputs=$initialInputs.sha256;sourceSnapshot=$snapshot;artifacts=@($artifacts);evidence=$evidence} "$Root\build-receipt.json"
@@ -136,13 +137,13 @@ function Invoke-Install {
     Copy-Item -LiteralPath $runtimeDirectory -Destination $installation -Recurse
     New-Item -ItemType Directory -Force "$run\resources\staging","$run\resources\live","$run\resources\deleted","$run\secrets" | Out-Null
     Set-OwnerOnlyDirectory "$run\secrets"
-    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage0.jar"
-    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage0.jar"
+    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage1.jar"
+    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage1.jar"
     if ($DiagnosticBuild) { $plugin="$Root\diagnostic-build\deposit-plugin.jar"; $probe="$Root\diagnostic-build\deposit-runtime-probe.jar" }
     $files=@($plugin)
     if(!$WithoutProbe) {$files+=@($probe)}
     foreach ($file in $files) { Copy-Item -LiteralPath $file -Destination "$installation\plugins" }
-    foreach ($id in @('apoc','spatial')) {
+    foreach ($id in @('apoc','spatial','bcrypt-provider')) {
         $artifact = $manifest.artifacts | Where-Object id -eq $id
         Copy-Item -LiteralPath (Join-Path $Root "cache\$($artifact.file)") -Destination "$installation\plugins"
     }
@@ -152,8 +153,8 @@ function Invoke-Install {
     Write-Json @{inputs=$(if($DiagnosticBuild){$null}else{$receipt.inputs});diagnostic=[bool]$DiagnosticBuild;runtime=@(@{path='bin\neo4j.bat';sha256=(Get-FileHash (Join-Path $runtimeDirectory 'bin\neo4j.bat') -Algorithm SHA256).Hash.ToLowerInvariant()});plugins=@(Get-ChildItem "$installation\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$run\installed-artifacts.json"
     $configFile = (Join-Path $installation 'conf\deposit.properties').Replace('\','/')
     $resources = (Join-Path $run 'resources').Replace('\','/')
-    $permissions='dbms.security.procedures.allowlist=deposit.get.info,apoc.version'
-    if(!$WithoutProbe) {$permissions="dbms.security.procedures.allowlist=deposit.get.info,stage0.geometry.*,apoc.version`ndbms.security.procedures.unrestricted=stage0.geometry.*"}
+    $permissions='dbms.security.procedures.allowlist=deposit.*,apoc.version'
+    if(!$WithoutProbe) {$permissions="dbms.security.procedures.allowlist=deposit.*,stage0.geometry.*,apoc.version`ndbms.security.procedures.unrestricted=stage0.geometry.*"}
     [IO.File]::WriteAllText($configFile, "resourceRoot=$resources`n", $utf8)
     $config = @"
 server.default_listen_address=127.0.0.1
@@ -370,16 +371,16 @@ function Invoke-Package {
     Invoke-ProvisionLicenses
     $receipt=Get-Content "$Root\build-receipt.json" -Raw | ConvertFrom-Json
     if($receipt.inputs -ne $initialInputs.sha256) {throw 'Build receipt is stale; rebuild before packaging'}
-    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage0.jar'
+    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage1.jar'
     $expected=@($receipt.artifacts | Where-Object path -like 'build\deposit-plugin\*')
     if($expected.Count -ne 1 -or (Get-FileHash $plugin -Algorithm SHA256).Hash -ne $expected[0].sha256) {throw 'Plugin changed since build'}
     $jar=[IO.Compression.ZipFile]::OpenRead($plugin)
-    try {if(@($jar.Entries | Where-Object {$_.FullName.EndsWith('.class') -and !$_.FullName.StartsWith('org/deposit/runtime/')}).Count) {throw 'Normal plugin contains foreign/test classes'}} finally {$jar.Dispose()}
+    try {if(@($jar.Entries | Where-Object {$_.FullName.EndsWith('.class') -and !$_.FullName.StartsWith('org/deposit/runtime/') -and !$_.FullName.StartsWith('deposit/')}).Count) {throw 'Normal plugin contains foreign/test classes'}} finally {$jar.Dispose()}
     $destination=Join-Path $run 'distribution'
     if(Test-Path -LiteralPath $destination) {throw 'Distribution already exists; choose a fresh RunId'}
     New-Item -ItemType Directory -Force "$destination\plugins","$destination\conf","$destination\notices" | Out-Null
     Copy-Item -LiteralPath $plugin -Destination "$destination\plugins"
-    foreach($id in @('apoc','spatial')) {$artifact=$manifest.artifacts | Where-Object id -eq $id; Copy-Item -LiteralPath (Join-Path $Root "cache\$($artifact.file)") -Destination "$destination\plugins"}
+    foreach($id in @('apoc','spatial','bcrypt-provider')) {$artifact=$manifest.artifacts | Where-Object id -eq $id; Copy-Item -LiteralPath (Join-Path $Root "cache\$($artifact.file)") -Destination "$destination\plugins"}
     foreach($artifact in @($spatialLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\spatial-dependencies\$($artifact.file)") -Destination "$destination\plugins"}
     & "$PSScriptRoot\Audit-Artifacts.ps1" -Root $Root -Inputs $initialInputs.sha256
     Copy-Item -LiteralPath "$Root\evidence\artifact-audit\inventory.json" -Destination "$destination\runtime-inventory.json"
@@ -389,8 +390,8 @@ function Invoke-Package {
     Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
     Copy-Item -Path "$repo\runtime\distribution\*" -Destination "$destination\conf"
     Write-Json @{inputs=$initialInputs.sha256;plugins=@(Get-ChildItem "$destination\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$destination\distribution-manifest.json"
-    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage0.zip")
-    Write-Json @{path="$run\deposit-server-0.0.0-stage0.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage0.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
+    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage1.zip")
+    Write-Json @{path="$run\deposit-server-0.0.0-stage1.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage1.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
 }
 
 $status='running'

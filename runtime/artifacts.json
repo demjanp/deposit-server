@@ -1,64 +1,73 @@
 {
-  "neo4jVersion": "2026.05.0",
-  "dependencyLock": "spatial-runtime-lock.json",
-  "root": "C:\\data_processed\\Deposit_v2\\stage0",
-  "javaHome": "tools/jdk-21.0.12.1+1",
-  "neo4jHome": "tools/neo4j-community-2026.05.0",
-  "artifacts": [
-    {
-      "id": "neo4j",
-      "url": "https://dist.neo4j.org/neo4j-community-2026.05.0-windows.zip",
-      "file": "neo4j-community-2026.05.0-windows.zip",
-      "sha256": "bba6e304015218d1e3aa47c21fd40a7412da0d4e7826107532d978db443443b8",
-      "upstreamSha256": "bba6e304015218d1e3aa47c21fd40a7412da0d4e7826107532d978db443443b8",
-      "size": 237950468,
-      "license": "GPL-3.0-only"
-    },
-    {
-      "id": "maven",
-      "url": "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip",
-      "file": "apache-maven-3.9.9-bin.zip",
-      "sha256": "4ec3f26fb1a692473aea0235c300bd20f0f9fe741947c82c1234cefd76ac3a3c",
-      "upstreamSha256": null,
-      "size": 9202456,
-      "license": "Apache-2.0"
-    },
-    {
-      "id": "temurin",
-      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
-      "file": "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
-      "sha256": "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
-      "upstreamSha256": "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
-      "size": 205073461,
-      "license": "GPL-2.0-with-classpath-exception"
-    },
-    {
-      "id": "apoc",
-      "url": "https://github.com/neo4j/apoc/releases/download/2026.05.0/apoc-2026.05.0-core.jar",
-      "file": "apoc-2026.05.0-core.jar",
-      "sha256": "1d7983f9a45092a08d555bdbc0c1ea9dd2222666b213c2649d383bde78a22bf5",
-      "upstreamSha256": "1d7983f9a45092a08d555bdbc0c1ea9dd2222666b213c2649d383bde78a22bf5",
-      "size": 3302990,
-      "license": "Apache-2.0"
-    },
-    {
-      "id": "spatial-sources",
-      "url": "https://github.com/neo4j-contrib/spatial/releases/download/2025.10.0/neo4j-spatial-server-plugin-2025.10.0-sources.jar",
-      "file": "neo4j-spatial-server-plugin-2025.10.0-sources.jar",
-      "sha256": "fea017eef2868fa9fdf28c100cc8e0fab95e3bceda8c9d3a5e7238c9272ef957",
-      "upstreamSha256": "fea017eef2868fa9fdf28c100cc8e0fab95e3bceda8c9d3a5e7238c9272ef957",
-      "size": 294296,
-      "license": "GPL-3.0-or-later"
-    },
-    {
-      "id": "spatial",
-      "url": "https://github.com/neo4j-contrib/spatial/releases/download/2025.10.0/neo4j-spatial-server-plugin-2025.10.0.jar",
-      "file": "neo4j-spatial-server-plugin-2025.10.0.jar",
-      "sha256": "fcdae34c8566a89efaae0faed4b33f2d704e1bff76710349af80846b0670069a",
-      "upstreamSha256": "fcdae34c8566a89efaae0faed4b33f2d704e1bff76710349af80846b0670069a",
-      "size": 443877,
-      "license": "GPL-3.0-or-later"
-    }
-  ],
-  "selection": "User authorized the highest compatible published Neo4j/Spatial releases on 2026-10-09; all Neo4j releases after 2026.05.0 have a final Envelope superclass incompatible with Spatial 2025.10.0."
+    "neo4jVersion":  "2026.05.0",
+    "dependencyLock":  "spatial-runtime-lock.json",
+    "root":  "C:\\data_processed\\Deposit_v2\\stage0",
+    "javaHome":  "tools/jdk-21.0.12.1+1",
+    "neo4jHome":  "tools/neo4j-community-2026.05.0",
+    "artifacts":  [
+                      {
+                          "id":  "neo4j",
+                          "url":  "https://dist.neo4j.org/neo4j-community-2026.05.0-windows.zip",
+                          "file":  "neo4j-community-2026.05.0-windows.zip",
+                          "sha256":  "bba6e304015218d1e3aa47c21fd40a7412da0d4e7826107532d978db443443b8",
+                          "upstreamSha256":  "bba6e304015218d1e3aa47c21fd40a7412da0d4e7826107532d978db443443b8",
+                          "size":  237950468,
+                          "license":  "GPL-3.0-only"
+                      },
+                      {
+                          "id":  "maven",
+                          "url":  "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip",
+                          "file":  "apache-maven-3.9.9-bin.zip",
+                          "sha256":  "4ec3f26fb1a692473aea0235c300bd20f0f9fe741947c82c1234cefd76ac3a3c",
+                          "upstreamSha256":  null,
+                          "size":  9202456,
+                          "license":  "Apache-2.0"
+                      },
+                      {
+                          "id":  "temurin",
+                          "url":  "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+                          "file":  "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+                          "sha256":  "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+                          "upstreamSha256":  "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+                          "size":  205073461,
+                          "license":  "GPL-2.0-with-classpath-exception"
+                      },
+                      {
+                          "id":  "apoc",
+                          "url":  "https://github.com/neo4j/apoc/releases/download/2026.05.0/apoc-2026.05.0-core.jar",
+                          "file":  "apoc-2026.05.0-core.jar",
+                          "sha256":  "1d7983f9a45092a08d555bdbc0c1ea9dd2222666b213c2649d383bde78a22bf5",
+                          "upstreamSha256":  "1d7983f9a45092a08d555bdbc0c1ea9dd2222666b213c2649d383bde78a22bf5",
+                          "size":  3302990,
+                          "license":  "Apache-2.0"
+                      },
+                      {
+                          "id":  "spatial-sources",
+                          "url":  "https://github.com/neo4j-contrib/spatial/releases/download/2025.10.0/neo4j-spatial-server-plugin-2025.10.0-sources.jar",
+                          "file":  "neo4j-spatial-server-plugin-2025.10.0-sources.jar",
+                          "sha256":  "fea017eef2868fa9fdf28c100cc8e0fab95e3bceda8c9d3a5e7238c9272ef957",
+                          "upstreamSha256":  "fea017eef2868fa9fdf28c100cc8e0fab95e3bceda8c9d3a5e7238c9272ef957",
+                          "size":  294296,
+                          "license":  "GPL-3.0-or-later"
+                      },
+                      {
+                          "id":  "spatial",
+                          "url":  "https://github.com/neo4j-contrib/spatial/releases/download/2025.10.0/neo4j-spatial-server-plugin-2025.10.0.jar",
+                          "file":  "neo4j-spatial-server-plugin-2025.10.0.jar",
+                          "sha256":  "fcdae34c8566a89efaae0faed4b33f2d704e1bff76710349af80846b0670069a",
+                          "upstreamSha256":  "fcdae34c8566a89efaae0faed4b33f2d704e1bff76710349af80846b0670069a",
+                          "size":  443877,
+                          "license":  "GPL-3.0-or-later"
+                      },
+                      {
+                          "id":  "bcrypt-provider",
+                          "url":  "https://repo.maven.apache.org/maven2/org/bouncycastle/bcprov-jdk18on/1.82/bcprov-jdk18on-1.82.jar",
+                          "file":  "bcprov-jdk18on-1.82.jar",
+                          "sha256":  "14cde2fdfaa8890480a8e5b67aceef0c90f96682c1e23c133bafdc9e0b3255ce",
+                          "upstreamSha256":  null,
+                          "size":  8451859,
+                          "license":  "MIT"
+                      }
+                  ],
+    "selection":  "User authorized the highest compatible published Neo4j/Spatial releases on 2026-10-09; all Neo4j releases after 2026.05.0 have a final Envelope superclass incompatible with Spatial 2025.10.0."
 }

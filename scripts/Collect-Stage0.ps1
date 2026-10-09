@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$GateName,
-    [switch]$Accept
+    [switch]$Accept,
+    [switch]$CumulativeOnly
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -154,9 +155,10 @@ $checkpoint=@{stage=0;status=$(if($Accept){'accepted'}else{'suite-passed-accepta
 $utf8=New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText("$directory\evidence-paths.json",($files.ToArray() | ConvertTo-Json -Depth 6),$utf8)
 [IO.File]::WriteAllText("$directory\junit-results.json",($testCases.ToArray() | ConvertTo-Json -Depth 6),$utf8)
-$temporary="$root\stage0-checkpoint.json.partial"
+$checkpointPath=if($CumulativeOnly) {"$directory\cumulative-checkpoint.json"} else {"$root\stage0-checkpoint.json"}
+$temporary=$checkpointPath+'.partial'
 [IO.File]::WriteAllText($temporary,($checkpoint | ConvertTo-Json -Depth 12),$utf8)
-if(Test-Path "$root\stage0-checkpoint.json") {[IO.File]::Replace($temporary,"$root\stage0-checkpoint.json","$root\stage0-checkpoint.json.previous")} else {[IO.File]::Move($temporary,"$root\stage0-checkpoint.json")}
+if(Test-Path -LiteralPath $checkpointPath) {[IO.File]::Replace($temporary,$checkpointPath,$checkpointPath+'.previous')} else {[IO.File]::Move($temporary,$checkpointPath)}
 $report=@("# Stage 0: $($checkpoint.status)","","Neo4j/APOC 2026.05.0; Spatial 2025.10.0 thin; GeoTools 33.2; JTS 1.20.0; Temurin 21.0.12.1+1; Cypher 25.","","Server baseline: $($checkpoint.serverBaseline)","Hub baseline: $($checkpoint.hubBaseline)","Tested working-tree SHA-256: $($inputs.sha256)","No Git staging, commits or pushes were performed.","Live runner session: $($live.sessionId)","Gate: $GateName; scenarios: $($gate.results.Count); JUnit cases: $($testCases.Count); no failed/skipped cases.","","| Scenario | Result | Seconds |","| --- | --- | ---: |")
 $report+=@($gate.results | ForEach-Object {"| $($_.name) | $($_.status) | $([Math]::Round($_.seconds,2)) |"})
 $report+=@("","Later-stage A25 scenarios and Stage 11 release/recovery acceptance on this existing host remain pending. No clean-machine or cross-host validation is claimed.","","Rerun: .\scripts\Invoke-Stage0Gate.ps1 -RunPrefix <fresh-id> -Port $($gate.port)")

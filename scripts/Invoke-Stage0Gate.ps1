@@ -20,8 +20,6 @@ try {
     $inputs=Get-Stage0Inputs $repo
     $inputsFile=Join-Path $directory 'source-inputs.json'
     $inputs | ConvertTo-Json -Depth 8 | Set-Content $inputsFile -Encoding UTF8
-    & git -C $repo diff HEAD --binary | Set-Content "$directory\server-input.diff"
-    & git -C "$repo\..\deposit-hub" diff HEAD --binary | Set-Content "$directory\hub-input.diff"
     Save-Checkpoint @{stage=0;status='running';inputs=$inputs.sha256;gate=$RunPrefix;serverBaseline=$inputs.serverBaseline;hubBaseline=$inputs.hubBaseline;sessionId=$env:CODEX_THREAD_ID;nextAction='Inspect saved phases and owned process if interrupted; no Git writes'}
     & "$PSScriptRoot\Stage0.ps1" -Phase Provision -RunId stage0-host -Port $Port -EvidenceGroup $RunPrefix -InputsFile $inputsFile
     & "$PSScriptRoot\Test-Stage0Environment.ps1" -Build -RunPrefix $RunPrefix -Port $Port -InputsFile $inputsFile
