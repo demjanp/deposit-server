@@ -1,0 +1,84 @@
+package deposit.repository;
+
+import deposit.common.Versioning;
+
+import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Result;
+
+import java.time.ZonedDateTime;
+import java.util.Map;
+
+public class CreateRelationshipRepository extends BaseRepository {
+	
+	private static CreateRelationshipRepository instance;
+	
+	private CreateRelationshipRepository() {}
+	
+	public static synchronized CreateRelationshipRepository getInstance() {
+		if (instance == null) {
+			instance = new CreateRelationshipRepository();
+		}
+		return instance;
+	}
+	
+    public Relationship createRelationship(Transaction tx, ZonedDateTime timeStamp, String username, String namespaceName, String versioningType, String startObjectId, String endObjectId, String label, Double weight) {
+		String validateQuery = """
+			MATCH (n:Namespace {name: $namespaceName})-[:CONTAINS]->(oStart:Object {id: $startObjectId}),
+				  (n)-[:CONTAINS]->(oEnd:Object {id: $endObjectId})
+			OPTIONAL MATCH (oStart)-[existing:RELATED_TO {label: $label}]->(oEnd)
+			RETURN existing
+		""";
+		Map<String, Object> params = Map.of(
+			"namespaceName", namespaceName,
+			"startObjectId", startObjectId,
+			"endObjectId", endObjectId,
+			"label", label
+		);
+		
+		try {
+			Result validation = tx.execute(validateQuery, params);
+			if (validation.hasNext()) {
+				Map<String, Object> row = validation.next();
+				if (row.get("existing") != null) {
+					throwException("Error creating Relationship. The Relationship between Objects " + startObjectId + " and " + endObjectId + " already exists.");
+				}
+			}
+		} catch (Exception e) {
+			throwException("Error validating Relationship between Objects " + startObjectId + " and " + endObjectId, e);
+		}
+		String createQuery = """
+			MATCH (namespace:Namespace {name: $namespaceName})-[:CONTAINS]->(source:Object {id: $startObjectId}), (namespace)-[:CONTAINS]->(target:Object {id: $endObjectId})
+			CREATE (source)-[updated:RELATED_TO {label: $label}]->(target)
+			SET	updated.id = randomUUID(),
+				updated.label = $label,
+				updated.weight = $weight,
+				updated.createdAt = $timeStamp,
+				updated.createdBy = $username
+			WITH namespace, source, target, updated
+		""";
+		createQuery += Versioning.getElementUpdateCode("Relationship", false, versioningType);
+		createQuery += "	RETURN updated";
+		params = Map.of(
+		"timeStamp", timeStamp,
+		"username", username,
+		"namespaceName", namespaceName,
+		"startObjectId", startObjectId,
+		"endObjectId", endObjectId,
+		"label", label,
+		"weight", weight
+		);
+		try {
+			Result result = tx.execute(createQuery, params);
+			if (result.hasNext()) {
+				return (Relationship) result.next().get("updated");
+			} else {
+				throwException("Relationship creation failed: No result returned");
+			}
+		} catch (Exception e) {
+			throwException("Error creating Relationship", e);
+		}
+		
+		return null;
+	}
+}
