@@ -1,0 +1,7 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage0</version></parent>
+  <artifactId>deposit-plugin</artifactId>
+  <dependencies><dependency><groupId>org.neo4j</groupId><artifactId>neo4j</artifactId></dependency></dependencies>
+  <build><resources><resource><directory>src/main/resources</directory><filtering>true</filtering></resource></resources></build>
+</project>

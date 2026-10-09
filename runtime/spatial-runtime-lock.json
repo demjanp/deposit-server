@@ -1,0 +1,616 @@
+{
+    "jts":  "1.20.0 (provided by Neo4j)",
+    "spatial":  "2025.10.0",
+    "dependencies":  [
+                         {
+                             "groupId":  "javax.measure",
+                             "url":  "https://repo.maven.apache.org/maven2/javax/measure/unit-api/2.2/unit-api-2.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "LICENSE",
+                                                  "name":  "BSD 3-Clause",
+                                                  "pomSha256":  "70e027bc34f701659019dd59f56f6f984f91a26edf75a8cb90966270b6192282"
+                                              }
+                                          ],
+                             "version":  "2.2",
+                             "sha256":  "667487e1ee57298cdc767885f00b86c899b2fe7e72dc00b6560a6aa64f2bc9c4",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "unit-api",
+                             "file":  "unit-api-2.2.jar"
+                         },
+                         {
+                             "groupId":  "org.apache.commons",
+                             "url":  "https://repo.maven.apache.org/maven2/org/apache/commons/commons-text/1.13.0/commons-text-1.13.0.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache-2.0",
+                                                  "pomSha256":  "d78bd8524c5f8380a190a6525686629a95dfe512df21111383a6d8c0923a4415"
+                                              }
+                                          ],
+                             "version":  "1.13.0",
+                             "sha256":  "1e323a501127df78ed0987f345d69d65d0ea7fa3d4fb5b3f84aaeba3a8b20f38",
+                             "providedByRuntime":  [
+                                                       "commons-text-1.15.0.jar"
+                                                   ],
+                             "artifactId":  "commons-text",
+                             "file":  "commons-text-1.13.0.jar"
+                         },
+                         {
+                             "groupId":  "org.apache.commons",
+                             "url":  "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache-2.0",
+                                                  "pomSha256":  "d78bd8524c5f8380a190a6525686629a95dfe512df21111383a6d8c0923a4415"
+                                              }
+                                          ],
+                             "version":  "3.17.0",
+                             "sha256":  "6ee731df5c8e5a2976a1ca023b6bb320ea8d3539fbe64c8a1d5cb765127c33b4",
+                             "providedByRuntime":  [
+                                                       "commons-lang3-3.20.0.jar"
+                                                   ],
+                             "artifactId":  "commons-lang3",
+                             "file":  "commons-lang3-3.17.0.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/gt-http/33.2/gt-http-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "238b22f7bb7cfc5de4c8b1575e457926eaac290cd0a4d96754becf08231566f3"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "ea42b313f20fd58542212f2e1d58f390653825174a5c684153c62e1d1b456c4c",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "gt-http",
+                             "file":  "gt-http-33.2.jar"
+                         },
+                         {
+                             "groupId":  "org.eclipse.emf",
+                             "url":  "https://repo.maven.apache.org/maven2/org/eclipse/emf/org.eclipse.emf.ecore.xmi/2.15.0/org.eclipse.emf.ecore.xmi-2.15.0.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.eclipse.org/legal/epl-v10.html",
+                                                  "name":  "The Eclipse Public License Version 1.0",
+                                                  "pomSha256":  "9e669de408f3de154c31fede2267c171144381348705a5fb8396836153ed66ea"
+                                              }
+                                          ],
+                             "version":  "2.15.0",
+                             "sha256":  "712ff33fef916d2fa4d838992fccae85c4817a71639a9a5933fc44568ed6dc57",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "org.eclipse.emf.ecore.xmi",
+                             "file":  "org.eclipse.emf.ecore.xmi-2.15.0.jar"
+                         },
+                         {
+                             "groupId":  "it.geosolutions.jgridshift",
+                             "url":  "https://repo.osgeo.org/repository/release/it/geosolutions/jgridshift/jgridshift-core/1.3/jgridshift-core-1.3.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "file":  "licenses/jgridshift-LGPL.txt",
+                                                  "url":  "https://raw.githubusercontent.com/geosolutions-it/jgridshift/6f81611f1b1248538a1a46084e3e1b3ecbf87ccf/lgpl.txt",
+                                                  "name":  "GNU Lesser General Public License (upstream text)",
+                                                  "source":  "Upstream README and lgpl.txt; published Maven POM omits license metadata",
+                                                  "sha256":  "a190dc9c8043755d90f8b0a75fa66b9e42d4af4c980bf5ddc633f0124db3cee7"
+                                              }
+                                          ],
+                             "version":  "1.3",
+                             "sha256":  "303eb6a6f6f87369f6b9e3dcacefd6f9b0ad55920cd65a7f162ab9a23401c722",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "jgridshift-core",
+                             "file":  "jgridshift-core-1.3.jar"
+                         },
+                         {
+                             "groupId":  "net.sf.geographiclib",
+                             "url":  "https://repo.maven.apache.org/maven2/net/sf/geographiclib/GeographicLib-Java/1.49/GeographicLib-Java-1.49.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://opensource.org/licenses/MIT",
+                                                  "name":  "The MIT License(MIT)",
+                                                  "pomSha256":  "dd049e39be98c54c11bbc3a33b801c6cd4e7480d1378c048ebcb27bd80527db2"
+                                              }
+                                          ],
+                             "version":  "1.49",
+                             "sha256":  "78c292f7e6910d51a15fc9088c301fac3b4c0a43ac5ae17499f5763b4dd9aca8",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "GeographicLib-Java",
+                             "file":  "GeographicLib-Java-1.49.jar"
+                         },
+                         {
+                             "groupId":  "com.fasterxml.jackson.core",
+                             "url":  "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "cce6a3405938623a810895ff6fde2f04c9c3b937a0562871e1a63496be0fafab"
+                                              }
+                                          ],
+                             "version":  "2.19.0",
+                             "sha256":  "da8e859bac94874528116a25f20c68560e4287acbf27628711b8a4f96b028430",
+                             "providedByRuntime":  [
+                                                       "jackson-core-2.21.2.jar"
+                                                   ],
+                             "artifactId":  "jackson-core",
+                             "file":  "jackson-core-2.19.0.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/gt-epsg-hsql/33.2/gt-epsg-hsql-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://github.com/geotools/geotools/blob/master/modules/plugin/epsg-hsql/LICENSE.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "00c2e6f28ae473dcd7626c45d4b5563f90d090257fac80fb860965696dfd2093"
+                                              },
+                                              {
+                                                  "url":  "https://github.com/geotools/geotools/blob/master/licenses/EPSG.md",
+                                                  "name":  "EPSG database distribution license",
+                                                  "pomSha256":  "00c2e6f28ae473dcd7626c45d4b5563f90d090257fac80fb860965696dfd2093"
+                                              },
+                                              {
+                                                  "url":  "https://github.com/geotools/geotools/blob/master/licenses/HSQL.md",
+                                                  "name":  "BSD License for HSQL",
+                                                  "pomSha256":  "00c2e6f28ae473dcd7626c45d4b5563f90d090257fac80fb860965696dfd2093"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "429e1af63596b5fcf86f18c425ea9007fbcb1a26fe15ca0abea221958f68b590",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "gt-epsg-hsql",
+                             "file":  "gt-epsg-hsql-33.2.jar"
+                         },
+                         {
+                             "groupId":  "org.hsqldb",
+                             "url":  "https://repo.maven.apache.org/maven2/org/hsqldb/hsqldb/2.7.2/hsqldb-2.7.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://hsqldb.org/web/hsqlLicense.html",
+                                                  "name":  "HSQLDB License, a BSD open source license",
+                                                  "pomSha256":  "60c39850c26dd38acb6e59df98c1c822107761ba817edc862688320c2c6126ba"
+                                              }
+                                          ],
+                             "version":  "2.7.2",
+                             "sha256":  "aa455133e664f6a7e6f30cd0cd4f8ad83dfbd94eb717c438548e446784614a92",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "hsqldb",
+                             "file":  "hsqldb-2.7.2.jar"
+                         },
+                         {
+                             "groupId":  "org.apiguardian",
+                             "url":  "https://repo.maven.apache.org/maven2/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache License, Version 2.0",
+                                                  "pomSha256":  "32355081d109095c3d5d374d5a43b4f4c1b75d549e983ef50723e2772e5302a0"
+                                              }
+                                          ],
+                             "version":  "1.1.2",
+                             "sha256":  "b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "apiguardian-api",
+                             "file":  "apiguardian-api-1.1.2.jar"
+                         },
+                         {
+                             "groupId":  "javax.media",
+                             "url":  "https://repo.osgeo.org/repository/release/javax/media/jai_core/1.1.3/jai_core-1.1.3.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "source":  "Official JAI 1.1.3 distribution license; Maven POM omits license metadata",
+                                                  "url":  "https://download.java.net/media/jai/builds/release/1_1_3/LICENSE-jai.txt",
+                                                  "name":  "Sun Binary Code License Agreement for JAI 1.1.3",
+                                                  "sha256":  "5e2dd74e1156705516f7feb3465f2b50787f6cc8d65df4577f7a0207d0b1d02b",
+                                                  "file":  "licenses/JAI-LICENSE.txt"
+                                              }
+                                          ],
+                             "version":  "1.1.3",
+                             "sha256":  "8b696cf067533545f44c2f68339e24ab1a2669153ed2081aa5be8749f4d592bf",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "jai_core",
+                             "file":  "jai_core-1.1.3.jar"
+                         },
+                         {
+                             "groupId":  "com.google.re2j",
+                             "url":  "https://repo.maven.apache.org/maven2/com/google/re2j/re2j/1.8/re2j-1.8.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://golang.org/LICENSE",
+                                                  "name":  "Go License",
+                                                  "pomSha256":  "df62699335cd46fc465f4c03b8c581d3d507792212d27b65adb923b4c27de4e7"
+                                              }
+                                          ],
+                             "version":  "1.8",
+                             "sha256":  "7b52c72156dd7f98b3237a5b35c1d34fba381b21048c89208913ad80a45dfbd7",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "re2j",
+                             "file":  "re2j-1.8.jar"
+                         },
+                         {
+                             "groupId":  "org.ejml",
+                             "url":  "https://repo.maven.apache.org/maven2/org/ejml/ejml-ddense/0.41/ejml-ddense-0.41.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache License, Version 2.0",
+                                                  "pomSha256":  "356153abd26e92798bde8dadd5739418181772c4b647b20938bc54e1c3f4c5f2"
+                                              }
+                                          ],
+                             "version":  "0.41",
+                             "sha256":  "355347e9cac7e96d5d724d331a9b04bb14a8a02e1d111f1ac51c79f25d937123",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "ejml-ddense",
+                             "file":  "ejml-ddense-0.41.jar"
+                         },
+                         {
+                             "groupId":  "org.ejml",
+                             "url":  "https://repo.maven.apache.org/maven2/org/ejml/ejml-core/0.41/ejml-core-0.41.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache License, Version 2.0",
+                                                  "pomSha256":  "4b12034e3fda74997785c1a26dea6611c5d7f4b66c4b16603227a4c60ebd7f1e"
+                                              }
+                                          ],
+                             "version":  "0.41",
+                             "sha256":  "8d36469e8414d79c875defc0af3b980525d384761c9471d15a4f365b936dd1d5",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "ejml-core",
+                             "file":  "ejml-core-0.41.jar"
+                         },
+                         {
+                             "groupId":  "org.eclipse.emf",
+                             "url":  "https://repo.maven.apache.org/maven2/org/eclipse/emf/org.eclipse.emf.ecore/2.15.0/org.eclipse.emf.ecore-2.15.0.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.eclipse.org/legal/epl-v10.html",
+                                                  "name":  "The Eclipse Public License Version 1.0",
+                                                  "pomSha256":  "58823905f6ffd99921108408c204fce8914dbc92d0744d774373857d45eb7a83"
+                                              }
+                                          ],
+                             "version":  "2.15.0",
+                             "sha256":  "d5e3c25344fe27f14f514f5d6deb6e9cc3f6153fa462361261a8d49a3dfe9bbf",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "org.eclipse.emf.ecore",
+                             "file":  "org.eclipse.emf.ecore-2.15.0.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/gt-api/33.2/gt-api-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "083ee6ff944de99d33895b654aad8b7eda5d2f9a64445a9e8402b1827342a814"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "379e389a2565def1d9182885f753272c912d8b4fa760d999f116ec7eff4e8b41",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "gt-api",
+                             "file":  "gt-api-33.2.jar"
+                         },
+                         {
+                             "groupId":  "systems.uom",
+                             "url":  "https://repo.maven.apache.org/maven2/systems/uom/systems-common/2.1/systems-common-2.1.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "LICENSE",
+                                                  "name":  "BSD",
+                                                  "pomSha256":  "699766e233b02bd1299a27a08d308a8a0ce9baede8349d891b614ba29aa989f2"
+                                              }
+                                          ],
+                             "version":  "2.1",
+                             "sha256":  "b3cc1f3e604dcd18d3bba266db5fd01744bbd6b02f147377d4016585ba375cff",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "systems-common",
+                             "file":  "systems-common-2.1.jar"
+                         },
+                         {
+                             "groupId":  "si.uom",
+                             "url":  "https://repo.maven.apache.org/maven2/si/uom/si-quantity/2.1/si-quantity-2.1.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://opensource.org/licenses/BSD-3-Clause",
+                                                  "name":  "BSD 3-Clause",
+                                                  "pomSha256":  "3678f479ae52350e1d7b61316cd4dd5e8a43c7ffb7fbe8d63e8eb4b145b4a470"
+                                              }
+                                          ],
+                             "version":  "2.1",
+                             "sha256":  "2cdcfd3e5395db5576f5efc0f224b5bbd0731f3ec7552afee6ee7b63a4f65820",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "si-quantity",
+                             "file":  "si-quantity-2.1.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/gt-metadata/33.2/gt-metadata-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "bd7346e1f0d3c172ecd9ca385e2ceec62f6a2e75bcfe763111441560c5e7dc58"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "d581346c64db5a07e2ec92005926cc460df8e829f7f3d8e16711404c344405e3",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "gt-metadata",
+                             "file":  "gt-metadata-33.2.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/gt-main/33.2/gt-main-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "c6e5295fab8fcbd9e43371c1bc843bb503944d00cf4c686eed5b08b288d63e60"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "147da408d0da37866141b46cc8bc1879b41a1c7914f09b865014d26a11e80589",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "gt-main",
+                             "file":  "gt-main-33.2.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/gt-referencing/33.2/gt-referencing-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "3252a14d73337aeaa4f5685e43fa9ff6ed174619e59cd57bef8490f3557e288b"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "081242d1327edd183c113a012854d5352bf332dd3ae74734b24d30b1bb0552f2",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "gt-referencing",
+                             "file":  "gt-referencing-33.2.jar"
+                         },
+                         {
+                             "groupId":  "commons-pool",
+                             "url":  "https://repo.maven.apache.org/maven2/commons-pool/commons-pool/1.5.4/commons-pool-1.5.4.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "9e9323a26ba8eb2394efef0c96d31b70df570808630dc147cab1e73541cc5194"
+                                              }
+                                          ],
+                             "version":  "1.5.4",
+                             "sha256":  "22095672ac3ad6503e42ec6d4cbc330cd1318040223f6c5d9605473b6d2aa0fd",
+                             "providedByRuntime":  [
+                                                       "commons-pool-1.6.jar"
+                                                   ],
+                             "artifactId":  "commons-pool",
+                             "file":  "commons-pool-1.5.4.jar"
+                         },
+                         {
+                             "groupId":  "si.uom",
+                             "url":  "https://repo.maven.apache.org/maven2/si/uom/si-units/2.1/si-units-2.1.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://opensource.org/licenses/BSD-3-Clause",
+                                                  "name":  "BSD 3-Clause",
+                                                  "pomSha256":  "3678f479ae52350e1d7b61316cd4dd5e8a43c7ffb7fbe8d63e8eb4b145b4a470"
+                                              }
+                                          ],
+                             "version":  "2.1",
+                             "sha256":  "491ed9956ddf4b2e30180b087e1f6fb51debccb6d46785ae0d52026342013c51",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "si-units",
+                             "file":  "si-units-2.1.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools.ogc",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/ogc/net.opengis.ows/33.2/net.opengis.ows-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "5e0fef6f1614b05ee1aee04d1a4ffbcb53bd4ecdff1a71f5ce72f00d98961722"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "20e3074d43c2a436efa2c816cf8e3c25ea01bb0f24e0f5012a4f97abc5cf7de3",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "net.opengis.ows",
+                             "file":  "net.opengis.ows-33.2.jar"
+                         },
+                         {
+                             "groupId":  "org.geotools.ogc",
+                             "url":  "https://repo.osgeo.org/repository/release/org/geotools/ogc/org.w3.xlink/33.2/org.w3.xlink-33.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.gnu.org/copyleft/lesser.txt",
+                                                  "name":  "Lesser General Public License (LGPL)",
+                                                  "pomSha256":  "5e0fef6f1614b05ee1aee04d1a4ffbcb53bd4ecdff1a71f5ce72f00d98961722"
+                                              }
+                                          ],
+                             "version":  "33.2",
+                             "sha256":  "cfa71fa32fcf3487ba0d1888c90d57a45574b7062a26a54f3fd1e5ccff8fa780",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "org.w3.xlink",
+                             "file":  "org.w3.xlink-33.2.jar"
+                         },
+                         {
+                             "groupId":  "org.eclipse.emf",
+                             "url":  "https://repo.maven.apache.org/maven2/org/eclipse/emf/org.eclipse.emf.common/2.15.0/org.eclipse.emf.common-2.15.0.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.eclipse.org/legal/epl-v10.html",
+                                                  "name":  "The Eclipse Public License Version 1.0",
+                                                  "pomSha256":  "8d53ea8f3f64a004df83824c82afa30a36885a34fe9349ee84c2263570ade0b7"
+                                              }
+                                          ],
+                             "version":  "2.15.0",
+                             "sha256":  "bdb51f83b2daa51446b4ae5d606464e4b22fb7ef98f0477ac95de72551e2978a",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "org.eclipse.emf.common",
+                             "file":  "org.eclipse.emf.common-2.15.0.jar"
+                         },
+                         {
+                             "groupId":  "jakarta.inject",
+                             "url":  "https://repo.maven.apache.org/maven2/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "e7fd7232e96307a575b2494c9367d68cf43ec98244aace3ccc23e1773ffa6fda"
+                                              }
+                                          ],
+                             "version":  "2.0.1",
+                             "sha256":  "f7dc98062fccf14126abb751b64fab12c312566e8cbdc8483598bffcea93af7c",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "jakarta.inject-api",
+                             "file":  "jakarta.inject-api-2.0.1.jar"
+                         },
+                         {
+                             "groupId":  "jakarta.annotation",
+                             "url":  "https://repo.maven.apache.org/maven2/jakarta/annotation/jakarta.annotation-api/1.3.4/jakarta.annotation-api-1.3.4.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.eclipse.org/legal/epl-2.0",
+                                                  "name":  "EPL 2.0",
+                                                  "pomSha256":  "61f1d0d46a53fcaaba81dc53d241a6998d850099659b76ed9fab7071b944a148"
+                                              },
+                                              {
+                                                  "url":  "https://www.gnu.org/software/classpath/license.html",
+                                                  "name":  "GPL2 w/ CPE",
+                                                  "pomSha256":  "61f1d0d46a53fcaaba81dc53d241a6998d850099659b76ed9fab7071b944a148"
+                                              }
+                                          ],
+                             "version":  "1.3.4",
+                             "sha256":  "e65d0194ca63c73d11fcd0a73325e762d905aafb51c90cdb98a5a5968367564a",
+                             "providedByRuntime":  [
+                                                       "jakarta.annotation-api-1.3.5.jar"
+                                                   ],
+                             "artifactId":  "jakarta.annotation-api",
+                             "file":  "jakarta.annotation-api-1.3.4.jar"
+                         },
+                         {
+                             "groupId":  "tech.units",
+                             "url":  "https://repo.maven.apache.org/maven2/tech/units/indriya/2.2/indriya-2.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "LICENSE",
+                                                  "name":  "BSD 3-Clause",
+                                                  "pomSha256":  "2f46d8de5825eab3c3bc984c4547379e5bce60661a6d632f8f0ecf151c1af51e"
+                                              }
+                                          ],
+                             "version":  "2.2",
+                             "sha256":  "5b61eafd63fd235898dea0e5e614e9636c9d7783705a0c9f1794dd07e3a84b35",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "indriya",
+                             "file":  "indriya-2.2.jar"
+                         },
+                         {
+                             "groupId":  "tech.uom.lib",
+                             "url":  "https://repo.maven.apache.org/maven2/tech/uom/lib/uom-lib-common/2.2/uom-lib-common-2.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "LICENSE",
+                                                  "name":  "BSD",
+                                                  "pomSha256":  "9dd4fcc8b63be59beedbd5876702d82d4439c92a71814f53ae42f4a7f4a884d0"
+                                              }
+                                          ],
+                             "version":  "2.2",
+                             "sha256":  "a01ece1c236b7b15a431b0383bdddf06dc6d7a85290e9a62b63904e1e4e0dc0d",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "uom-lib-common",
+                             "file":  "uom-lib-common-2.2.jar"
+                         }
+                     ],
+    "geotools":  "33.2",
+    "sourcePomSha256":  "6057248db65911ff9aeb04b1450b258723b068dd361afdd575cb8da9365821a3"
+}

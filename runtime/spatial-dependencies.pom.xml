@@ -1,0 +1,12 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.deposit.runtime</groupId><artifactId>spatial-dependencies</artifactId><version>2025.10.0</version>
+  <repositories><repository><id>osgeo</id><url>https://repo.osgeo.org/repository/release/</url></repository></repositories>
+  <dependencies>
+    <dependency><groupId>org.geotools</groupId><artifactId>gt-main</artifactId><version>33.2</version></dependency>
+    <dependency><groupId>org.geotools</groupId><artifactId>gt-epsg-hsql</artifactId><version>33.2</version></dependency>
+    <dependency><groupId>org.locationtech.jts</groupId><artifactId>jts-core</artifactId><version>1.20.0</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.neo4j.driver</groupId><artifactId>neo4j-java-driver</artifactId><version>6.0.5</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.neo4j</groupId><artifactId>neo4j-cypher-dsl</artifactId><version>2025.2.6</version><scope>provided</scope></dependency>
+  </dependencies>
+</project>
