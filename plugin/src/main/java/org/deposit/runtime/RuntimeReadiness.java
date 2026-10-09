@@ -22,7 +22,7 @@ public final class RuntimeReadiness {
             if (!root.isAbsolute() || !Files.isDirectory(root) || !Files.isWritable(root)) {
                 throw new IllegalStateException("Deposit resourceRoot must be an absolute writable directory");
             }
-            for (String directory : new String[]{"staging", "live", "deleted"}) {
+            for (String directory : new String[]{"staging", "ocfl", "ocfl-work"}) {
                 Path child = root.resolve(directory);
                 if (!Files.isDirectory(child) || !Files.getFileStore(root).equals(Files.getFileStore(child))) {
                     throw new IllegalStateException("Deposit resource directories must share one filesystem");
@@ -35,6 +35,7 @@ public final class RuntimeReadiness {
             Class.forName("org.neo4j.gis.spatial.rtree.Envelope");
             Class.forName("org.neo4j.gis.spatial.index.LayerRTreeIndex");
             Class.forName("org.locationtech.jts.io.WKTReader");
+            Class.forName("io.ocfl.core.OcflRepositoryBuilder");
         } catch (IOException | ReflectiveOperationException | LinkageError e) {
             throw new IllegalStateException("Deposit runtime dependencies or configuration are unavailable", e);
         }

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet(0,1,2,3,4,5)][int]$Stage=0,
+    [ValidateSet('0','1','2','3','4','5','5.5')][string]$Stage='0',
     [ValidateSet('Work','Resume','Review')][string]$Mode='Review',
     [Parameter(Mandatory=$true)][string]$WorkPackage,
     [string]$Root='C:\data_processed\Deposit_v2\stage0',
@@ -34,7 +34,7 @@ try {
     if (Test-Path $stateFile) {$previous=Get-Content $stateFile -Raw | ConvertFrom-Json}
     if ($Mode -eq 'Resume') {
         if (!$previous -or !$previous.sessionId) {throw 'An explicit saved session ID is required'}
-        $savedStage=if($previous.PSObject.Properties['stage']) {[int]$previous.stage} else {0}
+        $savedStage=if($previous.PSObject.Properties['stage']) {[string]$previous.stage} else {'0'}
         if($PSBoundParameters.ContainsKey('Stage') -and $Stage -ne $savedStage) {throw 'Cannot change stage when resuming'}
         $Stage=$savedStage
         if ($previous.inputs -ne $inputs.sha256) {throw 'Inputs changed: use a new work package/name; stale evidence cannot be resumed'}

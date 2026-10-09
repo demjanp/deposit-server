@@ -47,13 +47,13 @@ public final class ResourceService extends BaseService {
         String id=RequestContext.uuid(request.get("resourceId"));repo.lockNamespace(c.namespaceId);resources.lock(id);Node r=resources.resource(c.namespaceId,id);
         if(r==null||!resources.accessible(r,c.actorId,effectiveRole(c.namespaceId),false))c.fail("NOT_FOUND","Resource not found");
         if(!"ready".equals(r.getProperty("state")))c.fail("RESOURCE_NOT_READY","Resource is not ready");
-        Node loc=resources.location(id);String path=resources.verify(loc);Map<String,Object> result;
-        if(!download)result=resources.info(r);
+        Node loc=resources.location(id);Map<String,Object> result;
+        if(!download){resources.verify(loc);result=resources.info(r);}
         else {
             long offset=integer(request.get("offset")),length=integer(request.get("length")),size=number(r,"bytes",0);
             if(offset<0||offset>size||length<1||length>ResourceFiles.MAX_CHUNK)c.fail("VALIDATION_FAILED","Invalid download range");
             int actual=(int)Math.min(length,size-offset);
-            try {byte[] data=resources.files.read(path,offset,actual);result=Json.map("bytesBase64",Base64.getEncoder().encodeToString(data),"offset",offset,"nextOffset",offset+actual,"eof",offset+actual==size,"chunkSha256",ResourceFiles.checksum(data));}
+            try(var stream=resources.storage.open(resources.content(loc),offset,actual)) {byte[] data=stream.readNBytes(actual);if(data.length!=actual||stream.read()!=-1)throw new IOException("Incomplete resource range");result=Json.map("bytesBase64",Base64.getEncoder().encodeToString(data),"offset",offset,"nextOffset",offset+actual,"eof",offset+actual==size,"chunkSha256",ResourceFiles.checksum(data));}
             catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Resource content unavailable");}
         }
         resources.accessible(r,c.actorId,effectiveRole(c.namespaceId),true);return result;

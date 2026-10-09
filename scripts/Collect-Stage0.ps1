@@ -66,10 +66,12 @@ if($actualNames -contains 'stage3-isolated-batch-commit-faults') {
 }
 if($actualNames -contains 'stage4-storage-faults-and-invariants') {
     $expectedNames+=@('stage4-storage-faults-and-invariants');$contracts['stage4-storage-faults-and-invariants']=@('Test:passed');$selections['stage4-storage-faults-and-invariants']='Stage4ProbeIT'
-    foreach($point in @('chunk-flushed','publication-before','publication-after','ready-before-commit','relocation-before','relocation-after','collection-before','collection-after')) {
+    foreach($point in @('chunk-flushed','publication-before','publication-after','ready-before-commit','staging-cleanup-before','staging-cleanup-after','collection-before','collection-partial','collection-after')) {
         $name='stage4-crash-'+$point;$expectedNames+=@($name);$contracts[$name]=@('Test:passed','Start:passed','Test:passed')
     }
 }
+if($actualNames -contains 'stage55-ocfl-io-failure') {$expectedNames+=@('stage55-ocfl-io-failure');$contracts['stage55-ocfl-io-failure']=@('Test:passed');$selections['stage55-ocfl-io-failure']='Stage55ProbeIT'}
+if($actualNames -contains 'stage55-ocfl-io-failure') {foreach($name in @('reject-legacy-resource-layout','reject-invalid-ocfl-root')){$expectedNames+=@($name);$contracts[$name]=@('Start:failed','Stop:passed')}}
 if($actualNames -contains 'stage5-history-faults-and-invariants') {
     $expectedNames+=@('stage5-history-faults-and-invariants');$contracts['stage5-history-faults-and-invariants']=@('Test:passed');$selections['stage5-history-faults-and-invariants']='Stage5ProbeIT'
     foreach($point in @('history-before-receipt','history-after-commit')) {$name='stage5-crash-'+$point;$expectedNames+=@($name);$contracts[$name]=@('Test:passed','Start:passed','Test:passed')}
@@ -94,7 +96,7 @@ foreach($scenario in $gate.results) {
             if(!$phase.evidenceFailure) {throw 'Evidence-failure checkpoint has no diagnostic'}
             continue
         }
-        foreach($name in @('inputs.json','artifact-manifest.json','spatial-dependencies.json','environment.json','server-commit.txt','hub-commit.txt')) {Require-File "$($phase.evidence)\$name"}
+        foreach($name in @('inputs.json','artifact-manifest.json','spatial-dependencies.json','ocfl-dependencies.json','environment.json','server-commit.txt','hub-commit.txt')) {Require-File "$($phase.evidence)\$name"}
         foreach($name in @('inputs.json')) {if((Get-Content "$($phase.evidence)\$name" -Raw | ConvertFrom-Json).sha256 -ne $inputs.sha256) {throw 'Phase inputs changed'}}
         if($phase.phase -eq 'Install') {
             $installed=Get-Content "$($phase.evidence)\installed-artifacts.json" -Raw | ConvertFrom-Json
@@ -119,7 +121,8 @@ foreach($scenario in $gate.results) {
                 elseif($selection -eq 'DistributionIT') {$expectedCases.Add('org.deposit.it.DistributionIT::normalDistributionExcludesProbePermissionsAndProcedures')}
                 elseif($selection -eq 'Stage2ProbeIT') {foreach($name in @('competingBootstrapAfterRollback','idleAndAbsoluteExpiryUseFixedProductionLimits','expiryBeforeCommitRollsBackDataRevisionAndReceipt','failedPasswordCommitDoesNotRevokeOrAdvance','failedDeletionCommitPreservesSelectionGraphAndReceipt','loginWaitsForPasswordResetCommit','tokensAreBoundToAuthenticatedNeo4jPrincipal')) {$expectedCases.Add('org.deposit.it.Stage2ProbeIT::'+$name)}}
                 elseif($selection -eq 'Stage3ProbeIT') {foreach($name in @('failedBatchCommitRollsBackAllCategoriesAndReceiptThenRetries','expiryAfterBatchReturnPreventsCommit')) {$expectedCases.Add('org.deposit.it.Stage3ProbeIT::'+$name)}}
-                elseif($selection -eq 'Stage4ProbeIT') {foreach($name in @('spatialFailuresRollbackCompleteDomainAction','geometryIndexBoundsIdentityRebuildAndNamespaceDeletion','expiryResumptionNonRenewalAndReadyLeasePlacement','exportGrantRemainsPrivateAndRechecksCurrentRole','publicationFaultsRecoverWithoutRepeatingEffects','readLeaseBlocksRelocationUntilTransactionCompletes')) {$expectedCases.Add('org.deposit.it.Stage4ProbeIT::'+$name)}}
+                elseif($selection -eq 'Stage4ProbeIT') {foreach($name in @('spatialFailuresRollbackCompleteDomainAction','geometryIndexBoundsIdentityRebuildAndNamespaceDeletion','expiryResumptionNonRenewalAndReadyLeaseRetention','exportGrantRemainsPrivateAndRechecksCurrentRole','publicationFaultsRecoverWithoutRepeatingEffects','readLeaseBlocksCollectionUntilTransactionCompletes')) {$expectedCases.Add('org.deposit.it.Stage4ProbeIT::'+$name)}}
+                elseif($selection -eq 'Stage55ProbeIT') {$expectedCases.Add('org.deposit.it.Stage55ProbeIT::injectedDiskExhaustionRollsBackReadyAndReceiptThenResumes')}
                 elseif($selection -eq 'Stage5ProbeIT') {foreach($name in @('historyFailureRollsBackDomainRetentionSequenceAndReceipt','expiryBeforeCommitAndCancellationRollbackHistory','geometryReversalFaultsAndSingleLiveIndex','corruptHistoricalCategoryAndMissingSchemaRejectWithoutWrites','historyOnlyEditorReattachmentAndRevocation','historyReadRejectsConcurrentSequenceChange','historyReadSerializesReattachmentAndCollection','corruptionBeforeRetentionFailsWholeAction')) {$expectedCases.Add('org.deposit.it.Stage5ProbeIT::'+$name)}}
                 elseif($selection.StartsWith('Stage5CrashIT#')) {$expectedCases.Add('org.deposit.it.Stage5CrashIT::'+$selection.Split('#')[1])}
                 elseif($selection.StartsWith('Stage4CrashIT#')) {$expectedCases.Add('org.deposit.it.Stage4CrashIT::'+$selection.Split('#')[1])}

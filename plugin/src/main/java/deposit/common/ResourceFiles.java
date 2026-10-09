@@ -7,7 +7,7 @@ import java.security.*;
 import java.io.*;
 import java.util.*;
 
-/** Immutable content and guarded private paths. No graph or authorization logic. */
+/** Deposit staging and pure validation. Completed content belongs to ResourceStorage. */
 public final class ResourceFiles {
     public static final long MAX_BYTES=2L*1024*1024*1024,LEASE=86_400_000L;
     public static final int CHUNK=1024*1024,MAX_CHUNK=4*CHUNK;
@@ -17,7 +17,11 @@ public final class ResourceFiles {
             var config=new Properties();try(var in=Files.newInputStream(Path.of(System.getProperty("deposit.config")))){config.load(in);}
             root=checkedRoot(config.getProperty("resourceRoot"));exports=checkedRoot(config.getProperty("exportRoot"));
             if(root.startsWith(exports)||exports.startsWith(root))throw new IOException("Overlapping storage roots");
-            for(String name:List.of("staging","live","deleted"))if(!Files.getFileStore(path(name)).equals(Files.getFileStore(root)))throw new IOException("Different filesystem");
+            for(String legacy:List.of("live","deleted"))if(Files.exists(root.resolve(legacy),LinkOption.NOFOLLOW_LINKS))throw new IOException("Legacy resource storage requires fresh provisioning");
+            for(String name:List.of("staging","ocfl","ocfl-work")){
+                Path child=root.resolve(name);Files.createDirectories(child);checkedRoot(child.toString());
+                if(!Files.getFileStore(child).equals(Files.getFileStore(root)))throw new IOException("Different filesystem");
+            }
         }catch(IOException e){throw new IllegalStateException("Invalid resource storage configuration",e);}
     }
     private static Path checkedRoot(String value)throws IOException {
@@ -27,7 +31,7 @@ public final class ResourceFiles {
     }
     public Path path(String relative)throws IOException {
         Path suffix=Path.of(relative),p=root.resolve(suffix).normalize();
-        if(suffix.isAbsolute()||!p.startsWith(root)||p.equals(root))throw new IOException("Unsafe resource path");
+        if(suffix.isAbsolute()||!p.startsWith(root.resolve("staging"))||p.equals(root.resolve("staging")))throw new IOException("Unsafe staging path");
         for(Path part=root; !part.equals(p);) {
             part=part.resolve(part.relativize(p).getName(0));
             if(Files.exists(part,LinkOption.NOFOLLOW_LINKS)&&(Files.isSymbolicLink(part)||!part.toRealPath().equals(part)))throw new IOException("Linked resource path");
@@ -56,13 +60,4 @@ public final class ResourceFiles {
         }
     }
     public void verify(String location,long bytes,String checksum)throws IOException {Path p=path(location);if(!Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)||Files.size(p)!=bytes||!checksum(p).equals(checksum))throw new IOException("Resource content unavailable");}
-    public void move(String source,String destination)throws IOException {
-        Path from=path(source),to=path(destination);Files.createDirectories(to.getParent());path(destination);
-        Files.move(from,to,StandardCopyOption.ATOMIC_MOVE);
-    }
-    public byte[] read(String location,long offset,int length)throws IOException {
-        try(var channel=FileChannel.open(path(location),StandardOpenOption.READ)) {
-            channel.position(offset);ByteBuffer b=ByteBuffer.allocate(length);while(b.hasRemaining()){if(channel.read(b)<0)throw new EOFException();}return b.array();
-        }
-    }
 }

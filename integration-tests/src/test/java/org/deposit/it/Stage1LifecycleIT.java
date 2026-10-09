@@ -30,7 +30,7 @@ class Stage1LifecycleIT {
     static void error(String code,Runnable action) {var e=assertThrows(org.neo4j.driver.exceptions.ClientException.class,action::run);assertTrue(e.getMessage().contains("\"code\":\""+code+"\""),e.getMessage());}
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
-        assertEquals("0.0.0-stage5",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
+        assertEquals("0.0.0-stage5.5",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
         String secret=Files.readString(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")).trim();
         var request=m("bootstrapSecret",secret,"username",ACCOUNT,"password",PASSWORD);
         try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(1,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("meta").get("revision").asLong());tx.rollback();}

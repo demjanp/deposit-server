@@ -24,8 +24,12 @@ class Stage4CoreIT {
     static String upload(byte[] bytes,String filename){String upload=call("deposit.resource.beginUpload",meta(bytes,filename),op()).get("data").get("uploadId").asString();if(bytes.length>0)call("deposit.resource.uploadChunk",chunk(upload,0,bytes),op());return call("deposit.resource.finishUpload",m("uploadId",upload),op()).get("data").get("resourceId").asString();}
     static org.neo4j.driver.Record descriptor(String name,String type,Object value){return mutate("deposit.set.descriptor",m("objectId",object,"name",name,"value",m("type",type,"value",value)));}
     static Map<String,Object> geometry(String wkt,Object srid,int dimensions){return m("wkt",wkt,"srid",srid,"verticalSrid",null,"axisOrder",dimensions==3?"xyz":"xy","dimensions",(long)dimensions);}
-    static Path resourcePath(String id){String relative=query("MATCH (l:DepositResourceLocation {id:$id}) RETURN l.path AS path",m("id",id)).getFirst().get("path").asString();return ROOT.resolve("resources").resolve(relative);}
-    static void awaitPath(String id,String directory)throws Exception{long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);while(System.nanoTime()<end){Path path=resourcePath(id);if(path.startsWith(ROOT.resolve("resources").resolve(directory))&&Files.exists(path))return;Thread.sleep(50);}fail("Placement did not converge to "+directory);}
+    // Independent expected 0004 layout; no server implementation helper or stored physical path.
+    static Path objectRoot(String id){String h=hash(id.getBytes(java.nio.charset.StandardCharsets.UTF_8));return ROOT.resolve("resources/ocfl").resolve(h.substring(0,3)).resolve(h.substring(3,6)).resolve(h.substring(6,9)).resolve(h);}
+    static Path resourcePath(String id){String name=query("MATCH (l:DepositResourceLocation {id:$id}) RETURN l.storedFilename AS name",m("id",id)).getFirst().get("name").asString();return objectRoot(id).resolve("v1/content").resolve(name);}
+    static void assertStored(String id)throws Exception{Path path=resourcePath(id);assertTrue(Files.isRegularFile(path));assertTrue(Files.isRegularFile(objectRoot(id).resolve("0=ocfl_object_1.1")));assertFalse(Files.exists(objectRoot(id).resolve("v2")));}
+    static long physicalBytes(String id)throws Exception{try(var files=Files.walk(objectRoot(id))){long total=0;for(Path p:files.filter(Files::isRegularFile).toList())total+=Files.size(p);return total;}}
+    static void awaitStagingCleanup(String id)throws Exception{long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);while(System.nanoTime()<end){if(query("MATCH (l:DepositResourceLocation {id:$id}) RETURN l.stagingPath AS path",m("id",id)).getFirst().get("path").isNull())return;Thread.sleep(50);}fail("Committed staging copy not cleaned");}
     @AfterEach void evidence()throws Exception{Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve(ns+"-stage4.txt"),query("MATCH (n {namespaceId:$ns}) RETURN labels(n) AS labels,properties(n) AS properties ORDER BY n.id",m("ns",ns)).toString());}
     @Test @Order(1) void sequentialChunksReplayResumeAndPublication()throws Exception{
         long before=seq();var beginContext=op();var metadata=meta(ABC,"note.txt");String upload=call("deposit.resource.beginUpload",metadata,beginContext).get("data").get("uploadId").asString();
@@ -51,8 +55,8 @@ class Stage4CoreIT {
     }
     @Test void attachmentReplacementNullAndCascadePlacement()throws Exception {
         String id=upload(ABC,"shared");descriptor("File","DResource",m("resourceId",id));descriptor("Other","DResource",m("resourceId",id));
-        mutate("deposit.set.descriptor",m("objectId",object,"name","File","value",null));awaitPath(id,"live");mutate("deposit.set.descriptor",m("objectId",object,"name","Other","value",null));awaitPath(id,"deleted");
-        mutate("deposit.set.descriptor",m("objectId",object,"name","File","value",m("resourceId",id)));awaitPath(id,"live");mutate("deposit.delete.object",m("id",object));awaitPath(id,"deleted");assertArrayEquals(ABC,Files.readAllBytes(resourcePath(id)));
+        mutate("deposit.set.descriptor",m("objectId",object,"name","File","value",null));assertStored(id);mutate("deposit.set.descriptor",m("objectId",object,"name","Other","value",null));assertStored(id);
+        mutate("deposit.set.descriptor",m("objectId",object,"name","File","value",m("resourceId",id)));assertStored(id);mutate("deposit.delete.object",m("id",object));assertStored(id);assertArrayEquals(ABC,Files.readAllBytes(resourcePath(id)));
     }
     @Test void abortLimitsWrongScopeAndFailedValidationHaveNoEffects() {
         error("LIMIT_EXCEEDED",()->call("deposit.resource.beginUpload",m("filename","x","bytes",2147483649L,"sha256",hash(ABC),"mediaType","x"),op()));String upload=call("deposit.resource.beginUpload",meta(ABC,"abort"),op()).get("data").get("uploadId").asString();
@@ -84,15 +88,15 @@ class Stage4CoreIT {
     @Test void pruneSchedulingRollbackReplayStatusAndReadProtection()throws Exception {
         String id=upload(ABC,"collect");descriptor("F","DResource",m("resourceId",id));
         var dry=call("deposit.admin.pruneResources",m("minimumAgeHours",0L),ctx(token));assertFalse(dry.get("data").get("candidateIds").asList().contains(id));
-        mutate("deposit.set.descriptor",m("objectId",object,"name","F","value",null));awaitPath(id,"deleted");
+        mutate("deposit.set.descriptor",m("objectId",object,"name","F","value",null));assertStored(id);
         // Independent fixture expires the lease and dates an orphan; production clocks remain unmodified.
         query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0,l.orphanSince=0",m("id",id));
-        var req=m("dryRun",false,"minimumAgeHours",0L);var context=op();
+        awaitStagingCleanup(id);long expectedPhysical=physicalBytes(id);var req=m("dryRun",false,"minimumAgeHours",0L);var context=op();
         try(var s=driver.session();var tx=s.beginTransaction()){tx.run("CALL deposit.admin.pruneResources($r,$c)",m("r",req,"c",context)).consume();tx.rollback();}assertTrue(Files.exists(resourcePath(id)));
         var job=call("deposit.admin.pruneResources",req,context).get("data");assertEquals(job,call("deposit.admin.pruneResources",req,context).get("data"));String prune=job.get("pruneId").asString();
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);org.neo4j.driver.Value status;
         do{status=call("deposit.admin.pruneResourcesStatus",m("pruneId",prune),ctx(token)).get("data");if(status.get("state").asString().equals("completed"))break;Thread.sleep(50);}while(System.nanoTime()<deadline);
-        assertEquals("completed",status.get("state").asString());assertEquals(3,status.get("reclaimedBytes").asLong());assertFalse(Files.exists(resourcePath(id)));
+        assertEquals("completed",status.get("state").asString());assertEquals(expectedPhysical,status.get("reclaimedBytes").asLong());assertFalse(Files.exists(resourcePath(id)));
     }
     @Test @Order(100) void persistRecoveryFixture()throws Exception {
         String resource=upload(ABC,"persist.txt");var g=descriptor("G","DGeometry",geometry("POINT Z (12 34 56)",4326L,3));descriptor("F","DResource",m("resourceId",resource));

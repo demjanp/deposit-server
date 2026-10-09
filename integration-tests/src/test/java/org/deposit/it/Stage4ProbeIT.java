@@ -28,14 +28,14 @@ class Stage4ProbeIT {
         for(int i=0;i<3;i++){Stage4CoreIT.mutate("deposit.set.descriptor",m("objectId",Stage4CoreIT.object,"name","G","value",Stage4CoreIT.geometry("POINT Z (20 30 40)",999999999L,3)));assertEquals(1,inspect().get("layers").asList(v->v.get("count").asLong()).stream().mapToLong(x->x).sum());}
         var namespace=call("deposit.get.activeNamespace",Map.of(),ctx(token));call("deposit.delete.namespace",m("confirmNamespaceName",namespace.get("data").get("name").asString(),"expectedNamespaceRevision",Stage4CoreIT.seq()),write(token,revision(call("deposit.get.user",Map.of(),ctx(token)))));assertTrue(inspect().get("layers").asList().isEmpty());
     }
-    @Test void expiryResumptionNonRenewalAndReadyLeasePlacement()throws Exception {
+    @Test void expiryResumptionNonRenewalAndReadyLeaseRetention()throws Exception {
         var context=Stage4CoreIT.op();var metadata=Stage4CoreIT.meta(Stage4CoreIT.ABC,"expiry");String upload=call("deposit.resource.beginUpload",metadata,context).get("data").get("uploadId").asString();String originalNs=Stage4CoreIT.ns;
         query("CALL stage0.security.clock(82800000)",Map.of());Stage4CoreIT.token=Stage3CoreIT.login();Stage3CoreIT.select(Stage4CoreIT.token,originalNs);context.put("token",Stage4CoreIT.token);call("deposit.resource.beginUpload",metadata,context);
         long renewed=query("MATCH (u:DepositTransfer {id:$id}) RETURN u.expires AS expiry",m("id",upload)).getFirst().get("expiry").asLong();
         error("VALIDATION_FAILED",()->call("deposit.resource.uploadChunk",Stage4CoreIT.chunk(upload,1,Stage4CoreIT.ABC),Stage4CoreIT.op()));assertEquals(renewed,query("MATCH (u:DepositTransfer {id:$id}) RETURN u.expires AS expiry",m("id",upload)).getFirst().get("expiry").asLong());
         query("CALL stage0.security.clock(172800100)",Map.of());Stage4CoreIT.token=Stage3CoreIT.login();Stage3CoreIT.select(Stage4CoreIT.token,originalNs);context.put("token",Stage4CoreIT.token);error("NOT_FOUND",()->call("deposit.resource.beginUpload",metadata,context));
         query("CALL stage0.security.clock(0)",Map.of());Stage4CoreIT.token=Stage3CoreIT.login();Stage3CoreIT.select(Stage4CoreIT.token,originalNs);
-        String resource=Stage4CoreIT.upload(Stage4CoreIT.ABC,"ready");query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0",m("id",resource));Stage4CoreIT.awaitPath(resource,"deleted");
+        String resource=Stage4CoreIT.upload(Stage4CoreIT.ABC,"ready");query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0",m("id",resource));Stage4CoreIT.assertStored(resource);
     }
     @Test void exportGrantRemainsPrivateAndRechecksCurrentRole() {
         String token=Stage4CoreIT.token,namespace=Stage4CoreIT.ns,resource=Stage4CoreIT.upload(Stage4CoreIT.ABC,"grant"),username="grant-"+UUID.randomUUID();
@@ -54,11 +54,11 @@ class Stage4ProbeIT {
             var result=call("deposit.resource.finishUpload",m("uploadId",upload),finishContext).get("data");assertEquals(result,call("deposit.resource.finishUpload",m("uploadId",upload),finishContext).get("data"));
         }
     }
-    @Test void readLeaseBlocksRelocationUntilTransactionCompletes()throws Exception {
+    @Test void readLeaseBlocksCollectionUntilTransactionCompletes()throws Exception {
         String resource=Stage4CoreIT.upload(Stage4CoreIT.ABC,"race");Stage4CoreIT.descriptor("F","DResource",m("resourceId",resource));long revision=Stage4CoreIT.seq();String other=Stage3CoreIT.login();Stage3CoreIT.select(other,Stage4CoreIT.ns);
         try(var session=driver.session();var tx=session.beginTransaction();var pool=Executors.newSingleThreadExecutor()) {
             tx.run("CALL deposit.resource.downloadChunk($r,$c)",m("r",m("resourceId",resource,"offset",0L,"length",3L),"c",ctx(Stage4CoreIT.token))).consume();
             var entered=new CountDownLatch(1);var pending=pool.submit(()->{entered.countDown();return call("deposit.set.descriptor",m("objectId",Stage4CoreIT.object,"name","F","value",null),write(other,revision));});assertTrue(entered.await(5,TimeUnit.SECONDS));assertThrows(TimeoutException.class,()->pending.get(200,TimeUnit.MILLISECONDS));tx.commit();pending.get(10,TimeUnit.SECONDS);
-        }Stage4CoreIT.awaitPath(resource,"deleted");
+        }Stage4CoreIT.assertStored(resource);
     }
 }

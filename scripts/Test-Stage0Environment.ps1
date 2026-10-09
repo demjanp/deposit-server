@@ -7,7 +7,8 @@ param(
     [switch]$Stage2Checks,
     [switch]$Stage3Checks,
     [switch]$Stage4Checks,
-    [switch]$Stage5Checks
+    [switch]$Stage5Checks,
+    [switch]$Stage55Checks
 )
 # Final Windows environment suite; collection also requires the live runner fixture.
 . "$PSScriptRoot\Inputs.ps1"
@@ -66,7 +67,7 @@ try {
         Scenario 'stage4-storage-faults-and-invariants' {Phase Test -Options @{TestSelection='Stage4ProbeIT'}}
         $savedCrashPoint=$env:STAGE4_CRASH_POINT
         try {
-            foreach($point in @('chunk-flushed','publication-before','publication-after','ready-before-commit','relocation-before','relocation-after','collection-before','collection-after')) {
+            foreach($point in @('chunk-flushed','publication-before','publication-after','ready-before-commit','staging-cleanup-before','staging-cleanup-after','collection-before','collection-partial','collection-after')) {
                 $env:STAGE4_CRASH_POINT=$point
                 Scenario ('stage4-crash-'+$point) {
                     Phase Test -Options @{TestSelection='Stage4CrashIT#trigger'}
@@ -76,6 +77,7 @@ try {
             }
         } finally {[Environment]::SetEnvironmentVariable('STAGE4_CRASH_POINT',$savedCrashPoint,'Process')}
     }
+    if($Stage55Checks) {Scenario 'stage55-ocfl-io-failure' {Phase Test -Options @{TestSelection='Stage55ProbeIT'}}}
     if($Stage5Checks) {
         Scenario 'stage5-history-faults-and-invariants' {Phase Test -Options @{TestSelection='Stage5ProbeIT'}}
         $savedStage5Point=$env:STAGE5_CRASH_POINT
@@ -152,6 +154,20 @@ try {
             Reject {Phase Start} 'Deposit startup readiness rejected*'
             Phase Test -Options @{TestSelection='EnvironmentIT#rejectsUnavailableDependenciesAndConfiguration';ExpectedFailure='invalid-deposit-config'}
         } finally {Phase Stop; [IO.File]::WriteAllBytes($file,$bytes)}
+    }
+    if($Stage55Checks) {
+        Scenario 'reject-legacy-resource-layout' {
+            $legacy=Join-Path $root "runs\$primary\resources\live"
+            if(Test-Path $legacy){throw 'Legacy test directory already exists'}
+            New-Item -ItemType Directory $legacy | Out-Null
+            try {Reject {Phase Start} 'Deposit startup readiness rejected*'}
+            finally {Phase Stop;Remove-Item -LiteralPath $legacy}
+        }
+        Scenario 'reject-invalid-ocfl-root' {
+            $marker=Join-Path $root "runs\$primary\resources\ocfl\0=ocfl_1.1";$bytes=[IO.File]::ReadAllBytes($marker)
+            try {[IO.File]::WriteAllText($marker,"ocfl_1.0`n");Reject {Phase Start} 'Deposit startup readiness rejected*'}
+            finally {Phase Stop;[IO.File]::WriteAllBytes($marker,$bytes)}
+        }
     }
     Scenario 'strict-neo4j-configuration-validation' {
         $file=Join-Path $installationDirectory 'conf\neo4j.conf'; $bytes=[IO.File]::ReadAllBytes($file)

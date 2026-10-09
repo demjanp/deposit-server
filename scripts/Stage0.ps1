@@ -26,6 +26,7 @@ $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 if ($Root -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Stage 0 must use the user-approved root C:\data_processed\Deposit_v2\stage0'}
 $manifest = Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $spatialLock = Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock) -Raw | ConvertFrom-Json
+$ocflLock = Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json
 $run = Join-Path $Root "runs\$RunId"
 $evidence = Join-Path $run ('evidence\'+$Phase+'-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))
 if($EvidenceGroup) {$evidence=Join-Path $Root ("evidence\$EvidenceGroup\phases\"+$Phase+'-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))}
@@ -52,7 +53,7 @@ function Assert-Run {
     $resolved = [IO.Path]::GetFullPath($installation)
     if (!$resolved.StartsWith($Root+'\runs\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Installation escaped Stage 0 root' }
 }
-function Test-Artifacts([switch]$VerifyChecksums) {
+function Test-Artifacts([switch]$VerifyChecksums,[switch]$SkipProvided) {
     foreach ($artifact in $manifest.artifacts) {
         $file = Join-Path $Root "cache\$($artifact.file)"
         if (!(Test-Path $file) -or ($VerifyChecksums -and (Get-FileHash $file -Algorithm SHA256).Hash -ne $artifact.sha256)) {
@@ -63,6 +64,15 @@ function Test-Artifacts([switch]$VerifyChecksums) {
     foreach($artifact in @($spatialLock.dependencies | Where-Object ship)) {
         $file=Join-Path $Root "cache\spatial-dependencies\$($artifact.file)"
         if(!(Test-Path -LiteralPath $file) -or ($VerifyChecksums -and (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $artifact.sha256)) {throw "Spatial dependency missing or checksum mismatch: $($artifact.file)"}
+    }
+    if($VerifyChecksums -and (Get-FileHash "$repo\runtime\ocfl-dependencies.pom.xml" -Algorithm SHA256).Hash -ne $ocflLock.sourcePomSha256) {throw 'OCFL dependency lock does not match its source POM'}
+    foreach($artifact in @($ocflLock.dependencies | Where-Object ship)) {
+        $file=Join-Path $Root "cache\ocfl-dependencies\$($artifact.file)"
+        if(!(Test-Path -LiteralPath $file) -or ($VerifyChecksums -and (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $artifact.sha256)) {throw "OCFL dependency missing or checksum mismatch: $($artifact.file)"}
+    }
+    foreach($artifact in @($ocflLock.dependencies | Where-Object {-not $_.ship -and -not $SkipProvided})) {
+        $file=Join-Path $Root "$($manifest.neo4jHome)\lib\$($artifact.file)"
+        if(!(Test-Path -LiteralPath $file) -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $artifact.sha256){throw "Provided OCFL dependency differs from the pinned runtime: $($artifact.file)"}
     }
 }
 function Invoke-Provision {
@@ -84,7 +94,17 @@ function Invoke-Provision {
             Move-Item -LiteralPath "$file.partial" -Destination $file
         }
     }
-    Test-Artifacts -VerifyChecksums
+
+    New-Item -ItemType Directory -Force "$Root\cache\ocfl-dependencies" | Out-Null
+    foreach($artifact in @($ocflLock.dependencies | Where-Object ship)) {
+        $file=Join-Path $Root "cache\ocfl-dependencies\$($artifact.file)"
+        if(!(Test-Path -LiteralPath $file)) {
+            Invoke-WebRequest -UseBasicParsing -Uri $artifact.url -OutFile "$file.partial"
+            if((Get-FileHash -LiteralPath "$file.partial" -Algorithm SHA256).Hash -ne $artifact.sha256) {throw "OCFL dependency download hash mismatch: $($artifact.file)"}
+            Move-Item -LiteralPath "$file.partial" -Destination $file
+        }
+    }
+    Test-Artifacts -VerifyChecksums -SkipProvided
     Invoke-ProvisionLicenses
     foreach ($id in @('temurin','neo4j','maven')) {
         $artifact = $manifest.artifacts | Where-Object id -eq $id
@@ -95,6 +115,7 @@ function Invoke-Provision {
         }
         $null=Get-ToolDirectory $manifest $id $Root
     }
+    Test-Artifacts -VerifyChecksums
 }
 function Invoke-ProvisionLicenses {
     $licenses=Get-Content "$repo\runtime\license-overrides.json" -Raw | ConvertFrom-Json
@@ -117,8 +138,8 @@ function Invoke-Build {
         & .\mvnw.cmd --batch-mode --no-transfer-progress "-Dmaven.repo.local=$Root\maven-repository" clean verify dependency:tree *> "$evidence\build.log"
         if ($LASTEXITCODE -ne 0) { throw "Maven build failed; see $evidence\build.log" }
         if(Test-Path "$Root\build\deposit-plugin\target\surefire-reports") {Copy-Item -LiteralPath "$Root\build\deposit-plugin\target\surefire-reports" -Destination "$evidence\unit-junit" -Recurse}
-        $artifacts=@('build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.jar','build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage5.jar') | ForEach-Object {@{path=$_;sha256=(Get-FileHash (Join-Path $Root $_) -Algorithm SHA256).Hash.ToLowerInvariant()}}
-        Write-Json @{version='0.0.0-stage5';inputs=$initialInputs.sha256;sourceIdentity=$initialInputs.sha256;javaHome=$manifest.javaHome;reproducibleTimestamp='2026-10-08T00:00:00Z';artifacts=@($artifacts)} "$Root\build\deposit-plugin\target\build-metadata.json"
+        $artifacts=@('build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.5.jar','build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage5.5.jar') | ForEach-Object {@{path=$_;sha256=(Get-FileHash (Join-Path $Root $_) -Algorithm SHA256).Hash.ToLowerInvariant()}}
+        Write-Json @{version='0.0.0-stage5.5';inputs=$initialInputs.sha256;sourceIdentity=$initialInputs.sha256;javaHome=$manifest.javaHome;reproducibleTimestamp='2026-10-08T00:00:00Z';artifacts=@($artifacts)} "$Root\build\deposit-plugin\target\build-metadata.json"
         $snapshot=Save-Stage0SourceSnapshot $repo $Root $initialInputs
         Write-Json $snapshot "$evidence\source-snapshot.json"
         Write-Json @{inputs=$initialInputs.sha256;sourceSnapshot=$snapshot;artifacts=@($artifacts);evidence=$evidence} "$Root\build-receipt.json"
@@ -135,10 +156,10 @@ function Invoke-Install {
     if (Test-Path "$run\owner.json") { Assert-Run; throw 'Stop and reset stage0-host before reinstalling' }
     Write-Json @{runId=$RunId;root=$Root;port=$Port;diagnostic=[bool]$DiagnosticBuild} "$run\owner.json"
     Copy-Item -LiteralPath $runtimeDirectory -Destination $installation -Recurse
-    New-Item -ItemType Directory -Force "$run\resources\staging","$run\resources\live","$run\resources\deleted","$run\exports","$run\secrets" | Out-Null
+    New-Item -ItemType Directory -Force "$run\resources\staging","$run\resources\ocfl","$run\resources\ocfl-work","$run\exports","$run\secrets" | Out-Null
     Set-OwnerOnlyDirectory "$run\secrets"
-    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.jar"
-    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage5.jar"
+    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.5.jar"
+    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage5.5.jar"
     if ($DiagnosticBuild) { $plugin="$Root\diagnostic-build\deposit-plugin.jar"; $probe="$Root\diagnostic-build\deposit-runtime-probe.jar" }
     $files=@($plugin)
     if(!$WithoutProbe) {$files+=@($probe)}
@@ -149,6 +170,10 @@ function Invoke-Install {
     }
     foreach($artifact in @($spatialLock.dependencies | Where-Object ship)) {
         Copy-Item -LiteralPath (Join-Path $Root "cache\spatial-dependencies\$($artifact.file)") -Destination "$installation\plugins"
+    }
+
+    foreach($artifact in @($ocflLock.dependencies | Where-Object ship)) {
+        Copy-Item -LiteralPath (Join-Path $Root "cache\ocfl-dependencies\$($artifact.file)") -Destination "$installation\plugins"
     }
     Write-Json @{inputs=$(if($DiagnosticBuild){$null}else{$receipt.inputs});diagnostic=[bool]$DiagnosticBuild;runtime=@(@{path='bin\neo4j.bat';sha256=(Get-FileHash (Join-Path $runtimeDirectory 'bin\neo4j.bat') -Algorithm SHA256).Hash.ToLowerInvariant()});plugins=@(Get-ChildItem "$installation\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$run\installed-artifacts.json"
     $configFile = (Join-Path $installation 'conf\deposit.properties').Replace('\','/')
@@ -356,6 +381,7 @@ function Invoke-Evidence {
     if (Test-Path "$installation\logs") {Copy-Item "$installation\logs" "$evidence\server-logs" -Recurse -Force}
     Write-Json $manifest "$evidence\artifact-manifest.json"
     Write-Json $spatialLock "$evidence\spatial-dependencies.json"
+    Write-Json $ocflLock "$evidence\ocfl-dependencies.json"
     $os=Get-CimInstance Win32_OperatingSystem
     Write-Json @{os=$os.Caption;version=$os.Version;javaHome=$env:JAVA_HOME;runId=$RunId;diagnostic=[bool]$DiagnosticBuild} "$evidence\environment.json"
     $initialInputs.serverBaseline | Set-Content "$evidence\server-commit.txt"
@@ -371,7 +397,7 @@ function Invoke-Package {
     Invoke-ProvisionLicenses
     $receipt=Get-Content "$Root\build-receipt.json" -Raw | ConvertFrom-Json
     if($receipt.inputs -ne $initialInputs.sha256) {throw 'Build receipt is stale; rebuild before packaging'}
-    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.jar'
+    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.5.jar'
     $expected=@($receipt.artifacts | Where-Object path -like 'build\deposit-plugin\*')
     if($expected.Count -ne 1 -or (Get-FileHash $plugin -Algorithm SHA256).Hash -ne $expected[0].sha256) {throw 'Plugin changed since build'}
     $jar=[IO.Compression.ZipFile]::OpenRead($plugin)
@@ -382,16 +408,17 @@ function Invoke-Package {
     Copy-Item -LiteralPath $plugin -Destination "$destination\plugins"
     foreach($id in @('apoc','spatial','bcrypt-provider')) {$artifact=$manifest.artifacts | Where-Object id -eq $id; Copy-Item -LiteralPath (Join-Path $Root "cache\$($artifact.file)") -Destination "$destination\plugins"}
     foreach($artifact in @($spatialLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\spatial-dependencies\$($artifact.file)") -Destination "$destination\plugins"}
+    foreach($artifact in @($ocflLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\ocfl-dependencies\$($artifact.file)") -Destination "$destination\plugins"}
     & "$PSScriptRoot\Audit-Artifacts.ps1" -Root $Root -Inputs $initialInputs.sha256
     Copy-Item -LiteralPath "$Root\evidence\artifact-audit\inventory.json" -Destination "$destination\runtime-inventory.json"
     Copy-Item -LiteralPath (Join-Path $Root "$($manifest.neo4jHome)\ThirdPartyLicenses.txt") -Destination "$destination\notices\Neo4j-ThirdPartyLicenses.txt"
     Copy-Item -Path "$Root\evidence\artifact-audit\notices\*" -Destination "$destination\notices"
     Copy-Item -Path "$Root\cache\licenses\*" -Destination "$destination\notices"
-    Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
+    Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$repo\runtime\ocfl-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
     Copy-Item -Path "$repo\runtime\distribution\*" -Destination "$destination\conf"
     Write-Json @{inputs=$initialInputs.sha256;plugins=@(Get-ChildItem "$destination\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$destination\distribution-manifest.json"
-    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage5.zip")
-    Write-Json @{path="$run\deposit-server-0.0.0-stage5.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage5.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
+    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage5.5.zip")
+    Write-Json @{path="$run\deposit-server-0.0.0-stage5.5.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage5.5.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
 }
 
 $status='running'

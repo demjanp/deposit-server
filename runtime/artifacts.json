@@ -1,5 +1,6 @@
 {
     "neo4jVersion":  "2026.05.0",
+    "ocflDependencyLock": "ocfl-runtime-lock.json",
     "dependencyLock":  "spatial-runtime-lock.json",
     "root":  "C:\\data_processed\\Deposit_v2\\stage0",
     "javaHome":  "tools/jdk-21.0.12.1+1",

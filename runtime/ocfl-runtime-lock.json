@@ -1,0 +1,311 @@
+{
+    "specification":  "1.1 (1.1.1 clarifications)",
+    "dependencies":  [
+                         {
+                             "groupId":  "com.fasterxml.jackson.core",
+                             "url":  "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.2/jackson-databind-2.21.2.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "cf8e0ecdc35f02da06e27f4157600ba9d7649c5272e4d6b795ef2a42f070a262"
+                                              }
+                                          ],
+                             "version":  "2.21.2",
+                             "sha256":  "8c982f01f148d805f0aaac2339011244757e0df7c6ff8951f2fa3f433b8ed849",
+                             "providedByRuntime":  [
+                                                       "jackson-databind-2.21.2.jar"
+                                                   ],
+                             "artifactId":  "jackson-databind",
+                             "file":  "jackson-databind-2.21.2.jar"
+                         },
+                         {
+                             "groupId":  "com.fasterxml.jackson.datatype",
+                             "url":  "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.21.2/jackson-datatype-jsr310-2.21.2.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "38c7898c763b8991fffbd769459972e0176bf0c505c739518c70f7c57d16eed7"
+                                              }
+                                          ],
+                             "version":  "2.21.2",
+                             "sha256":  "a083d57cd1c4a28fefcc6bd071740779eb7fc1c22a3c1b40451b5477c443f02f",
+                             "providedByRuntime":  [
+                                                       "jackson-datatype-jsr310-2.21.2.jar"
+                                                   ],
+                             "artifactId":  "jackson-datatype-jsr310",
+                             "file":  "jackson-datatype-jsr310-2.21.2.jar"
+                         },
+                         {
+                             "groupId":  "com.google.j2objc",
+                             "url":  "https://repo.maven.apache.org/maven2/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache License, Version 2.0",
+                                                  "pomSha256":  "14570838500034fc1b47c8205ce1c9d6b255c1ccdd2d1afdcdcbf75e89b24a33"
+                                              }
+                                          ],
+                             "version":  "3.1",
+                             "sha256":  "84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "j2objc-annotations",
+                             "file":  "j2objc-annotations-3.1.jar"
+                         },
+                         {
+                             "groupId":  "dev.failsafe",
+                             "url":  "https://repo.maven.apache.org/maven2/dev/failsafe/failsafe/3.3.2/failsafe-3.3.2.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://apache.org/licenses/LICENSE-2.0",
+                                                  "name":  "Apache License, Version 2.0",
+                                                  "pomSha256":  "e76a27946acba8578f26d85f0233cc0f39468b0e7c2985dc6d7c6ce010552d84"
+                                              }
+                                          ],
+                             "version":  "3.3.2",
+                             "sha256":  "2c5dc879a6dac7ea3a7b29d795e27bd49b8e7908b05c2f3e56053c19d79850f5",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "failsafe",
+                             "file":  "failsafe-3.3.2.jar"
+                         },
+                         {
+                             "groupId":  "com.google.errorprone",
+                             "url":  "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.43.0/error_prone_annotations-2.43.0.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache 2.0",
+                                                  "pomSha256":  "4f6b8889afa8debdbe1e3fe2a5f8e66e2216ca0b563f26b4e54138730eecdc80"
+                                              }
+                                          ],
+                             "version":  "2.43.0",
+                             "sha256":  "48272e75c16e1f7bdc7bd19529ccacd5ee170404701d7f5a23441bb5847957f5",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "error_prone_annotations",
+                             "file":  "error_prone_annotations-2.43.0.jar"
+                         },
+                         {
+                             "groupId":  "org.slf4j",
+                             "url":  "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://opensource.org/license/mit",
+                                                  "name":  "MIT",
+                                                  "pomSha256":  "f78d27b642b4b886eb839fc102b5cd9fe7f30f37599ffe68185be4e1609031e9"
+                                              }
+                                          ],
+                             "version":  "2.0.17",
+                             "sha256":  "7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832",
+                             "providedByRuntime":  [
+                                                       "slf4j-api-2.0.17.jar"
+                                                   ],
+                             "artifactId":  "slf4j-api",
+                             "file":  "slf4j-api-2.0.17.jar"
+                         },
+                         {
+                             "groupId":  "com.github.ben-manes.caffeine",
+                             "url":  "https://repo.maven.apache.org/maven2/com/github/ben-manes/caffeine/caffeine/3.2.3/caffeine-3.2.3.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache License, Version 2.0",
+                                                  "pomSha256":  "9f704f9083797b4f7d0c1d5c855d34cd268d544cf06b4283d5ce4288acfc9ee0"
+                                              }
+                                          ],
+                             "version":  "3.2.3",
+                             "sha256":  "ca70c90a5d1ce1511880ce9c93d4ad22108f61111d3daf91eb52762b571bd179",
+                             "providedByRuntime":  [
+                                                       "caffeine-3.2.3.jar"
+                                                   ],
+                             "artifactId":  "caffeine",
+                             "file":  "caffeine-3.2.3.jar"
+                         },
+                         {
+                             "groupId":  "org.jspecify",
+                             "url":  "https://repo.maven.apache.org/maven2/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache License, Version 2.0",
+                                                  "pomSha256":  "cdab929a3b95211f43d2090c5e2d0dfe8465960e378bc32b35841dab324433a6"
+                                              }
+                                          ],
+                             "version":  "1.0.0",
+                             "sha256":  "1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab",
+                             "providedByRuntime":  [
+                                                       "jspecify-1.0.0.jar"
+                                                   ],
+                             "artifactId":  "jspecify",
+                             "file":  "jspecify-1.0.0.jar"
+                         },
+                         {
+                             "groupId":  "com.fasterxml.jackson.core",
+                             "url":  "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "71cac5392151e2a528cc9a09179f0a334179f05c52f8e596cf58ddf12bb27f2b"
+                                              }
+                                          ],
+                             "version":  "2.21",
+                             "sha256":  "53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b",
+                             "providedByRuntime":  [
+                                                       "jackson-annotations-2.21.jar"
+                                                   ],
+                             "artifactId":  "jackson-annotations",
+                             "file":  "jackson-annotations-2.21.jar"
+                         },
+                         {
+                             "groupId":  "com.fasterxml.jackson.core",
+                             "url":  "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.21.2/jackson-core-2.21.2.jar",
+                             "ship":  false,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "bab0e5599649ccb5ab21a9cf9d2e57192de1e48e6d23524dc253d62fc73c9634"
+                                              }
+                                          ],
+                             "version":  "2.21.2",
+                             "sha256":  "12e8655b100267b44d0f14d01b1f5082a5105e616174dc4307be1a761e92407b",
+                             "providedByRuntime":  [
+                                                       "jackson-core-2.21.2.jar"
+                                                   ],
+                             "artifactId":  "jackson-core",
+                             "file":  "jackson-core-2.21.2.jar"
+                         },
+                         {
+                             "groupId":  "io.ocfl",
+                             "url":  "https://repo.maven.apache.org/maven2/io/ocfl/ocfl-java-core/2.2.3/ocfl-java-core-2.2.3.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.opensource.org/licenses/mit-license.php",
+                                                  "name":  "MIT License",
+                                                  "pomSha256":  "8b9cce5738c6ed24e61eded9910fe88f3337e70587df362b11f632ea37b7a52f"
+                                              }
+                                          ],
+                             "version":  "2.2.3",
+                             "sha256":  "95d3f2d3a8b6843cc22cabdec21fbc8d1dc01dc9dd17c9495a56561b442df8f0",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "ocfl-java-core",
+                             "file":  "ocfl-java-core-2.2.3.jar"
+                         },
+                         {
+                             "groupId":  "io.ocfl",
+                             "url":  "https://repo.maven.apache.org/maven2/io/ocfl/ocfl-java-api/2.2.3/ocfl-java-api-2.2.3.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.opensource.org/licenses/mit-license.php",
+                                                  "name":  "MIT License",
+                                                  "pomSha256":  "8b9cce5738c6ed24e61eded9910fe88f3337e70587df362b11f632ea37b7a52f"
+                                              }
+                                          ],
+                             "version":  "2.2.3",
+                             "sha256":  "5eedc5cbd25fe53a554f13387fbc7c52cd6f57d3858c46aff8085f9c238828ef",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "ocfl-java-api",
+                             "file":  "ocfl-java-api-2.2.3.jar"
+                         },
+                         {
+                             "groupId":  "com.google.guava",
+                             "url":  "https://repo.maven.apache.org/maven2/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache License, Version 2.0",
+                                                  "pomSha256":  "7220ede61026596fbc720ee4b93246fa2d14f328058532b59ef053de397c7d83"
+                                              }
+                                          ],
+                             "version":  "1.0.3",
+                             "sha256":  "cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "failureaccess",
+                             "file":  "failureaccess-1.0.3.jar"
+                         },
+                         {
+                             "groupId":  "com.google.guava",
+                             "url":  "https://repo.maven.apache.org/maven2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "The Apache Software License, Version 2.0",
+                                                  "pomSha256":  "f8698ab46ca996ce889c1afc8ca4f25eb8ac6b034dc898d4583742360016cc04"
+                                              }
+                                          ],
+                             "version":  "9999.0-empty-to-avoid-conflict-with-guava",
+                             "sha256":  "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "listenablefuture",
+                             "file":  "listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar"
+                         },
+                         {
+                             "groupId":  "at.favre.lib",
+                             "url":  "https://repo.maven.apache.org/maven2/at/favre/lib/bytes/1.6.1/bytes-1.6.1.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache License, Version 2.0",
+                                                  "pomSha256":  "fc6d48c7c75c7bfe3786d33b80431ad92d05def9b25ab74a9478434c2144a079"
+                                              }
+                                          ],
+                             "version":  "1.6.1",
+                             "sha256":  "0f57d113cb5a89372466f96e48e1f0d8c74a5fc5a49bbb7a78be1faa2ceccb3d",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "bytes",
+                             "file":  "bytes-1.6.1.jar"
+                         },
+                         {
+                             "groupId":  "com.google.guava",
+                             "url":  "https://repo.maven.apache.org/maven2/com/google/guava/guava/33.5.0-jre/guava-33.5.0-jre.jar",
+                             "ship":  true,
+                             "licenses":  [
+                                              {
+                                                  "url":  "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "name":  "Apache License, Version 2.0",
+                                                  "pomSha256":  "68719e687c6e4c9ff3e0fecbef7bd20896f0f4f7b314743ed33c72f962568215"
+                                              }
+                                          ],
+                             "version":  "33.5.0-jre",
+                             "sha256":  "1e301f0c52ac248b0b14fdc3d12283c77252d4d6f48521d572e7d8c4c2cc4ac7",
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "artifactId":  "guava",
+                             "file":  "guava-33.5.0-jre.jar"
+                         }
+                     ],
+    "sourcePomSha256":  "69bc6f85a3449e043ebea6ba0b531723e8c3a4f8d5888d3fcb7a5d4ad282abf8",
+    "ocfl":  "2.2.3"
+}

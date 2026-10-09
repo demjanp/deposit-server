@@ -20,6 +20,34 @@ public class StorageProbe {
     private static volatile CountDownLatch pause=new CountDownLatch(0);
     public static class Row{public final Map<String,Object> data;Row(Map<String,Object> data){this.data=data;}}
     private ServerContext server(){return ServerContext.forDatabase(db.databaseId().databaseId().uuid());}
+    @Procedure(name="stage0.storage.failNextPublication",mode=Mode.READ)
+    public Stream<Row> failNextPublication()throws Exception {
+        var manager=server().storage;ResourceStorage delegate=manager.content;var once=new AtomicBoolean();
+        var field=StorageManager.class.getDeclaredField("content");field.setAccessible(true);
+        ResourceStorage proxy=(ResourceStorage)java.lang.reflect.Proxy.newProxyInstance(ResourceStorage.class.getClassLoader(),new Class[]{ResourceStorage.class},(p,method,args)->{
+            if(method.getName().equals("publish")&&once.compareAndSet(false,true)){
+                field.set(manager,delegate);
+                throw new java.nio.file.FileSystemException("staged-copy",null,"There is not enough space on the disk (injected I/O failure)");
+            }
+            try{return method.invoke(delegate,args);}catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}
+        });field.set(manager,proxy);return Stream.of(new Row(Map.of("armed",true)));
+    }
+    @Procedure(name="stage0.storage.partialPurge",mode=Mode.READ)
+    public Stream<Row> partialPurge()throws Exception {
+        var manager=server().storage;ResourceStorage delegate=manager.content;var once=new AtomicBoolean();
+        var field=StorageManager.class.getDeclaredField("content");field.setAccessible(true);
+        ResourceStorage proxy=(ResourceStorage)java.lang.reflect.Proxy.newProxyInstance(ResourceStorage.class.getClassLoader(),new Class[]{ResourceStorage.class},(p,method,args)->{
+            if(method.getName().equals("purge")&&once.compareAndSet(false,true)){
+                field.set(manager,delegate);
+                // Test-only partial filesystem deletion under the real committed deletion intent.
+                // The external harness terminates this JVM here; production recovery uses purgeObject.
+                String h=ResourceFiles.checksum(((String)args[0]).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                Files.delete(manager.files.root.resolve("ocfl").resolve(h.substring(0,3)).resolve(h.substring(3,6)).resolve(h.substring(6,9)).resolve(h).resolve("v1/inventory.json"));
+                server().storagePoint("collection-partial");
+            }
+            try{return method.invoke(delegate,args);}catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}
+        });field.set(manager,proxy);return Stream.of(new Row(Map.of("armed",true)));
+    }
     @Procedure(name="stage0.storage.arm",mode=Mode.READ)
     public Stream<Row> arm(@Name("point")String point,@Name("mode")String mode)throws Exception {
         if(!Set.of("fail","pause","clear").contains(mode))throw new IllegalArgumentException();

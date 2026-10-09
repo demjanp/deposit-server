@@ -136,7 +136,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();storage.start();
             initialized=true;
             readiness.complete(null);
-        } catch(Exception e) {throw new IllegalStateException("Cannot initialize Deposit bootstrap credential",e);}
+        } catch(Exception e) {if(storage!=null){try{storage.close();}catch(Exception close){e.addSuppressed(close);}storage=null;}throw new IllegalStateException("Cannot initialize Deposit",e);}
     }
     private static String secret(Path path) throws java.io.IOException {
         if(!Files.exists(path)) {

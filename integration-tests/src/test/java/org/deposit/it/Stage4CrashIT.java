@@ -20,14 +20,14 @@ class Stage4CrashIT {
             var chunk=Stage4CoreIT.op();p.setProperty("chunk",(String)chunk.get("operationId"));var finish=Stage4CoreIT.op();p.setProperty("finish",(String)finish.get("operationId"));
             String resource=query("MATCH (u:DepositTransfer {id:$id}) RETURN u.resourceId AS id",m("id",upload)).getFirst().get("id").asString();p.setProperty("resource",resource);
             if(!point.equals("chunk-flushed"))call("deposit.resource.uploadChunk",Stage4CoreIT.chunk(upload,0,Stage4CoreIT.ABC),chunk);
-            if(point.startsWith("relocation")||point.startsWith("collection")){call("deposit.resource.finishUpload",m("uploadId",upload),finish);Stage4CoreIT.descriptor("F","DResource",m("resourceId",resource));}
-            if(point.startsWith("collection")){Stage4CoreIT.mutate("deposit.set.descriptor",m("objectId",Stage4CoreIT.object,"name","F","value",null));Stage4CoreIT.awaitPath(resource,"deleted");query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0,l.orphanSince=0",m("id",resource));}
+            if(point.startsWith("collection")){call("deposit.resource.finishUpload",m("uploadId",upload),finish);Stage4CoreIT.descriptor("F","DResource",m("resourceId",resource));}
+            if(point.startsWith("collection")){Stage4CoreIT.mutate("deposit.set.descriptor",m("objectId",Stage4CoreIT.object,"name","F","value",null));Stage4CoreIT.assertStored(resource);Stage4CoreIT.awaitStagingCleanup(resource);p.setProperty("physicalBytes",Long.toString(Stage4CoreIT.physicalBytes(resource)));query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0,l.orphanSince=0",m("id",resource));}
+            if(point.equals("collection-partial"))query("CALL stage0.storage.partialPurge()",Map.of());
             Stage4ProbeIT.arm(point,"pause");
             try(var pool=Executors.newSingleThreadExecutor()) {
                 var task=pool.submit(()->{
                     if(point.equals("chunk-flushed"))return call("deposit.resource.uploadChunk",Stage4CoreIT.chunk(upload,0,Stage4CoreIT.ABC),chunk);
-                    if(point.startsWith("publication")||point.equals("ready-before-commit"))return call("deposit.resource.finishUpload",m("uploadId",upload),finish);
-                    if(point.startsWith("relocation"))return Stage4CoreIT.mutate("deposit.set.descriptor",m("objectId",Stage4CoreIT.object,"name","F","value",null));
+                    if(point.startsWith("publication")||point.equals("ready-before-commit")||point.startsWith("staging-cleanup"))return call("deposit.resource.finishUpload",m("uploadId",upload),finish);
                     return call("deposit.admin.pruneResources",m("dryRun",false,"minimumAgeHours",0L),Stage4CoreIT.op());
                 });
                 Path marker=ROOT.resolve("stage4-pause.json");long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);while(!Files.exists(marker)&&System.nanoTime()<deadline)Thread.sleep(50);
@@ -49,13 +49,14 @@ class Stage4CrashIT {
             var p=new Properties();try(var in=Files.newInputStream(FIXTURE)){p.load(in);}String token=Stage3CoreIT.login();Stage4CoreIT.token=token;Stage3CoreIT.select(token,p.getProperty("namespace"));String point=p.getProperty("point");
             if(point.startsWith("collection")) {
                 long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);org.neo4j.driver.Value status;do{status=call("deposit.admin.pruneResourcesStatus",m("pruneId",p.getProperty("prune")),ctx(token)).get("data");if(status.get("state").asString().equals("completed"))break;Thread.sleep(50);}while(System.nanoTime()<deadline);
-                assertEquals("completed",status.get("state").asString());assertEquals(3,status.get("reclaimedBytes").asLong());assertFalse(Files.exists(Stage4CoreIT.resourcePath(p.getProperty("resource"))));
+                assertEquals("completed",status.get("state").asString());assertEquals(Long.parseLong(p.getProperty("physicalBytes")),status.get("reclaimedBytes").asLong());assertFalse(Files.exists(Stage4CoreIT.objectRoot(p.getProperty("resource"))));
             }else {
-                if(!point.startsWith("relocation")) {
+                {
                     var begin=ctx(token);begin.put("operationId",p.getProperty("begin"));long offset=call("deposit.resource.beginUpload",Stage4CoreIT.meta(Stage4CoreIT.ABC,point),begin).get("data").get("nextOffset").asLong();assertEquals(point.equals("chunk-flushed")?0:3,offset);
                     if(offset==0){var c=ctx(token);c.put("operationId",p.getProperty("chunk"));call("deposit.resource.uploadChunk",Stage4CoreIT.chunk(p.getProperty("upload"),0,Stage4CoreIT.ABC),c);}
                     var finish=ctx(token);finish.put("operationId",p.getProperty("finish"));assertEquals(p.getProperty("resource"),call("deposit.resource.finishUpload",m("uploadId",p.getProperty("upload")),finish).get("data").get("resourceId").asString());
-                }else Stage4CoreIT.awaitPath(p.getProperty("resource"),"deleted");
+                }
+                Stage4CoreIT.assertStored(p.getProperty("resource"));Stage4CoreIT.awaitStagingCleanup(p.getProperty("resource"));
                 assertArrayEquals(Stage4CoreIT.ABC,Files.readAllBytes(Stage4CoreIT.resourcePath(p.getProperty("resource"))));
             }
         }finally{close();}

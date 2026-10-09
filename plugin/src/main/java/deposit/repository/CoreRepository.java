@@ -262,7 +262,7 @@ public final class CoreRepository {
         // Remove owned values while ownership/declarations still exist; operational records survive.
         for(Node descriptor:nodes("Descriptor",Map.of("namespaceId",namespace))) {var ids=new ArrayList<String>();removeValue(descriptor,ids);deleted.addAll(ids);}
         geometry().deleteLayers(namespace);
-        for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))) {loc.setProperty("leaseUntil",0L);loc.setProperty("everAttached",true);loc.setProperty("pending",true);}
+        for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))) {loc.setProperty("leaseUntil",0L);loc.setProperty("everAttached",true);resources().orphan(loc);}
         for(Node grant:nodes("DepositExportGrant",Map.of("namespaceId",namespace)))grant.setProperty("expires",0L);
         // Receipts and operation bindings intentionally survive deletion, without native links.
         for(String label:List.of("Object","Descriptor","ClassDescriptor","Class","UserTool")) {
