@@ -23,6 +23,7 @@ public abstract class ActionService extends BaseService {
         if(binding!=null && !scope.equals(binding.getProperty("scope"))) c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
         Node receipt=repo.receipt(scope,c.operationId);
         if(receipt!=null) {
+            c.replayed=true;
             if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");
             if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
             c.revision=serverScope?c.server.revision(c.state):((Number)receipt.getProperty("revision")).longValue();

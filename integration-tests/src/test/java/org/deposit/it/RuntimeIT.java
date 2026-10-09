@@ -50,11 +50,8 @@ class RuntimeIT {
 
     @Test @Order(1) void discoveryAndRuntime() {
         var rows=query("CALL deposit.get.info()"); assertEquals(1,rows.size());
-        assertEquals(Map.of("version","0.0.0-stage6"), rows.getFirst().get("data").asMap());
-        var meta=rows.getFirst().get("meta").asMap();
-        assertEquals(Set.of("namespaceId","revision","operationId","requestId","nextCursor"),meta.keySet());
-        for (String key:List.of("namespaceId","revision","operationId","nextCursor")) assertNull(meta.get(key));
-        assertNotNull(UUID.fromString((String)meta.get("requestId")));
+        assertEquals(Map.of("version","0.0.0-stage65"), rows.getFirst().get("data").asMap());
+        assertEquals(List.of("data"),rows.getFirst().keys());
         assertEquals(System.getenv("STAGE0_NEO4J_VERSION"),query("RETURN apoc.version() AS version").getFirst().get("version").asString());
         assertEquals(System.getenv("STAGE0_NEO4J_VERSION"),query("CALL dbms.components() YIELD versions RETURN versions[0] AS version").getFirst().get("version").asString());
         assertEquals("CYPHER_25",query("SHOW SETTINGS 'db.query.default_language' YIELD value RETURN value").getFirst().get("value").asString());

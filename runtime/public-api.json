@@ -1,0 +1,1593 @@
+[
+  {
+    "name": "deposit.create.class",
+    "args": [
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.class",
+    "args": [
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.class",
+    "args": [
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.class",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Class"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.classPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Class"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.create.object",
+    "args": [
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:classId"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.object",
+    "args": [
+      {
+        "name": "objectId",
+        "type": "String",
+        "binding": "id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.object",
+    "args": [
+      {
+        "name": "objectId",
+        "type": "String",
+        "binding": "id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.object",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Object"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.objectPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Object"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.create.descriptor",
+    "args": [
+      {
+        "name": "objectId",
+        "type": "String",
+        "binding": "objectId"
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "value",
+        "type": "Object",
+        "binding": "value"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.descriptor",
+    "args": [
+      {
+        "name": "objectId",
+        "type": "String",
+        "binding": "objectId"
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "value",
+        "type": "Object",
+        "binding": "value"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.descriptor",
+    "args": [
+      {
+        "name": "descriptor",
+        "type": "Object",
+        "binding": "@Descriptor:id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.descriptor",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Descriptor"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.descriptorPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Descriptor"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.create.classDescriptor",
+    "args": [
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:classId"
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "type",
+        "type": "String",
+        "binding": "type"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.classDescriptor",
+    "args": [
+      {
+        "name": "classDescriptor",
+        "type": "Object",
+        "binding": "@ClassDescriptor:id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.classDescriptor",
+    "args": [
+      {
+        "name": "classDescriptor",
+        "type": "Object",
+        "binding": "@ClassDescriptor:id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.classDescriptor",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?ClassDescriptor"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.classDescriptorPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?ClassDescriptor"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.create.userTool",
+    "args": [
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.userTool",
+    "args": [
+      {
+        "name": "userTool",
+        "type": "Object",
+        "binding": "@UserTool:id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.userTool",
+    "args": [
+      {
+        "name": "userTool",
+        "type": "Object",
+        "binding": "@UserTool:id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.userTool",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?UserTool"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.userToolPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?UserTool"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.create.relationship",
+    "args": [
+      {
+        "name": "sourceId",
+        "type": "String",
+        "binding": "sourceId"
+      },
+      {
+        "name": "targetId",
+        "type": "String",
+        "binding": "targetId"
+      },
+      {
+        "name": "label",
+        "type": "String",
+        "binding": "label"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "rel",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.relationship",
+    "args": [
+      {
+        "name": "relationshipId",
+        "type": "String",
+        "binding": "id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "rel",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.relationship",
+    "args": [
+      {
+        "name": "relationshipId",
+        "type": "String",
+        "binding": "id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.relationship",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Relationship"
+      }
+    ],
+    "output": "rel",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.relationshipPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Relationship"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.create.classRelationship",
+    "args": [
+      {
+        "name": "source",
+        "type": "Object",
+        "binding": "@Class:sourceId"
+      },
+      {
+        "name": "target",
+        "type": "Object",
+        "binding": "@Class:targetId"
+      },
+      {
+        "name": "label",
+        "type": "String",
+        "binding": "label"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "rel",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.classRelationship",
+    "args": [
+      {
+        "name": "classRelationshipId",
+        "type": "String",
+        "binding": "id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "rel",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.classRelationship",
+    "args": [
+      {
+        "name": "classRelationshipId",
+        "type": "String",
+        "binding": "id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.classRelationship",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?ClassRelationship"
+      }
+    ],
+    "output": "rel",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.classRelationshipPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?ClassRelationship"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.set.membership",
+    "args": [
+      {
+        "name": "objectId",
+        "type": "String",
+        "binding": "objectId"
+      },
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:classId"
+      }
+    ],
+    "output": "rel",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.apply.batch",
+    "args": [
+      {
+        "name": "commands",
+        "type": "List<Object>",
+        "binding": "commands"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.all",
+    "args": [
+      {
+        "name": "confirmNamespaceName",
+        "type": "String",
+        "binding": "confirmNamespaceName"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.utils.bootstrap",
+    "args": [
+      {
+        "name": "bootstrapSecret",
+        "type": "String",
+        "binding": "bootstrapSecret"
+      },
+      {
+        "name": "username",
+        "type": "String",
+        "binding": "username"
+      },
+      {
+        "name": "password",
+        "type": "String",
+        "binding": "password"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.login",
+    "args": [
+      {
+        "name": "username",
+        "type": "String",
+        "binding": "username"
+      },
+      {
+        "name": "password",
+        "type": "String",
+        "binding": "password"
+      }
+    ],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.logout",
+    "args": [],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.create.user",
+    "args": [
+      {
+        "name": "username",
+        "type": "String",
+        "binding": "username"
+      },
+      {
+        "name": "password",
+        "type": "String",
+        "binding": "password"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.create.namespace",
+    "args": [
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.set.user",
+    "args": [
+      {
+        "name": "user",
+        "type": "Object",
+        "binding": "@User:userId"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.set.password",
+    "args": [
+      {
+        "name": "oldPassword",
+        "type": "String",
+        "binding": "oldPassword"
+      },
+      {
+        "name": "newPassword",
+        "type": "String",
+        "binding": "newPassword"
+      }
+    ],
+    "output": "value",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.set.namespace",
+    "args": [
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.namespace",
+    "args": [
+      {
+        "name": "confirmNamespaceName",
+        "type": "String",
+        "binding": "confirmNamespaceName"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.set.namespaceRole",
+    "args": [
+      {
+        "name": "user",
+        "type": "Object",
+        "binding": "@User:userId"
+      },
+      {
+        "name": "role",
+        "type": "String",
+        "binding": "role"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.activeNamespace",
+    "args": [
+      {
+        "name": "namespace",
+        "type": "Object",
+        "binding": "?Namespace"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.activeNamespace",
+    "args": [],
+    "output": "node",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.set.administrativeMode",
+    "args": [
+      {
+        "name": "enabled",
+        "type": "Boolean",
+        "binding": "enabled"
+      }
+    ],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.administrativeMode",
+    "args": [],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.user",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?User"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.userPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?User"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.namespace",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Namespace"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.namespacePage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Namespace"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.objectClass",
+    "args": [
+      {
+        "name": "objectId",
+        "type": "String",
+        "binding": "objectId"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.classMembers",
+    "args": [
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:classId"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.classMembersPage",
+    "args": [
+      {
+        "name": "class",
+        "type": "Object",
+        "binding": "@Class:classId"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.objectByDescriptorId",
+    "args": [
+      {
+        "name": "descriptorId",
+        "type": "String",
+        "binding": "descriptorId"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.namespaceRoles",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.namespaceRolesPage",
+    "args": [
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.operation",
+    "args": [
+      {
+        "name": "operationId",
+        "type": "String",
+        "binding": "operationId"
+      },
+      {
+        "name": "scope",
+        "type": "String",
+        "binding": "scope"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.revision",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.history",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.historyPage",
+    "args": [
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.restorePreview",
+    "args": [
+      {
+        "name": "targetRevisionId",
+        "type": "String",
+        "binding": "targetRevisionId"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.undo",
+    "args": [
+      {
+        "name": "revisionId",
+        "type": "String",
+        "binding": "~revisionId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.utils.redo",
+    "args": [
+      {
+        "name": "undoRevisionId",
+        "type": "String",
+        "binding": "undoRevisionId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.utils.restore",
+    "args": [
+      {
+        "name": "targetRevisionId",
+        "type": "String",
+        "binding": "targetRevisionId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.utils.canUndo",
+    "args": [
+      {
+        "name": "revisionId",
+        "type": "String",
+        "binding": "~revisionId"
+      }
+    ],
+    "output": "eligibility",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.isRestored",
+    "args": [],
+    "output": "value",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.set.versioningType",
+    "args": [
+      {
+        "name": "mode",
+        "type": "String",
+        "binding": "mode"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.set.versionTag",
+    "args": [
+      {
+        "name": "revisionId",
+        "type": "String",
+        "binding": "revisionId"
+      },
+      {
+        "name": "tag",
+        "type": "String",
+        "binding": "tag"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.query",
+    "args": [
+      {
+        "name": "query",
+        "type": "String",
+        "binding": "query"
+      },
+      {
+        "name": "parameters",
+        "type": "Map<String,Object>",
+        "binding": "parameters"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "query",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.queryPage",
+    "args": [
+      {
+        "name": "query",
+        "type": "String",
+        "binding": "query"
+      },
+      {
+        "name": "parameters",
+        "type": "Map<String,Object>",
+        "binding": "parameters"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "page",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.resource.beginUpload",
+    "args": [
+      {
+        "name": "filename",
+        "type": "String",
+        "binding": "filename"
+      },
+      {
+        "name": "bytes",
+        "type": "Long",
+        "binding": "bytes"
+      },
+      {
+        "name": "sha256",
+        "type": "String",
+        "binding": "sha256"
+      },
+      {
+        "name": "mediaType",
+        "type": "String",
+        "binding": "mediaType"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.resource.uploadChunk",
+    "args": [
+      {
+        "name": "uploadId",
+        "type": "String",
+        "binding": "uploadId"
+      },
+      {
+        "name": "offset",
+        "type": "Long",
+        "binding": "offset"
+      },
+      {
+        "name": "bytesBase64",
+        "type": "String",
+        "binding": "bytesBase64"
+      },
+      {
+        "name": "chunkSha256",
+        "type": "String",
+        "binding": "chunkSha256"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.resource.finishUpload",
+    "args": [
+      {
+        "name": "uploadId",
+        "type": "String",
+        "binding": "uploadId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.resource.abortUpload",
+    "args": [
+      {
+        "name": "uploadId",
+        "type": "String",
+        "binding": "uploadId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.resource.info",
+    "args": [
+      {
+        "name": "resourceId",
+        "type": "String",
+        "binding": "resourceId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.resource.downloadChunk",
+    "args": [
+      {
+        "name": "resourceId",
+        "type": "String",
+        "binding": "resourceId"
+      },
+      {
+        "name": "offset",
+        "type": "Long",
+        "binding": "offset"
+      },
+      {
+        "name": "length",
+        "type": "Long",
+        "binding": "length"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.admin.pruneResources",
+    "args": [
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "prune",
+    "action": true
+  },
+  {
+    "name": "deposit.admin.pruneResourcesStatus",
+    "args": [
+      {
+        "name": "pruneId",
+        "type": "String",
+        "binding": "pruneId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.coordinatesToWKT",
+    "args": [
+      {
+        "name": "type",
+        "type": "String",
+        "binding": "type"
+      },
+      {
+        "name": "coordinates",
+        "type": "Object",
+        "binding": "coordinates"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.wktToCoordinates",
+    "args": [
+      {
+        "name": "wkt",
+        "type": "String",
+        "binding": "wkt"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.toData",
+    "args": [
+      {
+        "name": "entity",
+        "type": "Object",
+        "binding": "entity"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.session",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.refresh",
+    "args": [
+      {
+        "name": "scope",
+        "type": "String",
+        "binding": "scope"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.lastOperation",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.requests",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.cancel",
+    "args": [],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.utils.cancelRequest",
+    "args": [
+      {
+        "name": "requestId",
+        "type": "String",
+        "binding": "requestId"
+      }
+    ],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.action.prepare",
+    "args": [
+      {
+        "name": "recoveryKey",
+        "type": "String",
+        "binding": "recoveryKey"
+      },
+      {
+        "name": "procedure",
+        "type": "String",
+        "binding": "procedure"
+      },
+      {
+        "name": "arguments",
+        "type": "List<Object>",
+        "binding": "arguments"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.action.status",
+    "args": [
+      {
+        "name": "recoveryKey",
+        "type": "String",
+        "binding": "recoveryKey"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.action.resume",
+    "args": [
+      {
+        "name": "recoveryKey",
+        "type": "String",
+        "binding": "recoveryKey"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.action.release",
+    "args": [],
+    "output": "value",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  }
+]

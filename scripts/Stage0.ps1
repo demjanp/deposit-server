@@ -138,8 +138,8 @@ function Invoke-Build {
         & .\mvnw.cmd --batch-mode --no-transfer-progress "-Dmaven.repo.local=$Root\maven-repository" clean verify dependency:tree *> "$evidence\build.log"
         if ($LASTEXITCODE -ne 0) { throw "Maven build failed; see $evidence\build.log" }
         if(Test-Path "$Root\build\deposit-plugin\target\surefire-reports") {Copy-Item -LiteralPath "$Root\build\deposit-plugin\target\surefire-reports" -Destination "$evidence\unit-junit" -Recurse}
-        $artifacts=@('build\deposit-plugin\target\deposit-plugin-0.0.0-stage6.jar','build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage6.jar') | ForEach-Object {@{path=$_;sha256=(Get-FileHash (Join-Path $Root $_) -Algorithm SHA256).Hash.ToLowerInvariant()}}
-        Write-Json @{version='0.0.0-stage6';inputs=$initialInputs.sha256;sourceIdentity=$initialInputs.sha256;javaHome=$manifest.javaHome;reproducibleTimestamp='2026-10-08T00:00:00Z';artifacts=@($artifacts)} "$Root\build\deposit-plugin\target\build-metadata.json"
+        $artifacts=@('build\deposit-plugin\target\deposit-plugin-0.0.0-stage65.jar','build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage65.jar') | ForEach-Object {@{path=$_;sha256=(Get-FileHash (Join-Path $Root $_) -Algorithm SHA256).Hash.ToLowerInvariant()}}
+        Write-Json @{version='0.0.0-stage65';inputs=$initialInputs.sha256;sourceIdentity=$initialInputs.sha256;javaHome=$manifest.javaHome;reproducibleTimestamp='2026-10-08T00:00:00Z';artifacts=@($artifacts)} "$Root\build\deposit-plugin\target\build-metadata.json"
         $snapshot=Save-Stage0SourceSnapshot $repo $Root $initialInputs
         Write-Json $snapshot "$evidence\source-snapshot.json"
         Write-Json @{inputs=$initialInputs.sha256;sourceSnapshot=$snapshot;artifacts=@($artifacts);evidence=$evidence} "$Root\build-receipt.json"
@@ -158,8 +158,8 @@ function Invoke-Install {
     Copy-Item -LiteralPath $runtimeDirectory -Destination $installation -Recurse
     New-Item -ItemType Directory -Force "$run\resources\staging","$run\resources\ocfl","$run\resources\ocfl-work","$run\exports","$run\secrets" | Out-Null
     Set-OwnerOnlyDirectory "$run\secrets"
-    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage6.jar"
-    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage6.jar"
+    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage65.jar"
+    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage65.jar"
     if ($DiagnosticBuild) { $plugin="$Root\diagnostic-build\deposit-plugin.jar"; $probe="$Root\diagnostic-build\deposit-runtime-probe.jar" }
     $files=@($plugin)
     if(!$WithoutProbe) {$files+=@($probe)}
@@ -397,7 +397,7 @@ function Invoke-Package {
     Invoke-ProvisionLicenses
     $receipt=Get-Content "$Root\build-receipt.json" -Raw | ConvertFrom-Json
     if($receipt.inputs -ne $initialInputs.sha256) {throw 'Build receipt is stale; rebuild before packaging'}
-    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage6.jar'
+    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage65.jar'
     $expected=@($receipt.artifacts | Where-Object path -like 'build\deposit-plugin\*')
     if($expected.Count -ne 1 -or (Get-FileHash $plugin -Algorithm SHA256).Hash -ne $expected[0].sha256) {throw 'Plugin changed since build'}
     $jar=[IO.Compression.ZipFile]::OpenRead($plugin)
@@ -417,8 +417,8 @@ function Invoke-Package {
     Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$repo\runtime\ocfl-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
     Copy-Item -Path "$repo\runtime\distribution\*" -Destination "$destination\conf"
     Write-Json @{inputs=$initialInputs.sha256;plugins=@(Get-ChildItem "$destination\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$destination\distribution-manifest.json"
-    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage6.zip")
-    Write-Json @{path="$run\deposit-server-0.0.0-stage6.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage6.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
+    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage65.zip")
+    Write-Json @{path="$run\deposit-server-0.0.0-stage65.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage65.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
 }
 
 $status='running'

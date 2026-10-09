@@ -29,6 +29,7 @@ public final class ResourceService extends BaseService {
         Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null&&!c.namespaceId.equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
         Node receipt=repo.receipt(c.namespaceId,c.operationId);
         if(receipt!=null) {
+            c.replayed=true;
             if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");
             if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
             var saved=repo.replay(receipt,c.namespaceId).data();

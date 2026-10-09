@@ -37,6 +37,17 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if(!administrator&&!request.actor().equals(actor))throw ExceptionHandler.fail("FORBIDDEN","Cannot cancel another actor's request");
         request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);return true;
     }
+    public List<Map<String,Object>> activeRequests(String actor,boolean administrator,TxState caller) {
+        return requests.entrySet().stream().filter(e->e.getValue().state()!=caller&&(administrator||e.getValue().actor().equals(actor)))
+            .map(e->Json.map("requestId",e.getKey(),"actorId",e.getValue().actor(),"namespaceId",e.getValue().state().namespace)).toList();
+    }
+    public boolean cancelSession(String tokenHash,TxState caller) {
+        boolean cancelled=false;
+        for(var request:requests.values())if(request.state()!=caller&&Objects.equals(tokenHash,request.state().tokenHash)){
+            request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);cancelled=true;
+        }
+        return cancelled;
+    }
     public final ConcurrentMap<String,Session> sessions=new ConcurrentHashMap<>();
     private final ConcurrentMap<String,Failures> failures=new ConcurrentHashMap<>();
     private final Semaphore serverLock=new Semaphore(1,true);
@@ -199,11 +210,18 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public final String actor,principal; public final long created;
         public long touched; public volatile String namespace;
         public volatile boolean administrative;
+        public final Map<String,Long> baselines=new HashMap<>();
+        public long observationGeneration;
+        public volatile String preparedAction, lastOperation, lastScope;
+        public TxState mutationOwner;
         public Session(String actor,String principal,long created) {this.actor=actor;this.principal=principal;this.created=created;this.touched=created;}
     }
     public static final class TxState {
         public final KernelTransaction kernel;
         public String tokenHash,namespace;
+        public boolean observationsCaptured;
+        public long observationGeneration;
+        public final Map<String,Long> observations=new HashMap<>();
         public boolean scoped,selection,mutation,serverLocked,serverChanged,administrative,selfAccountChange,privileged,auditRegistered;
         public final List<Runnable> afterCommit=new ArrayList<>();
         public final List<Runnable> release=new ArrayList<>();

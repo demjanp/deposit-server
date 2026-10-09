@@ -47,6 +47,7 @@ public final class AccountService extends ActionService {
         if(!valid) {c.server.loginFailed(username,origin);c.fail("AUTH_FAILED","Invalid credentials");}
         String token=ServerContext.randomToken();var session=new ServerContext.Session(CoreRepository.id(user),internal.securityContext().subject().executingUser(),c.server.sessionTime());
         c.state.afterCommit.add(()->c.server.sessions.put(Json.hash(token),session));c.revision=c.server.revision(c.state);
+        session.baselines.put("server",c.revision);
         return new LoginRow(token,Json.map("user",repo.data(user),"expiresAt",Instant.ofEpochMilli(session.created+1_800_000).toString()),c.meta());
     }
     public ValueRow logout(Map<String,Object> request) {
@@ -154,6 +155,7 @@ public final class AccountService extends ActionService {
         // Completed deletion recovery is server-scoped, independent of selection and live target.
         Node receipt=repo.receipt("server",c.operationId);
         if(receipt!=null&&receipt.hasProperty("deletedNamespaceId")) {
+            c.replayed=true;
             if(!c.actorId.equals(receipt.getProperty("actorId")))admin(user);
             String target=(String)receipt.getProperty("deletedNamespaceId");
             if(!deletionHash(request,target).equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");

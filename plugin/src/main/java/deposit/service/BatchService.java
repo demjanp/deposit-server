@@ -8,7 +8,7 @@ import java.util.*;
 /** Ordered domain commands sharing a single action, transaction and receipt. */
 public final class BatchService extends ActionService {
     public BatchService(RequestContext c) {super(c);}
-    private record Command(String key,String procedure,Map<String,Object> request) {}
+    private record Command(String key,String procedure,List<Object> arguments) {}
     public Outcome apply(Map<String,Object> request) {
         fields(request,"commands");
         Object input=request.getOrDefault("commands",List.of());
@@ -19,11 +19,14 @@ public final class BatchService extends ActionService {
         for(int index=0;index<list.size();index++) {
             String key=null;
             try {
-                var item=ValueCodec.map(list.get(index));fields(item,"key","procedure","request");key=string(item.get("key"));
+                var item=ValueCodec.map(list.get(index));fields(item,"key","procedure","arguments");key=string(item.get("key"));
                 if(key.isBlank()||!keys.add(key))c.fail("VALIDATION_FAILED","Command keys must be unique and nonempty");
                 String procedure=string(item.get("procedure"));if(!DomainService.COMMANDS.contains(procedure))c.fail("VALIDATION_FAILED","Command is not allowed in a batch");
                 if(DomainService.commandRole(procedure).equals("owner"))role="owner";
-                commands.add(new Command(key,procedure,ValueCodec.map(item.get("request"))));
+                if(!(item.get("arguments") instanceof List<?>))c.fail("VALIDATION_FAILED","Command arguments must be a list");
+                @SuppressWarnings("unchecked") List<Object> arguments=(List<Object>)item.get("arguments");
+                if(arguments.size()!=ProcedureCatalog.spec(procedure).bindings().size())c.fail("VALIDATION_FAILED","Wrong number of command arguments");
+                commands.add(new Command(key,procedure,arguments));
             }catch(ExceptionHandler.DepositException failure) {throw commandError(failure,key,index);}
         }
         return action("deposit.apply.batch",request,false,role,()->{
@@ -31,15 +34,21 @@ public final class BatchService extends ActionService {
             for(int index=0;index<commands.size();index++) {
                 Command command=commands.get(index);
                 try {
-                    c.state.kernel.assertOpen();var resolved=new LinkedHashMap<>(command.request());
-                    for(String field:List.of("id","objectId","classId","sourceId","targetId")) {
-                        Object value=resolved.get(field);if(!(value instanceof Map<?,?>))continue;
+                    c.state.kernel.assertOpen();var arguments=new ArrayList<>(command.arguments());
+                    var fields=ProcedureCatalog.spec(command.procedure()).bindings();
+                    for(int argument=0;argument<arguments.size();argument++) {
+                        String field=fields.get(argument);
+                        if(!field.startsWith("@")&&!Set.of("id","objectId","classId","sourceId","targetId").contains(field))continue;
+                        Object value=arguments.get(argument);if(!(value instanceof Map<?,?> map)||!map.containsKey("ref"))continue;
                         var reference=ValueCodec.map(value);fields(reference,"ref","field");
                         if(!"id".equals(reference.get("field")))c.fail("VALIDATION_FAILED","Reference field must be id");
                         String key=string(reference.get("ref"));Object previous=results.get(key);
                         if(!(previous instanceof Map<?,?> data)||!(data.get("id") instanceof String))c.fail("VALIDATION_FAILED","Reference must name an earlier entity result");
-                        resolved.put(field,((Map<?,?>)previous).get("id"));
+                        Object id=((Map<?,?>)previous).get("id");arguments.set(argument,field.startsWith("@")?Json.map("id",id):id);
                     }
+                    var bindings=new LinkedHashMap<String,Object>();String prefix="command"+index+".";
+                    c.selectorBindings.forEach((key,value)->{if(key.startsWith(prefix))bindings.put(key.substring(prefix.length()),value);});
+                    var resolved=new ArgumentService(c,bindings,true).request(command.procedure(),arguments);
                     Change step=domain.command(command.procedure(),resolved);changed|=step.changed();
                     if(c.journal!=null)c.journal.checkpoint(new deposit.repository.HistoryRepository(c.tx,repo).capture(c.namespaceId));
                     var saved=Json.read(Json.write(step.outcome().data()));if(!step.changed())saved.put("changed",false);

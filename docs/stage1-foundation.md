@@ -1,3 +1,5 @@
+> Historical implementation note for the named stage and its preserved source snapshot. The current Stage 6.5 public API and coordination changes are described in [stage65-readable-api.md](stage65-readable-api.md). Earlier signatures and API class names below are historical.
+
 # Stage 1 foundation
 
 The active artifact is `0.0.0-stage1`. Neo4j/APOC 2026.05.0, Spatial 2025.10.0, GeoTools 33.2, JTS 1.20.0 and Temurin 21 remain pinned. Stage 1 adds the intact Bouncy Castle 1.82 BCrypt provider (MIT license); its hash is in `runtime/artifacts.json`, and packaging includes its notice and class inventory. Jackson is provided by Neo4j.

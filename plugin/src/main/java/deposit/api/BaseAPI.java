@@ -8,6 +8,15 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public abstract class BaseAPI {
+    protected Stream<Object> invokePublic(String token,String procedure,List<Object> arguments) {
+        return invoke(token==null?Map.of():Map.of("token",token),c->{
+            var actions=new deposit.service.SessionActionService(c);
+            actions.begin(procedure,arguments);
+            Stream<?> result=new deposit.service.ProcedureService(c).execute();
+            actions.observe();
+            return result.map(row->(Object)row);
+        });
+    }
     @Context public Transaction tx;
     @Context public org.neo4j.logging.Log log;
     protected RequestContext context(java.util.Map<String,Object> context) {return new RequestContext(tx,context);}

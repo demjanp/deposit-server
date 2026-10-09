@@ -31,15 +31,8 @@ public class Discovery {
 
     public static class Info {
         public final Map<String, Object> data;
-        public final Map<String, Object> meta;
         public Info(String version) {
             data = Map.of("version", version);
-            meta = new LinkedHashMap<>();
-            meta.put("namespaceId", null);
-            meta.put("revision", null);
-            meta.put("operationId", null);
-            meta.put("requestId", UUID.randomUUID().toString());
-            meta.put("nextCursor", null);
         }
     }
 }

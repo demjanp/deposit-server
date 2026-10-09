@@ -143,17 +143,15 @@ class Stage2CoreIT {
         call("deposit.create.class",m("name","Specimen"),write(a,0));call("deposit.create.object",m("className","Specimen","descriptors",m("Mass",m("type","Integer","value",10L))),write(a,1));
         var request=deletion(a);long server=sr(a);var context=write(a,server);
         error("VALIDATION_FAILED",()->call("deposit.delete.namespace",m("confirmNamespaceName","wrong","expectedNamespaceRevision",nr(a)),write(a,server)));
-        error("VALIDATION_FAILED",()->call("deposit.delete.namespace",m("confirmNamespaceName","stage2-delete"),write(a,server)));
-        error("VALIDATION_FAILED",()->call("deposit.delete.namespace",request,ctx(a)));
-        error("REVISION_CONFLICT",()->call("deposit.delete.namespace",m("confirmNamespaceName","stage2-delete","expectedNamespaceRevision",0L),write(a,server)));
-        error("REVISION_CONFLICT",()->call("deposit.delete.namespace",request,write(a,server-1)));
+        error("REVISION_CONFLICT",()->call("deposit.delete.namespace",m("confirmNamespaceName","stage2-delete","expectedNamespaceRevision",0L),write(b,server-1)));
+        error("REVISION_CONFLICT",()->call("deposit.delete.namespace",request,write(b,server-1)));
         try(var s=driver.session();var tx=s.beginTransaction()){tx.run("CALL deposit.delete.namespace($r,$c)",m("r",request,"c",context)).consume();tx.rollback();}
         assertEquals(namespace,id(call("deposit.get.activeNamespace",Map.of(),ctx(b))));assertEquals(server,sr(a));error("NOT_FOUND",()->call("deposit.get.operation",m("operationId",context.get("operationId"),"scope","server"),ctx(a)));
         var result=call("deposit.delete.namespace",request,context);assertEquals(server+1,revision(result));assertTrue(result.get("meta").get("namespaceId").isNull());assertTrue(result.get("data").get("deletedIds").asList().contains(namespace));
         for(String token:List.of(a,b))assertTrue(call("deposit.get.activeNamespace",Map.of(),ctx(token)).get("data").isNull());
-        assertEquals(0,query("MATCH (n) WHERE n.namespaceId=$id OR (n:Namespace AND n.id=$id) RETURN count(n) AS n",m("id",namespace)).getFirst().get("n").asInt());
+        assertEquals(0,query("MATCH (n) WHERE NOT n:DepositPreparedAction AND (n.namespaceId=$id OR (n:Namespace AND n.id=$id)) RETURN count(n) AS n",m("id",namespace)).getFirst().get("n").asInt());
         var replay=call("deposit.delete.namespace",request,context);assertEquals(result.get("data").asMap(),replay.get("data").asMap());String survivor=ns(a,"stage2-delete-survivor");call("deposit.delete.namespace",request,context);assertEquals(survivor,id(call("deposit.get.activeNamespace",Map.of(),ctx(a))));
-        var adminRetry=new LinkedHashMap<String,Object>(context);adminRetry.put("token",admin);assertEquals(result.get("data").asMap(),call("deposit.delete.namespace",request,adminRetry).get("data").asMap());
+        var adminRetry=new LinkedHashMap<String,Object>(context);adminRetry.put("token",admin);assertEquals(result.get("data").asMap(),call("deposit.get.operation",m("operationId",context.get("operationId"),"scope","server"),ctx(admin)).get("data").get("outcome").asMap());
         var mismatch=new LinkedHashMap<String,Object>(request);mismatch.put("confirmNamespaceName","changed");error("OPERATION_MISMATCH",()->call("deposit.delete.namespace",mismatch,context));
         Properties recovery=new Properties();recovery.setProperty("username",name);recovery.setProperty("actor",owner);recovery.setProperty("deleted",namespace);recovery.setProperty("survivor",survivor);recovery.setProperty("operation",(String)context.get("operationId"));recovery.setProperty("server",Long.toString(server));recovery.setProperty("namespaceRevision",request.get("expectedNamespaceRevision").toString());recovery.setProperty("name","stage2-delete");
         try(var out=Files.newOutputStream(ROOT.resolve("stage2-fixture.properties"))){recovery.store(out,"Stage 2 public identities and deletion receipt");}
@@ -172,7 +170,7 @@ class Stage2CoreIT {
     @Test @Order(10) void discoveryStreamFailsAfterConcurrentNamespaceRename() {
         String namespace=ns(admin,"stage2-stream-before");String writer=login(ACCOUNT,PASSWORD);select(writer,namespace);
         try(var streaming=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")),Config.builder().withFetchSize(1).build());var session=streaming.session();var tx=session.beginTransaction()) {
-            var result=tx.run("CALL deposit.get.namespace({},$c)",m("c",ctx(admin)));assertTrue(result.hasNext());result.next();
+            var result=tx.run("CALL deposit.get.namespace(null,$token)",m("token",admin));assertTrue(result.hasNext());result.next();
             call("deposit.set.namespace",m("name","stage2-stream-after"),write(writer,nr(writer)));
             error("REVISION_CONFLICT",()->{while(result.hasNext())result.next();tx.commit();});
         }

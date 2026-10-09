@@ -1,3 +1,5 @@
+> Historical implementation note for the named stage and its preserved source snapshot. The current Stage 6.5 public API and coordination changes are described in [stage65-readable-api.md](stage65-readable-api.md). Earlier signatures and API class names below are historical.
+
 # Stage 5.5 OCFL resource storage
 
 The active `0.0.0-stage5.5` reactor replaces completed-file placement with OCFL beneath Deposit resource management. Acceptance is recorded in the [hub status](../../deposit-hub/implementation_status.md) and external `stage5.5-checkpoint.json`; this implementation description does not itself establish acceptance. Stage 4 and Stage 5 source snapshots, fingerprints, checkpoints and reports describe the accepted original file backend and remain historical evidence.

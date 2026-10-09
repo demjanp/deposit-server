@@ -1,3 +1,5 @@
+> Historical implementation note for the named stage and its preserved source snapshot. The current Stage 6.5 public API and coordination changes are described in [stage65-readable-api.md](stage65-readable-api.md). Earlier signatures and API class names below are historical.
+
 # Stage 5 history implementation
 
 This document describes the code work package. Installed acceptance is recorded separately in the hub implementation status and external Stage 5 checkpoint; this file describes the implementation, not acceptance results. The pinned Neo4j/APOC/Spatial/JTS/Temurin stack is unchanged. The active reactor remains `plugin`, `runtime-probe`, and `integration-tests`; no legacy history implementation was adopted.

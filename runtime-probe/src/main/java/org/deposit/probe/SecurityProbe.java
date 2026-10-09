@@ -20,13 +20,17 @@ public class SecurityProbe {
         return Stream.of(new Value(offset));
     }
     @Procedure(name="stage0.security.failCommit",mode=Mode.READ)
-    public Stream<Value> failCommit(@Name("operationId") String operation) {
+    public Stream<Value> failCommit(@Name("recoveryKey") String operation) {
         UUID.fromString(operation);
         var management=db.getDependencyResolver().resolveDependency(org.neo4j.dbms.api.DatabaseManagementService.class);
         var listener=new TransactionEventListener<Void>() {
             private volatile boolean armed=true;
             public Void beforeCommit(TransactionData data,Transaction tx,GraphDatabaseService database) {
-                if(armed)for(Node node:data.createdNodes())if(node.hasLabel(Label.label("DepositReceipt"))&&operation.equals(node.getProperty("operationId",null))) {
+                String identity=operation;
+                try(var preparations=tx.findNodes(Label.label("DepositPreparedAction"),"recoveryKey",operation)){
+                    if(preparations.hasNext())identity=(String)preparations.next().getProperty("operationId");
+                }
+                if(armed)for(Node node:data.createdNodes())if(node.hasLabel(Label.label("DepositReceipt"))&&identity.equals(node.getProperty("operationId",null))) {
                     armed=false;throw new IllegalStateException("STAGE2_INJECTED_COMMIT");
                 }
                 return null;

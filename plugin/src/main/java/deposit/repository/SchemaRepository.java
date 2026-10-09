@@ -26,6 +26,7 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_username IF NOT EXISTS FOR (n:User) REQUIRE n.username IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_receipt IF NOT EXISTS FOR (n:DepositReceipt) REQUIRE (n.scope,n.operationId) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_binding IF NOT EXISTS FOR (n:DepositOperationBinding) REQUIRE (n.actorId,n.operationId) IS UNIQUE").close();
+            tx.execute("CREATE CONSTRAINT deposit_prepared_action IF NOT EXISTS FOR (n:DepositPreparedAction) REQUIRE (n.actorId,n.recoveryKey) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_edge IF NOT EXISTS FOR (n:DepositEdgeIdentity) REQUIRE n.key IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_init IF NOT EXISTS FOR (n:DepositInitialization) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_actor_lock IF NOT EXISTS FOR (n:DepositActorLock) REQUIRE n.id IS UNIQUE").close();

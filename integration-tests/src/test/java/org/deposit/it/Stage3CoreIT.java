@@ -74,6 +74,7 @@ class Stage3CoreIT {
         var failure=assertThrows(org.neo4j.driver.exceptions.ClientException.class,()->call("deposit.apply.batch",m("commands",commands),context));assertTrue(failure.getMessage().contains("TYPE_CONFLICT"));assertTrue(failure.getMessage().contains("commandKey\":\"bad"));assertTrue(failure.getMessage().contains("commandIndex\":9"));
         assertEquals(before,state());assertEquals(0,count("Class"));assertEquals(0,query("MATCH (n:DepositEdgeIdentity) WHERE n.key STARTS WITH $prefix RETURN count(n) AS n",m("prefix",namespace+"/")).getFirst().get("n").asInt());
         error("NOT_FOUND",()->read("deposit.get.operation",m("operationId",context.get("operationId"))));
+        context.put("operationId",UUID.randomUUID().toString());
         try(var session=driver.session();var tx=session.beginTransaction()) {tx.run("CALL deposit.apply.batch($r,$c)",m("r",m("commands",fixture()),"c",context)).consume();tx.rollback();}assertEquals(before,state());
         try(var session=driver.session();var tx=session.beginTransaction()) {
             tx.run("CALL deposit.apply.batch($r,$c)",m("r",m("commands",fixture()),"c",context)).consume();
@@ -99,13 +100,13 @@ class Stage3CoreIT {
         String other=id(call("deposit.create.namespace",m("name","other-"+UUID.randomUUID(),"historyMode","disabled"),write(token,server())));select(token,other);error("SCOPE_MISMATCH",()->call("deposit.apply.batch",request,context));select(token,namespace);
         var cmds=new ArrayList<Map<String,Object>>();cmds.add(command("new","deposit.create.userTool",m("name","T","data","x")));cmds.add(command("gone","deposit.delete.userTool",m("id",ref("new"))));cmds.add(command("edit","deposit.set.userTool",m("id",ref("new"),"data","y")));error("NOT_FOUND",()->batch(cmds));assertEquals(before,state());
     }
-    @Test @Order(5) void batchValidationAndBounds() {
+    @Test @Order(5) void batchValidationAndBounds() throws Exception {
         var good=command("a","deposit.create.class",m("name","A"));var before=state();
         for(var commands:List.of(List.of(good,good),List.of(command("a","deposit.apply.batch",m("commands",List.of()))),List.of(command("a","deposit.create.object",m("classId",ref("b")))),List.of(command("a","deposit.create.class",m("name","A","unknown",true))),List.of(command("a","deposit.set.user",Map.of()))))error("VALIDATION_FAILED",()->batch(commands));
         var over=new ArrayList<Map<String,Object>>();for(int i=0;i<1001;i++)over.add(command("c"+i,"deposit.create.class",m("name","C"+i)));error("LIMIT_EXCEEDED",()->batch(over));assertEquals(before,state());
         String tool=id(writeCall("deposit.create.userTool",m("name","Boundary","data","")));
-        String prefix="{\"commands\":[{\"key\":\"x\",\"procedure\":\"deposit.set.userTool\",\"request\":{\"data\":\"",suffix="\",\"id\":\""+tool+"\"}}]}";
-        int length=8*1024*1024-(prefix+suffix).getBytes(StandardCharsets.UTF_8).length;String payload="x".repeat(length);
+        String empty=new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsString(m("commands",CorpusTransport.arguments("deposit.apply.batch",m("commands",List.of(command("x","deposit.set.userTool",m("id",tool,"data",""))))).getFirst()));
+        int length=8*1024*1024-empty.getBytes(StandardCharsets.UTF_8).length;String payload="x".repeat(length);
         var accepted=batch(List.of(command("x","deposit.set.userTool",m("id",tool,"data",payload))));assertEquals(payload,accepted.get("data").get("results").get("x").get("data").asString());
         long seq=sequence();error("LIMIT_EXCEEDED",()->batch(List.of(command("x","deposit.set.userTool",m("id",tool,"data",payload+"x")))));assertEquals(seq,sequence());
         var exact=new ArrayList<Map<String,Object>>();for(int i=0;i<1000;i++)exact.add(command("c"+i,"deposit.set.userTool",m("id",tool,"data","small")));assertEquals(1000,batch(exact).get("data").get("results").size());
@@ -167,9 +168,10 @@ class Stage3CoreIT {
         }assertEquals(1,count("ClassDescriptor"));assertEquals(1,count("Object"));
         writeCall("deposit.create.object",m("classId",cl,"descriptors",m("New",2L)));assertEquals(1,count("ClassDescriptor"));
         String ns2=id(call("deposit.create.namespace",m("name","switched-"+UUID.randomUUID(),"historyMode","disabled"),write(token,server())));
+        query("CALL deposit.action.release($token)",m("token",token));
         try(var s=driver.session();var tx=s.beginTransaction()) {
             tx.run("CALL deposit.get.class({},$c)",m("c",ctx(token))).consume();select(token,ns2);
-            var result=tx.run("CALL deposit.apply.batch($r,$c)",m("r",m("commands",List.of(command("c","deposit.create.class",m("name","Captured")))),"c",write(token,sequenceFor(second)))).single();assertEquals(namespace,result.get("meta").get("namespaceId").asString());tx.commit();
+            tx.run("CALL deposit.apply.batch($commands,$token)",m("commands",List.of(m("key","c","procedure","deposit.create.class","arguments",List.of("Captured",Map.of()))),"token",token)).consume();tx.commit();
         }select(token,namespace);assertNotNull(read("deposit.get.class",m("name","Captured")));
     }
     static long sequenceFor(String t) {return revision(call("deposit.get.activeNamespace",Map.of(),ctx(t)));}
@@ -236,8 +238,13 @@ class Stage3CoreIT {
     }
     @Test @Order(16) void lostCommitResponseIsResolvedThroughReceipt() throws Exception {
         var context=write(token,0);var request=m("commands",List.of(command("tool","deposit.create.userTool",m("name","LostResponse","data",TEXT))));
+        query("CALL deposit.action.release($token)",m("token",token));
+        query("CALL deposit.utils.refresh('namespace',$token)",m("token",token));
+        var arguments=CorpusTransport.arguments("deposit.apply.batch",request);
+        String operation=query("CALL deposit.action.prepare($key,'deposit.apply.batch',$args,$token)",m("key",context.get("operationId"),"args",arguments,"token",token)).getFirst().get("data").get("operationId").asString();
+        CorpusTransport.OPERATIONS.put((String)context.get("operationId"),operation);
         try(var proxy=new LostResponseProxy();var client=GraphDatabase.driver("bolt://127.0.0.1:"+proxy.port(),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")));var session=client.session();var tx=session.beginTransaction();var pool=Executors.newSingleThreadExecutor()) {
-            tx.run("CALL deposit.apply.batch($r,$c)",m("r",request,"c",context)).consume();proxy.suppress.set(true);
+            tx.run("CALL deposit.apply.batch($commands,$token)",m("commands",arguments.getFirst(),"token",token)).consume();proxy.suppress.set(true);
             var commit=pool.submit(()->{tx.commit();return true;});
             boolean committed=false;long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
             while(System.nanoTime()<deadline) {

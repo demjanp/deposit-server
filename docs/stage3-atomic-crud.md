@@ -1,3 +1,5 @@
+> Historical implementation note for the named stage and its preserved source snapshot. The current Stage 6.5 public API and coordination changes are described in [stage65-readable-api.md](stage65-readable-api.md). Earlier signatures and API class names below are historical.
+
 # Stage 3 atomic actions and typed CRUD
 
 Build identity: `0.0.0-stage3`. Acceptance is established only by the Stage 3 checkpoint and linked hub status. The runtime/dependency pins remain unchanged.

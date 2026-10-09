@@ -1,10 +1,11 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage6</version></parent>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage65</version></parent>
   <artifactId>deposit-integration-tests</artifactId>
   <properties><stage0.reports>${project.build.directory}/surefire-reports</stage0.reports></properties>
   <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><executions><execution><id>client-runtime</id><phase>package</phase><goals><goal>copy-dependencies</goal></goals><configuration><includeScope>runtime</includeScope></configuration></execution></executions></plugin></plugins></build>
   <dependencies>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.21.2</version><scope>test</scope></dependency>
     <dependency><groupId>org.neo4j.driver</groupId><artifactId>neo4j-java-driver</artifactId><version>6.2.1</version></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
   </dependencies>

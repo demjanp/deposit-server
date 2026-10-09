@@ -17,7 +17,7 @@ class Stage1LifecycleIT {
     static long serverRevision;
     static final String ACCOUNT="stage1-admin", PASSWORD="stage1-account-password";
     static final Path ROOT=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host");
-    @BeforeAll static void connect() {driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")),Config.builder().withFetchSize(17).build());driver.verifyConnectivity();}
+    @BeforeAll static void connect() {driver=CorpusTransport.wrap(GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")),Config.builder().withFetchSize(17).build()));driver.verifyConnectivity();}
     @AfterAll static void close() {if(driver!=null)driver.close();}
     static Map<String,Object> m(Object... kv) {var m=new LinkedHashMap<String,Object>();for(int i=0;i<kv.length;i+=2)m.put((String)kv[i],kv[i+1]);return m;}
     static Map<String,Object> ctx(String token) {return m("token",token,"requestId",UUID.randomUUID().toString());}
@@ -30,10 +30,10 @@ class Stage1LifecycleIT {
     static void error(String code,Runnable action) {var e=assertThrows(org.neo4j.driver.exceptions.ClientException.class,action::run);assertTrue(e.getMessage().contains("\"code\":\""+code+"\""),e.getMessage());}
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
-        assertEquals("0.0.0-stage6",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
+        assertEquals("0.0.0-stage65",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
         String secret=Files.readString(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")).trim();
         var request=m("bootstrapSecret",secret,"username",ACCOUNT,"password",PASSWORD);
-        try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(1,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("meta").get("revision").asLong());tx.rollback();}
+        try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(ACCOUNT,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("data").get("username").asString());tx.rollback();}
         assertTrue(Files.exists(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")));
         assertEquals(0,query("MATCH (u:User) RETURN count(u) AS n",Map.of()).getFirst().get("n").asInt());
         var result=special("deposit.utils.bootstrap",request);userId=id(result);assertEquals(1,revision(result));

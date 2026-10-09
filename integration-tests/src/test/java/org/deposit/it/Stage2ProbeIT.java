@@ -65,7 +65,7 @@ class Stage2ProbeIT {
     @Test @Order(7) void tokensAreBoundToAuthenticatedNeo4jPrincipal() {
         try(var system=driver.session(SessionConfig.forDatabase("system"))){system.run("CREATE USER stage2native SET PASSWORD $p CHANGE NOT REQUIRED",m("p",PASS)).consume();}
         try(var other=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("stage2native",PASS));var session=other.session()) {
-            error("AUTH_FAILED",()->session.run("CALL deposit.get.user({},$c)",m("c",ctx(admin))).consume());
+            error("AUTH_FAILED",()->session.run("CALL deposit.get.user(null,$token)",m("token",admin)).consume());
         }finally{try(var system=driver.session(SessionConfig.forDatabase("system"))){system.run("DROP USER stage2native").consume();}}
     }
 }

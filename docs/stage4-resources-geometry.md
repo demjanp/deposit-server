@@ -1,3 +1,5 @@
+> Historical implementation note for the named stage and its preserved source snapshot. The current Stage 6.5 public API and coordination changes are described in [stage65-readable-api.md](stage65-readable-api.md). Earlier signatures and API class names below are historical.
+
 # Stage 4 resources and geometry
 
 Build identity: `0.0.0-stage4`. Acceptance requires the Stage 4 checkpoint; development passes do not establish acceptance. Runtime/dependency pins remain unchanged.

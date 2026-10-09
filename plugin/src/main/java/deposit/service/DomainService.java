@@ -170,7 +170,7 @@ public final class DomainService extends ActionService {
         var names=new HashSet<String>();
         for(String entity:List.of("class","object","descriptor","relationship","classRelationship","userTool"))
             for(String verb:List.of("create","set","delete"))names.add("deposit."+verb+"."+entity);
-        names.addAll(List.of("deposit.create.classDescriptor","deposit.delete.classDescriptor","deposit.set.classDescriptorOrder","deposit.set.classDescriptorComment","deposit.set.classDescriptorType","deposit.set.membership","deposit.set.namespace","deposit.delete.all"));
+        names.addAll(List.of("deposit.create.classDescriptor","deposit.delete.classDescriptor","deposit.set.classDescriptor","deposit.set.membership","deposit.set.namespace","deposit.delete.all"));
         COMMANDS=Set.copyOf(names);
     }
     public static String commandRole(String procedure) {return Set.of("deposit.set.namespace","deposit.delete.all").contains(procedure)?"owner":"editor";}
@@ -181,6 +181,7 @@ public final class DomainService extends ActionService {
     Change command(String procedure,Map<String,Object> request) {
         c.state.kernel.assertOpen();requireRole(c.namespaceId,commandRole(procedure));
         return switch(procedure) {
+            case "deposit.set.classDescriptor" -> declarationPatch(request);
             case "deposit.set.membership" -> membershipCommand(request);
             case "deposit.set.classDescriptorType" -> convertCommand(request);
             case "deposit.set.classDescriptorOrder","deposit.set.classDescriptorComment" -> {
@@ -197,6 +198,18 @@ public final class DomainService extends ActionService {
                 yield switch(parts[1]) {case "create"->createCommand(kind,request);case "set"->setCommand(kind,request);case "delete"->removeCommand(kind,request);default->throw new IllegalArgumentException();};
             }
         };
+    }
+    private Change declarationPatch(Map<String,Object> request) {
+        fields(request,"id","type","conversion","order","comment");
+        if(request.containsKey("conversion")&&!request.containsKey("type"))c.fail("VALIDATION_FAILED","conversion requires type");
+        boolean changed=false;
+        if(request.containsKey("type")) {
+            if(!request.containsKey("conversion"))c.fail("VALIDATION_FAILED","Type changes require an explicit conversion");
+            changed=convertCommand(Json.map("id",request.get("id"),"type",request.get("type"),"conversion",request.get("conversion"))).changed();
+        }
+        var properties=new LinkedHashMap<>(request);properties.remove("type");properties.remove("conversion");
+        Change patch=setCommand("ClassDescriptor",properties);
+        return new Change(patch.outcome(),changed||patch.changed());
     }
     private Change namespaceCommand(Map<String,Object> request) {
         fields(request,"name","description");Node ns=repo.namespace(c.namespaceId);var updates=new LinkedHashMap<String,Object>();

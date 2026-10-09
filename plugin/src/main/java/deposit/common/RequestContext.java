@@ -8,8 +8,14 @@ import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 public final class RequestContext {
     public final Transaction tx;
     public final java.time.ZonedDateTime timestamp=java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC);
-    public final String requestId, operationId, token;
-    public final Long expectedRevision;
+    public final String requestId, token;
+    public String operationId;
+    public Long expectedRevision;
+    public boolean publicCall, replayed, operational;
+    public String procedure, inputHash, actionScope;
+    public Map<String,Object> request;
+    public Map<String,Object> selectorBindings=Map.of();
+    public long observationGeneration;
     public final ServerContext server;
     public final ServerContext.TxState state;
     public ServerContext.Session session;

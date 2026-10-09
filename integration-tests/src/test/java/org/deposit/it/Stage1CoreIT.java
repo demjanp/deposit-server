@@ -168,14 +168,14 @@ class Stage1CoreIT {
         Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage1-graph-state.txt"),graph.stream().map(r->r.asMap().toString()).reduce("",(a,b)->a+b+"\n"));
     }
     @Test @Order(9) void catalogAndFailureEnvelopeMatchPublicConventions() {
-        var catalog=query("SHOW PROCEDURES YIELD name,signature WHERE name STARTS WITH 'deposit.' RETURN name,signature",Map.of());assertEquals(90,catalog.size());
+        var catalog=query("SHOW PROCEDURES YIELD name,signature WHERE name STARTS WITH 'deposit.' RETURN name,signature",Map.of());assertEquals(98,catalog.size());
         for(var procedure:catalog) {
-            String name=procedure.get("name").asString(),signature=procedure.get("signature").asString();assertTrue(signature.contains("meta :: MAP"),signature);
+            String name=procedure.get("name").asString(),signature=procedure.get("signature").asString();assertFalse(signature.contains("meta :: MAP"),signature);
             if(name.endsWith("Page")) {assertTrue(signature.contains("data :: MAP"));assertFalse(signature.contains("node :: NODE"));}
-            if(!Set.of("deposit.get.info","deposit.utils.bootstrap","deposit.utils.login").contains(name)) {assertTrue(signature.contains("request :: MAP"),signature);assertTrue(signature.contains("context :: MAP"),signature);assertFalse(signature.contains("namespaceId :: STRING"));}
+            if(!Set.of("deposit.get.info","deposit.utils.bootstrap","deposit.utils.login").contains(name)) {assertTrue(signature.contains("token :: STRING"),signature);assertFalse(signature.contains("context :: MAP"),signature);assertFalse(signature.contains("namespaceId :: STRING"));}
         }
         String requestId=UUID.randomUUID().toString();var context=write(token,sequence);context.put("requestId",requestId);
-        var error=assertThrows(org.neo4j.driver.exceptions.ClientException.class,()->call("deposit.create.object",m("classId",specimen,"unexpected",true),context));assertTrue(error.getMessage().contains(requestId));assertFalse(error.getMessage().contains(PASSWORD));
+        var error=assertThrows(org.neo4j.driver.exceptions.ClientException.class,()->call("deposit.create.object",m("classId",specimen,"unexpected",true),context));assertFalse(error.getMessage().contains(requestId));assertFalse(error.getMessage().contains(PASSWORD));
         error("VALIDATION_FAILED",()->get("deposit.get.object",m("id",s1,"classId",specimen)));
     }
 }

@@ -1,6 +1,8 @@
+> Current working build: `0.0.0-stage65`. Stage 6.5 replaces the procedure API and remains under cumulative validation. See the [readable API contract](../deposit-hub/deposit-server-api.md), [catalog](../deposit-hub/deposit-server-catalog.md), and `scripts/Invoke-Stage65Gate.ps1`. Earlier acceptance claims below describe preserved historical checkpoints, not this working build. Stages 7-11 remain pending.
+
 # deposit-server
 
-The active development build is **0.0.0-stage6**, with the accepted DQL engine and OCFL beneath Deposit resource management. See [Stage 6 acceptance and evidence](../deposit-hub/implementation_status.md#stage-6-accepted-query-foundation) and [query contracts](../deposit-hub/deposit-server-query-syntax.md). Run `scripts/Invoke-Stage6Gate.ps1` for current cumulative acceptance. Stage 7 is next. Earlier stage descriptions below are historical; original gates must be revalidated against their preserved source snapshots.
+The previously accepted Stage 6 build was **0.0.0-stage6**, with the accepted DQL engine and OCFL beneath Deposit resource management. See [Stage 6 acceptance and evidence](../deposit-hub/implementation_status.md#stage-6-accepted-query-foundation) and [query contracts](../deposit-hub/deposit-server-query-syntax.md). Its preserved gate is `scripts/Invoke-Stage6Gate.ps1`. Stage 6.5 now precedes Stage 7. Earlier stage descriptions below are historical; original gates must be revalidated against their preserved source snapshots.
 
 Deposit's Stage 0 runtime foundation uses published Neo4j/APOC Core **2026.05.0**, Spatial **2025.10.0**, Temurin **21.0.12.1+1** and explicitly selected **Cypher 25**. This is the highest compatible published Neo4j/Spatial combination verified on 9 October 2026. [Selection, implementation and evidence](../deposit-hub/implementation_status.md#stage-0-implementation-and-evidence).
 
