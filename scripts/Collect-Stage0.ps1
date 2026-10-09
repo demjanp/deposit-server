@@ -64,6 +64,12 @@ if($actualNames -contains 'stage3-isolated-batch-commit-faults') {
     $expectedNames+=@('stage3-isolated-batch-commit-faults');$contracts['stage3-isolated-batch-commit-faults']=@('Test:passed')
     $selections['stage3-isolated-batch-commit-faults']='Stage3ProbeIT'
 }
+if($actualNames -contains 'stage4-storage-faults-and-invariants') {
+    $expectedNames+=@('stage4-storage-faults-and-invariants');$contracts['stage4-storage-faults-and-invariants']=@('Test:passed');$selections['stage4-storage-faults-and-invariants']='Stage4ProbeIT'
+    foreach($point in @('chunk-flushed','publication-before','publication-after','ready-before-commit','relocation-before','relocation-after','collection-before','collection-after')) {
+        $name='stage4-crash-'+$point;$expectedNames+=@($name);$contracts[$name]=@('Test:passed','Start:passed','Test:passed')
+    }
+}
 if(@(Compare-Object $actualNames $expectedNames).Count -or @($actualNames | Sort-Object -Unique).Count -ne $actualNames.Count) {throw 'Scenario coverage is incomplete or duplicated'}
 $testCases=New-Object System.Collections.Generic.List[object]
 $files=New-Object System.Collections.Generic.List[object]
@@ -97,7 +103,8 @@ foreach($scenario in $gate.results) {
         }
         if($phase.phase -eq 'Package') {$packagePhase=$phase}
         if($phase.phase -eq 'Test') {
-            if($phase.testSelection -ne $selections[$scenario.name]) {throw 'Wrong test selection for scenario'}
+            if($scenario.name -like 'stage4-crash-*') {if($phase.testSelection -notin @('Stage4CrashIT#trigger','Stage4CrashIT#verify')) {throw 'Wrong crash suite'}}
+            elseif($phase.testSelection -ne $selections[$scenario.name]) {throw 'Wrong test selection for scenario'}
             $expectedMode=if($scenario.name -in @('graceful-restart-and-persistent-uuid-maps','actual-termination-and-recovery')) {'verify'} else {'seed'}
             if($phase.testMode -ne $expectedMode) {throw 'Persistence scenario did not verify its baseline'}
             $expectedCases=New-Object System.Collections.Generic.List[string]
@@ -106,6 +113,8 @@ foreach($scenario in $gate.results) {
                 elseif($selection -eq 'DistributionIT') {$expectedCases.Add('org.deposit.it.DistributionIT::normalDistributionExcludesProbePermissionsAndProcedures')}
                 elseif($selection -eq 'Stage2ProbeIT') {foreach($name in @('competingBootstrapAfterRollback','idleAndAbsoluteExpiryUseFixedProductionLimits','expiryBeforeCommitRollsBackDataRevisionAndReceipt','failedPasswordCommitDoesNotRevokeOrAdvance','failedDeletionCommitPreservesSelectionGraphAndReceipt','loginWaitsForPasswordResetCommit','tokensAreBoundToAuthenticatedNeo4jPrincipal')) {$expectedCases.Add('org.deposit.it.Stage2ProbeIT::'+$name)}}
                 elseif($selection -eq 'Stage3ProbeIT') {foreach($name in @('failedBatchCommitRollsBackAllCategoriesAndReceiptThenRetries','expiryAfterBatchReturnPreventsCommit')) {$expectedCases.Add('org.deposit.it.Stage3ProbeIT::'+$name)}}
+                elseif($selection -eq 'Stage4ProbeIT') {foreach($name in @('spatialFailuresRollbackCompleteDomainAction','geometryIndexBoundsIdentityRebuildAndNamespaceDeletion','expiryResumptionNonRenewalAndReadyLeasePlacement','exportGrantRemainsPrivateAndRechecksCurrentRole','publicationFaultsRecoverWithoutRepeatingEffects','readLeaseBlocksRelocationUntilTransactionCompletes')) {$expectedCases.Add('org.deposit.it.Stage4ProbeIT::'+$name)}}
+                elseif($selection.StartsWith('Stage4CrashIT#')) {$expectedCases.Add('org.deposit.it.Stage4CrashIT::'+$selection.Split('#')[1])}
                 elseif($selection.StartsWith('EnvironmentIT#')) {foreach($name in $selection.Substring(14).Split('+')) {$expectedCases.Add('org.deposit.it.EnvironmentIT::'+$name)}}
                 else {throw 'Unrecognized acceptance suite'}
             }

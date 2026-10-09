@@ -8,7 +8,7 @@ public final class SchemaRepository {
     private SchemaRepository() {}
     public static void initialize(GraphDatabaseService db) {
         try(var tx=db.beginTx()) {
-            for(String label:List.of("Class","Object","Descriptor","ClassDescriptor","UserTool")) {
+            for(String label:List.of("Class","Object","Descriptor","ClassDescriptor","UserTool","DGeometry","DResource")) {
                 tx.execute("CREATE CONSTRAINT deposit_"+label+"_id IF NOT EXISTS FOR (n:`"+label+"`) REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
             }
             for(String label:List.of("Namespace","User")) {
@@ -25,6 +25,12 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_init IF NOT EXISTS FOR (n:DepositInitialization) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_actor_lock IF NOT EXISTS FOR (n:DepositActorLock) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_objects IF NOT EXISTS FOR (n:Object) ON (n.namespaceId)").close();
+            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
+            tx.commit();
+        }
+        try(var tx=db.beginTx()) {
+            if(tx.findNode(Label.label("DepositStorageLock"),"id","spatial")==null)tx.createNode(Label.label("DepositStorageLock")).setProperty("id","spatial");
+            try(var nodes=tx.findNodes(Label.label("Namespace"))) {for(Node n:nodes.stream().toList())if(tx.findNode(Label.label("DepositNamespaceLock"),"id",n.getProperty("id"))==null)tx.createNode(Label.label("DepositNamespaceLock")).setProperty("id",n.getProperty("id"));}
             tx.commit();
         }
     }

@@ -14,7 +14,7 @@ $files=@(Get-ChildItem (Join-Path $Root "$($manifest.neo4jHome)\lib") -Filter *.
 $files+=@($manifest.artifacts | Where-Object {$_.id -in @('apoc','spatial','bcrypt-provider')} | ForEach-Object {Get-Item (Join-Path $Root "cache\$($_.file)")})
 $dependencyLock=Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock) -Raw | ConvertFrom-Json
 $files+=@($dependencyLock.dependencies | Where-Object ship | ForEach-Object {Get-Item (Join-Path $Root "cache\spatial-dependencies\$($_.file)")})
-$files+=Get-Item (Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage3.jar')
+$files+=Get-Item (Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage4.jar')
 foreach($file in $files) {
     $jar=[IO.Compression.ZipFile]::OpenRead($file.FullName)
     try {

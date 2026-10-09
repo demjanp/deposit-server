@@ -1,0 +1,49 @@
+package org.deposit.probe;
+import deposit.common.*;
+import deposit.repository.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
+import java.nio.file.Files;
+import java.time.ZonedDateTime;
+import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.gis.spatial.*;
+import org.neo4j.gis.spatial.index.IndexManager;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
+import org.neo4j.procedure.*;
+
+/** Test-only reflection controls, packaged exclusively in the probe distribution. */
+public class StorageProbe {
+    @Context public Transaction tx;@Context public GraphDatabaseAPI db;
+    private static volatile CountDownLatch pause=new CountDownLatch(0);
+    public static class Row{public final Map<String,Object> data;Row(Map<String,Object> data){this.data=data;}}
+    private ServerContext server(){return ServerContext.forDatabase(db.databaseId().databaseId().uuid());}
+    @Procedure(name="stage0.storage.arm",mode=Mode.READ)
+    public Stream<Row> arm(@Name("point")String point,@Name("mode")String mode)throws Exception {
+        if(!Set.of("fail","pause","clear").contains(mode))throw new IllegalArgumentException();
+        pause.countDown();pause=new CountDownLatch(1);var latch=pause;var once=new AtomicBoolean();var server=server();
+        var marker=server.storage.files.root.getParent().resolve("stage4-pause.json");Files.deleteIfExists(marker);
+        var field=ServerContext.class.getDeclaredField("storageObserver");field.setAccessible(true);
+        field.set(server,(java.util.function.Consumer<String>)p->{if(!mode.equals("clear")&&p.equals(point)&&once.compareAndSet(false,true)) {
+            if(mode.equals("fail"))throw new IllegalStateException("STAGE4_INJECTED_"+point);
+            try {Files.writeString(marker,Json.write(Json.map("point",point,"state","paused")));if(!latch.await(120,TimeUnit.SECONDS))throw new IllegalStateException("Storage pause timed out");}catch(Exception e){throw new IllegalStateException(e);}
+        }});return Stream.of(new Row(Map.of("armed",point)));
+    }
+    @Procedure(name="stage0.storage.inspect",mode=Mode.READ)
+    public Stream<Row> inspect(@Name("namespace")String namespace) {
+        var internal=(InternalTransaction)tx;var spatial=new SpatialDatabaseService(new IndexManager(db,internal.securityContext()));var layers=new ArrayList<Object>();
+        for(String name:spatial.getLayerNames(tx))if(name.startsWith("deposit_geometry_"+namespace+"_")) {
+            var layer=spatial.getLayer(tx,name,true);var entries=new ArrayList<Object>();for(var node:layer.getIndex().getAllIndexedNodes(tx))entries.add(Json.map("id",node.getProperty("id"),"wkt",node.getProperty("wkt"),"bbox",node.getProperty("bbox")));
+            layers.add(Json.map("name",name,"count",layer.getIndex().count(tx),"entries",entries,"crs",layer.getCoordinateReferenceSystem(tx)==null?null:layer.getCoordinateReferenceSystem(tx).toWKT()));
+        }return Stream.of(new Row(Json.map("layers",layers)));
+    }
+    @Procedure(name="stage0.storage.rebuild",mode=Mode.WRITE)
+    public Stream<Row> rebuild(@Name("namespace")String namespace){var core=new CoreRepository(tx,ZonedDateTime.now());new GeometryRepository(tx,core).rebuild(namespace);return Stream.of(new Row(Map.of("rebuilt",true)));}
+    @Procedure(name="stage0.storage.grant",mode=Mode.WRITE)
+    public Stream<Row> grant(@Name("namespace")String namespace,@Name("resource")String id,@Name("actor")String actor,@Name("history")boolean history) {
+        var core=new CoreRepository(tx,ZonedDateTime.now());core.lockNamespace(namespace);var r=new ResourceRepository(tx,core);r.lock(id);
+        r.record("DepositExportGrant",UUID.randomUUID().toString(),Json.map("resourceId",id,"namespaceId",namespace,"actorId",actor,"history",history,"expires",r.now()+ResourceFiles.LEASE));return Stream.of(new Row(Map.of("granted",true)));
+    }
+}

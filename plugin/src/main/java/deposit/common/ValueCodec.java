@@ -8,7 +8,7 @@ import org.neo4j.values.storable.*;
 
 /** Declaration-directed, lossless values. Geometry/resources follow in Stage 4. */
 public final class ValueCodec {
-    public static final Set<String> TYPES=Set.of("String","Integer","Float","Boolean","Date","Time","LocalTime","DateTime","LocalDateTime","Duration","Point","List","DDict");
+    public static final Set<String> TYPES=Set.of("String","Integer","Float","Boolean","Date","Time","LocalTime","DateTime","LocalDateTime","Duration","Point","List","DDict","DGeometry","DResource");
     private ValueCodec() {}
     public static String type(Object type) {
         if(!(type instanceof String s) || !TYPES.contains(s)) throw ExceptionHandler.fail("VALIDATION_FAILED","Unsupported descriptor type");
@@ -17,9 +17,12 @@ public final class ValueCodec {
     public static Object normalize(String type,Object value) {return normalize(type,value,0,false);}
     private static Object normalize(String type,Object value,int depth,boolean json) {
         type(type);
+        if(depth>0 && Set.of("DGeometry","DResource").contains(type))throw ExceptionHandler.fail("VALIDATION_FAILED","Geometry/resources cannot occur in collections");
         if(value==null) return null;
         try {
             return switch(type) {
+                case "DGeometry" -> GeometryCodec.normalize(value);
+                case "DResource" -> {var m=map(value);keys(m,Set.of("resourceId"));yield Json.map("resourceId",RequestContext.uuid(m.get("resourceId")));}
                 case "String" -> {if(!(value instanceof String)) throw new IllegalArgumentException();yield value;}
                 case "Boolean" -> {if(!(value instanceof Boolean)) throw new IllegalArgumentException();yield value;}
                 case "Integer" -> {
@@ -54,6 +57,7 @@ public final class ValueCodec {
                 }
                 case "List" -> {
                     var m=map(value);keys(m,Set.of("itemType","items"));String itemType=type(m.get("itemType"));
+                    if(Set.of("DGeometry","DResource").contains(itemType))throw ExceptionHandler.fail("VALIDATION_FAILED","Geometry/resources cannot occur in collections");
                     if(!(m.get("items") instanceof List<?> items)) throw new IllegalArgumentException();
                     var result=new ArrayList<Object>();for(Object item:items) result.add(normalize(itemType,item,depth+1,json));
                     yield Json.map("itemType",itemType,"items",result);

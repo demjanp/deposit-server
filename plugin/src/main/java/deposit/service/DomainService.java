@@ -44,9 +44,8 @@ public final class DomainService extends ActionService {
             declaration=newDeclaration(repo.objectClass(object),Json.map("name",name,"type",type));
         }
         String type=(String)declaration.getProperty("type");Object normalized=ValueCodec.normalize(type,payload);
-        Object stored=ValueCodec.storage(type,normalized);String encoding=Set.of("List","DDict").contains(type)?"json":"native";
-        if(old==null)return new DescriptorWrite(repo.attach("Descriptor",object,c.actorId,Json.map("name",name,"encoding",encoding,"value",stored)),true);
-        return new DescriptorWrite(old,repo.update(old,Json.map("encoding",encoding,"value",stored),c.actorId));
+        if(old==null){Node descriptor=repo.attach("Descriptor",object,c.actorId,Json.map("name",name));repo.writeValue(descriptor,type,normalized,c.actorId);return new DescriptorWrite(descriptor,true);}
+        return new DescriptorWrite(old,repo.writeValue(old,type,normalized,c.actorId));
     }
     private boolean descriptors(Node object,Map<String,Object> request) {
         Map<String,Object> values=ValueCodec.map(request.getOrDefault("descriptors",Map.of()));
@@ -150,17 +149,17 @@ public final class DomainService extends ActionService {
             var converted=new LinkedHashMap<Node,Object>();
             for(Node object:repo.members(repo.owner(declaration))) {
                 Node d=repo.descriptor(object,(String)declaration.getProperty("name"));if(d==null)continue;
-                Object value=ValueCodec.decode(old,d.getProperty("value",null));
+                Object value=repo.descriptorValue(d);
                 if(value!=null && conversion.equals("floatToIntegerExact")) {
                     try {value=new java.math.BigDecimal(((Number)value).doubleValue()).longValueExact();}
                     catch(ArithmeticException e) {c.fail("TYPE_CONFLICT","Float is not an exact signed 64-bit integer");}
                 }
                 if(value!=null && conversion.equals("identity")&&!old.equals(type))c.fail("TYPE_CONFLICT","identity requires unchanged type for non-null values");
-                converted.put(d,ValueCodec.storage(type,ValueCodec.normalize(type,value)));
+                converted.put(d,ValueCodec.normalize(type,value));
             }
             if(changed) {
                 repo.update(declaration,Map.of("type",type),c.actorId);
-                for(var entry:converted.entrySet())repo.update(entry.getKey(),Json.map("encoding",Set.of("List","DDict").contains(type)?"json":"native","value",entry.getValue()),c.actorId);
+                for(var entry:converted.entrySet())repo.writeValue(entry.getKey(),type,entry.getValue(),c.actorId);
             }
             return new Change(outcome(declaration),changed);
     }

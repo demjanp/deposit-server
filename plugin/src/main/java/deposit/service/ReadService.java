@@ -105,7 +105,7 @@ public final class ReadService extends BaseService {
             String name=name(entry.getKey());Node declaration=repo.declaration(repo.objectClass(object),name);
             if(declaration==null) {match=false;continue;}
             String type=(String)declaration.getProperty("type");Object expected=ValueCodec.normalize(type,entry.getValue());Node d=repo.descriptor(object,name);
-            if(d==null||!Objects.equals(expected,ValueCodec.decode(type,d.getProperty("value",null))))match=false;
+            if(d==null||!Objects.equals(expected,repo.descriptorValue(d)))match=false;
         }return match;
     }
     private static void exclusive(Map<String,Object> request,String a,String b) {if(request.containsKey(a)&&request.containsKey(b))throw ExceptionHandler.fail("VALIDATION_FAILED","Selectors are exclusive");}

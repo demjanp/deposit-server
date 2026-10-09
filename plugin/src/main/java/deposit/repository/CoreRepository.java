@@ -26,7 +26,7 @@ public final class CoreRepository {
     }
     public Node namespace(String id) {return find("Namespace","id",id);}
     public long sequence(String id) {Node ns=namespace(id);if(ns==null) throw ExceptionHandler.fail("NOT_FOUND","Namespace not found");return ((Number)ns.getProperty("sequence")).longValue();}
-    public void lockNamespace(String id) {tx.acquireWriteLock(namespace(id));}
+    public void lockNamespace(String id) {Node lock=find("DepositNamespaceLock","id",id);if(lock==null)throw new IllegalStateException("Namespace coordination missing");tx.acquireWriteLock(lock);}
     public void lockActor(String id) {tx.acquireWriteLock(find("DepositActorLock","id",id));}
     public String role(String actor,String namespace) {
         Node user=find("User","id",actor);if(user==null) return null;
@@ -55,6 +55,7 @@ public final class CoreRepository {
     public Node create(String label,String namespace,String actor,Map<String,Object> properties) {
         Node n=namespace==null?tx.createNode(Label.label(label)):tx.createNode(Label.label(label),Label.label("DepositLive"));
         n.setProperty("id",UUID.randomUUID().toString());
+        if(label.equals("Namespace"))tx.createNode(Label.label("DepositNamespaceLock")).setProperty("id",id(n));
         if(namespace!=null) n.setProperty("namespaceId",namespace);
         var now=timestamp;n.setProperty("createdAt",now);n.setProperty("createdBy",actor==null?id(n):actor);
         n.setProperty("updatedAt",now);n.setProperty("updatedBy",actor==null?id(n):actor);
@@ -103,6 +104,32 @@ public final class CoreRepository {
     }
     public Node owner(Node descriptor) {return descriptor.getSingleRelationship(RelationshipType.withName("HAS_DESCRIPTOR"),Direction.INCOMING).getStartNode();}
     public String descriptorType(Node descriptor) {return (String)declaration(objectClass(owner(descriptor)),(String)descriptor.getProperty("name")).getProperty("type");}
+    private GeometryRepository geometry(){return new GeometryRepository(tx,this);}
+    private ResourceRepository resources(){return new ResourceRepository(tx,this);}
+    public Object descriptorValue(Node descriptor) {
+        String type=descriptorType(descriptor);
+        if(type.equals("DGeometry")){var g=geometry();Node node=g.geometry(descriptor);return node==null?null:g.value(node);}
+        if(type.equals("DResource")){Node node=resources().linked(descriptor);return node==null?null:Json.map("resourceId",id(node));}
+        return ValueCodec.decode(type,descriptor.getProperty("value",null));
+    }
+    public boolean writeValue(Node descriptor,String type,Object value,String actor) {
+        boolean changed=false;String encoding=switch(type){case "DGeometry"->"geometry";case "DResource"->"resource";case "List","DDict"->"json";default->"native";};
+        if(type.equals("DGeometry"))changed=geometry().write(descriptor,value,actor);
+        else if(type.equals("DResource")){
+            var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;var server=ServerContext.forDatabase(internal.getDatabaseId());
+            String ns=(String)descriptor.getProperty("namespaceId"),role=role(actor,ns);
+            if(server.state(internal.kernelTransaction()).administrative&&"administrator".equals(find("User","id",actor).getProperty("serverRole")))role="owner";
+            changed=resources().write(descriptor,value,actor,role);
+        }
+        Object stored=Set.of("DGeometry","DResource").contains(type)?null:ValueCodec.storage(type,value);
+        changed=update(descriptor,Json.map("encoding",encoding,"value",stored),actor)||changed;if(changed)audit(descriptor,actor);return changed;
+    }
+    private void removeValue(Node descriptor,List<String> deleted) {
+        var edge=descriptor.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.OUTGOING);
+        if(edge!=null){deleted.add(id(edge.getEndNode()));geometry().write(descriptor,null,(String)descriptor.getProperty("updatedBy"));}
+        var resourceEdge=descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING);
+        if(resourceEdge!=null){var r=resources();Node resource=resourceEdge.getEndNode();r.lock(id(resource));resourceEdge.delete();r.changed(resource);}
+    }
     public Map<String,Object> data(Node node) {
         String kind=kind(node);var result=new LinkedHashMap<String,Object>();
         if(!kind.equals("User")) result.put("kind",kind);
@@ -111,9 +138,10 @@ public final class CoreRepository {
         }
         if(!kind.equals("User") && !result.containsKey("namespaceId"))result.put("namespaceId",kind.equals("Namespace")?id(node):null);
         if(node.hasProperty("position"))result.put("position",Arrays.stream((double[])node.getProperty("position")).boxed().toList());
-        if(kind.equals("Object")) {result.put("classId",id(objectClass(node)));var descriptors=new LinkedHashMap<String,Object>();for(Node d:children(node,"Descriptor")) descriptors.put((String)d.getProperty("name"),ValueCodec.decode(descriptorType(d),d.getProperty("value",null)));result.put("descriptors",descriptors);}
+        if(kind.equals("Object")) {result.put("classId",id(objectClass(node)));var descriptors=new LinkedHashMap<String,Object>();for(Node d:children(node,"Descriptor")) descriptors.put((String)d.getProperty("name"),descriptorValue(d));result.put("descriptors",descriptors);}
         if(kind.equals("Class"))result.put("descriptors",children(node,"ClassDescriptor").stream().map(this::data).toList());
-        if(kind.equals("Descriptor")) {result.put("objectId",node.getProperty("ownerId"));result.put("value",ValueCodec.decode(descriptorType(node),node.getProperty("value",null)));}
+        if(kind.equals("Descriptor")) {result.put("objectId",node.getProperty("ownerId"));result.put("value",descriptorValue(node));}
+        if(kind.equals("Descriptor")&&descriptorType(node).equals("DGeometry")){Node g=geometry().geometry(node);result.put("geometryId",g==null?null:id(g));}
         if(kind.equals("ClassDescriptor"))result.put("classId",node.getProperty("ownerId"));
         if(kind.equals("UserTool"))result.put("data",node.getProperty("data"));
         return result;
@@ -172,6 +200,7 @@ public final class CoreRepository {
     }
     public void remove(Node node,List<String> deleted) {
         deleted.add(id(node));
+        if(kind(node).equals("Descriptor"))removeValue(node,deleted);
         if(kind(node).equals("Object")) {
             for(Node d:children(node,"Descriptor"))remove(d,deleted);
         }
@@ -211,6 +240,11 @@ public final class CoreRepository {
     }
     public List<String> deleteNamespace(String namespace) {
         var deleted=new TreeSet<String>();
+        // Remove owned values while ownership/declarations still exist; operational records survive.
+        for(Node descriptor:nodes("Descriptor",Map.of("namespaceId",namespace))) {var ids=new ArrayList<String>();removeValue(descriptor,ids);deleted.addAll(ids);}
+        geometry().deleteLayers(namespace);
+        for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))) {loc.setProperty("leaseUntil",0L);loc.setProperty("everAttached",true);loc.setProperty("pending",true);}
+        for(Node grant:nodes("DepositExportGrant",Map.of("namespaceId",namespace)))grant.setProperty("expires",0L);
         // Receipts and operation bindings intentionally survive deletion, without native links.
         for(String label:List.of("Object","Descriptor","ClassDescriptor","Class","UserTool")) {
             for(Node node:nodes(label,Map.of("namespaceId",namespace))) {

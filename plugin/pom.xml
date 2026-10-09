@@ -1,8 +1,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage3</version></parent>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage4</version></parent>
   <artifactId>deposit-plugin</artifactId>
   <dependencies>
+    <dependency><groupId>org.neo4j.gis</groupId><artifactId>spatial-published</artifactId><version>2025.10.0</version><scope>system</scope><systemPath>${spatial.jar}</systemPath></dependency>
+    <dependency><groupId>org.geotools</groupId><artifactId>gt-main</artifactId><version>33.2</version><scope>provided</scope></dependency>
     <dependency><groupId>org.neo4j</groupId><artifactId>neo4j</artifactId></dependency>
     <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.21.2</version><scope>provided</scope></dependency>
     <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>1.82</version><scope>provided</scope></dependency>

@@ -47,6 +47,18 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public final String runId=UUID.randomUUID().toString();
     private volatile long revision;
     private volatile boolean initialized;
+    private GraphDatabaseAPI database;
+    public StorageManager storage;
+    private volatile java.util.function.Consumer<String> storageObserver=point->{};
+    public void storagePoint(String point){storageObserver.accept(point);}
+    public GraphDatabaseAPI database() {return database;}
+    private final ConcurrentMap<String,Semaphore> storageLocks=new ConcurrentHashMap<>();
+    public void holdStorage(TxState state,String key) {
+        if(!state.storageKeys.add(key))return;
+        Semaphore lock=storageLocks.computeIfAbsent(key,k->new Semaphore(1,true));
+        try {while(!lock.tryAcquire(100,TimeUnit.MILLISECONDS))state.kernel.assertOpen();state.release.add(lock::release);}
+        catch(InterruptedException e) {Thread.currentThread().interrupt();throw ExceptionHandler.fail("CANCELLED","Storage wait interrupted");}
+    }
     private final CompletableFuture<Void> readiness=new CompletableFuture<>();
     private String bootstrapHash;
     private Path secretPath;
@@ -63,9 +75,10 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         try {
             if(committed) {
                 if(state.serverChanged) revision++;
-                for(Runnable callback:state.afterCommit) callback.run();
+                for(Runnable callback:state.afterCommit) try {callback.run();}catch(RuntimeException ignored) {/* Durable jobs are retried by maintenance. */}
             }
         } finally {
+            for(int i=state.release.size()-1;i>=0;i--)state.release.get(i).run();
             for(String requestId:state.requestIds)requests.computeIfPresent(requestId,(key,value)->value.state()==state?null:value);
             if(state.serverLocked) serverLock.release(); authorization.release(state);
         }
@@ -108,6 +121,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     }
     public synchronized void initialize(GraphDatabaseAPI db) {
         if(initialized) return;
+        database=db;
         SchemaRepository.initialize(db);
         try {
             secretPath=Path.of(System.getProperty("deposit.config")).toAbsolutePath().getParent().resolve("deposit-bootstrap.secret");
@@ -119,6 +133,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             if(!bootstrapped) {
                 bootstrapHash=Json.hash(secret(secretPath));
             }
+            storage=new StorageManager(this,db);storage.recover();storage.start();
             initialized=true;
             readiness.complete(null);
         } catch(Exception e) {throw new IllegalStateException("Cannot initialize Deposit bootstrap credential",e);}
@@ -191,6 +206,9 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public String tokenHash,namespace;
         public boolean scoped,selection,mutation,serverLocked,serverChanged,administrative,selfAccountChange,privileged,auditRegistered;
         public final List<Runnable> afterCommit=new ArrayList<>();
+        public final List<Runnable> release=new ArrayList<>();
+        public final Set<String> storageKeys=new HashSet<>();
+        public final Map<String,org.neo4j.gis.spatial.EditableLayer> geometryLayers=new HashMap<>();
         public final Set<String> requestIds=ConcurrentHashMap.newKeySet();
         TxState(KernelTransaction kernel) {this.kernel=kernel;}
     }

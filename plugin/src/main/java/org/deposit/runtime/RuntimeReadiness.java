@@ -15,7 +15,7 @@ public final class RuntimeReadiness {
         Properties config = new Properties();
         try (var input = Files.newInputStream(Path.of(file))) {
             config.load(input);
-            if (!config.stringPropertyNames().equals(Set.of("resourceRoot"))) {
+            if (!config.stringPropertyNames().equals(Set.of("resourceRoot","exportRoot"))) {
                 throw new IllegalStateException("Invalid Deposit configuration keys");
             }
             Path root = Path.of(config.getProperty("resourceRoot"));
@@ -28,6 +28,7 @@ public final class RuntimeReadiness {
                     throw new IllegalStateException("Deposit resource directories must share one filesystem");
                 }
             }
+            new deposit.common.ResourceFiles();
             Class.forName("org.neo4j.gis.spatial.SpatialDatabaseService");
             // Eagerly link the published index implementation. Merely finding the
             // service class misses superclass ABI changes until the first write.

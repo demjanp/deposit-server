@@ -1,6 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage3</version></parent>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage4</version></parent>
   <artifactId>deposit-runtime-probe</artifactId>
   <dependencies>
     <dependency><groupId>org.deposit</groupId><artifactId>deposit-plugin</artifactId><version>${project.version}</version><scope>provided</scope></dependency>

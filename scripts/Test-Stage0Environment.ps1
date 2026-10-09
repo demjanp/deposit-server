@@ -5,7 +5,8 @@ param(
     [string]$InputsFile,
     [switch]$Build,
     [switch]$Stage2Checks,
-    [switch]$Stage3Checks
+    [switch]$Stage3Checks,
+    [switch]$Stage4Checks
 )
 # Final Windows environment suite; collection also requires the live runner fixture.
 . "$PSScriptRoot\Inputs.ps1"
@@ -60,6 +61,20 @@ try {
     Scenario 'independent-client-sessions' {Phase Test -Options @{TestSelection='EnvironmentIT#independentClientSessions'}}
     if($Stage2Checks) {Scenario 'stage2-isolated-clock-and-commit-faults' {Phase Test -Options @{TestSelection='Stage2ProbeIT'}}}
     if($Stage3Checks) {Scenario 'stage3-isolated-batch-commit-faults' {Phase Test -Options @{TestSelection='Stage3ProbeIT'}}}
+    if($Stage4Checks) {
+        Scenario 'stage4-storage-faults-and-invariants' {Phase Test -Options @{TestSelection='Stage4ProbeIT'}}
+        $savedCrashPoint=$env:STAGE4_CRASH_POINT
+        try {
+            foreach($point in @('chunk-flushed','publication-before','publication-after','ready-before-commit','relocation-before','relocation-after','collection-before','collection-after')) {
+                $env:STAGE4_CRASH_POINT=$point
+                Scenario ('stage4-crash-'+$point) {
+                    Phase Test -Options @{TestSelection='Stage4CrashIT#trigger'}
+                    Phase Start
+                    Phase Test -Options @{TestSelection='Stage4CrashIT#verify'}
+                }
+            }
+        } finally {[Environment]::SetEnvironmentVariable('STAGE4_CRASH_POINT',$savedCrashPoint,'Process')}
+    }
     Scenario 'graceful-restart-and-persistent-uuid-maps' {
         Phase Stop; Phase Start
         Phase Test -Options @{TestMode='verify';TestSelection='RuntimeIT,EnvironmentIT#independentClientSessions'}
