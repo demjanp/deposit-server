@@ -60,6 +60,10 @@ if($actualNames -contains 'stage2-isolated-clock-and-commit-faults') {
     $expectedNames+=@('stage2-isolated-clock-and-commit-faults');$contracts['stage2-isolated-clock-and-commit-faults']=@('Test:passed')
     $selections['stage2-isolated-clock-and-commit-faults']='Stage2ProbeIT'
 }
+if($actualNames -contains 'stage3-isolated-batch-commit-faults') {
+    $expectedNames+=@('stage3-isolated-batch-commit-faults');$contracts['stage3-isolated-batch-commit-faults']=@('Test:passed')
+    $selections['stage3-isolated-batch-commit-faults']='Stage3ProbeIT'
+}
 if(@(Compare-Object $actualNames $expectedNames).Count -or @($actualNames | Sort-Object -Unique).Count -ne $actualNames.Count) {throw 'Scenario coverage is incomplete or duplicated'}
 $testCases=New-Object System.Collections.Generic.List[object]
 $files=New-Object System.Collections.Generic.List[object]
@@ -101,6 +105,7 @@ foreach($scenario in $gate.results) {
                 if($selection -eq 'RuntimeIT') {foreach($name in $runtimeNames) {$expectedCases.Add('org.deposit.it.RuntimeIT::'+$name)}}
                 elseif($selection -eq 'DistributionIT') {$expectedCases.Add('org.deposit.it.DistributionIT::normalDistributionExcludesProbePermissionsAndProcedures')}
                 elseif($selection -eq 'Stage2ProbeIT') {foreach($name in @('competingBootstrapAfterRollback','idleAndAbsoluteExpiryUseFixedProductionLimits','expiryBeforeCommitRollsBackDataRevisionAndReceipt','failedPasswordCommitDoesNotRevokeOrAdvance','failedDeletionCommitPreservesSelectionGraphAndReceipt','loginWaitsForPasswordResetCommit','tokensAreBoundToAuthenticatedNeo4jPrincipal')) {$expectedCases.Add('org.deposit.it.Stage2ProbeIT::'+$name)}}
+                elseif($selection -eq 'Stage3ProbeIT') {foreach($name in @('failedBatchCommitRollsBackAllCategoriesAndReceiptThenRetries','expiryAfterBatchReturnPreventsCommit')) {$expectedCases.Add('org.deposit.it.Stage3ProbeIT::'+$name)}}
                 elseif($selection.StartsWith('EnvironmentIT#')) {foreach($name in $selection.Substring(14).Split('+')) {$expectedCases.Add('org.deposit.it.EnvironmentIT::'+$name)}}
                 else {throw 'Unrecognized acceptance suite'}
             }

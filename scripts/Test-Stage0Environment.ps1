@@ -4,7 +4,8 @@ param(
     [ValidateRange(1024,65534)][int]$Port=17770,
     [string]$InputsFile,
     [switch]$Build,
-    [switch]$Stage2Checks
+    [switch]$Stage2Checks,
+    [switch]$Stage3Checks
 )
 # Final Windows environment suite; collection also requires the live runner fixture.
 . "$PSScriptRoot\Inputs.ps1"
@@ -58,6 +59,7 @@ try {
     Scenario 'native-runtime-authentication-and-fixtures' {Phase Test -Options @{TestSelection='EnvironmentIT#nativeRuntimeAndApoc,RuntimeIT'}}
     Scenario 'independent-client-sessions' {Phase Test -Options @{TestSelection='EnvironmentIT#independentClientSessions'}}
     if($Stage2Checks) {Scenario 'stage2-isolated-clock-and-commit-faults' {Phase Test -Options @{TestSelection='Stage2ProbeIT'}}}
+    if($Stage3Checks) {Scenario 'stage3-isolated-batch-commit-faults' {Phase Test -Options @{TestSelection='Stage3ProbeIT'}}}
     Scenario 'graceful-restart-and-persistent-uuid-maps' {
         Phase Stop; Phase Start
         Phase Test -Options @{TestMode='verify';TestSelection='RuntimeIT,EnvironmentIT#independentClientSessions'}

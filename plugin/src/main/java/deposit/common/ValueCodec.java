@@ -6,12 +6,12 @@ import java.time.temporal.*;
 import org.neo4j.graphdb.spatial.Point;
 import org.neo4j.values.storable.*;
 
-/** Declaration-directed, lossless values. Geometry/resources are deliberately not Stage 1 types. */
+/** Declaration-directed, lossless values. Geometry/resources follow in Stage 4. */
 public final class ValueCodec {
     public static final Set<String> TYPES=Set.of("String","Integer","Float","Boolean","Date","Time","LocalTime","DateTime","LocalDateTime","Duration","Point","List","DDict");
     private ValueCodec() {}
     public static String type(Object type) {
-        if(!(type instanceof String s) || !TYPES.contains(s)) throw ExceptionHandler.fail("VALIDATION_FAILED","Unsupported Stage 1 descriptor type");
+        if(!(type instanceof String s) || !TYPES.contains(s)) throw ExceptionHandler.fail("VALIDATION_FAILED","Unsupported descriptor type");
         return s;
     }
     public static Object normalize(String type,Object value) {return normalize(type,value,0,false);}

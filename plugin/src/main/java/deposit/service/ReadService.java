@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.*;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 
 public final class ReadService extends BaseService {
     public ReadService(RequestContext c) {super(c);}
@@ -24,7 +25,9 @@ public final class ReadService extends BaseService {
     private Node required(String kind,Object id) {
         Node n=repo.entity(kind,c.namespaceId,RequestContext.uuid(id));if(n==null)c.fail("NOT_FOUND",kind+" not found");return n;
     }
-    private record Item(Node node,Map<String,Object> data) {}
+    private record Item(Node node,Relationship rel,Map<String,Object> data) {
+        Item(Node node,Map<String,Object> data) {this(node,null,data);}
+    }
     private List<Item> select(String kind,Map<String,Object> request) {
         readContext();
         boolean server=Set.of("User","Namespace").contains(kind);
@@ -44,7 +47,7 @@ public final class ReadService extends BaseService {
                 nodes=namespaces(request);
                 if(!request.isEmpty()&&nodes.isEmpty())c.fail("NOT_FOUND","Namespace not found");
             }
-            case "Class" -> {
+            case "Class","UserTool" -> {
                 fields(request,"id","name");exclusive(request,"id","name");
                 if(request.containsKey("id"))nodes=List.of(required(kind,request.get("id")));
                 else if(request.containsKey("name")) {Node n=repo.find(kind,Map.of("namespaceId",c.namespaceId,"name",name(request.get("name"))));if(n==null)c.fail("NOT_FOUND","Class not found");nodes=List.of(n);}
@@ -69,10 +72,29 @@ public final class ReadService extends BaseService {
             case "ClassMembers" -> {fields(request,"classId");nodes=repo.members(required("Class",request.get("classId")));}
             case "ObjectClass" -> {fields(request,"objectId");nodes=List.of(repo.objectClass(required("Object",request.get("objectId"))));}
             case "ObjectByDescriptorId" -> {fields(request,"descriptorId");nodes=List.of(repo.owner(required("Descriptor",request.get("descriptorId"))));}
+            case "Relationship","ClassRelationship" -> {
+                fields(request,"id","sourceId","targetId","label");
+                if(request.containsKey("id")&&request.size()!=1)c.fail("VALIDATION_FAILED","ID selector is exclusive");
+                String id=request.containsKey("id")?RequestContext.uuid(request.get("id")):null;
+                String source=request.containsKey("sourceId")?RequestContext.uuid(request.get("sourceId")):null;
+                String target=request.containsKey("targetId")?RequestContext.uuid(request.get("targetId")):null;
+                String label=request.containsKey("label")?name(request.get("label")):null;
+                var items=new ArrayList<Item>();
+                for(var rel:repo.relationships(c.namespaceId,kind)) {
+                    checkRevision();
+                    if(id!=null&&!id.equals(CoreRepository.id(rel)))continue;
+                    if(source!=null&&!source.equals(CoreRepository.id(rel.getStartNode())))continue;
+                    if(target!=null&&!target.equals(CoreRepository.id(rel.getEndNode())))continue;
+                    if(label!=null&&!label.equals(rel.getProperty("label")))continue;
+                    items.add(new Item(null,rel,repo.data(rel)));
+                }
+                if(id!=null&&items.isEmpty())c.fail("NOT_FOUND","Relationship not found");checkRevision();return items;
+            }
             case "NamespaceRoles" -> {fields(request);return repo.roles(c.namespaceId).stream().map(data->new Item(null,data)).toList();}
             default -> throw new IllegalArgumentException();
         }
         var results=new ArrayList<Item>();
+        if(kind.equals("Class")||kind.equals("ClassDescriptor"))nodes=nodes.stream().sorted(Comparator.<Node>comparingLong(n->((Number)n.getProperty("order",0L)).longValue()).thenComparing(CoreRepository::id)).toList();
         for(Node n:nodes) {checkRevision();var data=kind.equals("Namespace")?namespaceData(n):repo.data(n);results.add(new Item(n,data));}
         if(kind.equals("Namespace")) {discoveryRequest=Map.copyOf(request);discoveryMode=administrativeMode();discoveryFingerprint=fingerprint(results.stream().map(Item::data).toList());}
         checkRevision();return results;
@@ -83,7 +105,7 @@ public final class ReadService extends BaseService {
             String name=name(entry.getKey());Node declaration=repo.declaration(repo.objectClass(object),name);
             if(declaration==null) {match=false;continue;}
             String type=(String)declaration.getProperty("type");Object expected=ValueCodec.normalize(type,entry.getValue());Node d=repo.descriptor(object,name);
-            if(d==null||!Json.write(expected).equals(Json.write(ValueCodec.decode(type,d.getProperty("value",null)))))match=false;
+            if(d==null||!Objects.equals(expected,ValueCodec.decode(type,d.getProperty("value",null))))match=false;
         }return match;
     }
     private static void exclusive(Map<String,Object> request,String a,String b) {if(request.containsKey(a)&&request.containsKey(b))throw ExceptionHandler.fail("VALIDATION_FAILED","Selectors are exclusive");}
@@ -105,6 +127,7 @@ public final class ReadService extends BaseService {
         return StreamSupport.stream(spliterator,false).onClose(this::checkRevision);
     }
     public Stream<EntityRow> entities(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new EntityRow(i.node(),i.data(),c.meta()));}
+    public Stream<RelRow> relationships(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new RelRow(i.rel(),i.data(),c.meta()));}
     public Stream<DataRow> records(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new DataRow(i.data(),c.meta()));}
     public DataRow page(String kind,Map<String,Object> request) {
         if(request==null)c.fail("VALIDATION_FAILED","request must be a map");

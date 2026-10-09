@@ -25,6 +25,18 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private final UUID databaseId;
     private ServerContext(UUID databaseId) {this.databaseId=databaseId;}
     private final ConcurrentMap<Long,TxState> transactions=new ConcurrentHashMap<>();
+    private record ActiveRequest(String actor,TxState state) {}
+    private final ConcurrentMap<String,ActiveRequest> requests=new ConcurrentHashMap<>();
+    public void track(RequestContext c) {
+        ActiveRequest request=new ActiveRequest(c.actorId,c.state),old=requests.putIfAbsent(c.requestId,request);
+        if(old!=null&&!old.equals(request))c.fail("VALIDATION_FAILED","requestId is already active");
+        c.state.requestIds.add(c.requestId);
+    }
+    public boolean cancel(String requestId,String actor,boolean administrator) {
+        ActiveRequest request=requests.get(requestId);if(request==null)return false;
+        if(!administrator&&!request.actor().equals(actor))throw ExceptionHandler.fail("FORBIDDEN","Cannot cancel another actor's request");
+        request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);return true;
+    }
     public final ConcurrentMap<String,Session> sessions=new ConcurrentHashMap<>();
     private final ConcurrentMap<String,Failures> failures=new ConcurrentHashMap<>();
     private final Semaphore serverLock=new Semaphore(1,true);
@@ -53,7 +65,10 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
                 if(state.serverChanged) revision++;
                 for(Runnable callback:state.afterCommit) callback.run();
             }
-        } finally {if(state.serverLocked) serverLock.release(); authorization.release(state);}
+        } finally {
+            for(String requestId:state.requestIds)requests.computeIfPresent(requestId,(key,value)->value.state()==state?null:value);
+            if(state.serverLocked) serverLock.release(); authorization.release(state);
+        }
     }
     public void guard(TxState state, boolean exclusive) {
         if(exclusive && state.mutation) throw ExceptionHandler.fail("VALIDATION_FAILED", "Authorization changes must be the transaction's first mutation");
@@ -130,7 +145,11 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         try {Files.deleteIfExists(secretPath);} catch(java.io.IOException ignored) {/* Durable initialization still prevents reuse. */}
     }
     public Session authenticate(RequestContext c,String principal) {
-        guard(c.state, false);
+        return authenticate(c,principal,true);
+    }
+    public long committedRevision() {return revision;}
+    public Session authenticate(RequestContext c,String principal,boolean protect) {
+        if(protect)guard(c.state, false);
         if(c.token==null || c.token.isEmpty()) {c.fail("AUTH_REQUIRED","Session token required");}
         var session=sessions.get(Json.hash(c.token));
         if(session==null || !session.principal.equals(principal)) {c.fail("AUTH_FAILED","Invalid session");}
@@ -142,6 +161,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if(c.state.tokenHash!=null && !c.state.tokenHash.equals(Json.hash(c.token))) c.fail("VALIDATION_FAILED","Cannot mix sessions in a transaction");
         c.state.tokenHash=Json.hash(c.token);
         c.session=session;c.actorId=session.actor;
+        track(c);
         return session;
     }
     public void checkLoginDelay(String username,String origin,KernelTransaction tx) {
@@ -171,6 +191,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public String tokenHash,namespace;
         public boolean scoped,selection,mutation,serverLocked,serverChanged,administrative,selfAccountChange,privileged,auditRegistered;
         public final List<Runnable> afterCommit=new ArrayList<>();
+        public final Set<String> requestIds=ConcurrentHashMap.newKeySet();
         TxState(KernelTransaction kernel) {this.kernel=kernel;}
     }
 }

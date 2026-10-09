@@ -146,19 +146,7 @@ public final class AccountService extends ActionService {
         c.revision=c.server.revision(c.state);return new ValueRow(enabled,c.meta());
     }
     public Outcome setNamespace(Map<String,Object> request) {
-        fields(request,"name","description");
-        return action("deposit.set.namespace",request,false,"owner",()->{
-            Node namespace=repo.namespace(c.namespaceId);var changes=new LinkedHashMap<String,Object>();
-            if(request.containsKey("name")) {
-                String value=name(request.get("name"));Node other=repo.find("Namespace","name",value);
-                if(other!=null&&!other.equals(namespace))c.fail("DUPLICATE","Namespace name exists");changes.put("name",value);
-            }
-            if(request.containsKey("description"))changes.put("description",string(request.get("description")));
-            boolean changed=repo.update(namespace,changes,c.actorId);
-            var result=outcome(namespace);result.data().put("role",effectiveRole(c.namespaceId));
-            if(changed)result.data().put("sequence",repo.sequence(c.namespaceId)+1);
-            return new Change(result,changed);
-        });
+        return new DomainService(c).execute("deposit.set.namespace",request);
     }
     public Outcome deleteNamespace(Map<String,Object> request) {
         fields(request,"confirmNamespaceName","expectedNamespaceRevision");
