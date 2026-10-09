@@ -1,8 +1,9 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage1</version></parent>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage2</version></parent>
   <artifactId>deposit-runtime-probe</artifactId>
   <dependencies>
+    <dependency><groupId>org.deposit</groupId><artifactId>deposit-plugin</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
     <dependency><groupId>org.neo4j</groupId><artifactId>neo4j</artifactId></dependency>
     <!-- Published upstream thin JAR; GeoTools/JTS and Neo4j APIs remain provided. -->
     <dependency><groupId>org.neo4j.gis</groupId><artifactId>spatial-published</artifactId><version>2025.10.0</version><scope>system</scope><systemPath>${spatial.jar}</systemPath></dependency>

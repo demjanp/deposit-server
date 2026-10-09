@@ -16,6 +16,11 @@ public abstract class BaseAPI {
         try {c=context(context);}catch(RuntimeException failure) {throw safe(failure,null);}
         final Stream<T> source;
         try {source=action.apply(c);}catch(RuntimeException failure) {throw safe(failure,c);}
+        if(c.state.mutation&&c.state.privileged&&!c.state.auditRegistered) {
+            c.state.auditRegistered=true;
+            String audit="Deposit committed privileged action actor="+c.actorId+" namespace="+c.state.namespace+" administrativeMode="+c.state.administrative+" operationId="+c.operationId+" requestId="+c.requestId;
+            c.state.afterCommit.add(()->log.info(audit));
+        }
         var iterator=source.iterator();
         return StreamSupport.stream(new Spliterators.AbstractSpliterator<T>(Long.MAX_VALUE,Spliterator.ORDERED) {
             @Override public boolean tryAdvance(Consumer<? super T> consumer) {

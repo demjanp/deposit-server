@@ -13,7 +13,7 @@ import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import deposit.repository.SchemaRepository;
 
 /** Per-database state. No transaction or native entity is retained in a session. */
-public final class ServerContext implements TransactionExecutionMonitor {
+public final class ServerContext implements TransactionExecutionMonitor, org.neo4j.graphdb.event.TransactionEventListener<Void> {
     private static final ConcurrentMap<UUID,ServerContext> DATABASES=new ConcurrentHashMap<>();
     public static ServerContext forDatabase(UUID id) {
         ServerContext value=DATABASES.get(id);
@@ -28,6 +28,9 @@ public final class ServerContext implements TransactionExecutionMonitor {
     public final ConcurrentMap<String,Session> sessions=new ConcurrentHashMap<>();
     private final ConcurrentMap<String,Failures> failures=new ConcurrentHashMap<>();
     private final Semaphore serverLock=new Semaphore(1,true);
+    private final AuthorizationGuard authorization = new AuthorizationGuard();
+    private volatile java.util.function.LongSupplier sessionClock=System::currentTimeMillis;
+    public long sessionTime() {return sessionClock.getAsLong();}
     public final byte[] cursorKey=randomBytes(32);
     public final String runId=UUID.randomUUID().toString();
     private volatile long revision;
@@ -50,8 +53,32 @@ public final class ServerContext implements TransactionExecutionMonitor {
                 if(state.serverChanged) revision++;
                 for(Runnable callback:state.afterCommit) callback.run();
             }
-        } finally {if(state.serverLocked) serverLock.release();}
+        } finally {if(state.serverLocked) serverLock.release(); authorization.release(state);}
     }
+    public void guard(TxState state, boolean exclusive) {
+        if(exclusive && state.mutation) throw ExceptionHandler.fail("VALIDATION_FAILED", "Authorization changes must be the transaction's first mutation");
+        authorization.acquire(state, exclusive);
+    }
+    public void revokeUser(String actor) { sessions.entrySet().removeIf(e -> e.getValue().actor.equals(actor)); }
+    public void demoteUser(String actor) { sessions.values().stream().filter(s -> s.actor.equals(actor)).forEach(s -> s.administrative=false); }
+    public void clearNamespace(String namespace) {sessions.values().forEach(s -> { synchronized(s) { if(namespace.equals(s.namespace)) s.namespace=null; } });}
+    @Override public Void beforeCommit(org.neo4j.graphdb.event.TransactionData data, Transaction tx, GraphDatabaseService db) {
+        var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;
+        TxState state=transactions.get(internal.kernelTransaction().getTransactionSequenceNumber());
+        if(state==null||state.tokenHash==null)return null;
+        Session session=sessions.get(state.tokenHash);
+        if(session==null)throw ExceptionHandler.fail("AUTH_FAILED","Session revoked before commit");
+        synchronized(session) {
+            long now=sessionTime();
+            if(now-session.touched>=1_800_000L||now-session.created>=28_800_000L)throw ExceptionHandler.fail("SESSION_EXPIRED","Session expired before commit");
+        }
+        Node user=tx.findNode(Label.label("User"),"id",session.actor);
+        if(user==null||(!state.selfAccountChange&&!Boolean.TRUE.equals(user.getProperty("enabled",false))))throw ExceptionHandler.fail("AUTH_FAILED","Account unavailable before commit");
+        if(state.privileged&&!state.selfAccountChange&&!"administrator".equals(user.getProperty("serverRole","user")))throw ExceptionHandler.fail("FORBIDDEN","Administrator required before commit");
+        return null;
+    }
+    @Override public void afterCommit(org.neo4j.graphdb.event.TransactionData data,Void state,GraphDatabaseService db) {}
+    @Override public void afterRollback(org.neo4j.graphdb.event.TransactionData data,Void state,GraphDatabaseService db) {}
     public void lockServer(TxState state) {
         if(state.serverLocked) return;
         acquire(state.kernel);state.serverLocked=true;
@@ -103,11 +130,12 @@ public final class ServerContext implements TransactionExecutionMonitor {
         try {Files.deleteIfExists(secretPath);} catch(java.io.IOException ignored) {/* Durable initialization still prevents reuse. */}
     }
     public Session authenticate(RequestContext c,String principal) {
+        guard(c.state, false);
         if(c.token==null || c.token.isEmpty()) {c.fail("AUTH_REQUIRED","Session token required");}
         var session=sessions.get(Json.hash(c.token));
         if(session==null || !session.principal.equals(principal)) {c.fail("AUTH_FAILED","Invalid session");}
         synchronized(session) {
-            long now=System.currentTimeMillis();
+            long now=sessionTime();
             if(now-session.touched>=1_800_000L || now-session.created>=28_800_000L) {sessions.remove(Json.hash(c.token));c.fail("SESSION_EXPIRED","Session expired");}
             session.touched=now;
         }
@@ -133,14 +161,15 @@ public final class ServerContext implements TransactionExecutionMonitor {
         void prune() {while(!times.isEmpty() && times.getFirst()<System.currentTimeMillis()-300_000) times.removeFirst();}
     }
     public static final class Session {
-        public final String actor,principal; public final long created=System.currentTimeMillis();
-        public long touched=created; public volatile String namespace;
-        public Session(String actor,String principal) {this.actor=actor;this.principal=principal;}
+        public final String actor,principal; public final long created;
+        public long touched; public volatile String namespace;
+        public volatile boolean administrative;
+        public Session(String actor,String principal,long created) {this.actor=actor;this.principal=principal;this.created=created;this.touched=created;}
     }
     public static final class TxState {
         public final KernelTransaction kernel;
         public String tokenHash,namespace;
-        public boolean scoped,selection,mutation,serverLocked,serverChanged;
+        public boolean scoped,selection,mutation,serverLocked,serverChanged,administrative,selfAccountChange,privileged,auditRegistered;
         public final List<Runnable> afterCommit=new ArrayList<>();
         TxState(KernelTransaction kernel) {this.kernel=kernel;}
     }

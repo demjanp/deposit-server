@@ -7,6 +7,18 @@ import java.util.stream.Stream;
 import org.neo4j.procedure.*;
 
 public class AccountAPI extends BaseAPI {
+    @Procedure(name="deposit.set.user",mode=Mode.WRITE)
+    public Stream<DataRow> setUser(@Name("request") Map<String,Object> request,@Name("context") Map<String,Object> context) {return invoke(context,c->Stream.of(new AccountService(c).setUser(request).structured(c)));}
+    @Procedure(name="deposit.set.password",mode=Mode.WRITE)
+    public Stream<ValueRow> setPassword(@Name("request") Map<String,Object> request,@Name("context") Map<String,Object> context) {return invoke(context,c->Stream.of(new AccountService(c).setPassword(request)));}
+    @Procedure(name="deposit.set.namespace",mode=Mode.WRITE)
+    public Stream<EntityRow> setNamespace(@Name("request") Map<String,Object> request,@Name("context") Map<String,Object> context) {return invoke(context,c->Stream.of(new AccountService(c).setNamespace(request).entity(c)));}
+    @Procedure(name="deposit.delete.namespace",mode=Mode.WRITE)
+    public Stream<DataRow> deleteNamespace(@Name("request") Map<String,Object> request,@Name("context") Map<String,Object> context) {return invoke(context,c->Stream.of(new AccountService(c).deleteNamespace(request).structured(c)));}
+    @Procedure(name="deposit.set.administrativeMode",mode=Mode.READ)
+    public Stream<ValueRow> setAdministrative(@Name("request") Map<String,Object> request,@Name("context") Map<String,Object> context) {return invoke(context,c->Stream.of(new AccountService(c).administrative(request,true)));}
+    @Procedure(name="deposit.get.administrativeMode",mode=Mode.READ)
+    public Stream<ValueRow> getAdministrative(@Name("request") Map<String,Object> request,@Name("context") Map<String,Object> context) {return invoke(context,c->Stream.of(new AccountService(c).administrative(request,false)));}
     @Procedure(name="deposit.utils.bootstrap",mode=Mode.WRITE)
     public Stream<DataRow> bootstrap(@Name("request") Map<String,Object> request) {return invoke(Map.of(),c->Stream.of(new AccountService(c).bootstrap(request)));}
     @Procedure(name="deposit.utils.login",mode=Mode.READ)

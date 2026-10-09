@@ -56,6 +56,10 @@ $required=@($contracts.Keys)
 $actualNames=@($gate.results | ForEach-Object name)
 $expectedNames=@($required)
 if($actualNames -contains 'archive-previous-installation') {$expectedNames+=@('archive-previous-installation');$contracts['archive-previous-installation']=@('Reset:passed')}
+if($actualNames -contains 'stage2-isolated-clock-and-commit-faults') {
+    $expectedNames+=@('stage2-isolated-clock-and-commit-faults');$contracts['stage2-isolated-clock-and-commit-faults']=@('Test:passed')
+    $selections['stage2-isolated-clock-and-commit-faults']='Stage2ProbeIT'
+}
 if(@(Compare-Object $actualNames $expectedNames).Count -or @($actualNames | Sort-Object -Unique).Count -ne $actualNames.Count) {throw 'Scenario coverage is incomplete or duplicated'}
 $testCases=New-Object System.Collections.Generic.List[object]
 $files=New-Object System.Collections.Generic.List[object]
@@ -96,6 +100,7 @@ foreach($scenario in $gate.results) {
             foreach($selection in $phase.testSelection.Split(',')) {
                 if($selection -eq 'RuntimeIT') {foreach($name in $runtimeNames) {$expectedCases.Add('org.deposit.it.RuntimeIT::'+$name)}}
                 elseif($selection -eq 'DistributionIT') {$expectedCases.Add('org.deposit.it.DistributionIT::normalDistributionExcludesProbePermissionsAndProcedures')}
+                elseif($selection -eq 'Stage2ProbeIT') {foreach($name in @('competingBootstrapAfterRollback','idleAndAbsoluteExpiryUseFixedProductionLimits','expiryBeforeCommitRollsBackDataRevisionAndReceipt','failedPasswordCommitDoesNotRevokeOrAdvance','failedDeletionCommitPreservesSelectionGraphAndReceipt','loginWaitsForPasswordResetCommit','tokensAreBoundToAuthenticatedNeo4jPrincipal')) {$expectedCases.Add('org.deposit.it.Stage2ProbeIT::'+$name)}}
                 elseif($selection.StartsWith('EnvironmentIT#')) {foreach($name in $selection.Substring(14).Split('+')) {$expectedCases.Add('org.deposit.it.EnvironmentIT::'+$name)}}
                 else {throw 'Unrecognized acceptance suite'}
             }

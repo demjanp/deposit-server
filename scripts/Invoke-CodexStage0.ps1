@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet(0,1)][int]$Stage=0,
+    [ValidateSet(0,1,2)][int]$Stage=0,
     [ValidateSet('Work','Resume','Review')][string]$Mode='Review',
     [Parameter(Mandatory=$true)][string]$WorkPackage,
     [string]$Root='C:\data_processed\Deposit_v2\stage0',

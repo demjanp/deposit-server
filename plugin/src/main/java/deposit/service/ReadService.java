@@ -10,6 +10,17 @@ import org.neo4j.graphdb.Node;
 
 public final class ReadService extends BaseService {
     public ReadService(RequestContext c) {super(c);}
+    private Map<String,Object> discoveryRequest;
+    private String discoveryFingerprint;
+    private boolean discoveryMode;
+    private List<Node> namespaces(Map<String,Object> request) {
+        List<Node> nodes=repo.nodes("Namespace",Map.of()).stream().filter(n->effectiveRole(CoreRepository.id(n))!=null).toList();
+        if(request.containsKey("id")) {String id=RequestContext.uuid(request.get("id"));nodes=nodes.stream().filter(n->id.equals(CoreRepository.id(n))).toList();}
+        if(request.containsKey("name")) {String name=name(request.get("name"));nodes=nodes.stream().filter(n->name.equals(n.getProperty("name"))).toList();}
+        return nodes;
+    }
+    private Map<String,Object> namespaceData(Node n) {var data=repo.data(n);data.put("role",effectiveRole(CoreRepository.id(n)));return data;}
+    private String fingerprint(List<Map<String,Object>> data) {return Json.hash(Json.write(data));}
     private Node required(String kind,Object id) {
         Node n=repo.entity(kind,c.namespaceId,RequestContext.uuid(id));if(n==null)c.fail("NOT_FOUND",kind+" not found");return n;
     }
@@ -30,9 +41,7 @@ public final class ReadService extends BaseService {
             }
             case "Namespace" -> {
                 fields(request,"id","name");exclusive(request,"id","name");
-                nodes=repo.nodes("Namespace",Map.of()).stream().filter(n->repo.role(c.actorId,CoreRepository.id(n))!=null).toList();
-                if(request.containsKey("id")) {String id=RequestContext.uuid(request.get("id"));nodes=nodes.stream().filter(n->id.equals(CoreRepository.id(n))).toList();}
-                if(request.containsKey("name")) {String name=name(request.get("name"));nodes=nodes.stream().filter(n->name.equals(n.getProperty("name"))).toList();}
+                nodes=namespaces(request);
                 if(!request.isEmpty()&&nodes.isEmpty())c.fail("NOT_FOUND","Namespace not found");
             }
             case "Class" -> {
@@ -64,7 +73,8 @@ public final class ReadService extends BaseService {
             default -> throw new IllegalArgumentException();
         }
         var results=new ArrayList<Item>();
-        for(Node n:nodes) {checkRevision();var data=repo.data(n);if(kind.equals("Namespace"))data.put("role",repo.role(c.actorId,CoreRepository.id(n)));results.add(new Item(n,data));}
+        for(Node n:nodes) {checkRevision();var data=kind.equals("Namespace")?namespaceData(n):repo.data(n);results.add(new Item(n,data));}
+        if(kind.equals("Namespace")) {discoveryRequest=Map.copyOf(request);discoveryMode=administrativeMode();discoveryFingerprint=fingerprint(results.stream().map(Item::data).toList());}
         checkRevision();return results;
     }
     private boolean matches(Node object,Map<String,Object> filters) {
@@ -79,9 +89,11 @@ public final class ReadService extends BaseService {
     private static void exclusive(Map<String,Object> request,String a,String b) {if(request.containsKey(a)&&request.containsKey(b))throw ExceptionHandler.fail("VALIDATION_FAILED","Selectors are exclusive");}
     @Override protected void checkRevision() {
         c.state.kernel.assertOpen();
+        authenticate();
         if(System.currentTimeMillis()-c.state.kernel.startTime()>30_000)c.fail("CANCELLED","Read timeout exceeded");
         long current=c.namespaceId==null?c.server.revision(c.state):repo.sequence(c.namespaceId);
         if(current!=c.revision)throw ExceptionHandler.error("REVISION_CONFLICT","Revision changed during read",c,false,Map.of("currentRevision",current));
+        if(discoveryRequest!=null&&(discoveryMode!=administrativeMode()||!discoveryFingerprint.equals(fingerprint(namespaces(discoveryRequest).stream().map(this::namespaceData).toList()))))c.fail("REVISION_CONFLICT","Accessible Namespace results changed");
     }
     private Stream<Item> stream(List<Item> items) {
         var iterator=items.iterator();
@@ -102,8 +114,9 @@ public final class ReadService extends BaseService {
         String scope=c.namespaceId==null?"server":c.namespaceId;
         String hash=Json.hash(Json.write(Json.map("kind",kind,"request",base)));
         long offset=0;
+        Map<String,Object> cursor=null;
         if(request.containsKey("cursor")) {
-            var cursor=CursorCodec.decode(c,string(request.get("cursor")));
+            cursor=CursorCodec.decode(c,string(request.get("cursor")));
             if(!scope.equals(cursor.get("scope")))c.fail("SCOPE_MISMATCH","Cursor belongs to another scope");
             if(!c.actorId.equals(cursor.get("actor"))||!hash.equals(cursor.get("hash")))c.fail("VALIDATION_FAILED","Cursor does not match request");
             if(c.namespaceId==null&&!c.server.runId.equals(cursor.get("run")))c.fail("REVISION_CONFLICT","Server run changed");
@@ -111,9 +124,10 @@ public final class ReadService extends BaseService {
             offset=((Number)cursor.get("offset")).longValue();
         }
         long pinned=c.revision;List<Item> items=select(kind,base);if(pinned!=c.revision)c.fail("REVISION_CONFLICT","Revision changed during page");
+        if(cursor!=null && kind.equals("Namespace") && (!Objects.equals(cursor.get("discovery"),discoveryFingerprint)||!Objects.equals(cursor.get("administrative"),discoveryMode)))c.fail("REVISION_CONFLICT","Accessible Namespace results or mode changed");
         if(offset<0||offset>items.size())c.fail("VALIDATION_FAILED","Invalid cursor offset");
         int end=(int)Math.min(items.size(),offset+size);var data=Json.map("items",items.subList((int)offset,end).stream().map(Item::data).toList());var meta=c.meta();
-        if(end<items.size())meta.put("nextCursor",CursorCodec.encode(c,Json.map("scope",scope,"actor",c.actorId,"hash",hash,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900_000L,"run",c.server.runId)));
+        if(end<items.size())meta.put("nextCursor",CursorCodec.encode(c,Json.map("scope",scope,"actor",c.actorId,"hash",hash,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900_000L,"run",c.server.runId,"discovery",discoveryFingerprint,"administrative",administrativeMode())));
         checkRevision();return new DataRow(data,meta);
     }
 }

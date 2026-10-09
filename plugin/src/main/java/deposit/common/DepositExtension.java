@@ -8,7 +8,7 @@ import org.neo4j.monitoring.Monitors;
 
 /** Pinned Neo4j adapter: callbacks run after commit/rollback, including read-only transactions. */
 public final class DepositExtension extends ExtensionFactory<DepositExtension.Dependencies> {
-    public interface Dependencies {NamedDatabaseId databaseId();Monitors monitors();org.neo4j.kernel.internal.GraphDatabaseAPI database();}
+    public interface Dependencies {NamedDatabaseId databaseId();Monitors monitors();org.neo4j.kernel.internal.GraphDatabaseAPI database();org.neo4j.dbms.api.DatabaseManagementService management();}
     public DepositExtension() {super(ExtensionType.DATABASE,"deposit-core");}
     @Override public Lifecycle newInstance(ExtensionContext context,Dependencies dependencies) {
         return new LifecycleAdapter() {
@@ -18,6 +18,7 @@ public final class DepositExtension extends ExtensionFactory<DepositExtension.De
                 if(dependencies.databaseId().isSystemDatabase()) return;
                 server=ServerContext.attach(dependencies.databaseId().databaseId().uuid());
                 dependencies.monitors().addMonitorListener(server);
+                dependencies.management().registerTransactionEventListener(dependencies.databaseId().name(),server);
                 initializer=Thread.ofVirtual().name("deposit-schema-initialization").start(()->{
                     try {
                         if(!dependencies.database().isAvailable(60_000))throw new IllegalStateException("Database unavailable for schema initialization");
@@ -28,7 +29,7 @@ public final class DepositExtension extends ExtensionFactory<DepositExtension.De
             }
             @Override public void shutdown() {
                 if(initializer!=null)initializer.interrupt();
-                if(server!=null) {dependencies.monitors().removeMonitorListener(server);ServerContext.detach(dependencies.databaseId().databaseId().uuid());}
+                if(server!=null) {dependencies.management().unregisterTransactionEventListener(dependencies.databaseId().name(),server);dependencies.monitors().removeMonitorListener(server);ServerContext.detach(dependencies.databaseId().databaseId().uuid());}
             }
         };
     }

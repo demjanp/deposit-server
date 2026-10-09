@@ -138,6 +138,7 @@ public final class CoreRepository {
         Node receipt=tx.createNode(Label.label("DepositReceipt"));
         receipt.setProperty("scope",scope);receipt.setProperty("operationId",c.operationId);receipt.setProperty("actorId",c.actorId);receipt.setProperty("requestHash",hash);
         receipt.setProperty("outcome",Json.write(outcome.data()));receipt.setProperty("revision",c.revision);
+        receipt.setProperty("administrativeMode",c.state.scoped?c.state.administrative:(c.session!=null&&c.session.administrative));
         if(outcome.node()!=null) {receipt.setProperty("nodeKind",kind(outcome.node()));receipt.setProperty("entityId",id(outcome.node()));}
         if(outcome.rel()!=null) {receipt.setProperty("relId",id(outcome.rel()));receipt.setProperty("objectId",id(outcome.rel().getStartNode()));}
         Node binding=tx.createNode(Label.label("DepositOperationBinding"));binding.setProperty("actorId",c.actorId);binding.setProperty("operationId",c.operationId);binding.setProperty("scope",scope);
@@ -149,5 +150,30 @@ public final class CoreRepository {
         return new Outcome(node,rel,Json.read((String)receipt.getProperty("outcome")));
     }
     public boolean bootstrapped() {return find("DepositInitialization","id","bootstrap")!=null || nodes("User",Map.of("serverRole","administrator")).size()>0;}
+    public void validateOwnerDeactivation(String actor) {
+        for(Node ns:nodes("Namespace",Map.of())) {
+            String namespace=id(ns);
+            if(!"owner".equals(role(actor,namespace)))continue;
+            boolean other=roles(namespace).stream().anyMatch(r->"owner".equals(r.get("role"))&&!actor.equals(r.get("userId"))&&Boolean.TRUE.equals(find("User","id",r.get("userId")).getProperty("enabled",false)));
+            if(!other)throw ExceptionHandler.fail("VALIDATION_FAILED","Reassign Namespace ownership before disabling this account");
+        }
+    }
+    public List<String> deleteNamespace(String namespace) {
+        var deleted=new TreeSet<String>();
+        // Receipts and operation bindings intentionally survive deletion, without native links.
+        for(String label:List.of("Object","Descriptor","ClassDescriptor","Class")) {
+            for(Node node:nodes(label,Map.of("namespaceId",namespace))) {
+                deleted.add(id(node));
+                try(var edges=node.getRelationships()) {for(Relationship edge:edges) {if(edge.hasProperty("id"))deleted.add(id(edge));edge.delete();}}
+                node.delete();
+            }
+        }
+        try(var registry=tx.findNodes(Label.label("DepositEdgeIdentity"))) {
+            for(Node node:registry.stream().toList())if(((String)node.getProperty("key")).startsWith(namespace+"/"))node.delete();
+        }
+        Node ns=namespace(namespace);deleted.add(namespace);
+        try(var edges=ns.getRelationships()) {for(Relationship edge:edges)edge.delete();}ns.delete();
+        return List.copyOf(deleted);
+    }
     public void markBootstrap() {tx.createNode(Label.label("DepositInitialization")).setProperty("id","bootstrap");}
 }

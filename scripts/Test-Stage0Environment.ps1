@@ -3,7 +3,8 @@ param(
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,45}$')][string]$RunPrefix=('environment-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmss')),
     [ValidateRange(1024,65534)][int]$Port=17770,
     [string]$InputsFile,
-    [switch]$Build
+    [switch]$Build,
+    [switch]$Stage2Checks
 )
 # Final Windows environment suite; collection also requires the live runner fixture.
 . "$PSScriptRoot\Inputs.ps1"
@@ -56,6 +57,7 @@ try {
     Scenario 'authenticated-readiness' {Phase Start}
     Scenario 'native-runtime-authentication-and-fixtures' {Phase Test -Options @{TestSelection='EnvironmentIT#nativeRuntimeAndApoc,RuntimeIT'}}
     Scenario 'independent-client-sessions' {Phase Test -Options @{TestSelection='EnvironmentIT#independentClientSessions'}}
+    if($Stage2Checks) {Scenario 'stage2-isolated-clock-and-commit-faults' {Phase Test -Options @{TestSelection='Stage2ProbeIT'}}}
     Scenario 'graceful-restart-and-persistent-uuid-maps' {
         Phase Stop; Phase Start
         Phase Test -Options @{TestMode='verify';TestSelection='RuntimeIT,EnvironmentIT#independentClientSessions'}

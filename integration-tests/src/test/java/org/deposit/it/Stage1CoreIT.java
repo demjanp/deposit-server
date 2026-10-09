@@ -168,7 +168,7 @@ class Stage1CoreIT {
         Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage1-graph-state.txt"),graph.stream().map(r->r.asMap().toString()).reduce("",(a,b)->a+b+"\n"));
     }
     @Test @Order(9) void catalogAndFailureEnvelopeMatchPublicConventions() {
-        var catalog=query("SHOW PROCEDURES YIELD name,signature WHERE name STARTS WITH 'deposit.' RETURN name,signature",Map.of());assertEquals(42,catalog.size());
+        var catalog=query("SHOW PROCEDURES YIELD name,signature WHERE name STARTS WITH 'deposit.' RETURN name,signature",Map.of());assertEquals(48,catalog.size());
         for(var procedure:catalog) {
             String name=procedure.get("name").asString(),signature=procedure.get("signature").asString();assertTrue(signature.contains("meta :: MAP"),signature);
             if(name.endsWith("Page")) {assertTrue(signature.contains("data :: MAP"));assertFalse(signature.contains("node :: NODE"));}

@@ -36,7 +36,7 @@ public abstract class BaseService {
     protected void scoped(String minimum) {
         authenticate();
         if(c.state.selection) c.fail("VALIDATION_FAILED","Selection and scoped work need separate transactions");
-        if(!c.state.scoped) {c.state.namespace=c.session.namespace;c.state.scoped=true;}
+        if(!c.state.scoped) {c.state.namespace=c.session.namespace;c.state.administrative=c.session.administrative;c.state.scoped=true;}
         c.namespaceId=c.state.namespace;
         if(c.namespaceId==null) c.fail("NO_ACTIVE_NAMESPACE","Select a Namespace first");
         requireRole(c.namespaceId,minimum);
@@ -44,11 +44,14 @@ public abstract class BaseService {
     }
     protected void requireRole(String namespace,String minimum) {
         Node ns=repo.find("Namespace","id",namespace);
-        String role=repo.role(c.actorId,namespace);
+        String role=effectiveRole(namespace);
         if(ns==null || role==null) c.fail("NOT_FOUND","Namespace not found");
         if(rank(role)<rank(minimum)) c.fail("FORBIDDEN","Insufficient Namespace role");
     }
-    protected void admin(Node user) {if(!"administrator".equals(user.getProperty("serverRole"))) c.fail("FORBIDDEN","Administrator required");}
+    protected String effectiveRole(String namespace) {return AuthorizationAdapter.role(c,repo,namespace);}
+    protected boolean administrativeMode() {return AuthorizationAdapter.mode(c,repo.find("User","id",c.actorId));}
+    protected void authorizationChange() {c.server.guard(c.state,true);}
+    protected void admin(Node user) {if(!"administrator".equals(user.getProperty("serverRole"))) c.fail("FORBIDDEN","Administrator required");c.state.privileged=true;}
     public static int rank(String role) {return switch(role){case "viewer"->1;case "editor"->2;case "owner"->3;default->0;};}
     protected void readContext() {if(c.operationId!=null||c.expectedRevision!=null) c.fail("VALIDATION_FAILED","Read/session controls do not accept mutation context");}
     protected void mutation() {

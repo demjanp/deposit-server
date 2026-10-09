@@ -25,6 +25,7 @@ public final class AccountService extends ActionService {
         fields(request,"bootstrapSecret","username","password");
         String secret=string(request.get("bootstrapSecret")),username=name(request.get("username")),password=password(request.get("password"));
         if(c.state.mutation||c.state.selection||c.state.scoped)c.fail("VALIDATION_FAILED","Bootstrap must be the transaction's only action");c.state.mutation=true;
+        c.server.guard(c.state,false);
         c.server.lockServer(c.state);
         if(c.server.revision(c.state)!=0||repo.bootstrapped()||!c.server.acceptsBootstrap(secret))c.fail("AUTH_FAILED","Bootstrap unavailable or secret invalid");
         Node user=repo.create("User",null,null,Json.map("username",username,"passwordHash",hashPassword(password),"enabled",true,"serverRole","administrator"));
@@ -32,6 +33,7 @@ public final class AccountService extends ActionService {
         return new DataRow(repo.data(user),c.meta());
     }
     public LoginRow login(Map<String,Object> request) {
+        c.server.guard(c.state,false);
         fields(request,"username","password");String username=name(request.get("username")),password=string(request.get("password"));
         var internal=(InternalTransaction)c.tx;
         String origin=internal.clientInfo().clientAddress();
@@ -43,7 +45,7 @@ public final class AccountService extends ActionService {
         if(password.getBytes(StandardCharsets.UTF_8).length>72)valid=false;
         if(valid) {char[] chars=password.toCharArray();try {valid=OpenBSDBCrypt.checkPassword((String)user.getProperty("passwordHash"),chars);}finally {Arrays.fill(chars,'\0');}}
         if(!valid) {c.server.loginFailed(username,origin);c.fail("AUTH_FAILED","Invalid credentials");}
-        String token=ServerContext.randomToken();var session=new ServerContext.Session(CoreRepository.id(user),internal.securityContext().subject().executingUser());
+        String token=ServerContext.randomToken();var session=new ServerContext.Session(CoreRepository.id(user),internal.securityContext().subject().executingUser(),c.server.sessionTime());
         c.state.afterCommit.add(()->c.server.sessions.put(Json.hash(token),session));c.revision=c.server.revision(c.state);
         return new LoginRow(token,Json.map("user",repo.data(user),"expiresAt",Instant.ofEpochMilli(session.created+1_800_000).toString()),c.meta());
     }
@@ -72,6 +74,120 @@ public final class AccountService extends ActionService {
             repo.setRole(c.actorId,CoreRepository.id(ns),"owner");var data=repo.data(ns);data.put("role","owner");return new Change(new Outcome(ns,null,data),true);
         });
     }
+    private static boolean matchesPassword(Node user, String password) {
+        if(password.getBytes(StandardCharsets.UTF_8).length>72)return false;
+        char[] chars=password.toCharArray();
+        try {return OpenBSDBCrypt.checkPassword((String)user.getProperty("passwordHash"),chars);}
+        finally {Arrays.fill(chars,'\0');}
+    }
+    public Outcome setUser(Map<String,Object> request) {
+        fields(request,"userId","enabled","serverRole","newPassword");
+        authorizationChange();admin(authenticate());
+        return action("deposit.set.user",request,true,null,()->{
+            Node target=repo.find("User","id",RequestContext.uuid(request.get("userId")));
+            if(target==null)c.fail("NOT_FOUND","User not found");
+            var changes=new LinkedHashMap<String,Object>();
+            if(request.containsKey("enabled")) {
+                if(!(request.get("enabled") instanceof Boolean))c.fail("VALIDATION_FAILED","enabled must be Boolean");
+                changes.put("enabled",request.get("enabled"));
+            }
+            if(request.containsKey("serverRole")) {
+                String role=string(request.get("serverRole"));
+                if(!Set.of("user","administrator").contains(role))c.fail("VALIDATION_FAILED","Invalid serverRole");
+                changes.put("serverRole",role);
+            }
+            boolean enabled=(Boolean)changes.getOrDefault("enabled",target.getProperty("enabled"));
+            String role=(String)changes.getOrDefault("serverRole",target.getProperty("serverRole"));
+            if((!enabled||!role.equals("administrator")) && Boolean.TRUE.equals(target.getProperty("enabled")) && AuthorizationAdapter.administrator(target)) {
+                boolean other=repo.nodes("User",Map.of("enabled",true,"serverRole","administrator")).stream().anyMatch(u->!u.equals(target));
+                if(!other)c.fail("VALIDATION_FAILED","Server requires an enabled administrator");
+            }
+            if(!enabled)repo.validateOwnerDeactivation(CoreRepository.id(target));
+            boolean passwordChanged=false;
+            if(request.containsKey("newPassword")) {
+                String value=password(request.get("newPassword"));
+                passwordChanged=!matchesPassword(target,value);
+                if(passwordChanged)changes.put("passwordHash",hashPassword(value));
+            }
+            boolean disabled=Boolean.TRUE.equals(target.getProperty("enabled"))&&!enabled;
+            boolean demoted=AuthorizationAdapter.administrator(target)&&!role.equals("administrator");
+            boolean changed=repo.update(target,changes,c.actorId);
+            String targetId=CoreRepository.id(target);
+            if(changed&&targetId.equals(c.actorId))c.state.selfAccountChange=true;
+            if(passwordChanged||disabled)c.state.afterCommit.add(()->c.server.revokeUser(targetId));
+            if(demoted)c.state.afterCommit.add(()->c.server.demoteUser(targetId));
+            return new Change(outcome(target),changed);
+        });
+    }
+    public ValueRow setPassword(Map<String,Object> request) {
+        fields(request,"oldPassword","newPassword");authorizationChange();
+        Outcome result=action("deposit.set.password",request,true,null,()->{
+            Node user=repo.find("User","id",c.actorId);
+            if(!matchesPassword(user,string(request.get("oldPassword"))))c.fail("AUTH_FAILED","Invalid credentials");
+            String value=password(request.get("newPassword"));boolean changed=!matchesPassword(user,value);
+            if(changed) {
+                repo.update(user,Map.of("passwordHash",hashPassword(value)),c.actorId);
+                c.state.afterCommit.add(()->c.server.revokeUser(c.actorId));
+            }
+            return new Change(new Outcome(null,null,Json.map("changed",changed)),changed);
+        });
+        return new ValueRow(result.data().get("changed"),c.meta());
+    }
+    public ValueRow administrative(Map<String,Object> request,boolean set) {
+        fields(request,set?new String[]{"enabled"}:new String[]{});readContext();Node user=authenticate();
+        boolean enabled=c.state.scoped?c.state.administrative:c.session.administrative;
+        if(set) {
+            if(c.state.scoped||c.state.mutation)c.fail("VALIDATION_FAILED","Mode changes require separate transaction");
+            if(!(request.get("enabled") instanceof Boolean))c.fail("VALIDATION_FAILED","enabled must be Boolean");
+            enabled=(Boolean)request.get("enabled");if(enabled)admin(user);
+            boolean committed=enabled;var session=c.session;c.state.selection=true;
+            c.state.afterCommit.add(()->session.administrative=committed);
+        }
+        c.revision=c.server.revision(c.state);return new ValueRow(enabled,c.meta());
+    }
+    public Outcome setNamespace(Map<String,Object> request) {
+        fields(request,"name","description");
+        return action("deposit.set.namespace",request,false,"owner",()->{
+            Node namespace=repo.namespace(c.namespaceId);var changes=new LinkedHashMap<String,Object>();
+            if(request.containsKey("name")) {
+                String value=name(request.get("name"));Node other=repo.find("Namespace","name",value);
+                if(other!=null&&!other.equals(namespace))c.fail("DUPLICATE","Namespace name exists");changes.put("name",value);
+            }
+            if(request.containsKey("description"))changes.put("description",string(request.get("description")));
+            boolean changed=repo.update(namespace,changes,c.actorId);
+            var result=outcome(namespace);result.data().put("role",effectiveRole(c.namespaceId));
+            if(changed)result.data().put("sequence",repo.sequence(c.namespaceId)+1);
+            return new Change(result,changed);
+        });
+    }
+    public Outcome deleteNamespace(Map<String,Object> request) {
+        fields(request,"confirmNamespaceName","expectedNamespaceRevision");
+        authorizationChange();Node user=authenticate();mutation();
+        repo.lockActor(c.actorId);c.server.lockServer(c.state);
+        // Completed deletion recovery is server-scoped, independent of selection and live target.
+        Node receipt=repo.receipt("server",c.operationId);
+        if(receipt!=null&&receipt.hasProperty("deletedNamespaceId")) {
+            if(!c.actorId.equals(receipt.getProperty("actorId")))admin(user);
+            String target=(String)receipt.getProperty("deletedNamespaceId");
+            if(!deletionHash(request,target).equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
+            c.revision=c.server.revision(c.state);return repo.replay(receipt,"server");
+        }
+        Node binding=repo.binding(c.actorId,c.operationId);
+        if(binding!=null&&!"server".equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
+        if(receipt!=null)c.fail("OPERATION_MISMATCH","Operation belongs to another request");
+        scoped("owner");String target=c.namespaceId;repo.lockNamespace(target);requireRole(target,"owner");
+        long sequence=repo.sequence(target);c.revision=c.server.revision(c.state);checkRevision();
+        if(integer(request.get("expectedNamespaceRevision"))!=sequence)c.fail("REVISION_CONFLICT","Namespace revision changed");
+        if(!string(request.get("confirmNamespaceName")).equals(repo.namespace(target).getProperty("name")))c.fail("VALIDATION_FAILED","Namespace name confirmation changed");
+        String hash=deletionHash(request,target);List<String> deleted=repo.deleteNamespace(target);
+        c.namespaceId=null;c.state.serverChanged=true;c.revision=c.server.revision(c.state);
+        Outcome result=new Outcome(null,null,Json.map("deletedIds",deleted));repo.saveReceipt(c,"server",hash,result);
+        repo.receipt("server",c.operationId).setProperty("deletedNamespaceId",target);
+        c.state.afterCommit.add(()->c.server.clearNamespace(target));return result;
+    }
+    private String deletionHash(Map<String,Object> request,String target) {
+        return CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.delete.namespace","request",request,"targetNamespaceId",target,"expectedRevision",c.expectedRevision)));
+    }
     public EntityRow active(Map<String,Object> request,boolean set) {
         fields(request,set?new String[]{"name","id"}:new String[]{});readContext();authenticate();
         String namespace=c.state.scoped?c.state.namespace:c.session.namespace;
@@ -83,10 +199,11 @@ public final class AccountService extends ActionService {
             String committedNamespace=namespace;var session=c.session;c.state.selection=true;c.state.afterCommit.add(()->session.namespace=committedNamespace);
         }
         if(namespace==null) {var meta=c.meta();meta.put("revision",null);return new EntityRow(null,null,meta);}
-        requireRole(namespace,"viewer");c.namespaceId=namespace;c.revision=repo.sequence(namespace);Node ns=repo.namespace(namespace);var data=repo.data(ns);data.put("role",repo.role(c.actorId,namespace));return new EntityRow(ns,data,c.meta());
+        requireRole(namespace,"viewer");c.namespaceId=namespace;c.revision=repo.sequence(namespace);Node ns=repo.namespace(namespace);var data=repo.data(ns);data.put("role",effectiveRole(namespace));return new EntityRow(ns,data,c.meta());
     }
     public Outcome setRole(Map<String,Object> request) {
         fields(request,"userId","role");
+        authorizationChange();
         return action("deposit.set.namespaceRole",request,false,"owner",()->{
             String userId=RequestContext.uuid(request.get("userId"));
             if(!request.containsKey("role"))c.fail("VALIDATION_FAILED","role required");
