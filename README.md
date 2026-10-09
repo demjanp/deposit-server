@@ -1,6 +1,6 @@
 # deposit-server
 
-The active development build is **0.0.0-stage5.5**, with OCFL beneath Deposit resource management. See [the storage implementation and cumulative gate](docs/stage55-ocfl-storage.md) and [current acceptance status](../deposit-hub/implementation_status.md). Run scripts/Invoke-Stage55Gate.ps1 for current cumulative acceptance. Earlier stage descriptions below are historical; original Stage 4/5 gates must be revalidated against their preserved source snapshots.
+The active development build is **0.0.0-stage6**, with the accepted DQL engine and OCFL beneath Deposit resource management. See [Stage 6 acceptance and evidence](../deposit-hub/implementation_status.md#stage-6-accepted-query-foundation) and [query contracts](../deposit-hub/deposit-server-query-syntax.md). Run `scripts/Invoke-Stage6Gate.ps1` for current cumulative acceptance. Stage 7 is next. Earlier stage descriptions below are historical; original gates must be revalidated against their preserved source snapshots.
 
 Deposit's Stage 0 runtime foundation uses published Neo4j/APOC Core **2026.05.0**, Spatial **2025.10.0**, Temurin **21.0.12.1+1** and explicitly selected **Cypher 25**. This is the highest compatible published Neo4j/Spatial combination verified on 9 October 2026. [Selection, implementation and evidence](../deposit-hub/implementation_status.md#stage-0-implementation-and-evidence).
 

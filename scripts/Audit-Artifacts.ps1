@@ -16,7 +16,7 @@ $dependencyLock=Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock)
 $files+=@($dependencyLock.dependencies | Where-Object ship | ForEach-Object {Get-Item (Join-Path $Root "cache\spatial-dependencies\$($_.file)")})
 $ocflLock=Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json
 $files+=@($ocflLock.dependencies | Where-Object ship | ForEach-Object {Get-Item (Join-Path $Root "cache\ocfl-dependencies\$($_.file)")})
-$files+=Get-Item (Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage5.5.jar')
+$files+=Get-Item (Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage6.jar')
 foreach($file in $files) {
     $jar=[IO.Compression.ZipFile]::OpenRead($file.FullName)
     try {

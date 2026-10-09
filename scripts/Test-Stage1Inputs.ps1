@@ -13,6 +13,7 @@ $initial=Get-Stage0Inputs $server
 if((Get-Stage0Inputs $server).sha256 -ne $initial.sha256) {throw 'Input fingerprints are not deterministic'}
 [IO.File]::WriteAllText((Join-Path $server '.git\ignored'),'metadata')
 [IO.File]::WriteAllText((Join-Path $hub 'implementation_status.md'),'status')
+[IO.File]::WriteAllText((Join-Path $hub 'TODO.md'),'navigation only')
 if((Get-Stage0Inputs $server).sha256 -ne $initial.sha256) {throw 'Metadata/status changed source identity'}
 [IO.File]::WriteAllText((Join-Path $server 'new.java'),'added')
 if((Get-Stage0Inputs $server).sha256 -eq $initial.sha256) {throw 'New file was omitted'}

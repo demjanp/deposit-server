@@ -5,7 +5,7 @@ function Get-Stage0Inputs([string]$Repo) {
         # Enumerate the filesystem, including new files, without consulting Git.
         $files = @(Get-SourceFiles $base $base)
         foreach ($relative in ($files | Sort-Object -Unique)) {
-            if($entry.name -eq 'hub' -and $relative -eq 'implementation_status.md') {continue}
+            if($entry.name -eq 'hub' -and $relative -in @('implementation_status.md','TODO.md')) {continue}
             $file=Join-Path $entry.path $relative
             $hash='DELETED'
             if (Test-Path -LiteralPath $file -PathType Leaf) {$hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()}

@@ -50,7 +50,7 @@ class RuntimeIT {
 
     @Test @Order(1) void discoveryAndRuntime() {
         var rows=query("CALL deposit.get.info()"); assertEquals(1,rows.size());
-        assertEquals(Map.of("version","0.0.0-stage5.5"), rows.getFirst().get("data").asMap());
+        assertEquals(Map.of("version","0.0.0-stage6"), rows.getFirst().get("data").asMap());
         var meta=rows.getFirst().get("meta").asMap();
         assertEquals(Set.of("namespaceId","revision","operationId","requestId","nextCursor"),meta.keySet());
         for (String key:List.of("namespaceId","revision","operationId","nextCursor")) assertNull(meta.get(key));

@@ -5,6 +5,11 @@ import org.neo4j.graphdb.*;
 
 public final class Results {
     private Results() {}
+    public static class QueryRowResult {
+        public final Map<String,Object> data,presence,meta;
+        public final List<Map<String,Object>> columns;
+        public QueryRowResult(Map<String,Object> data,List<Map<String,Object>> columns,Map<String,Object> presence,Map<String,Object> meta){this.data=data;this.columns=columns;this.presence=presence;this.meta=meta;}
+    }
     public static class EntityRow {
         public final Node node; public final Map<String,Object> data,meta;
         public EntityRow(Node node,Map<String,Object> data,Map<String,Object> meta) {this.node=node;this.data=data;this.meta=meta;}

@@ -16,7 +16,7 @@ public final class ReadinessClient {
             var session=driver.session()) {
             var info=session.run("CYPHER 25 CALL deposit.get.info() YIELD data RETURN data.version AS version",
                 TransactionConfig.builder().withTimeout(Duration.ofSeconds(10)).build()).single();
-            if(!"0.0.0-stage5.5".equals(info.get("version").asString())) throw new IllegalStateException("Unexpected Deposit version");
+            if(!"0.0.0-stage6".equals(info.get("version").asString())) throw new IllegalStateException("Unexpected Deposit version");
             System.out.println("Authenticated Deposit discovery ready: " + info.get("version").asString());
         } catch(Exception failure) {
             System.err.println("Deposit readiness rejected: " + failure.getMessage());
