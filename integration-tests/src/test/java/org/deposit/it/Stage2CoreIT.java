@@ -25,6 +25,17 @@ class Stage2CoreIT {
     }
     static String login(String username,String password){return special("deposit.utils.login",m("username",username,"password",password)).get("value").asString();}
     static long sr(String token){return revision(call("deposit.get.user",Map.of(),ctx(token)));}
+    static long observedServerRevision(String token){
+        Object observed=query("CALL deposit.get.session($token) YIELD data RETURN data",m("token",token)).getFirst().get("data").get("observed").asMap().get("server");
+        return ((Number)observed).longValue();
+    }
+    static void releaseAndRefreshServer(String token){
+        query("CALL deposit.action.release($token)",m("token",token));
+        query("CALL deposit.utils.refresh('server',$token)",m("token",token));
+    }
+    static org.neo4j.driver.Record positionalUserPatch(String token,String id){
+        return query("CALL deposit.set.user({id:$id},{serverRole:'user'},$token) YIELD data RETURN data",m("id",id,"token",token)).getFirst();
+    }
     static long nr(String token){return revision(call("deposit.get.activeNamespace",Map.of(),ctx(token)));}
     static String user(String role){String name="stage2-user-"+(++serial);String id=id(call("deposit.create.user",m("username",name,"password",PASS,"serverRole",role),write(admin,sr(admin))));identities.put(name,id);return id;}
     static String username(String id){return call("deposit.get.user",m("userId",id),ctx(admin)).get("data").get("username").asString();}
@@ -45,13 +56,17 @@ class Stage2CoreIT {
         error("VALIDATION_FAILED",()->update(own,m("serverRole","user")));
         assertEquals(before,sr(admin));
         String other=user("administrator");String token=login(username(other),PASS);long expected=sr(admin);
+        releaseAndRefreshServer(admin);releaseAndRefreshServer(token);
+        assertEquals(expected,observedServerRevision(admin),"Primary admin did not observe the race revision");
+        assertEquals(expected,observedServerRevision(token),"Second admin did not observe the race revision");
         try(var pool=Executors.newFixedThreadPool(2)) {
             var start=new CountDownLatch(1);
-            var a=pool.submit(()->{start.await();return call("deposit.set.user",m("userId",own,"serverRole","user"),write(admin,expected));});
-            var b=pool.submit(()->{start.await();return call("deposit.set.user",m("userId",other,"serverRole","user"),write(token,expected));});start.countDown();
-            int successes=0;for(var task:List.of(a,b))try {task.get(15,TimeUnit.SECONDS);successes++;}catch(ExecutionException e){assertTrue(e.getCause().getMessage().contains("REVISION_CONFLICT"));}assertEquals(1,successes);
+            var a=pool.submit(()->{start.await();return positionalUserPatch(admin,own);});
+            var b=pool.submit(()->{start.await();return positionalUserPatch(token,other);});start.countDown();
+            int successes=0;for(var task:List.of(a,b))try {task.get(15,TimeUnit.SECONDS);successes++;}catch(ExecutionException e){Throwable cause=e.getCause();assertTrue(cause.getMessage().contains("\"code\":\"REVISION_CONFLICT\""),"Unexpected concurrent demotion failure: "+cause.getClass().getName()+": "+cause.getMessage());}assertEquals(1,successes,"Exactly one administrator demotion must commit");
         }
         assertEquals(1,query("MATCH (u:User {enabled:true,serverRole:'administrator'}) RETURN count(u) AS n",Map.of()).getFirst().get("n").asInt());
+        assertEquals(expected+1,sr(token),"The concurrent server actions must advance the revision once");
         boolean selfDemoted=call("deposit.get.user",m("userId",own),ctx(admin)).get("data").get("serverRole").asString().equals("user");
         if(selfDemoted){call("deposit.set.user",m("userId",own,"serverRole","administrator"),write(token,sr(token)));update(other,m("serverRole","user"));}
     }
