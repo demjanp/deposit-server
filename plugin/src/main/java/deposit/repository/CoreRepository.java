@@ -16,12 +16,13 @@ public final class CoreRepository {
         try(var nodes=tx.findNodes(Label.label(label),properties)) {return nodes.hasNext()?nodes.next():null;}
     }
     public Node entity(String label,String namespace,String id) {return find(label,Map.of("namespaceId",namespace,"id",id));}
+    public ResourceIterator<Node> scanNodes(String label,Map<String,Object> properties){return properties.isEmpty()?tx.findNodes(Label.label(label)):tx.findNodes(Label.label(label),properties);}
     public List<Node> nodes(String label,Map<String,Object> properties) {
         try(var nodes=properties.isEmpty()?tx.findNodes(Label.label(label)):tx.findNodes(Label.label(label),properties)) {return nodes.stream().sorted(Comparator.comparing(n->(String)n.getProperty("id",""))).toList();}
     }
     public static String id(Entity n) {return (String)n.getProperty("id");}
     public static String kind(Node node) {
-        for(String label:List.of("Namespace","User","Class","Object","ClassDescriptor","Descriptor","UserTool")) if(node.hasLabel(Label.label(label))) return label;
+        for(String label:List.of("Namespace","User","Class","Object","ClassDescriptor","Descriptor","Pattern","UserTool","DGeometry","DResource")) if(node.hasLabel(Label.label(label))) return label;
         throw new IllegalStateException("Unknown domain label");
     }
     public Node namespace(String id) {return find("Namespace","id",id);}
@@ -64,7 +65,7 @@ public final class CoreRepository {
         n.setProperty("updatedAt",now);n.setProperty("updatedBy",actor==null?id(n):actor);
         properties.forEach((k,v)->{if(v!=null)n.setProperty(k,property(v));});
         if(label.equals("User"))tx.createNode(Label.label("DepositActorLock")).setProperty("id",id(n));
-        if(namespace!=null && Set.of("Class","Object","UserTool").contains(label)) namespace(namespace).createRelationshipTo(n,RelationshipType.withName("CONTAINS"));
+        if(namespace!=null && Set.of("Class","Object","Pattern","UserTool").contains(label)) namespace(namespace).createRelationshipTo(n,RelationshipType.withName("CONTAINS"));
         return n;
     }
     private static Object property(Object v) {if(v instanceof List<?> list) return list.stream().mapToDouble(x->((Number)x).doubleValue()).toArray();return v;}
@@ -139,7 +140,8 @@ public final class CoreRepository {
         var resourceEdge=descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING);
         if(resourceEdge!=null){var r=resources();Node resource=resourceEdge.getEndNode();r.lock(id(resource));resourceEdge.delete();r.changed(resource);}
     }
-    public Map<String,Object> data(Node node) {
+    public Map<String,Object> data(Node node) {return data(node,true);}
+    public Map<String,Object> data(Node node,boolean includeOwnedValues) {
         String kind=kind(node);var result=new LinkedHashMap<String,Object>();
         if(!kind.equals("User")) result.put("kind",kind);
         for(String key:List.of("id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","username","enabled","serverRole","description","depositVersion","historyMode","historyEpochId","sequence","order","comment","type")) {
@@ -147,12 +149,15 @@ public final class CoreRepository {
         }
         if(!kind.equals("User") && !result.containsKey("namespaceId"))result.put("namespaceId",kind.equals("Namespace")?id(node):null);
         if(node.hasProperty("position"))result.put("position",Arrays.stream((double[])node.getProperty("position")).boxed().toList());
-        if(kind.equals("Object")) {result.put("classId",id(objectClass(node)));var descriptors=new LinkedHashMap<String,Object>();for(Node d:children(node,"Descriptor")) descriptors.put((String)d.getProperty("name"),descriptorValue(d));result.put("descriptors",descriptors);}
-        if(kind.equals("Class"))result.put("descriptors",children(node,"ClassDescriptor").stream().map(this::data).toList());
+        if(kind.equals("Object")) {result.put("classId",id(objectClass(node)));var descriptors=new LinkedHashMap<String,Object>();if(includeOwnedValues)for(Node d:children(node,"Descriptor")) descriptors.put((String)d.getProperty("name"),descriptorValue(d));result.put("descriptors",descriptors);}
+        if(kind.equals("Class")&&includeOwnedValues)result.put("descriptors",children(node,"ClassDescriptor").stream().map(this::data).toList());
         if(kind.equals("Descriptor")) {result.put("objectId",node.getProperty("ownerId"));result.put("value",descriptorValue(node));}
         if(kind.equals("Descriptor")&&descriptorType(node).equals("DGeometry")){Node g=geometry().geometry(node);result.put("geometryId",g==null?null:id(g));}
         if(kind.equals("ClassDescriptor"))result.put("classId",node.getProperty("ownerId"));
+        if(kind.equals("Pattern"))result.put("definition",Json.read((String)node.getProperty("definition")));
         if(kind.equals("UserTool"))result.put("data",node.getProperty("data"));
+        if(kind.equals("DGeometry")){for(String key:List.of("geometryType","wkt","srid","verticalSrid","axisOrder","dimensions"))if(node.hasProperty(key))result.put(key,node.getProperty(key));var edge=node.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.INCOMING);if(edge!=null)result.put("descriptorId",id(edge.getStartNode()));}
+        if(kind.equals("DResource"))for(String key:List.of("filename","bytes","mediaType","checksum","state"))if(node.hasProperty(key))result.put(key,node.getProperty(key));
         return result;
     }
     public static String kind(Relationship rel) {
@@ -265,7 +270,7 @@ public final class CoreRepository {
         for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))) {loc.setProperty("leaseUntil",0L);loc.setProperty("everAttached",true);resources().orphan(loc);}
         for(Node grant:nodes("DepositExportGrant",Map.of("namespaceId",namespace)))grant.setProperty("expires",0L);
         // Receipts and operation bindings intentionally survive deletion, without native links.
-        for(String label:List.of("Object","Descriptor","ClassDescriptor","Class","UserTool")) {
+        for(String label:List.of("Object","Descriptor","ClassDescriptor","Class","Pattern","UserTool")) {
             for(Node node:nodes(label,Map.of("namespaceId",namespace))) {
                 deleted.add(id(node));
                 try(var edges=node.getRelationships()) {for(Relationship edge:edges) {if(edge.hasProperty("id"))deleted.add(id(edge));edge.delete();}}

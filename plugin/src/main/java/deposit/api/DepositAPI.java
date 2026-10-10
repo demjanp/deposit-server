@@ -200,4 +200,26 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p95(@Name("recoveryKey") String a0,@Name("token") String token) { return invokePublic(token,"deposit.action.resume",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.action.release",mode=Mode.READ)
  public Stream<PublicResults.ValueRow> p96(@Name("token") String token) { return invokePublic(token,"deposit.action.release",Arrays.asList()).map(PublicResults::value); }
+ @Procedure(name="deposit.create.pattern",mode=Mode.WRITE)
+ public Stream<PublicResults.NodeRow> p97(@Name("name") String a0,@Name("definition") Map<String,Object> a1,@Name("properties") Map<String,Object> a2,@Name("token") String token) { return invokePublic(token,"deposit.create.pattern",Arrays.asList(a0,a1,a2)).map(PublicResults::node); }
+ @Procedure(name="deposit.set.pattern",mode=Mode.WRITE)
+ public Stream<PublicResults.NodeRow> p98(@Name("pattern") Object a0,@Name("patch") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.set.pattern",Arrays.asList(a0,a1)).map(PublicResults::node); }
+ @Procedure(name="deposit.delete.pattern",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p99(@Name("pattern") Object a0,@Name("token") String token) { return invokePublic(token,"deposit.delete.pattern",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.pattern",mode=Mode.READ)
+ public Stream<PublicResults.NodeRow> p100(@Name("selection") Object a0,@Name("token") String token) { return invokePublic(token,"deposit.get.pattern",Arrays.asList(a0)).map(PublicResults::node); }
+ @Procedure(name="deposit.get.patternPage",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p101(@Name("selection") Object a0,@Name("page") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.get.patternPage",Arrays.asList(a0,a1)).map(PublicResults::page); }
+ @Procedure(name="deposit.get.objectsByPattern",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p102(@Name("pattern") Object a0,@Name("values") Map<String,Object> a1,@Name("rules") Map<String,Object> a2,@Name("token") String token) { return invokePublic(token,"deposit.get.objectsByPattern",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.objectsByPatternPage",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p103(@Name("pattern") Object a0,@Name("values") Map<String,Object> a1,@Name("rules") Map<String,Object> a2,@Name("page") Map<String,Object> a3,@Name("token") String token) { return invokePublic(token,"deposit.get.objectsByPatternPage",Arrays.asList(a0,a1,a2,a3)).map(PublicResults::page); }
+ @Procedure(name="deposit.get.data",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p104(@Name("rootIds") List<String> a0,@Name("options") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.get.data",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.namespaceData",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p105(@Name("options") Map<String,Object> a0,@Name("token") String token) { return invokePublic(token,"deposit.get.namespaceData",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.save.data",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p106(@Name("selection") Map<String,Object> a0,@Name("options") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.save.data",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.load.data",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p107(@Name("resourceId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.load.data",Arrays.asList(a0)).map(PublicResults::data); }
 }

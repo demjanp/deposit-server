@@ -20,8 +20,8 @@ public final class ChangeSet {
             dependencies.addAll(HistoryCodec.schemaReferences(after,a));dependencies.addAll(HistoryCodec.schemaReferences(state,b));
             if(fields.contains("*")) {
                 dependencies.add(id);
-                for(var image:after.values())if(HistoryCodec.references(image).contains(id))dependencies.add((String)image.get("id"));
-                for(var image:state.values())if(HistoryCodec.references(image).contains(id))dependencies.add((String)image.get("id"));
+                for(var image:after.values())if(HistoryCodec.references(image).contains(id))dependencies.add(HistoryCodec.key(image));
+                for(var image:state.values())if(HistoryCodec.references(image).contains(id))dependencies.add(HistoryCodec.key(image));
             }
         }
         after=HistoryCodec.copy(state);

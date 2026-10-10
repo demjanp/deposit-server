@@ -115,7 +115,7 @@ class Stage65CoreIT {
         Path root=Path.of(System.getProperty("user.dir")).toAbsolutePath();while(root!=null&&!Files.exists(root.resolve("runtime/public-api.json")))root=root.getParent();assertNotNull(root);
         var catalog=new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(root.resolve("runtime/public-api.json")));
         var rows=query("SHOW PROCEDURES YIELD name,signature,mode WHERE name STARTS WITH 'deposit.' RETURN name,signature,mode",m());assertEquals(catalog.size()+1,rows.size());
-        var types=Map.of("String","STRING","Object","ANY","Map<String,Object>","MAP","List<Object>","LIST<ANY>","Long","INTEGER","Boolean","BOOLEAN","byte[]","BYTEARRAY");
+        var types=Map.of("String","STRING","Object","ANY","Map<String,Object>","MAP","List<Object>","LIST<ANY>","List<String>","LIST<STRING>","Long","INTEGER","Boolean","BOOLEAN","byte[]","BYTEARRAY");
         for(var spec:catalog){String name=spec.get("name").asText();var row=rows.stream().filter(r->r.get("name").asString().equals(name)).findFirst().orElseThrow();assertEquals(spec.get("mode").asText(),row.get("mode").asString(),name);
             var params=new ArrayList<String>();for(var arg:spec.get("args"))params.add(arg.get("name").asText()+" :: "+types.get(arg.get("type").asText()));
             if(!Set.of("deposit.utils.login","deposit.utils.bootstrap").contains(name))params.add("token :: STRING");

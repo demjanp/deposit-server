@@ -13,7 +13,7 @@ public final class SchemaRepository {
             tx.execute("CREATE INDEX deposit_revision_sequence IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.sequence)").close();
             tx.execute("CREATE INDEX deposit_revision_epoch_sequence IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.historyEpochId,n.sequence)").close();
             tx.execute("CREATE INDEX deposit_snapshot_epoch IF NOT EXISTS FOR (n:DepositSnapshot) ON (n.namespaceId,n.historyEpochId)").close();
-            for(String label:List.of("Class","Object","Descriptor","ClassDescriptor","UserTool","DGeometry","DResource")) {
+            for(String label:List.of("Class","Object","Descriptor","ClassDescriptor","Pattern","UserTool","DGeometry","DResource")) {
                 tx.execute("CREATE CONSTRAINT deposit_"+label+"_id IF NOT EXISTS FOR (n:`"+label+"`) REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
             }
             for(String label:List.of("Namespace","User")) {
@@ -22,6 +22,7 @@ public final class SchemaRepository {
             for(String label:List.of("Descriptor","ClassDescriptor")) tx.execute("CREATE CONSTRAINT deposit_"+label+"_name IF NOT EXISTS FOR (n:"+label+") REQUIRE (n.namespaceId,n.ownerId,n.name) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_class_name IF NOT EXISTS FOR (n:Class) REQUIRE (n.namespaceId,n.name) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_tool_name IF NOT EXISTS FOR (n:UserTool) REQUIRE (n.namespaceId,n.name) IS UNIQUE").close();
+            tx.execute("CREATE CONSTRAINT deposit_pattern_name IF NOT EXISTS FOR (n:Pattern) REQUIRE (n.namespaceId,n.name) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_namespace_name IF NOT EXISTS FOR (n:Namespace) REQUIRE n.name IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_username IF NOT EXISTS FOR (n:User) REQUIRE n.username IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_receipt IF NOT EXISTS FOR (n:DepositReceipt) REQUIRE (n.scope,n.operationId) IS UNIQUE").close();

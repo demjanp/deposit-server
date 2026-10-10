@@ -53,6 +53,7 @@ public final class SessionActionService extends BaseService {
             c.actionScope=scope(procedure,arguments);c.operational=operational(procedure);
             c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:baseline(c.actionScope);
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);
+            if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData").contains(procedure))authorize(procedure,c.actionScope,exportRole(procedure,arguments));
             if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",baseline(active()));
         }
         synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}
@@ -65,6 +66,12 @@ public final class SessionActionService extends BaseService {
         return scope.equals("server")?"server":active();
     }
     private boolean operational(String procedure){return ProcedureCatalog.spec(procedure).scope().equals("operational")||procedure.equals("deposit.admin.pruneResources");}
+    private String exportRole(String procedure,List<Object> arguments){
+        Object options=null;
+        if(procedure.equals("deposit.save.data")||procedure.equals("deposit.get.data"))options=arguments!=null&&arguments.size()>1?arguments.get(1):null;
+        else if(procedure.equals("deposit.get.namespaceData"))options=arguments!=null&&!arguments.isEmpty()?arguments.get(0):null;
+        return options instanceof Map<?,?> m&&Boolean.TRUE.equals(ValueCodec.map(m).get("includeHistory"))?"owner":"viewer";
+    }
     private long baseline(String scope){
         Long value=c.state.observations.get(scope);if(value!=null)return value;
         c.fail("REVISION_CONFLICT","No observed revision; refresh this scope before writing");return -1;
@@ -81,11 +88,12 @@ public final class SessionActionService extends BaseService {
         if(c.state.scoped||c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","Session/action controls require a separate transaction");
         lease();c.state.selection=true;
     }
-    private void authorize(String procedure,String scope){
+    private void authorize(String procedure,String scope){authorize(procedure,scope,null);}
+    private void authorize(String procedure,String scope,String roleOverride){
         if(procedure.equals("deposit.admin.pruneResources")||Set.of("deposit.create.user","deposit.set.user").contains(procedure))admin(repo.find("User","id",c.actorId));
         if(!scope.equals("server")){
             if(!scope.equals(active()))c.fail("SCOPE_MISMATCH","Action belongs to another Namespace");
-            String role=Set.of("deposit.set.namespace","deposit.delete.all","deposit.set.namespaceRole","deposit.set.versioningType","deposit.set.versionTag","deposit.utils.restore").contains(procedure)?"owner":"editor";
+            String role=roleOverride!=null?roleOverride:Set.of("deposit.set.namespace","deposit.delete.all","deposit.set.namespaceRole","deposit.set.versioningType","deposit.set.versionTag","deposit.utils.restore").contains(procedure)?"owner":"editor";
             requireRole(scope,role);
         }
     }
@@ -94,7 +102,7 @@ public final class SessionActionService extends BaseService {
         c.expectedRevision=c.operational?null:((Number)action.getProperty("expectedRevision")).longValue();
         Node receipt=repo.receipt(c.actionScope,c.operationId);
         boolean deleted=c.procedure.equals("deposit.delete.namespace")&&receipt!=null;
-        if(!deleted)authorize(c.procedure,c.actionScope);
+        if(!deleted)authorize(c.procedure,c.actionScope,action.hasProperty("authorizationRole")?(String)action.getProperty("authorizationRole"):null);
         if(c.procedure.equals("deposit.delete.namespace")&&!deleted){String target=(String)action.getProperty("namespaceId");if(!target.equals(active()))c.fail("SCOPE_MISMATCH","Deletion target changed");requireRole(target,"owner");}
         if(receipt==null&&c.actionScope.equals("server")&&!c.server.runId.equals(action.getProperty("runId")))c.fail("REVISION_CONFLICT","Server restarted; refresh and prepare a new action");
     }
@@ -138,8 +146,9 @@ public final class SessionActionService extends BaseService {
         String hash=fingerprint(procedure,args);repo.lockActor(c.actorId);Node action=prepared.find(c.actorId,key);
         if(action!=null){prepared.lock(action);if(!hash.equals(action.getProperty("inputHash")))c.fail("OPERATION_MISMATCH","Recovery key input changed");checkAccess(action);}
         else{
-            String scope=scope(procedure,args);authorize(procedure,scope);var bindings=new LinkedHashMap<String,Object>();new ArgumentService(c,bindings,false).request(procedure,args);
+            String scope=scope(procedure,args);String authorizationRole=Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData").contains(procedure)?exportRole(procedure,args):null;authorize(procedure,scope,authorizationRole);var bindings=new LinkedHashMap<String,Object>();new ArgumentService(c,bindings,false).request(procedure,args);
             var properties=Json.map("operationId",UUID.randomUUID().toString(),"procedure",procedure,"scope",scope,"inputHash",hash,"bindings",Json.write(bindings),"runId",c.server.runId,"operational",operational(procedure));
+            if(authorizationRole!=null)properties.put("authorizationRole",authorizationRole);
             if(!operational(procedure))properties.put("expectedRevision",baseline(scope));
             if(procedure.equals("deposit.delete.namespace")){requireRole(active(),"owner");properties.put("namespaceId",active());properties.put("namespaceRevision",baseline(active()));}
             action=prepared.create(c.actorId,key,properties);
@@ -153,7 +162,7 @@ public final class SessionActionService extends BaseService {
     private void checkAccess(Node action){
         String scope=(String)action.getProperty("scope"),procedure=(String)action.getProperty("procedure");Node receipt=repo.receipt(scope,(String)action.getProperty("operationId"));
         if(procedure.equals("deposit.delete.namespace")&&receipt!=null)return;
-        authorize(procedure,scope);
+        authorize(procedure,scope,action.hasProperty("authorizationRole")?(String)action.getProperty("authorizationRole"):null);
         if(procedure.equals("deposit.delete.namespace")){String target=(String)action.getProperty("namespaceId");if(!target.equals(active()))c.fail("SCOPE_MISMATCH","Deletion target changed");requireRole(target,"owner");}
     }
     private Map<String,Object> status(Map<String,Object> request,boolean resume){
@@ -175,7 +184,7 @@ public final class SessionActionService extends BaseService {
     }
     private Map<String,Object> toData(Object entity){
         if(entity instanceof Node n){
-            String kind=CoreRepository.kind(n);if(!Set.of("Namespace","Class","Object","Descriptor","ClassDescriptor","UserTool","DGeometry","DResource").contains(kind))c.fail("VALIDATION_FAILED","Expected a public Deposit entity");
+            String kind=CoreRepository.kind(n);if(!Set.of("Namespace","Class","Object","Descriptor","ClassDescriptor","Pattern","UserTool","DGeometry","DResource").contains(kind))c.fail("VALIDATION_FAILED","Expected a public Deposit entity");
             String ns=kind.equals("Namespace")?CoreRepository.id(n):(String)n.getProperty("namespaceId",null);requireRole(ns,"viewer");
             if(!kind.equals("Namespace"))scoped("viewer");
             if(!kind.equals("Namespace")&&!ns.equals(active()))c.fail("SCOPE_MISMATCH","Entity belongs to another Namespace");c.namespaceId=ns;c.revision=repo.sequence(ns);

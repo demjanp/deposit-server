@@ -47,7 +47,7 @@ public final class ReadService extends BaseService {
                 nodes=namespaces(request);
                 if(!request.isEmpty()&&nodes.isEmpty())c.fail("NOT_FOUND","Namespace not found");
             }
-            case "Class","UserTool" -> {
+            case "Class","Pattern","UserTool" -> {
                 fields(request,"id","name");exclusive(request,"id","name");
                 if(request.containsKey("id"))nodes=List.of(required(kind,request.get("id")));
                 else if(request.containsKey("name")) {Node n=repo.find(kind,Map.of("namespaceId",c.namespaceId,"name",name(request.get("name"))));if(n==null)c.fail("NOT_FOUND","Class not found");nodes=List.of(n);}

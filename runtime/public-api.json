@@ -1589,5 +1589,214 @@
     "mode": "READ",
     "scope": "server",
     "action": false
+  },
+  {
+    "name": "deposit.create.pattern",
+    "args": [
+      {
+        "name": "name",
+        "type": "String",
+        "binding": "name"
+      },
+      {
+        "name": "definition",
+        "type": "Map<String,Object>",
+        "binding": "definition"
+      },
+      {
+        "name": "properties",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.delete.pattern",
+    "args": [
+      {
+        "name": "pattern",
+        "type": "Object",
+        "binding": "@Pattern:id"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
+  },
+  {
+    "name": "deposit.get.data",
+    "args": [
+      {
+        "name": "rootIds",
+        "type": "List<String>",
+        "binding": "rootIds"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.get.namespaceData",
+    "args": [
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.get.objectsByPattern",
+    "args": [
+      {
+        "name": "pattern",
+        "type": "Object",
+        "binding": "pattern"
+      },
+      {
+        "name": "values",
+        "type": "Map<String,Object>",
+        "binding": "values"
+      },
+      {
+        "name": "rules",
+        "type": "Map<String,Object>",
+        "binding": "rules"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.objectsByPatternPage",
+    "args": [
+      {
+        "name": "pattern",
+        "type": "Object",
+        "binding": "pattern"
+      },
+      {
+        "name": "values",
+        "type": "Map<String,Object>",
+        "binding": "values"
+      },
+      {
+        "name": "rules",
+        "type": "Map<String,Object>",
+        "binding": "rules"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.pattern",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Pattern"
+      }
+    ],
+    "output": "node",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.patternPage",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Object",
+        "binding": "?Pattern"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.load.data",
+    "args": [
+      {
+        "name": "resourceId",
+        "type": "String",
+        "binding": "resourceId"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.save.data",
+    "args": [
+      {
+        "name": "selection",
+        "type": "Map<String,Object>",
+        "binding": "selection"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.set.pattern",
+    "args": [
+      {
+        "name": "pattern",
+        "type": "Object",
+        "binding": "@Pattern:id"
+      },
+      {
+        "name": "patch",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
+    ],
+    "output": "node",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": true
   }
 ]

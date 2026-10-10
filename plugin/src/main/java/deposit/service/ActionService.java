@@ -32,8 +32,10 @@ public abstract class ActionService extends BaseService {
         c.revision=serverScope?c.server.revision(c.state):repo.sequence(scope);checkRevision();
         boolean scientific=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")||Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure));
         var history=new deposit.repository.HistoryRepository(c.tx,repo);
-        if(scientific&&!"disabled".equals(repo.namespace(scope).getProperty("historyMode")))c.journal=new ChangeSet(history.capture(scope));
+        Map<String,Map<String,Object>> beforeState=serverScope?Map.of():history.capture(scope);
+        if(scientific&&!"disabled".equals(repo.namespace(scope).getProperty("historyMode")))c.journal=new ChangeSet(beforeState);
         Change change=work.get();
+        if(!serverScope){var patterns=new PatternService(c);boolean canonicalized=patterns.canonicalizeResolvedDeclarations();Map<String,Map<String,Object>> resulting=history.capture(scope);patterns.validateNamespace();patterns.validateDeclarationDeletion(beforeState,resulting);if(canonicalized&&!change.changed())change=new Change(change.outcome(),true);}
         if(change.changed()) {
             if(serverScope) {c.state.serverChanged=true;c.revision=c.server.revision(c.state);}
             else {repo.advanceNamespace(scope,c.actorId);c.revision=repo.sequence(scope);}

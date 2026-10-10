@@ -27,6 +27,17 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.get.classDescriptor",new Spec("namespace",false,List.of("?ClassDescriptor")));
   SPECS.put("deposit.get.classDescriptorPage",new Spec("namespace",false,List.of("?ClassDescriptor","+")));
   SPECS.put("deposit.create.userTool",new Spec("namespace",true,List.of("name","+")));
+  SPECS.put("deposit.create.pattern",new Spec("namespace",true,List.of("name","definition","+")));
+  SPECS.put("deposit.set.pattern",new Spec("namespace",true,List.of("@Pattern:id","+")));
+  SPECS.put("deposit.delete.pattern",new Spec("namespace",true,List.of("@Pattern:id")));
+  SPECS.put("deposit.get.pattern",new Spec("namespace",false,List.of("?Pattern")));
+  SPECS.put("deposit.get.patternPage",new Spec("namespace",false,List.of("?Pattern","+")));
+  SPECS.put("deposit.get.objectsByPattern",new Spec("namespace",false,List.of("pattern","values","rules")));
+  SPECS.put("deposit.get.objectsByPatternPage",new Spec("namespace",false,List.of("pattern","values","rules","+")));
+  SPECS.put("deposit.get.data",new Spec("operational",true,List.of("rootIds","+")));
+  SPECS.put("deposit.get.namespaceData",new Spec("operational",true,List.of("+")));
+  SPECS.put("deposit.save.data",new Spec("operational",true,List.of("selection","+")));
+  SPECS.put("deposit.load.data",new Spec("namespace",false,List.of("resourceId")));
   SPECS.put("deposit.set.userTool",new Spec("namespace",true,List.of("@UserTool:id","+")));
   SPECS.put("deposit.delete.userTool",new Spec("namespace",true,List.of("@UserTool:id")));
   SPECS.put("deposit.get.userTool",new Spec("namespace",false,List.of("?UserTool")));

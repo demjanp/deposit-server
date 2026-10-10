@@ -66,6 +66,7 @@ public final class DomainService extends ActionService {
             case "ClassDescriptor" -> fields(request,"classId","name","type","order","comment");
             case "Descriptor" -> fields(request,"objectId","name","value");
             case "UserTool" -> fields(request,"name","data","comment");
+            case "Pattern" -> fields(request,"name","definition","comment");
             default -> throw new IllegalArgumentException();
         }
             Node n;
@@ -82,6 +83,11 @@ public final class DomainService extends ActionService {
                     if(repo.find("UserTool",Map.of("namespaceId",c.namespaceId,"name",toolName))!=null)c.fail("DUPLICATE","User Tool name exists");
                     n=repo.create("UserTool",c.namespaceId,c.actorId,Json.map("name",toolName,"data",data,"comment",string(request.getOrDefault("comment",""))));
                 }
+                case "Pattern" -> {
+                    String patternName=name(request.get("name"));
+                    Map<String,Object> definition=PatternService.normalizeDefinition(ValueCodec.map(request.get("definition")));
+                    n=repo.create("Pattern",c.namespaceId,c.actorId,Json.map("name",patternName,"definition",Json.write(definition),"comment",string(request.getOrDefault("comment",""))));
+                }
                 default -> throw new IllegalArgumentException();
             }
             return new Change(outcome(n),true);
@@ -94,6 +100,7 @@ public final class DomainService extends ActionService {
             case "ClassDescriptor" -> fields(request,"id","order","comment");
             case "Descriptor" -> fields(request,"objectId","name","value");
             case "UserTool" -> fields(request,"id","name","data","comment");
+            case "Pattern" -> fields(request,"id","name","definition","comment");
             default -> throw new IllegalArgumentException();
         }
             if(kind.equals("Descriptor")) {if(!request.containsKey("value"))c.fail("VALIDATION_FAILED","value required");var result=descriptor(required("Object",request.get("objectId")),name(request.get("name")),request.get("value"),false);return new Change(outcome(result.descriptor()),result.changed());}
@@ -105,9 +112,15 @@ public final class DomainService extends ActionService {
             if(request.containsKey("order"))updates.put("order",integer(request.get("order")));
             if(request.containsKey("comment"))updates.put("comment",string(request.get("comment")));
             if(request.containsKey("data"))updates.put("data",string(request.get("data")));
+            if(kind.equals("Pattern")&&request.containsKey("definition"))updates.put("definition",Json.write(PatternService.normalizeDefinition(ValueCodec.map(request.get("definition")))));
+            String previousClassName=kind.equals("Class")?(String)n.getProperty("name",""):null;
             boolean changed=repo.update(n,updates,c.actorId);
+            if(kind.equals("Class")&&updates.containsKey("name")&&!Objects.equals(previousClassName,updates.get("name")))changed=renamePatternReferences(previousClassName,(String)updates.get("name"))||changed;
             if(kind.equals("Object")&&descriptors(n,request)) {repo.audit(n,c.actorId);changed=true;}
             return new Change(outcome(n),changed);
+    }
+    private boolean renamePatternReferences(String oldName,String newName){
+        boolean changed=false;for(Node pattern:repo.nodes("Pattern",Map.of("namespaceId",c.namespaceId))){Map<String,Object> definition=Json.read((String)pattern.getProperty("definition"));Map<String,Object> objects=ValueCodec.map(definition.get("objects"));boolean edit=false;for(Object raw:objects.values()){var role=ValueCodec.map(raw);if(oldName.equals(role.get("className"))){role.put("className",newName);edit=true;}}if(edit){repo.update(pattern,Map.of("definition",Json.write(definition)),c.actorId);changed=true;}}return changed;
     }
     public Outcome remove(String kind,Map<String,Object> request) {return action("deposit.delete."+lower(kind),request,false,"editor",()->removeCommand(kind,request));}
     private Change removeCommand(String kind,Map<String,Object> request) {
@@ -168,7 +181,7 @@ public final class DomainService extends ActionService {
     public static final Set<String> COMMANDS;
     static {
         var names=new HashSet<String>();
-        for(String entity:List.of("class","object","descriptor","relationship","classRelationship","userTool"))
+        for(String entity:List.of("class","object","descriptor","relationship","classRelationship","userTool","pattern"))
             for(String verb:List.of("create","set","delete"))names.add("deposit."+verb+"."+entity);
         names.addAll(List.of("deposit.create.classDescriptor","deposit.delete.classDescriptor","deposit.set.classDescriptor","deposit.set.membership","deposit.set.namespace","deposit.delete.all"));
         COMMANDS=Set.copyOf(names);
@@ -226,7 +239,7 @@ public final class DomainService extends ActionService {
         fields(request,"confirmNamespaceName");
         if(!string(request.get("confirmNamespaceName")).equals(repo.namespace(c.namespaceId).getProperty("name")))c.fail("VALIDATION_FAILED","Namespace name confirmation changed");
         var deleted=new ArrayList<String>();
-        for(String kind:List.of("Object","Class","UserTool"))for(Node n:repo.nodes(kind,Map.of("namespaceId",c.namespaceId))) {c.state.kernel.assertOpen();repo.remove(n,deleted);}
+        for(String kind:List.of("Object","Class","Pattern","UserTool"))for(Node n:repo.nodes(kind,Map.of("namespaceId",c.namespaceId))) {c.state.kernel.assertOpen();repo.remove(n,deleted);}
         deleted.sort(String::compareTo);return new Change(new Outcome(null,null,Json.map("deletedIds",deleted)),!deleted.isEmpty());
     }
     private void ensureClassRelationship(Relationship edge) {

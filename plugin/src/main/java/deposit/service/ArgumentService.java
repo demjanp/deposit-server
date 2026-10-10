@@ -65,7 +65,7 @@ public final class ArgumentService extends BaseService {
                 String ownerId=kind.equals("Descriptor")?RequestContext.uuid(map.get(ownerKey)):identity("Class",map.get(ownerKey),path+".class",false);
                 node=repo.find(kind,Map.of("namespaceId",namespace(),"ownerId",ownerId,"name",name(map.get("name"))));
             }else c.fail("VALIDATION_FAILED","Expected a name or {id: UUID}");
-        }else if(Set.of("Class","UserTool","Namespace","User").contains(kind)){
+        }else if(Set.of("Class","Pattern","UserTool","Namespace","User").contains(kind)){
             String field=kind.equals("User")?"username":"name";String name=name(selector);
             node=Set.of("Namespace","User").contains(kind)?repo.find(kind,field,name):repo.find(kind,Map.of("namespaceId",namespace(),field,name));
             if(node==null&&infer){bindings.put(path,null);return null;}
@@ -77,7 +77,7 @@ public final class ArgumentService extends BaseService {
     }
     private Map<String,Object> selection(String kind,Object value,String path){
         if(value==null)return new LinkedHashMap<>();
-        if(Set.of("Class","UserTool","Namespace","User").contains(kind)){
+        if(Set.of("Class","Pattern","UserTool","Namespace","User").contains(kind)){
             if(value instanceof Map<?,?> map&&map.isEmpty())return new LinkedHashMap<>();
             return Json.map(kind.equals("User")?"userId":"id",identity(kind,value,path,false));
         }
