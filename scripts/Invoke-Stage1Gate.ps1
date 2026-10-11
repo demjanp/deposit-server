@@ -7,6 +7,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 $root='C:\data_processed\Deposit_v2\stage0'; $repo=Split-Path $PSScriptRoot -Parent
+$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
+try {
 $accepted=Get-Content "$root\stage0-checkpoint.json" -Raw | ConvertFrom-Json
 if($accepted.status -ne 'accepted') {throw 'Accepted Stage 0 prerequisite required'}
 $priorHash=(Get-FileHash "$root\stage0-checkpoint.json" -Algorithm SHA256).Hash
@@ -81,3 +83,5 @@ try {
 } finally {
     if($checkpoint.status -ne 'accepted') {try {Phase Stop} catch {Write-Warning 'Inspect the owned server process; stop failed'}}
 }
+} finally { $gateLock.Dispose() }
+if($checkpoint.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" -Apply } catch { Write-Warning "Stage 1 was accepted, but evidence cleanup failed: $($_.Exception.Message)" } }

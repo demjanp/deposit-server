@@ -26,6 +26,7 @@ try {
     & "$PSScriptRoot\Test-LiveRunner.ps1" -Name ($RunPrefix+'-live') -InputsFile $inputsFile
     & "$PSScriptRoot\Collect-Stage0.ps1" -GateName $RunPrefix -Accept
 } catch {
-    Save-Checkpoint @{stage=0;status='failed';gate=$RunPrefix;failure=$_.Exception.Message;sessionId=$env:CODEX_THREAD_ID;nextAction='Repair the reported cause, then rerun the final suite with a fresh prefix; stop after three repairs of the same cause'}
+    Save-Checkpoint @{stage=0;status='failed';gate=$RunPrefix;failure=$_.Exception.Message;sessionId=$env:CODEX_THREAD_ID;updated=[DateTime]::UtcNow.ToString('o');nextAction='Repair the reported cause, then rerun the final suite with a fresh prefix; stop after three repairs of the same cause'}
     throw
 } finally {$lock.Dispose()}
+try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" -Apply } catch { Write-Warning "Stage 0 was accepted, but evidence cleanup failed: $($_.Exception.Message)" }
