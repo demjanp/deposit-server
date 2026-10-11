@@ -56,6 +56,17 @@ criteria. If new evidence demands a material design change outside authorization
 complete unaffected work and present the question before the affected changes.
 Do not automatically update knowledge-base status or design records.
 
+Before the full acceptance gate, run a stage-relevant preflight:
+
+- When public contracts change, compare implementation declarations with the
+  project's authoritative manifests and catalogs.
+- Map each acceptance criterion and supported branch to tests that assert the
+  expected outcomes; do not treat test names alone as coverage evidence.
+- Check applicable changes against established project contracts for mutation,
+  authorization, idempotency and request context.
+- Take gate commands, prerequisites and artifact names from authoritative
+  instructions and existing gate scripts; do not infer them.
+
 ## 6. Record status
 When asked, update the authoritative implementation-status location, preserving
 its format. Distinguish implemented, verified, partially complete and blocked work.

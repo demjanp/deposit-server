@@ -20,10 +20,21 @@ public final class HistoryService extends ActionService {
             var rows=new ArrayList<Map<String,Object>>();for(Object raw:(List<?>)data.get("changes")){var row=new LinkedHashMap<>(ValueCodec.map(raw));String kind=(String)row.get("entityKind"),id=(String)row.get("entityId"),key=HistoryCodec.key(kind,id);Map<String,Object> before=state.get(key),next=after.get(key);row.put("before",portableImage(state,before));row.put("after",portableImage(after,next));rows.add(row);}data.put("changes",rows);portable.add(data);state=after;}
         return Json.map("namespaceId",c.namespaceId,"historyEpochId",epochId,"baseline",portable.getFirst(),"revisions",portable,"complete",true);
     }
-    /** Export an epoch through fixed record spools, retaining only the current image index. */
+    /** Export every retained, unexpired epoch for a persistent Namespace. */
     public Map<String,Object> historyExport(ExportRecords records){
-        enabled();String epochId=(String)root().getProperty("historyEpochId");Node epoch=history.epoch(c.namespaceId,epochId);
-        if(epoch==null)c.fail("HISTORY_UNAVAILABLE","History epoch is unavailable");
+        if(!"persistent".equals(root().getProperty("historyMode")))c.fail("HISTORY_UNAVAILABLE","Only persistent Namespace history is exported");
+        String active=(String)root().getProperty("historyEpochId",null),head=(String)root().getProperty("headRevisionId",null);
+        if(active==null||head==null)c.fail("HISTORY_UNAVAILABLE","Active history head is unavailable");
+        var epochs=new ArrayList<Map<String,Object>>();
+        for(Node epoch:repo.nodes("DepositHistoryEpoch",Map.of("namespaceId",c.namespaceId)))if(!Boolean.TRUE.equals(epoch.getProperty("expired",false)))epochs.add(historyExportEpoch(records,epoch,CoreRepository.id(epoch).equals(active)));
+        epochs.sort(Comparator.comparingLong(e->((Number)e.getOrDefault("startedSequence",0L)).longValue()));
+        Map<String,Object> activeEpoch=epochs.stream().filter(e->active.equals(e.get("id"))).findFirst().orElse(null);
+        if(activeEpoch==null||!head.equals(activeEpoch.get("headRevisionId")))c.fail("HISTORY_UNAVAILABLE","Active history epoch is missing or inconsistent");
+        return Json.map("namespaceId",c.namespaceId,"historyMode","persistent","activeEpochId",active,"headRevisionId",head,"epochs",epochs,"complete",true);
+    }
+    /** Export one epoch through fixed record spools, retaining only the current image index. */
+    private Map<String,Object> historyExportEpoch(ExportRecords records,Node epoch,boolean active){
+        String epochId=CoreRepository.id(epoch);
         var state=new ExportState(records);Set<String> seen=Collections.newSetFromMap(records.<Boolean>index());String previous=null,first=null;long sequence=-1;
         try(var revisions=c.tx.execute("MATCH (r:Revision {namespaceId:$namespaceId,historyEpochId:$epochId}) RETURN r ORDER BY r.sequence,r.id",Map.of("namespaceId",c.namespaceId,"epochId",epochId))){
             while(revisions.hasNext()){
@@ -44,8 +55,11 @@ public final class HistoryService extends ActionService {
                 metadata.put("changes",records.slice("history-changes",portableStart,records.list("history-changes").size()));records.addRevision("history-revisions",metadata);previous=id;
             }
         }catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}
-        if(first==null||!Objects.equals(previous,root().getProperty("headRevisionId",null)))c.fail("HISTORY_UNAVAILABLE","History head is unavailable");
-        return Json.map("namespaceId",c.namespaceId,"historyEpochId",epochId,"baseline",records.revisions("history-revisions").getFirst(),"revisions",records.revisions("history-revisions"),"complete",true);
+        if(first==null)c.fail("HISTORY_UNAVAILABLE","History baseline is unavailable");
+        if(active&&!Objects.equals(previous,root().getProperty("headRevisionId",null)))c.fail("HISTORY_UNAVAILABLE","History head is unavailable");
+        if(!active&&epoch.hasProperty("endedSequence")&&sequence>((Number)epoch.getProperty("endedSequence")).longValue())c.fail("HISTORY_UNAVAILABLE","Closed history epoch exceeds its end sequence");
+        var revisions=records.revisions("history-revisions");
+        return Json.map("id",epochId,"mode",epoch.getProperty("mode"),"closed",epoch.getProperty("closed",false),"startedSequence",epoch.getProperty("startedSequence",0L),"endedSequence",epoch.getProperty("endedSequence",null),"baselineRevisionId",epoch.getProperty("baselineRevisionId"),"headRevisionId",previous,"baseline",revisions.getFirst(),"revisions",revisions);
     }
     private static final class ExportState extends AbstractMap<String,Map<String,Object>> implements HistoryCodec.DeclarationState {
         final ExportRecords records;final Map<String,Long> rows;final Map<String,String> memberships,declarations;

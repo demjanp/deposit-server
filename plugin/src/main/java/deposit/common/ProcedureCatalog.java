@@ -38,6 +38,10 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.get.namespaceData",new Spec("operational",true,List.of("+")));
   SPECS.put("deposit.save.data",new Spec("operational",true,List.of("selection","+")));
   SPECS.put("deposit.load.data",new Spec("namespace",false,List.of("resourceId")));
+  SPECS.put("deposit.import.analyze",new Spec("operational",true,List.of("source","rules")));
+  SPECS.put("deposit.get.importPlan",new Spec("namespace",false,List.of("planId")));
+  SPECS.put("deposit.import.apply",new Spec("operational",true,List.of("planId","resolutions")));
+  SPECS.put("deposit.import.namespaceData",new Spec("server",true,List.of("packageResourceId")));
   SPECS.put("deposit.set.userTool",new Spec("namespace",true,List.of("@UserTool:id","+")));
   SPECS.put("deposit.delete.userTool",new Spec("namespace",true,List.of("@UserTool:id")));
   SPECS.put("deposit.get.userTool",new Spec("namespace",false,List.of("?UserTool")));

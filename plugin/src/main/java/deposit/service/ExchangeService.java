@@ -26,20 +26,22 @@ public final class ExchangeService extends BaseService {
         if(procedure.equals("deposit.load.data"))return validatePackage(request);
         if(procedure.equals("deposit.get.namespaceData")) {
             fields(request,"includeHistory");if(request.get("includeHistory")!=null&&!(request.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=Boolean.TRUE.equals(request.get("includeHistory"));
-            if(history)requireRole(c.namespaceId,"owner");
-            return readReceipt(procedure,request,()->{var snapshot=snapshot(true);return completeSnapshot(ValueCodec.map(snapshot.get("manifest")),ValueCodec.map(snapshot.get("graph")),history,true);});
+            Node ns=repo.namespace(c.namespaceId);boolean includeHistory="persistent".equals(ns.getProperty("historyMode","disabled"));
+            if(includeHistory)requireRole(c.namespaceId,"owner");
+            return readReceipt(procedure,request,()->{var snapshot=snapshot(true);return completeSnapshot(ValueCodec.map(snapshot.get("manifest")),ValueCodec.map(snapshot.get("graph")),includeHistory,true);});
         }
         if(procedure.equals("deposit.get.data")) {
             if(request.get("rootIds")!=null&&!(request.get("rootIds") instanceof List<?>))c.fail("VALIDATION_FAILED","rootIds must be a list");
             List<?> rawRoots=request.get("rootIds") instanceof List<?> list?list:List.of();var rootSet=new TreeSet<String>();for(Object raw:rawRoots)rootSet.add(RequestContext.uuid(raw));List<?> roots=List.copyOf(rootSet);
             Map<String,Object> options=new LinkedHashMap<>(request);options.remove("rootIds");fields(options,"maxHops","rootClassBoundary","includeHistory");
-            if(options.get("includeHistory")!=null&&!(options.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=Boolean.TRUE.equals(options.get("includeHistory"));if(history)requireRole(c.namespaceId,"owner");
+            if(options.get("includeHistory")!=null&&!(options.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=Boolean.TRUE.equals(options.get("includeHistory"));
             long hops=integer(options.getOrDefault("maxHops",3L));if(hops<0||hops>10)c.fail("VALIDATION_FAILED","maxHops must be between zero and ten");
             Object rootBoundaryValue=options.getOrDefault("rootClassBoundary",true);if(!(rootBoundaryValue instanceof Boolean))c.fail("VALIDATION_FAILED","rootClassBoundary must be Boolean");boolean rootBoundary=(Boolean)rootBoundaryValue;
-            boolean whole=roots.isEmpty();return readReceipt(procedure,request,()->{var full=snapshot(whole);var manifest=ValueCodec.map(full.get("manifest"));
+            boolean whole=roots.isEmpty();boolean includeHistory=whole&&"persistent".equals(repo.namespace(c.namespaceId).getProperty("historyMode","disabled"));if(includeHistory)requireRole(c.namespaceId,"owner");return readReceipt(procedure,request,()->{var full=snapshot(whole);var manifest=ValueCodec.map(full.get("manifest"));
                 if(whole&&(options.containsKey("maxHops")&&hops!=3||options.containsKey("rootClassBoundary")&&!rootBoundary))c.fail("VALIDATION_FAILED","Whole-Namespace export does not accept subgraph traversal options");
                 Map<String,Object> graph=ValueCodec.map(full.get("graph"));if(!whole){var filtered=subgraph(graph,roots,(int)hops,rootBoundary);graph=ValueCodec.map(filtered.get("graph"));manifest.put("rootIds",roots);manifest.put("maxHops",hops);manifest.put("rootClassBoundary",rootBoundary);manifest.put("boundaryReferences",filtered.get("boundaryReferences"));manifest.put("omittedEdgeCount",filtered.get("omittedEdgeCount"));}
-                return completeSnapshot(manifest,graph,history,whole);});
+                // History is a whole-Namespace capability. A subgraph package never carries it.
+                return completeSnapshot(manifest,graph,includeHistory,whole);});
         }
         if(procedure.equals("deposit.save.data"))return savePackage(request);
         c.fail("VALIDATION_FAILED","Unsupported exchange operation");return Map.of();
@@ -66,7 +68,7 @@ public final class ExchangeService extends BaseService {
             "userTools",wholeNamespace?data("UserTool"):List.of(),"resources",resourceRecords);
         if(repo.sequence(c.namespaceId)!=pinned)c.fail("REVISION_CONFLICT","Namespace changed during export collection");
         var manifest=Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",c.namespaceId,
-            "name",ns.getProperty("name"),"description",ns.getProperty("description",""),"depositVersion",ns.getProperty("depositVersion",""),
+            "name",ns.getProperty("name"),"description",ns.getProperty("description",""),"depositVersion",ns.getProperty("depositVersion",""),"historyMode",ns.getProperty("historyMode","disabled"),
             "exportedRevision",pinned,"createdAt",c.timestamp.toString(),"rootIds",List.of(),"scope",wholeNamespace?"namespace":"subgraph","files",Map.of());
         return Json.map("manifest",manifest,"graph",graph);
     }
@@ -86,6 +88,7 @@ public final class ExchangeService extends BaseService {
         graph.put("resources",records.list("final-resources"));
     }
     private Map<String,Object> completeSnapshot(Map<String,Object> manifest,Map<String,Object> graph,boolean includeHistory,boolean whole){
+        includeHistory=whole&&"persistent".equals(manifest.get("historyMode"));
         var projection=includeHistory?historyBundle(whole,graph):null;
         finalizeResources(graph,projection==null?Set.of():projection.resourceIds());manifest.put("includeHistory",includeHistory);
         var result=Json.map("manifest",manifest,"graph",graph,"history",projection==null?null:projection.history());
@@ -133,7 +136,7 @@ public final class ExchangeService extends BaseService {
     private Map<String,Object> savePackage(Map<String,Object> request) {
         fields(request,"selection","includeHistory","maxHops","rootClassBoundary");Map<String,Object> options=new LinkedHashMap<>(request);options.remove("selection");
         Map<String,Object> selection=ValueCodec.map(request.get("selection"));fields(selection,"rootIds");if(selection.containsKey("rootIds")&&!(selection.get("rootIds") instanceof List<?>))c.fail("VALIDATION_FAILED","rootIds must be a list");List<?> rawRoots=selection.get("rootIds") instanceof List<?> list?list:null;List<?> roots=rawRoots==null?null:List.copyOf(rawRoots.stream().map(RequestContext::uuid).collect(java.util.stream.Collectors.toCollection(TreeSet::new)));
-        if(options.get("includeHistory")!=null&&!(options.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=Boolean.TRUE.equals(options.get("includeHistory"));if(history)requireRole(c.namespaceId,"owner");
+        if(options.get("includeHistory")!=null&&!(options.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");
         c.state.mutation=true;repo.lockActor(c.actorId);repo.lockNamespace(c.namespaceId);long revision=repo.sequence(c.namespaceId);c.revision=revision;
         String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.save.data","request",request)));
         Node receipt=repo.receipt(c.namespaceId,c.operationId);
@@ -143,7 +146,7 @@ public final class ExchangeService extends BaseService {
             var snapshot=ValueCodec.map(content.get("manifest"));snapshot.put("exportedRevision",revision);var graphs=ValueCodec.map(content.get("graph"));
             if(whole&&(integer(options.getOrDefault("maxHops",3L))!=3||!Boolean.TRUE.equals(options.getOrDefault("rootClassBoundary",true))))c.fail("VALIDATION_FAILED","Whole-Namespace export does not accept subgraph traversal options");
             if(!whole){Object max=options.getOrDefault("maxHops",3L);long hops=integer(max);if(hops<0||hops>10)c.fail("LIMIT_EXCEEDED","maxHops must be between zero and ten");Object boundary=options.getOrDefault("rootClassBoundary",true);if(!(boundary instanceof Boolean))c.fail("VALIDATION_FAILED","rootClassBoundary must be Boolean");var filtered=subgraph(graphs,roots,(int)hops,(Boolean)boundary);graphs=ValueCodec.map(filtered.get("graph"));snapshot.put("scope","subgraph");snapshot.put("rootIds",roots);snapshot.put("maxHops",hops);snapshot.put("rootClassBoundary",boundary);snapshot.put("boundaryReferences",filtered.get("boundaryReferences"));snapshot.put("omittedEdgeCount",filtered.get("omittedEdgeCount"));}
-            var projection=history?historyBundle(whole,graphs):null;snapshot.put("includeHistory",history);
+            boolean history=whole&&"persistent".equals(snapshot.get("historyMode"));if(history)requireRole(c.namespaceId,"owner");var projection=history?historyBundle(true,graphs):null;snapshot.put("includeHistory",history);
             finalizeResources(graphs,projection==null?Set.of():projection.resourceIds());
             var result=publishPackage(snapshot,graphs,projection==null?null:projection.history());repo.saveReceipt(c,c.namespaceId,hash,new Results.Outcome(null,null,result));return result;
         }

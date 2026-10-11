@@ -1762,6 +1762,48 @@
     "action": false
   },
   {
+    "name": "deposit.import.analyze",
+    "args": [
+      {"name": "source", "type": "Object", "binding": "source"},
+      {"name": "rules", "type": "Map<String,Object>", "binding": "rules"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.get.importPlan",
+    "args": [
+      {"name": "planId", "type": "String", "binding": "planId"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.import.apply",
+    "args": [
+      {"name": "planId", "type": "String", "binding": "planId"},
+      {"name": "resolutions", "type": "List<Map<String,Object>>", "binding": "resolutions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.import.namespaceData",
+    "args": [
+      {"name": "packageResourceId", "type": "String", "binding": "packageResourceId"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
     "name": "deposit.save.data",
     "args": [
       {

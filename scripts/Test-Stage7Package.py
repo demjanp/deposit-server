@@ -103,31 +103,41 @@ def semantic(manifest, graph, history, hashes):
     if manifest["scope"]=="subgraph" and graph["userTools"]: raise ValueError("subgraph User Tools")
     revision_count=0
     if history is not None:
-        if history["namespaceId"]!=ns or not history["complete"] or history["baseline"]!=history["revisions"][0]: raise ValueError("history provenance/baseline")
-        current={};parent=None;sequence=-1
-        for revision in history["revisions"]:
-            if revision.get("parentRevisionId")!=parent or revision["sequence"]<=sequence: raise ValueError("history chain")
-            keys=set()
-            for change in revision["changes"]:
-                key=(change["entityKind"],change["entityId"])
-                if key in keys or current.get(key)!=change["before"]: raise ValueError("history before image")
-                keys.add(key)
-                for image in (change["before"],change["after"]):
-                    if image is not None and (image["kind"],image["id"],image["namespaceId"])!=(*key,ns): raise ValueError("history image identity")
-                if manifest["scope"]=="subgraph" and key[0]=="UserTool": raise ValueError("subgraph historical User Tool")
-            for change in revision["changes"]:
-                key=(change["entityKind"],change["entityId"])
-                if change["after"] is None: current.pop(key,None)
-                else: current[key]=change["after"]
-            state_check(current,resources)
-            parent=revision["revisionId"];sequence=revision["sequence"];revision_count+=1
+        if (manifest["scope"]!="namespace" or history["namespaceId"]!=ns or
+                history["historyMode"]!="persistent" or not history["complete"]):
+            raise ValueError("history provenance/mode")
+        active=None
+        epoch_ids=set()
+        for epoch in history["epochs"]:
+            if epoch["id"] in epoch_ids or epoch["baseline"]!=epoch["revisions"][0]: raise ValueError("history epoch/baseline")
+            epoch_ids.add(epoch["id"]);current={};parent=None;sequence=-1
+            if epoch["baselineRevisionId"]!=epoch["baseline"]["revisionId"] or epoch["headRevisionId"]!=epoch["revisions"][-1]["revisionId"]: raise ValueError("history epoch bounds")
+            for revision in epoch["revisions"]:
+                if revision.get("parentRevisionId")!=parent or revision["sequence"]<=sequence or revision["historyEpochId"]!=epoch["id"]: raise ValueError("history chain")
+                keys=set()
+                for change in revision["changes"]:
+                    key=(change["entityKind"],change["entityId"])
+                    if key in keys or current.get(key)!=change["before"]: raise ValueError("history before image")
+                    keys.add(key)
+                    for image in (change["before"],change["after"]):
+                        if image is not None and (image["kind"],image["id"],image["namespaceId"])!=(*key,ns): raise ValueError("history image identity")
+                for change in revision["changes"]:
+                    key=(change["entityKind"],change["entityId"])
+                    if change["after"] is None: current.pop(key,None)
+                    else: current[key]=change["after"]
+                state_check(current,resources)
+                parent=revision["revisionId"];sequence=revision["sequence"];revision_count+=1
+            if epoch["id"]==history["activeEpochId"]: active=epoch
+        if active is None or active["headRevisionId"]!=history["headRevisionId"] or active["closed"]: raise ValueError("active history head")
+    expected_history=manifest["scope"]=="namespace" and manifest["historyMode"]=="persistent"
+    if manifest["historyMode"] not in ("disabled","transient","persistent") or bool(manifest["includeHistory"])!=expected_history or ((history is not None)!=expected_history): raise ValueError("history mode/flag")
     if manifest["scope"]=="namespace" and graph["userTools"]:
         if graph["userTools"][0]["data"]!="  {not json} ?\n": raise ValueError("fixture opaque tool changed")
         counts=[d["value"] for d in graph["descriptors"] if d["name"]=="Count"]
         if counts!=[str(-(2**63))]: raise ValueError("fixture signed Integer changed")
         if not any(d["name"]=="Unknown" and d["value"] is None for d in graph["descriptors"]): raise ValueError("fixture explicit null missing")
     if manifest["scope"]=="subgraph":
-        if len(graph["objects"])!=3 or len(graph["patterns"])!=1 or not resources or manifest["omittedEdgeCount"]!=1: raise ValueError("boundary/history fixture differs")
+        if len(graph["objects"])!=3 or len(graph["patterns"])!=1 or resources or manifest["omittedEdgeCount"]!=1: raise ValueError("boundary fixture differs")
     return {"scope":manifest["scope"],"counts":{k:len(v) for k,v in graph.items()},"historyRevisions":revision_count,"sourceRevision":manifest["exportedRevision"]}
 
 def validate(path: pathlib.Path) -> None:
@@ -174,8 +184,8 @@ def validate(path: pathlib.Path) -> None:
         for name, metadata in manifest["files"].items():
             if metadata["bytes"] != hashes[name][0] or metadata["sha256"] != hashes[name][1]:
                 raise ValueError(f"manifest checksum mismatch: {name}")
-        if bool(manifest["includeHistory"]) != ("history.json" in hashes):
-            raise ValueError("history flag differs from archive")
+        if manifest.get("scope")=="subgraph" and "history.json" in hashes:
+            raise ValueError("subgraph package contains history")
         expected = {"classes", "objects", "descriptors", "geometries", "memberships",
                     "relationships", "classRelationships", "patterns", "userTools", "resources"}
         if set(graph) != expected:

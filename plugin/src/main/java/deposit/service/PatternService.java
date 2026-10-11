@@ -15,14 +15,17 @@ public final class PatternService extends BaseService {
         return PatternCodec.normalize(source);
     }
     public void validateNamespace(){
+        validateNamespace(c.namespaceId);
+    }
+    public void validateNamespace(String namespaceId){
         var schema=new TreeMap<String,Map<String,String>>();
-        for(Node clazz:repo.nodes("Class",Map.of("namespaceId",c.namespaceId))){
+        for(Node clazz:repo.nodes("Class",Map.of("namespaceId",namespaceId))){
             var declarations=new TreeMap<String,String>();
             for(Node declaration:repo.children(clazz,"ClassDescriptor"))declarations.put((String)declaration.getProperty("name"),(String)declaration.getProperty("type"));
             schema.put((String)clazz.getProperty("name"),declarations);
         }
         var definitions=new ArrayList<Map<String,Object>>();
-        for(Node pattern:repo.nodes("Pattern",Map.of("namespaceId",c.namespaceId)))definitions.add(Json.read((String)pattern.getProperty("definition")));
+        for(Node pattern:repo.nodes("Pattern",Map.of("namespaceId",namespaceId)))definitions.add(Json.read((String)pattern.getProperty("definition")));
         PatternCodec.validate(definitions,schema);
     }
     public void validateDeclarationDeletion(Map<String,Map<String,Object>> before,Map<String,Map<String,Object>> after){

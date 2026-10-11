@@ -164,11 +164,11 @@ class Stage7CoreIT {
         call("deposit.create.relationship",a1,a2,"next",m(),token);call("deposit.create.relationship",a2,a3,"next",m(),token);call("deposit.create.relationship",a2,b,"context",m(),token);
         var definition=m("objects",m("root",m("className","A","root",true),"unused",m("className","Unused","root",true)));
         String pattern=id(call("deposit.create.pattern","ApplicableFullDefinition",definition,m(),token));call("deposit.create.userTool","Opaque",m("data","  not JSON {absolute?: untouched} ?\n"),token);
-        // Remove the selected Object's resource Descriptor: its old bytes remain required by scoped history.
+        // Remove the selected Object's resource Descriptor; subgraph packages carry no history.
         call("deposit.set.object",a1,m("clearDescriptors",List.of("File")),token);
-        var inline=call("deposit.get.data",List.of(a1),m("maxHops",2L,"includeHistory",true),token).get("data");var graph=inline.get("graph");assertEquals(3,graph.get("objects").size());assertEquals(1,graph.get("patterns").size());assertEquals(pattern,graph.get("patterns").get(0).get("id").asString());assertEquals(3,graph.get("classes").size());assertEquals(0,graph.get("userTools").size());assertEquals(1,graph.get("resources").size());assertEquals(1,inline.get("manifest").get("omittedEdgeCount").asLong());
+        var inline=call("deposit.get.data",List.of(a1),m("maxHops",2L,"includeHistory",true),token).get("data");var graph=inline.get("graph");assertEquals(3,graph.get("objects").size());assertEquals(1,graph.get("patterns").size());assertEquals(pattern,graph.get("patterns").get(0).get("id").asString());assertEquals(3,graph.get("classes").size());assertEquals(0,graph.get("userTools").size());assertEquals(0,graph.get("resources").size());assertEquals(false,inline.get("manifest").get("includeHistory").asBoolean());assertEquals(1,inline.get("manifest").get("omittedEdgeCount").asLong());
         var ordinary=call("deposit.get.data",List.of(a1),m("maxHops",2L,"rootClassBoundary",false),token).get("data");assertEquals(4,ordinary.get("graph").get("objects").size());
-        var outcome=call("deposit.save.data",m("rootIds",List.of(a1)),m("maxHops",2L,"includeHistory",true),token).get("data").asMap();assertTrue(call("deposit.load.data",outcome.get("resourceId"),token).get("data").get("valid").asBoolean());retain(outcome,"subgraph-history");
+        var outcome=call("deposit.save.data",m("rootIds",List.of(a1)),m("maxHops",2L,"includeHistory",true),token).get("data").asMap();assertTrue(call("deposit.load.data",outcome.get("resourceId"),token).get("data").get("valid").asBoolean());retain(outcome,"subgraph");
     }
     @Test void exportIsOperationalAndPreparedReplayKeepsFixedBytes(){
         call("deposit.create.class","Thing",m(),token);String object=id(call("deposit.create.object","Thing",m(),token));long before=sequence();String recovery=key();

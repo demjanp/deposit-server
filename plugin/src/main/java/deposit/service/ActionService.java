@@ -18,7 +18,7 @@ public abstract class ActionService extends BaseService {
         if(serverScope)c.server.lockServer(c.state);
         if(!serverScope) {repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);}
         String scope=serverScope?"server":c.namespaceId;
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",c.expectedRevision)));
+        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",Set.of("deposit.import.analyze","deposit.import.apply").contains(procedure)?null:c.expectedRevision)));
         Node binding=repo.binding(c.actorId,c.operationId);
         if(binding!=null && !scope.equals(binding.getProperty("scope"))) c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
         Node receipt=repo.receipt(scope,c.operationId);
@@ -29,8 +29,8 @@ public abstract class ActionService extends BaseService {
             c.revision=serverScope?c.server.revision(c.state):((Number)receipt.getProperty("revision")).longValue();
             return repo.replay(receipt,scope);
         }
-        c.revision=serverScope?c.server.revision(c.state):repo.sequence(scope);checkRevision();
-        boolean scientific=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")||Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure));
+        c.revision=serverScope?c.server.revision(c.state):repo.sequence(scope);if(c.expectedRevision!=null)checkRevision();
+        boolean scientific=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")||procedure.equals("deposit.import.apply")||Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure));
         var history=new deposit.repository.HistoryRepository(c.tx,repo);
         Map<String,Map<String,Object>> beforeState=serverScope?Map.of():history.capture(scope);
         if(scientific&&!"disabled".equals(repo.namespace(scope).getProperty("historyMode")))c.journal=new ChangeSet(beforeState);

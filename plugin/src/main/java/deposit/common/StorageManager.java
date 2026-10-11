@@ -36,6 +36,7 @@ public final class StorageManager implements AutoCloseable {
         try(var tx=db.beginTx()){for(Node loc:core(tx).nodes("DepositResourceLocation",Map.of()))if(loc.hasProperty("path")||loc.hasProperty("suffix"))throw new IllegalStateException("Legacy resource records require fresh provisioning");}
         // Complete persisted purges before discovery validates any partially removed objects.
         for(String id:ids("DepositPruneItem")){collect(id);collect(id);}
+        try{expireImportPlans();}catch(java.io.IOException e){throw new IllegalStateException("Cannot expire staged import plans",e);}
         for(String id:ids("DepositResourceLocation")) {
             if(System.nanoTime()>deadline)throw new IllegalStateException("Resource recovery exceeded startup bound");
             process(id,true);
@@ -43,7 +44,12 @@ public final class StorageManager implements AutoCloseable {
         discoverOrphans();
         try{content.recoverWork();}catch(java.io.IOException e){throw new IllegalStateException("Cannot reconcile resource work",e);}
     }
-    private void tick(){try {for(String id:ids("DepositResourceLocation")){if(Thread.currentThread().isInterrupted())return;process(id,false);}for(String id:ids("DepositPruneItem"))collect(id);}catch(Exception e){diagnostic="Resource maintenance pending: "+e.getClass().getSimpleName();}}
+    private void tick(){try {expireImportPlans();for(String id:ids("DepositResourceLocation")){if(Thread.currentThread().isInterrupted())return;process(id,false);}for(String id:ids("DepositPruneItem"))collect(id);}catch(Exception e){diagnostic="Resource maintenance pending: "+e.getClass().getSimpleName();}}
+    private void expireImportPlans()throws java.io.IOException {
+        long now=server.sessionTime();List<String> expired=new ArrayList<>();
+        try(var tx=db.beginTx()){for(Node plan:core(tx).nodes("DepositImportPlan",Map.of()))if(number(plan,"expiresAt",0)<=now)expired.add(CoreRepository.id(plan));}
+        for(String id:expired)try(var tx=db.beginTx()){CoreRepository core=core(tx);Node plan=core.find("DepositImportPlan","id",id);if(plan==null||number(plan,"expiresAt",0)>now)continue;String path=plan.hasProperty("stagingPath")?text(plan,"stagingPath"):null;if(path!=null)Files.deleteIfExists(files.path(path));plan.delete();tx.commit();}
+    }
     private void process(String id,boolean recovery) {
         try(var tx=db.beginTx()) {
             CoreRepository core=core(tx);ResourceRepository r=new ResourceRepository(tx,core);Node loc=r.location(id);if(loc==null)return;
@@ -104,6 +110,7 @@ public final class StorageManager implements AutoCloseable {
         Set<String> knownIds=new HashSet<>(),knownStaging=new HashSet<>();
         try(var tx=db.beginTx()) {
             for(Node loc:core(tx).nodes("DepositResourceLocation",Map.of())) {knownIds.add(CoreRepository.id(loc));if(loc.hasProperty("stagingPath"))knownStaging.add(text(loc,"stagingPath").replace('\\','/'));}
+            for(Node plan:core(tx).nodes("DepositImportPlan",Map.of()))if(number(plan,"expiresAt",0)>server.sessionTime()&&plan.hasProperty("stagingPath"))knownStaging.add(text(plan,"stagingPath").replace('\\','/'));
         }
         String unknown="00000000-0000-0000-0000-000000000000";
         try {

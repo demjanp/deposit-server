@@ -1,10 +1,10 @@
 {
   "files": {
-    ".agents/skills/project-stage/SKILL.md": "54008d7324442ab295999116660b4be931c9afed75b2cde3c971604aa113c40d",
+    ".agents/skills/project-stage/SKILL.md": "25618ef797984c9f78db2dc4b4d1c6d9259072034ede232a053de64ba1550c2e",
     ".agents/skills/project-stage/agents/openai.yaml": "205d46937add1a9d472334d5826152e6aeed2c6815d81877eb3b3a057e018156",
     ".agents/skills/project-task/SKILL.md": "12f65f62ef05f91e01fe16506185ea376f8e51430db2e8f74f6b0e3b010b10e1",
     ".agents/skills/project-task/agents/openai.yaml": "d42f813f1017098d8e1f4d81538afbabb23309062680a96a40cf66f0df2677dd",
-    ".codex/agents/architect.toml": "a4870f01ed2db9d10bc5c902071b2f1207683eca1341e42dd766321a39edf5ae"
+    ".codex/agents/architect.toml": "2f237c52c73e5115ac1449035e3356c4b929a753fc0b76581a8aaa723d1ddc09"
   },
   "project_id": "deposit",
   "version": 1

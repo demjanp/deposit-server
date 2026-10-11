@@ -51,7 +51,7 @@ try {
   & python "$PSScriptRoot\Test-Stage7Package.py" $package | Tee-Object -FilePath (Join-Path $evidence 'independent-package-validation.log')
   if($LASTEXITCODE -ne 0){throw 'Independent package validation failed'}
   if(!(Test-Path -LiteralPath $package)){throw 'Stage 7 integration suite did not retain its package artifact'}
-  & python "$PSScriptRoot\Test-Stage7Package.py" (Join-Path $evidence 'generated-subgraph-history.zip') | Tee-Object -FilePath (Join-Path $evidence 'independent-subgraph-validation.log')
+  & python "$PSScriptRoot\Test-Stage7Package.py" (Join-Path $evidence 'generated-subgraph.zip') | Tee-Object -FilePath (Join-Path $evidence 'independent-subgraph-validation.log')
   if($LASTEXITCODE -ne 0){throw 'Independent subgraph/history validation failed'}
   foreach($suite in @('Stage55RecoveryIT#seed','Stage6RecoveryIT#seed','Stage65RecoveryIT#seed','Stage7RecoveryIT#seed')){Phase Test @{TestSelection=$suite}}
   $recovery='Stage1RecoveryIT,Stage2RecoveryIT,Stage3RecoveryIT,Stage4RecoveryIT,Stage5RecoveryIT,Stage55RecoveryIT#verify,Stage6RecoveryIT#verify,Stage65RecoveryIT#verify,Stage7RecoveryIT#verify'

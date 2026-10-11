@@ -92,6 +92,16 @@ public final class ExchangePackageCodec {
             default->value instanceof Map<?,?>?new TreeMap<>(ValueCodec.map(value)):value;
         };
     }
+    /** Decode the package's declaration-directed wire forms for repository writes. */
+    public static Object decodeValue(String type,Object value){
+        if(value==null)return null;
+        return switch(type){
+            case "Integer"->Long.parseLong((String)value);
+            case "List"->{var m=ValueCodec.map(value);String item=(String)m.get("itemType");var values=new ArrayList<>();for(Object raw:(List<?>)m.get("items"))values.add(decodeValue(item,raw));yield Json.map("itemType",item,"items",values);}
+            case "DDict"->{var out=new TreeMap<String,Object>();ValueCodec.map(value).forEach((key,raw)->{var row=ValueCodec.map(raw);String item=(String)row.get("type");out.put(key,Json.map("type",item,"value",decodeValue(item,row.get("value"))));});yield out;}
+            default->value;
+        };
+    }
     private static Object validateValue(String type,Object value)throws IOException{return validateValue(type,value,false,0);}
     private static Object validateValue(String type,Object value,boolean fingerprints,int depth)throws IOException {
         if(depth>0&&Set.of("DGeometry","DResource").contains(type))throw new IOException("Geometry/resources cannot occur in collections");
@@ -124,9 +134,28 @@ public final class ExchangePackageCodec {
         }finally{if(workspace!=null)workspace.release(mark);}
     }
     private static void validateHistory(Map<String,Object> history,Map<String,Object> graph,boolean wholeNamespace,PackageWorkspace workspace)throws IOException{
-        if(!history.keySet().equals(Set.of("namespaceId","historyEpochId","baseline","revisions","complete")))throw new IOException("Unknown or missing history bundle fields");
+        if(!wholeNamespace)throw new IOException("Subgraph packages cannot contain history");
+        if(!history.keySet().equals(Set.of("namespaceId","historyMode","activeEpochId","headRevisionId","epochs","complete")))throw new IOException("Unknown or missing history bundle fields");
+        try{PackageIdentity.canonical((String)history.get("namespaceId"));PackageIdentity.canonical((String)history.get("activeEpochId"));PackageIdentity.canonical((String)history.get("headRevisionId"));}catch(RuntimeException e){throw new IOException("Invalid history provenance identity");}
+        if(!"persistent".equals(history.get("historyMode"))||!Boolean.TRUE.equals(history.get("complete"))||!(history.get("epochs") instanceof List<?> epochs)||epochs.isEmpty())throw new IOException("History bundle is incomplete");
+        Set<String> epochIds=new HashSet<>(),revisionIds=new HashSet<>();String activeHead=null;boolean foundActive=false;
+        for(Object raw:epochs){var epoch=ValueCodec.map(raw);if(!epoch.keySet().equals(Set.of("id","mode","closed","startedSequence","endedSequence","baselineRevisionId","headRevisionId","baseline","revisions")))throw new IOException("Unknown or missing history epoch fields");
+            String id=(String)epoch.get("id");try{PackageIdentity.canonical(id);}catch(RuntimeException e){throw new IOException("Invalid history epoch identity");}if(!epochIds.add(id)||!Set.of("persistent","transient").contains(epoch.get("mode"))||!(epoch.get("closed") instanceof Boolean))throw new IOException("Invalid or duplicate history epoch");
+            metadataInteger(epoch.get("startedSequence"));if(epoch.get("endedSequence")!=null)metadataInteger(epoch.get("endedSequence"));
+            if(!(epoch.get("revisions") instanceof List<?> revisions)||revisions.isEmpty()||!(epoch.get("baseline") instanceof Map<?,?> baseline))throw new IOException("History epoch is incomplete");
+            if(!Objects.equals(epoch.get("baselineRevisionId"),ValueCodec.map(baseline).get("revisionId"))||!Objects.equals(epoch.get("headRevisionId"),ValueCodec.map(revisions.getLast()).get("revisionId")))throw new IOException("History epoch bounds differ from its revisions");
+            var single=Json.map("namespaceId",history.get("namespaceId"),"historyEpochId",id,"baseline",baseline,"revisions",revisions,"complete",true);
+            validateHistoryEpoch(single,graph,true,workspace);
+            for(Object rr:revisions){String revision=(String)ValueCodec.map(rr).get("revisionId");if(!revisionIds.add(revision))throw new IOException("Duplicate revision identity across history epochs");}
+            if(id.equals(history.get("activeEpochId"))){foundActive=true;activeHead=(String)epoch.get("headRevisionId");if(Boolean.TRUE.equals(epoch.get("closed")))throw new IOException("Active history epoch is closed");}
+        }
+        if(!foundActive||!Objects.equals(activeHead,history.get("headRevisionId")))throw new IOException("Active history head is missing or inconsistent");
+    }
+    private static void validateHistoryEpoch(Map<String,Object> history,Map<String,Object> graph,boolean wholeNamespace,PackageWorkspace workspace)throws IOException{
+        if(!history.keySet().equals(Set.of("namespaceId","historyEpochId","baseline","revisions","complete")))throw new IOException("Unknown or missing history epoch bundle fields");
         try{PackageIdentity.canonical((String)history.get("namespaceId"));PackageIdentity.canonical((String)history.get("historyEpochId"));}catch(RuntimeException e){throw new IOException("Invalid history provenance identity");}
         if(!Boolean.TRUE.equals(history.get("complete"))||!(history.get("revisions") instanceof List<?> revisions)||revisions.isEmpty()||!(history.get("baseline") instanceof Map<?,?> baseline))throw new IOException("History bundle is incomplete");
+        if(!baselineEquals(ValueCodec.map(baseline),ValueCodec.map(revisions.getFirst()),workspace)||!"baseline".equals(ValueCodec.map(revisions.getFirst()).get("kind")))throw new IOException("History baseline does not match its first revision");
         if(!baselineEquals(ValueCodec.map(baseline),ValueCodec.map(revisions.getFirst()),workspace)||!"baseline".equals(ValueCodec.map(revisions.getFirst()).get("kind")))throw new IOException("History baseline does not match its first revision");
         Map<String,Map<String,Object>> rawState=workspace==null?new HashMap<>():workspace.map();
         Map<String,String> memberships=workspace==null?new HashMap<>():workspace.map(),declarations=workspace==null?new HashMap<>():workspace.map();
@@ -180,15 +209,19 @@ public final class ExchangePackageCodec {
         for(String part:name.split("/",-1))if(part.isBlank()||part.equals(".")||part.equals(".."))throw new IOException("Unsafe package path");
     }
     private static void validateManifest(Map<String,Object> manifest,Map<String,String> actual,Map<String,Long> sizes)throws IOException {
-        for(String field:List.of("packageId","sourceNamespaceId","name","description","depositVersion","exportedRevision","createdAt","rootIds","scope","files","includeHistory"))if(!manifest.containsKey(field))throw new IOException("Missing manifest field: "+field);
-        if(!Set.of("packageId","sourceNamespaceId","name","description","depositVersion","exportedRevision","createdAt","rootIds","scope","files","includeHistory","maxHops","rootClassBoundary","boundaryReferences","omittedEdgeCount").containsAll(manifest.keySet()))throw new IOException("Unknown manifest field");
+        for(String field:List.of("packageId","sourceNamespaceId","name","description","depositVersion","historyMode","exportedRevision","createdAt","rootIds","scope","files","includeHistory"))if(!manifest.containsKey(field))throw new IOException("Missing manifest field: "+field);
+        if(!Set.of("packageId","sourceNamespaceId","name","description","depositVersion","historyMode","exportedRevision","createdAt","rootIds","scope","files","includeHistory","maxHops","rootClassBoundary","boundaryReferences","omittedEdgeCount").containsAll(manifest.keySet()))throw new IOException("Unknown manifest field");
         try{PackageIdentity.canonical((String)manifest.get("packageId"));PackageIdentity.canonical((String)manifest.get("sourceNamespaceId"));}catch(RuntimeException e){throw new IOException("Invalid manifest identity");}
         for(String field:List.of("name","description","depositVersion","createdAt"))if(!(manifest.get(field) instanceof String))throw new IOException("Invalid manifest text");
         if(!(manifest.get("includeHistory") instanceof Boolean))throw new IOException("Invalid history flag");
+        if(!Set.of("disabled","transient","persistent").contains(manifest.get("historyMode")))throw new IOException("Invalid Namespace history mode");
         metadataInteger(manifest.get("exportedRevision"));
         try{java.time.ZonedDateTime.parse((String)manifest.get("createdAt"));}catch(RuntimeException e){throw new IOException("Invalid export timestamp",e);}
         if(!(manifest.get("rootIds") instanceof List<?> roots))throw new IOException("Invalid root IDs");for(Object id:roots)try{PackageIdentity.canonical((String)id);}catch(RuntimeException e){throw new IOException("Invalid root UUID");}
         if(!Set.of("namespace","subgraph").contains(manifest.get("scope")))throw new IOException("Invalid package scope");
+        if("subgraph".equals(manifest.get("scope"))&&Boolean.TRUE.equals(manifest.get("includeHistory")))throw new IOException("Subgraph packages do not include Namespace history");
+        boolean expectedHistory="namespace".equals(manifest.get("scope"))&&"persistent".equals(manifest.get("historyMode"));
+        if(Boolean.TRUE.equals(manifest.get("includeHistory"))!=expectedHistory)throw new IOException("Package history flag differs from Namespace history mode");
         if("namespace".equals(manifest.get("scope"))&&!roots.isEmpty()||"subgraph".equals(manifest.get("scope"))&&roots.isEmpty())throw new IOException("Package roots differ from its scope");
         if(manifest.containsKey("maxHops"))metadataInteger(manifest.get("maxHops"));
         if(manifest.containsKey("maxHops")&&(!(manifest.get("maxHops") instanceof Number hops)||hops.longValue()<0||hops.longValue()>10))throw new IOException("Invalid traversal limit");

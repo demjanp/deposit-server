@@ -11,7 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ExchangePackageStreamingTest {
     @TempDir Path temp;
-    private Map<String,Object> manifest(){return Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",UUID.randomUUID().toString(),"name","Streaming","description","","depositVersion","test","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace","includeHistory",false);}
+    private Map<String,Object> manifest(){return Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",UUID.randomUUID().toString(),"name","Streaming","description","","depositVersion","test","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace","includeHistory",false);}
     private Path archive(Path graph,Map<String,Object> manifest)throws Exception{
         manifest.put("files",Json.map("graph.json",Json.map("bytes",Files.size(graph),"sha256",ResourceFiles.checksum(graph))));Path archive=temp.resolve(UUID.randomUUID()+".zip");
         try(var zip=new ZipOutputStream(Files.newOutputStream(archive))){zip.putNextEntry(new ZipEntry("graph.json"));Files.copy(graph,zip);zip.closeEntry();zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(Json.write(manifest).getBytes(StandardCharsets.UTF_8));zip.closeEntry();}return archive;
@@ -48,11 +48,11 @@ class ExchangePackageStreamingTest {
         }
     }
     @Test void mixedCaseBaselineJournalUsesBoundedIndexedComparison()throws Exception{
-        var manifest=manifest();String ns=(String)manifest.get("sourceNamespaceId"),epoch=UUID.randomUUID().toString(),id=UUID.randomUUID().toString();
+        var manifest=manifest();manifest.put("historyMode","persistent");String ns=(String)manifest.get("sourceNamespaceId"),epoch=UUID.randomUUID().toString(),id=UUID.randomUUID().toString();
         var lower=new LinkedHashMap<String,Object>();var upper=new LinkedHashMap<String,Object>();
         for(int i=0;i<12000;i++){String entity=String.format("abcdefab-cdef-4abc-8def-%012x",i);lower.put(HistoryCodec.key("Object",entity),List.of("name"));upper.put(HistoryCodec.key("Object",entity.toUpperCase(Locale.ROOT)),List.of("name"));}
         var image=Json.map("kind","Namespace","id",ns,"namespaceId",ns,"name","N");var baseline=Json.map("id",id,"revisionId",id,"namespaceId",ns,"historyEpochId",epoch,"sequence",0L,"kind","baseline","parentRevisionId",null,"changes",List.of(Json.map("entityKind","Namespace","entityId",ns,"before",null,"after",image)),"touches",lower,"dependencies",List.of());
-        var first=new LinkedHashMap<>(baseline);first.put("touches",upper);var history=Json.map("namespaceId",ns,"historyEpochId",epoch,"baseline",baseline,"revisions",List.of(first),"complete",true);
+        var first=new LinkedHashMap<>(baseline);first.put("touches",upper);var epochRecord=Json.map("id",epoch,"mode","persistent","closed",false,"startedSequence",0L,"endedSequence",null,"baselineRevisionId",id,"headRevisionId",id,"baseline",baseline,"revisions",List.of(first));var history=Json.map("namespaceId",ns,"historyMode","persistent","activeEpochId",epoch,"headRevisionId",id,"epochs",List.of(epochRecord),"complete",true);
         var graph=Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"resources",List.of(),"userTools",List.of(Json.map("kind","UserTool","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","Tool","data","opaque")));
         Path zip=temp.resolve("journal.zip");ExchangePackageCodec.write(zip,manifest,graph,history,Map.of());runProbe(zip);
     }

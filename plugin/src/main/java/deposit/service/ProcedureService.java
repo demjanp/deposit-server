@@ -41,6 +41,7 @@ public final class ProcedureService {
             case "deposit.get.objectsByPattern"->new PatternService(c).search(r,false);
             case "deposit.get.objectsByPatternPage"->new PatternService(c).search(r,true);
             case "deposit.get.data","deposit.get.namespaceData","deposit.save.data","deposit.load.data"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
+            case "deposit.import.analyze","deposit.get.importPlan","deposit.import.apply","deposit.import.namespaceData"->Stream.of(new DataRow(new ImportService(c).execute(p,r),c.meta()));
             case "deposit.resource.beginUpload","deposit.resource.uploadChunk","deposit.resource.finishUpload","deposit.resource.abortUpload"->Stream.of(new DataRow(resource.transfer(p.substring(p.lastIndexOf('.')+1),r),c.meta()));
             case "deposit.resource.info","deposit.resource.downloadChunk"->Stream.of(new DataRow(resource.read(r,p.endsWith("downloadChunk")),c.meta()));
             case "deposit.admin.pruneResources"->Stream.of(new DataRow(resource.prune(r),c.meta()));

@@ -32,7 +32,7 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_init IF NOT EXISTS FOR (n:DepositInitialization) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_actor_lock IF NOT EXISTS FOR (n:DepositActorLock) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_objects IF NOT EXISTS FOR (n:Object) ON (n.namespaceId)").close();
-            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
+            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem","DepositImportPlan"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
             tx.commit();
         }
         try(var tx=db.beginTx()) {

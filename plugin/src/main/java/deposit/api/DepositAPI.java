@@ -222,4 +222,12 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p106(@Name("selection") Map<String,Object> a0,@Name("options") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.save.data",Arrays.asList(a0,a1)).map(PublicResults::data); }
  @Procedure(name="deposit.load.data",mode=Mode.READ)
  public Stream<PublicResults.DataRow> p107(@Name("resourceId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.load.data",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.import.analyze",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p108(@Name("source") Object a0,@Name("rules") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.import.analyze",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.importPlan",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p109(@Name("planId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.importPlan",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.import.apply",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p110(@Name("planId") String a0,@Name("resolutions") List<Map<String,Object>> a1,@Name("token") String token) { return invokePublic(token,"deposit.import.apply",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.import.namespaceData",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p111(@Name("packageResourceId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.import.namespaceData",Arrays.asList(a0)).map(PublicResults::data); }
 }
