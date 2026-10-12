@@ -15,15 +15,26 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root='C:\data_processed\Deposit_v2\stage0'
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
+try {
 $primary='stage0-host'
 $inputs=if($InputsFile) {Get-Content -LiteralPath $InputsFile -Raw | ConvertFrom-Json} else {Get-Stage0Inputs (Split-Path $PSScriptRoot -Parent)}
+$directory=Join-Path $root "evidence\$RunPrefix"
+$ownerResultId=$null
+if($RunPrefix -match '^(?<owner>.+)-runtime$') {$ownerResultId=$Matches.owner}
+$ownsResult=$true
+if(Test-Path -LiteralPath $directory) {
+    $existingManifest=Join-Path $directory 'result-manifest.json'
+    if(!(Test-Path -LiteralPath $existingManifest)) {throw 'Use a fresh evidence prefix'}
+    $existing=Get-Content -LiteralPath $existingManifest -Raw | ConvertFrom-Json -ErrorAction Stop
+    if($existing.schemaVersion -ne 2 -or $existing.lifecycle -ne 'running') {throw 'Evidence prefix already contains a finished result'}
+    $ownsResult=$false
+} else {Start-Stage0Result $root $directory $RunPrefix 'environment' $inputs.sha256 @() $ownerResultId | Out-Null}
 if(!$InputsFile) {
-    $InputsFile=Join-Path $root ("evidence\$RunPrefix\source-inputs.json")
-    New-Item -ItemType Directory -Force (Split-Path $InputsFile -Parent) | Out-Null
+    $InputsFile=Join-Path $directory 'source-inputs.json'
     $inputs | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $InputsFile -Encoding UTF8
 }
-$directory=Join-Path $root "evidence\$RunPrefix"
-New-Item -ItemType Directory -Force $directory | Out-Null
+} catch {$cleanupBarrier.Dispose();throw}
 $results=New-Object System.Collections.Generic.List[object]
 $complete=$false
 $script:scenarioPhases=New-Object System.Collections.Generic.List[object]
@@ -220,8 +231,11 @@ try {
     $complete=$true
     Write-Output "Environment checks passed. Evidence: $directory"
 } finally {
-    if(Test-Path "$root\runs\$primary\owner.json") {
-        try {Phase Stop} catch {Write-Warning $_.Exception.Message; Phase Kill}
-    }
-    Save-Results
+    try {
+        if(Test-Path "$root\runs\$primary\owner.json") {
+            try {Phase Stop} catch {Write-Warning $_.Exception.Message; Phase Kill}
+        }
+        Save-Results
+        if($ownsResult) {Complete-Stage0Result $root $directory $(if($complete -and @($results | Where-Object status -eq 'failed').Count -eq 0){'passed'}else{'failed'}) $inputs.sha256}
+    } finally {$cleanupBarrier.Dispose()}
 }

@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory=$true)][string]$WorkPackage,
     [string]$Root='C:\data_processed\Deposit_v2\stage0',
     [string]$InputsFile,
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$OwnerResultId,
     [ValidatePattern('^[a-z0-9-]+$')][string]$RepairCause,
     [ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$Name='stage0'
 )
@@ -14,7 +15,22 @@ $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 if ([IO.Path]::GetFullPath($Root).TrimEnd('\') -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
 $directory=Join-Path $Root "runner\$Name"
-New-Item -ItemType Directory -Force $directory | Out-Null
+$cleanupBarrier=Enter-Stage0CleanupBarrier $Root
+New-Item -ItemType Directory -Path (Join-Path $Root 'runner') -Force | Out-Null
+try {$lock=[IO.File]::Open((Join-Path $Root 'runner\writer.lock'),'OpenOrCreate','ReadWrite','None')}
+catch {$cleanupBarrier.Dispose();throw 'Another Codex runner is active; no result was changed'}
+try {
+if(Test-Path -LiteralPath $directory) {
+    $existingManifest=Join-Path $directory 'result-manifest.json'
+    if(!(Test-Path -LiteralPath $existingManifest)) {throw 'Runner result path already exists without a manifest; use a fresh name'}
+    $existing=Get-Content -LiteralPath $existingManifest -Raw | ConvertFrom-Json
+    if($existing.lifecycle -eq 'running') {throw 'Runner result is already active; use a fresh name'}
+}
+$requiredReferences=@()
+$workPackageFull=[IO.Path]::GetFullPath($WorkPackage)
+if($workPackageFull.StartsWith($Root+'\',[StringComparison]::OrdinalIgnoreCase)) {$requiredReferences+= $workPackageFull.Substring($Root.Length+1)}
+Start-Stage0Result $Root $directory ('runner-'+$Name) 'runner' $null $requiredReferences $OwnerResultId | Out-Null
+} catch {$lock.Dispose();$cleanupBarrier.Dispose();throw}
 $stateFile=Join-Path $directory 'state.json'
 $countsFile=Join-Path $Root 'runner\repair-counts.json'
 function Save-State($State) {
@@ -22,7 +38,7 @@ function Save-State($State) {
     [IO.File]::WriteAllText($temp,($State | ConvertTo-Json -Depth 8))
     if(Test-Path $stateFile) {[IO.File]::Replace($temp,$stateFile,"$stateFile.previous")} else {[IO.File]::Move($temp,$stateFile)}
 }
-$lock=[IO.File]::Open((Join-Path $Root 'runner\writer.lock'),'OpenOrCreate','ReadWrite','None')
+$resultOutcome='failed'
 try {
     $inputs=if($InputsFile -and $Mode -ne 'Resume') {Get-Content -LiteralPath $InputsFile -Raw | ConvertFrom-Json} else {Get-Stage0Inputs $repo}
     $workPackageHash=(Get-FileHash -LiteralPath $WorkPackage -Algorithm SHA256).Hash
@@ -93,7 +109,11 @@ try {
         $state.failureCause=$cause
     }
     $state.inputs=$after.sha256; $state.status=$result.status; $state.exitCode=$exitCode
+    if($result.status -eq 'completed') {$resultOutcome='passed'}
     $state.nextAction='Inspect the structured result and scenario evidence; no automatic stage acceptance'
     Save-State $state
     if($exitCode -ne 0 -or $result.status -ne 'completed') {throw "Codex work package did not complete; see $resultFile and saved state"}
-} finally {$lock.Dispose()}
+} finally {
+    try {Complete-Stage0Result $Root $directory $resultOutcome $(if($inputs){$inputs.sha256}else{$null})}
+    finally {$lock.Dispose();$cleanupBarrier.Dispose()}
+}

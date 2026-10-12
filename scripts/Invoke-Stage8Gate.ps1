@@ -8,11 +8,16 @@ $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 $repo=Split-Path $PSScriptRoot -Parent
 $root='C:\data_processed\Deposit_v2\stage0'
-$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
+$gateLock=$null
+$evidence=Join-Path $root "evidence\$RunPrefix"
+$ownsGateResult=$false
 try {
+$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
 $evidence=Join-Path $root "evidence\$RunPrefix"
 if(Test-Path -LiteralPath $evidence){throw 'Use a fresh Stage 8 run prefix'}
-New-Item -ItemType Directory -Path $evidence | Out-Null
+Start-Stage0Result $root $evidence $RunPrefix 'gate' $null | Out-Null
+$ownsGateResult=$true
 $prerequisiteHashes=@{}
 foreach($stage in @('0','1','2','3','4','5','5.5','6','6.5','7')){$fileStage=if($stage -eq '6.5'){'65'}else{$stage};$path="$root\stage$fileStage-checkpoint.json";if(!(Test-Path -LiteralPath $path)){throw "Accepted Stage $stage prerequisite required"};$checkpoint=Get-Content $path -Raw|ConvertFrom-Json;if($checkpoint.status -ne 'accepted'){throw "Accepted Stage $stage prerequisite required"};$prerequisiteHashes[$stage]=(Get-FileHash $path -Algorithm SHA256).Hash}
 $stage7Path="$root\stage7-checkpoint.json";$stage7Hash=$prerequisiteHashes['7']
@@ -77,5 +82,5 @@ finally { Remove-Item Env:\STAGE7_PACKAGE_OUTPUT -ErrorAction SilentlyContinue;t
 if($run.status -eq 'verified'){$run.status='accepted';$run.accepted=$true;$run.pending=@()}
 Save-Checkpoint
 if($run.status -ne 'accepted'){Write-Error "Stage 8 is incomplete; evidence: $evidence";exit 1}
-} finally { $gateLock.Dispose() }
+} finally { try { if($ownsGateResult){Complete-Stage0GateResult $root $evidence $RunPrefix} } finally { if($gateLock){$gateLock.Dispose()}; $cleanupBarrier.Dispose() } }
 if($run.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" } catch { Write-Warning "Stage 8 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)" } }

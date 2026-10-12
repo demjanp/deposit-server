@@ -6,6 +6,11 @@ $repo=Split-Path $PSScriptRoot -Parent
 $manifest=Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $Root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 if($Root -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
+$cleanupBarrier=Enter-Stage0CleanupBarrier $Root
+$auditDirectory=Join-Path $Root 'evidence\artifact-audit'
+$auditOutcome='passed'
+try {
+Start-Stage0Result $Root $auditDirectory 'artifact-audit' 'artifact-audit' $Inputs | Out-Null
 $inventory=New-Object System.Collections.Generic.List[object]
 $classes=@{}
 $notices=Join-Path $Root 'evidence\artifact-audit\notices'
@@ -53,4 +58,8 @@ $duplicates=@($classes.GetEnumerator() | Where-Object {$_.Value.Count -gt 1} | S
 $conflicts=@($duplicates | Where-Object conflicting)
 @{inputs=$(if($Inputs){$Inputs}else{(Get-Stage0Inputs $repo).sha256});status=$(if($conflicts.Count){'conflicting-classes'}else{'no-conflicting-runtime-classes'});artifacts=$inventory.ToArray();duplicateClasses=$duplicates;conflicts=$conflicts.Count} | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $Root 'evidence\artifact-audit\inventory.json') -Encoding UTF8
 Write-Output "Inventoried $($inventory.Count) JARs; $($duplicates.Count) duplicate Neo4j/JTS/OCFL/support class paths, $($conflicts.Count) conflicting definitions. See evidence\artifact-audit."
-if($conflicts.Count) {throw 'Conflicting Neo4j/JTS definitions block runtime acceptance'}
+if($conflicts.Count) {$auditOutcome='failed';throw 'Conflicting Neo4j/JTS definitions block runtime acceptance'}
+} finally {
+    try {if(Test-Path -LiteralPath (Join-Path $auditDirectory 'result-manifest.json')) {Complete-Stage0Result $Root $auditDirectory $auditOutcome $Inputs}}
+    finally {$cleanupBarrier.Dispose()}
+}

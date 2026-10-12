@@ -8,11 +8,16 @@ $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 $repo=Split-Path $PSScriptRoot -Parent
 $root='C:\data_processed\Deposit_v2\stage0'
-$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
+$gateLock=$null
+$evidence=Join-Path $root "evidence\$RunPrefix"
+$ownsGateResult=$false
 try {
+$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
   $evidence=Join-Path $root "evidence\$RunPrefix"
   if(Test-Path -LiteralPath $evidence){throw 'Use a fresh Stage 9 run prefix'}
-  New-Item -ItemType Directory -Path $evidence | Out-Null
+  Start-Stage0Result $root $evidence $RunPrefix 'gate' $null | Out-Null
+  $ownsGateResult=$true
   $prerequisiteHashes=@{}
   foreach($stage in @('0','1','2','3','4','5','5.5','6','6.5','7','8')){
     $fileStage=if($stage -eq '6.5'){'65'}else{$stage};$path="$root\stage$fileStage-checkpoint.json"
@@ -28,7 +33,7 @@ try {
   # unit evidence collected from the gate's own build. No pending category is
   # cleared unless its assertions are part of this gate.
   $pending=@()
-  $run=@{stage=9;gate=$RunPrefix;rerun='scripts/Invoke-Stage9Gate.ps1 -RunPrefix <fresh-id> -Port '+$Port;status='running';accepted=$false;sourceIdentity=$inputs.sha256;sourceSnapshot=$snapshot;prerequisiteCheckpoints=$prerequisiteHashes;phases=@();pending=$pending;acceptance='Stage 9 gate remains incomplete until every pending contract criterion has executable evidence.'}
+  $run=@{stage=9;gate=$RunPrefix;rerun='scripts/Invoke-Stage9Gate.ps1 -RunPrefix <fresh-id> -Port '+$Port;status='running';accepted=$false;sourceIdentity=$inputs.sha256;sourceSnapshot=$snapshot;startedUtc=[DateTime]::UtcNow.ToString('o');prerequisiteCheckpoints=$prerequisiteHashes;phases=@();pending=$pending;acceptance='Stage 9 gate remains incomplete until every pending contract criterion has executable evidence.'}
   function Save-Checkpoint {
     $run.updated=[DateTime]::UtcNow.ToString('o');$temporary=$checkpointPath+'.partial'
     [IO.File]::WriteAllText($temporary,($run|ConvertTo-Json -Depth 14),(New-Object Text.UTF8Encoding($false)))
@@ -159,5 +164,5 @@ try {
   if($run.status -eq 'verified'){$run.status='accepted';$run.accepted=$true;$run.pending=@()}
   Save-Checkpoint
   if($run.status -ne 'accepted'){Write-Error "Stage 9 acceptance is incomplete; evidence: $evidence";exit 1}
-} finally {$gateLock.Dispose()}
+} finally {try {if($ownsGateResult){Complete-Stage0GateResult $root $evidence $RunPrefix}} finally {if($gateLock){$gateLock.Dispose()};$cleanupBarrier.Dispose()}}
 if($run.status -eq 'accepted'){try{& "$PSScriptRoot\Cleanup-Stage0Evidence.ps1"}catch{Write-Warning "Stage 9 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)"}}

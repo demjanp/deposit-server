@@ -9,6 +9,8 @@ $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 . "$PSScriptRoot\Credentials.ps1"
 $root='C:\data_processed\Deposit_v2\stage0'; $repo=Split-Path $PSScriptRoot -Parent
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
+try {
 $inputs=Get-Stage0Inputs $repo
 $directory=Join-Path $root "evidence\$GateName"
 $gate=Get-Content "$directory\results.json" -Raw | ConvertFrom-Json
@@ -194,3 +196,4 @@ $report+=@($gate.results | ForEach-Object {"| $($_.name) | $($_.status) | $([Mat
 $report+=@("","Later-stage A25 scenarios and Stage 11 release/recovery acceptance on this existing host remain pending. No clean-machine or cross-host validation is claimed.","","Rerun: .\scripts\Invoke-Stage0Gate.ps1 -RunPrefix <fresh-id> -Port $($gate.port)")
 [IO.File]::WriteAllLines("$directory\REPORT.md",[string[]]$report,$utf8)
 Write-Output "Stage 0 checkpoint: $($checkpoint.status); $($testCases.Count) verified JUnit cases. $directory\REPORT.md"
+} finally {$cleanupBarrier.Dispose()}

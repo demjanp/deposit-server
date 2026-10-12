@@ -37,9 +37,9 @@ $savedEnvironment=@{}
 foreach($key in @('JAVA_HOME','MAVEN_USER_HOME','MAVEN_OPTS','NEO4J_HOME','NEO4J_CONF','TEMP','TMP','STAGE0_URI','STAGE0_PASSWORD','STAGE0_NEO4J_VERSION','STAGE0_EXPECTED_FAILURE','STAGE0_EVIDENCE','STAGE0_TEST_MODE','STAGE0_BASELINE_MAP')) {$savedEnvironment[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
 $credentialTarget = "Deposit/Stage0/$RunId"
 $utf8 = New-Object Text.UTF8Encoding($false)
-New-Item -ItemType Directory -Force $evidence | Out-Null
-New-Item -ItemType Directory -Force "$run\tmp" | Out-Null
 $initialInputs=if($InputsFile) {Get-Content -LiteralPath $InputsFile -Raw | ConvertFrom-Json} else {Get-Stage0Inputs $repo}
+$parentResult=$null
+$ownsGroupResult=$false
 
 function Write-Json($Value, [string]$Path) {
     $temporary=$Path+'.'+[Guid]::NewGuid().ToString('N')+'.partial'
@@ -398,7 +398,13 @@ function Invoke-Reset {
     New-Item -ItemType Directory -Force "$run\tmp" | Out-Null
 }
 function Invoke-Evidence {
-    if (Test-Path "$installation\logs") {Copy-Item "$installation\logs" "$evidence\server-logs" -Recurse -Force}
+    # Successful Test phases already retain their own test output. The live
+    # server log remains in the owned installation and is archived before a
+    # reset; duplicate snapshots are needed only at process boundaries, on
+    # failure, or for the explicit evidence phase.
+    if ((Test-Path "$installation\logs") -and ($status -ne 'passed' -or $Phase -in @('Stop','Kill','Evidence'))) {
+        Copy-Item "$installation\logs" "$evidence\server-logs" -Recurse -Force
+    }
     Write-Json $manifest "$evidence\artifact-manifest.json"
     Write-Json $spatialLock "$evidence\spatial-dependencies.json"
     Write-Json $ocflLock "$evidence\ocfl-dependencies.json"
@@ -443,10 +449,34 @@ function Invoke-Package {
     Write-Json @{path="$run\deposit-server-0.0.0-stage65.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage65.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
 }
 
+$cleanupBarrier=Enter-Stage0CleanupBarrier $Root
+$phaseLock=$null
+try {
+    if($EvidenceGroup) {
+        $groupDirectory=Join-Path $Root "evidence\$EvidenceGroup"
+        $groupManifest=Join-Path $groupDirectory 'result-manifest.json'
+        if(Test-Path -LiteralPath $groupDirectory -PathType Container) {
+            if(!(Test-Path -LiteralPath $groupManifest -PathType Leaf)) {throw 'EvidenceGroup already exists without a result manifest'}
+            $parentResult=Get-Content -LiteralPath $groupManifest -Raw | ConvertFrom-Json -ErrorAction Stop
+            if($parentResult.schemaVersion -ne 2 -or $parentResult.resultId -ne $EvidenceGroup -or $parentResult.lifecycle -ne 'running' -or
+               @($parentResult.ownedPaths).Count -ne 1 -or [IO.Path]::GetFullPath((Join-Path $Root ([string]$parentResult.ownedPaths[0]))).TrimEnd('\') -ne [IO.Path]::GetFullPath($groupDirectory).TrimEnd('\')) {
+                throw 'EvidenceGroup is not an active result root owned by its manifest'
+            }
+        } else {
+            Start-Stage0Result $Root $groupDirectory $EvidenceGroup 'phase' $initialInputs.sha256 | Out-Null
+            $ownsGroupResult=$true
+        }
+    }
+    New-Item -ItemType Directory -Path $run -Force | Out-Null
+    $phaseLock=[IO.File]::Open((Join-Path $run 'phase.lock'),'OpenOrCreate','ReadWrite','None')
+    if(!$EvidenceGroup) {Start-Stage0Result $Root $evidence ($RunId+'-'+$Phase+'-'+[Guid]::NewGuid().ToString('N')) 'phase' $initialInputs.sha256 | Out-Null}
+    New-Item -ItemType Directory -Force $evidence | Out-Null
+    New-Item -ItemType Directory -Force "$run\tmp" | Out-Null
+} catch {if($phaseLock){$phaseLock.Dispose()};$cleanupBarrier.Dispose();throw}
 $status='running'
 $failure=$null
 $evidenceFailure=$null
-$phaseLock=[IO.File]::Open((Join-Path $run 'phase.lock'),'OpenOrCreate','ReadWrite','None')
+$phaseWatch=[Diagnostics.Stopwatch]::StartNew()
 try {
     $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
@@ -473,12 +503,16 @@ try {
 } finally {
     try {
         try {Invoke-Evidence} catch {$evidenceFailure=$_.Exception.Message; $status='failed'}
-        $checkpoint=@{runId=$RunId;port=$Port;phase=$Phase;status=$status;failure=$failure;evidenceFailure=$evidenceFailure;diagnostic=[bool]$DiagnosticBuild;readinessBypassed=[bool]$SkipReadiness;inputs=$initialInputs.sha256;evidence=$evidence;testSelection=$TestSelection;testMode=$TestMode;expectedFailure=$ExpectedFailure;withoutProbe=[bool]$WithoutProbe;updated=[DateTime]::UtcNow.ToString('o');nextAction='Review scenario evidence; a phase result alone never establishes Stage 0 acceptance'}
+        $phaseWatch.Stop()
+        $checkpoint=@{runId=$RunId;port=$Port;phase=$Phase;status=$status;failure=$failure;evidenceFailure=$evidenceFailure;diagnostic=[bool]$DiagnosticBuild;readinessBypassed=[bool]$SkipReadiness;inputs=$initialInputs.sha256;evidence=$evidence;testSelection=$TestSelection;testMode=$TestMode;expectedFailure=$ExpectedFailure;withoutProbe=[bool]$WithoutProbe;elapsedSeconds=[Math]::Round($phaseWatch.Elapsed.TotalSeconds,3);updated=[DateTime]::UtcNow.ToString('o');nextAction='Review scenario evidence; a phase result alone never establishes Stage 0 acceptance'}
         try {Write-Json $checkpoint "$evidence\checkpoint-$Phase.json"}
         finally {Write-Json $checkpoint "$run\checkpoint.json"}
     } finally {
-        $phaseLock.Dispose()
-        foreach($key in $savedEnvironment.Keys) {[Environment]::SetEnvironmentVariable($key,$savedEnvironment[$key],'Process')}
+        try {
+            if(!$EvidenceGroup) {Complete-Stage0Result $Root $evidence $(if($status -eq 'passed'){'passed'}else{'failed'}) $initialInputs.sha256}
+            elseif($ownsGroupResult) {Complete-Stage0Result $Root (Join-Path $Root "evidence\$EvidenceGroup") $(if($status -eq 'passed'){'passed'}else{'failed'}) $initialInputs.sha256}
+        }
+        finally {try {$phaseLock.Dispose()} finally {$cleanupBarrier.Dispose();foreach($key in $savedEnvironment.Keys) {[Environment]::SetEnvironmentVariable($key,$savedEnvironment[$key],'Process')}}}
     }
     if($evidenceFailure) {throw "Evidence collection failed: $evidenceFailure"}
 }

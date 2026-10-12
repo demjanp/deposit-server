@@ -4,12 +4,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 $root='C:\data_processed\Deposit_v2\stage0';$repo=Split-Path $PSScriptRoot -Parent
-$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
+$gateLock=$null
+$directory=Join-Path $root "evidence\$RunPrefix"
+$ownsGateResult=$false
 try {
+$gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
 $prior=@{}
 foreach($stage in 0..5){$path="$root\stage$stage-checkpoint.json";if((Get-Content $path -Raw|ConvertFrom-Json).status -ne 'accepted'){throw "Accepted Stage $stage prerequisite required"};$prior[[string]$stage]=(Get-FileHash $path -Algorithm SHA256).Hash}
 $directory=Join-Path $root "evidence\$RunPrefix";if(Test-Path -LiteralPath $directory){throw 'Use a fresh evidence prefix'}
-New-Item -ItemType Directory -Path $directory | Out-Null
+Start-Stage0Result $root $directory $RunPrefix 'gate' $null | Out-Null
+$ownsGateResult=$true
 $inputs=Get-Stage0Inputs $repo;$inputsFile=Join-Path $directory 'source-inputs.json';$inputs|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $inputsFile -Encoding UTF8
 $snapshot=Save-Stage0SourceSnapshot $repo $root $inputs
 $phases=New-Object System.Collections.Generic.List[object]
@@ -85,5 +90,5 @@ finally {
     if($checkpoint.status -ne 'accepted'){try{Phase Stop}catch{Write-Warning 'Inspect owned server: stop failed'}}
     $credential=Join-Path $root 'runs\stage0-host\secrets\stage1-session.txt';if(Test-Path -LiteralPath $credential){Remove-Item -LiteralPath $credential}
 }
-} finally { $gateLock.Dispose() }
+} finally { try { if($ownsGateResult){Complete-Stage0GateResult $root $directory $RunPrefix} } finally { if($gateLock){$gateLock.Dispose()}; $cleanupBarrier.Dispose() } }
 if($checkpoint.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" } catch { Write-Warning "Stage 5.5 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)" } }

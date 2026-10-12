@@ -1,13 +1,16 @@
 # Exercises checkpoint/failure policy with a deterministic fake CLI; makes no model calls.
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+. "$PSScriptRoot\Inputs.ps1"
 $root='C:\data_processed\Deposit_v2\stage0'
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
 $id='runner-test-'+[Guid]::NewGuid().ToString('N')
 $workPackage=Join-Path $root "$id.txt"
 [IO.File]::WriteAllText($workPackage,'Runner lifecycle fixture')
 $global:fakeCalls=0
 $global:fakeMode='blocked'
 $global:fakeSession=[Guid]::NewGuid().ToString()
+$testSucceeded=$false
 function global:codex {
     $global:fakeCalls++
     $arguments=@($args)
@@ -46,8 +49,18 @@ try {
     $state | ConvertTo-Json | Set-Content "$root\runner\$interrupted\state.json"
     try {& "$PSScriptRoot\Invoke-CodexStage0.ps1" -Mode Resume -Name $interrupted -WorkPackage $workPackage; throw 'Expected stale input rejection'}
     catch {if($_.Exception.Message -notlike 'Inputs changed*') {throw}}
+    $testSucceeded=$true
     Write-Output "PASS: repair limit, explicit interruption/resume, required stable cause, changed work package and stale inputs ($id)"
 } finally {
     Remove-Item Function:\codex
     Remove-Variable fakeCalls,fakeMode,fakeSession,fakeArguments -Scope Global
+    Remove-Item -LiteralPath $workPackage -Force -ErrorAction SilentlyContinue
+    try {
+        if($testSucceeded) {
+            foreach($name in @($id,($id+'-interrupt'),($id+'-bypass'))) {
+                $resultPath=Join-Path $root "runner\$name"
+                if(Test-Path -LiteralPath $resultPath) {Remove-Item -LiteralPath $resultPath -Recurse -Force}
+            }
+        }
+    } finally {$cleanupBarrier.Dispose()}
 }

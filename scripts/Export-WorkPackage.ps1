@@ -4,6 +4,9 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$Name
 )
 $ErrorActionPreference='Stop'
+. "$PSScriptRoot\Inputs.ps1"
+$cleanupBarrier=Enter-Stage0CleanupBarrier
+try {
 $repo=Split-Path $PSScriptRoot -Parent
 $plan=Join-Path $repo '..\deposit-hub\implementation_plan.md'
 $heading=if($Section -eq 'Review') {'Stage 0 read-only review work package'} else {'Stage 0 runner interruption fixture'}
@@ -15,3 +18,4 @@ New-Item -ItemType Directory -Force $directory | Out-Null
 $path=Join-Path $directory ($Section+'.md')
 [IO.File]::WriteAllText($path,('# '+$heading+"`n`n"+$match.Groups['body'].Value.Trim()+"`n"),(New-Object Text.UTF8Encoding($false)))
 Write-Output $path
+} finally {$cleanupBarrier.Dispose()}

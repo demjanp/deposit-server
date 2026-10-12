@@ -4,21 +4,34 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 $root='C:\data_processed\Deposit_v2\stage0'; $repo=Split-Path $PSScriptRoot -Parent
-$package=& "$PSScriptRoot\Export-WorkPackage.ps1" -Section RunnerSmoke -Name $Name
-$marker=Join-Path $root 'runner-live-marker.json'
-if(Test-Path -LiteralPath $marker) {Move-Item -LiteralPath $marker -Destination ($marker+'.'+[Guid]::NewGuid().ToString('N')+'.previous')}
+$cleanupBarrier=Enter-Stage0CleanupBarrier $root
+try {
+$resultOutcome='failed'
 $inputs=if($InputsFile) {Get-Content -LiteralPath $InputsFile -Raw | ConvertFrom-Json} else {Get-Stage0Inputs $repo}
 $evidence=Join-Path $root "evidence\$Name"
+if(Test-Path -LiteralPath $evidence) {throw 'Use a fresh live-runner evidence name'}
+$ownerResultId=$null
+if($Name -match '^(?<owner>.+)-runtime-live$') {$ownerResultId=$Matches.owner} elseif($Name -match '^(?<owner>.+)-live$') {$ownerResultId=$Matches.owner}
+$childOwnerId=if($ownerResultId){$ownerResultId}else{$Name}
+Start-Stage0Result $root $evidence $Name 'live-runner' $inputs.sha256 @() $ownerResultId | Out-Null
+$package=& "$PSScriptRoot\Export-WorkPackage.ps1" -Section RunnerSmoke -Name $Name
+$manifest=Get-Content -LiteralPath (Join-Path $evidence 'result-manifest.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+$manifest.requiredReferences+=@("runner\work-packages\$Name\RunnerSmoke.md")
+Write-Stage0ResultManifest $root $evidence $manifest | Out-Null
+} catch {$cleanupBarrier.Dispose();throw}
+$launcher=$null
+try {
+$marker=Join-Path $root 'runner-live-marker.json'
+if(Test-Path -LiteralPath $marker) {Move-Item -LiteralPath $marker -Destination ($marker+'.'+[Guid]::NewGuid().ToString('N')+'.previous')}
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $runner=Join-Path $PSScriptRoot 'Invoke-CodexStage0.ps1'
-$command="& '$($runner.Replace("'","''"))' -Mode Work -Name '$Name' -RepairCause '$Name' -WorkPackage '$($package.Replace("'","''"))'"
+$command="& '$($runner.Replace("'","''"))' -Mode Work -Name '$Name' -RepairCause '$Name' -WorkPackage '$($package.Replace("'","''"))' -OwnerResultId '$childOwnerId'"
 if($InputsFile) {$command+=" -InputsFile '$($InputsFile.Replace("'","''"))'"}
 $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
 $launcher=Start-Process powershell.exe -ArgumentList '-NoProfile','-EncodedCommand',$encoded -WindowStyle Hidden -PassThru -RedirectStandardOutput "$evidence\work.out.log" -RedirectStandardError "$evidence\work.err.log"
 [void]$launcher.Handle
 $stateFile=Join-Path $root "runner\$Name\state.json"
 $deadline=[DateTime]::UtcNow.AddSeconds(180)
-try {
     while(!(Test-Path -LiteralPath $marker)) {
         if($launcher.HasExited) {throw "Live runner exited before its interruption marker; inspect $evidence"}
         if([DateTime]::UtcNow -ge $deadline) {throw 'Live runner did not reach its interruption marker within 180 seconds'}
@@ -35,12 +48,31 @@ try {
     if(!$launcher.WaitForExit(30000)) {throw 'Interrupted runner wrapper did not finish'}
     $interrupted=Get-Content $stateFile -Raw | ConvertFrom-Json
     if($interrupted.sessionId -ne $before.sessionId) {throw 'Interrupted session identity was lost'}
-    & $runner -Mode Resume -Name $Name -WorkPackage $package
+    & $runner -Mode Resume -Name $Name -WorkPackage $package -OwnerResultId $childOwnerId
     $after=Get-Content $stateFile -Raw | ConvertFrom-Json
     $result=Get-Content $marker -Raw | ConvertFrom-Json
     if($after.inputs -ne $inputs.sha256 -or $after.sessionId -ne $before.sessionId -or $after.status -ne 'completed' -or $result.phase -ne 'resumed') {throw 'The explicit interrupted session did not resume successfully'}
     $proof=@{status='passed';inputs=$inputs.sha256;sessionId=$after.sessionId;runner=$Name;interruptedProcessId=$owned[0].ProcessId;interruptedCreated=$owned[0].CreationDate.ToUniversalTime().ToString('o');workPackageHash=(Get-FileHash $package -Algorithm SHA256).Hash;updated=[DateTime]::UtcNow.ToString('o')}
     $proof | ConvertTo-Json | Set-Content "$evidence\result.json" -Encoding UTF8
     $proof | ConvertTo-Json | Set-Content "$root\runner-live-acceptance.json" -Encoding UTF8
+    $resultOutcome='passed'
     Write-Output "PASS: real CLI interruption and explicit session resumption ($($after.sessionId))"
-} finally {$launcher.Dispose()}
+} finally {
+    try {
+    if($launcher -and !$launcher.HasExited) {
+        $ownedChildren=@(Get-CimInstance Win32_Process -Filter "Name='codex.exe'" | Where-Object {
+            $_.ParentProcessId -eq $launcher.Id -and $_.CommandLine -and $_.CommandLine.Contains("$root\runner\$Name\")
+        })
+        foreach($child in $ownedChildren) {Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue}
+        Stop-Process -Id $launcher.Id -Force -ErrorAction SilentlyContinue
+        try {$launcher.WaitForExit(10000) | Out-Null} catch {}
+    }
+    $manifestPath=Join-Path $evidence 'result-manifest.json'
+    if(Test-Path -LiteralPath $manifestPath) {
+        $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        if(Test-Path -LiteralPath (Join-Path $root "runner\$Name") -PathType Container) {$manifest.requiredReferences+=@("runner\$Name")}
+        Write-Stage0ResultManifest $root $evidence $manifest | Out-Null
+    }
+    Complete-Stage0Result $root $evidence $resultOutcome $inputs.sha256
+    } finally {if($launcher){$launcher.Dispose()};$cleanupBarrier.Dispose()}
+}

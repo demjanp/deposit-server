@@ -27,6 +27,105 @@ function Get-Stage0Inputs([string]$Repo) {
     return @{schemaVersion=2;sha256=$hash;files=$records.ToArray();serverFingerprint=$repositoryHashes.server;hubFingerprint=$repositoryHashes.hub;serverBaseline=('filesystem:'+$repositoryHashes.server);hubBaseline=('filesystem:'+$repositoryHashes.hub)}
 }
 
+function Enter-Stage0CleanupBarrier([string]$Root='C:\data_processed\Deposit_v2\stage0') {
+    $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
+    if($rootPath -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
+    if(!(Test-Path -LiteralPath $rootPath -PathType Container)) {throw "Stage 0 root does not exist: $rootPath"}
+    return [IO.File]::Open((Join-Path $rootPath 'cleanup-barrier.lock'),'OpenOrCreate','ReadWrite','ReadWrite')
+}
+
+function Write-Stage0ResultManifest([string]$Root,[string]$Directory,$Manifest) {
+    if($Manifest -isnot [System.Collections.IDictionary]) {
+        $converted=@{}
+        foreach($property in $Manifest.PSObject.Properties) {$converted[$property.Name]=$property.Value}
+        $Manifest=$converted
+    }
+    $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $directoryPath=[IO.Path]::GetFullPath($Directory).TrimEnd('\')
+    $evidenceRoot=[IO.Path]::GetFullPath((Join-Path $rootPath 'evidence')).TrimEnd('\')+'\'
+    $phaseRoot=[IO.Path]::GetFullPath((Join-Path $rootPath 'runs\stage0-host\evidence')).TrimEnd('\')+'\'
+    $runnerRoot=[IO.Path]::GetFullPath((Join-Path $rootPath 'runner')).TrimEnd('\')+'\'
+    $performanceRoot=[IO.Path]::GetFullPath((Join-Path $rootPath 'performance')).TrimEnd('\')+'\'
+    if(!$directoryPath.StartsWith($evidenceRoot,[StringComparison]::OrdinalIgnoreCase) -and !$directoryPath.StartsWith($phaseRoot,[StringComparison]::OrdinalIgnoreCase) -and !$directoryPath.StartsWith($runnerRoot,[StringComparison]::OrdinalIgnoreCase) -and !$directoryPath.StartsWith($performanceRoot,[StringComparison]::OrdinalIgnoreCase)) {throw 'Result manifest must be inside an approved Stage 0 result root'}
+    if(!(Test-Path -LiteralPath $directoryPath -PathType Container)) {New-Item -ItemType Directory -Path $directoryPath -Force | Out-Null}
+    $relative=$directoryPath.Substring($rootPath.Length+1).Replace('/','\')
+    $Manifest.ownedPaths=@($relative)
+    $refs=@()
+    foreach($reference in @($Manifest.requiredReferences)) {
+        $refPath=[IO.Path]::GetFullPath((Join-Path $rootPath ([string]$reference)))
+        if(!$refPath.StartsWith($rootPath+'\',[StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $refPath)) {throw "Result dependency reference is invalid: $reference"}
+        $refs+= $refPath.Substring($rootPath.Length+1).Replace('/','\')
+    }
+    $Manifest.requiredReferences=$refs
+    if($Manifest.resultId -notmatch '^[A-Za-z0-9_-]+$' -or $Manifest.kind -notin @('gate','environment','phase','live-runner','artifact-audit','runner','performance')) {throw 'Result manifest identity or kind is invalid'}
+    if($Manifest.lifecycle -notin @('running','finished','interrupted') -or $Manifest.outcome -notin @('accepted','passed','failed','incomplete','unknown') -or $Manifest.retention -notin @('retain','legacy')) {throw 'Result manifest lifecycle, outcome or retention is invalid'}
+    $Manifest.schemaVersion=2
+    $manifestPath=Join-Path $directoryPath 'result-manifest.json';$temporary=$manifestPath+'.'+[Guid]::NewGuid().ToString('N')+'.partial'
+    $bytes=[Text.Encoding]::UTF8.GetBytes(($Manifest|ConvertTo-Json -Depth 12))
+    $stream=New-Object IO.FileStream($temporary,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try {$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)} finally {$stream.Dispose()}
+    if(Test-Path -LiteralPath $manifestPath) {[IO.File]::Replace($temporary,$manifestPath,$manifestPath+'.previous')} else {[IO.File]::Move($temporary,$manifestPath)}
+    $validated=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    if($validated.schemaVersion -ne 2 -or $validated.resultId -ne $Manifest.resultId -or $validated.lifecycle -ne $Manifest.lifecycle -or $validated.retention -ne $Manifest.retention) {throw 'Published result manifest failed validation'}
+    return $manifestPath
+}
+
+function Start-Stage0Result([string]$Root,[string]$Directory,[string]$ResultId,[string]$Kind,[string]$SourceIdentity,[string[]]$RequiredReferences=@(),[string]$OwnerResultId) {
+    $manifest=@{resultId=$ResultId;ownerResultId=$OwnerResultId;kind=$Kind;lifecycle='running';outcome='unknown';retention='retain';startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=$null;sourceIdentity=$SourceIdentity;requiredReferences=$RequiredReferences}
+    Write-Stage0ResultManifest $Root $Directory $manifest | Out-Null
+}
+
+function Complete-Stage0Result([string]$Root,[string]$Directory,[string]$Outcome,[string]$SourceIdentity) {
+    $manifestPath=Join-Path $Directory 'result-manifest.json'
+    if(!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {throw "Initial result manifest is missing: $manifestPath"}
+    $old=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    if($old.schemaVersion -ne 2 -or $old.lifecycle -ne 'running') {throw 'Result manifest is not a running schema-2 manifest'}
+    if($Outcome -notin @('accepted','passed','failed','incomplete','unknown')) {throw 'Result outcome is invalid'}
+    $manifest=@{resultId=[string]$old.resultId;ownerResultId=[string]$old.ownerResultId;kind=[string]$old.kind;lifecycle='finished';outcome=$Outcome;retention=$(if($Outcome -in @('failed','incomplete','unknown')){'retain'}else{'legacy'});startedUtc=[string]$old.startedUtc;finishedUtc=[DateTime]::UtcNow.ToString('o');sourceIdentity=$SourceIdentity;requiredReferences=@($old.requiredReferences)}
+    Write-Stage0ResultManifest $Root $Directory $manifest | Out-Null
+}
+
+function Complete-Stage0GateResult([string]$Root,[string]$Directory,[string]$ResultId) {
+    if(!(Test-Path -LiteralPath (Join-Path $Directory 'result-manifest.json') -PathType Leaf)) {return}
+    $checkpoint=$null
+    $localCheckpoint=Join-Path $Directory 'checkpoint.json'
+    if(Test-Path -LiteralPath $localCheckpoint -PathType Leaf) {try {$checkpoint=Get-Content -LiteralPath $localCheckpoint -Raw | ConvertFrom-Json -ErrorAction Stop} catch {}}
+    if(!$checkpoint) {
+        foreach($path in @(Get-ChildItem -LiteralPath $Root -File -Filter '*-checkpoint.json' -ErrorAction SilentlyContinue)) {
+            try {$candidate=Get-Content -LiteralPath $path.FullName -Raw | ConvertFrom-Json -ErrorAction Stop} catch {continue}
+            $candidateGate=$candidate.PSObject.Properties['gate']
+            if($candidateGate -and [string]$candidateGate.Value -eq $ResultId) {$checkpoint=$candidate;break}
+        }
+    }
+    $outcome='incomplete';$identity=$null
+    if($checkpoint) {
+        $statusProperty=$checkpoint.PSObject.Properties['status']
+        $status=if($statusProperty){[string]$statusProperty.Value}else{$null}
+        if($status -eq 'accepted') {$outcome='accepted'}
+        elseif($status -eq 'failed') {$outcome='failed'}
+        elseif($status -in @('passed','completed')) {$outcome='passed'}
+        $inputsProperty=$checkpoint.PSObject.Properties['inputs']
+        $sourceIdentityProperty=$checkpoint.PSObject.Properties['sourceIdentity']
+        if($inputsProperty -and ![string]::IsNullOrWhiteSpace([string]$inputsProperty.Value)) {$identity=[string]$inputsProperty.Value}
+        elseif($sourceIdentityProperty -and ![string]::IsNullOrWhiteSpace([string]$sourceIdentityProperty.Value)) {$identity=[string]$sourceIdentityProperty.Value}
+    }
+    Complete-Stage0Result $Root $Directory $outcome $identity
+    $parent=Get-Content -LiteralPath (Join-Path $Directory 'result-manifest.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+    $childManifests=@()
+    foreach($childRoot in @((Join-Path $Root 'evidence'),(Join-Path $Root 'runner'))) {
+      if(Test-Path -LiteralPath $childRoot -PathType Container) {
+        $childManifests+=@(Get-ChildItem -LiteralPath $childRoot -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {Join-Path $_.FullName 'result-manifest.json'})
+      }
+    }
+    foreach($childManifest in $childManifests) {
+        if(!(Test-Path -LiteralPath $childManifest -PathType Leaf)) {continue}
+        $m=Get-Content -LiteralPath $childManifest -Raw | ConvertFrom-Json -ErrorAction Stop
+        if($m.ownerResultId -ne $ResultId) {continue}
+        $child=@{resultId=[string]$m.resultId;ownerResultId=[string]$m.ownerResultId;kind=[string]$m.kind;lifecycle=[string]$m.lifecycle;outcome=[string]$m.outcome;retention=[string]$parent.retention;startedUtc=[string]$m.startedUtc;finishedUtc=[string]$m.finishedUtc;sourceIdentity=[string]$m.sourceIdentity;requiredReferences=@($m.requiredReferences)}
+        Write-Stage0ResultManifest $Root (Split-Path $childManifest -Parent) $child | Out-Null
+    }
+}
+
 function Get-SourceFiles([string]$Base,[string]$Directory) {
     foreach($item in Get-ChildItem -LiteralPath $Directory -Force) {
         if($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {throw "Source links require explicit review: $($item.FullName)"}
