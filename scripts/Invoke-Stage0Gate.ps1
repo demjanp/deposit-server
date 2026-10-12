@@ -29,4 +29,4 @@ try {
     Save-Checkpoint @{stage=0;status='failed';gate=$RunPrefix;failure=$_.Exception.Message;sessionId=$env:CODEX_THREAD_ID;updated=[DateTime]::UtcNow.ToString('o');nextAction='Repair the reported cause, then rerun the final suite with a fresh prefix; stop after three repairs of the same cause'}
     throw
 } finally {$lock.Dispose()}
-try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" -Apply } catch { Write-Warning "Stage 0 was accepted, but evidence cleanup failed: $($_.Exception.Message)" }
+try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" } catch { Write-Warning "Stage 0 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)" }

@@ -84,4 +84,4 @@ try {
     if($checkpoint.status -ne 'accepted') {try {Phase Stop} catch {Write-Warning 'Inspect the owned server process; stop failed'}}
 }
 } finally { $gateLock.Dispose() }
-if($checkpoint.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" -Apply } catch { Write-Warning "Stage 1 was accepted, but evidence cleanup failed: $($_.Exception.Message)" } }
+if($checkpoint.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" } catch { Write-Warning "Stage 1 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)" } }

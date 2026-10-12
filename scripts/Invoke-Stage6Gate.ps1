@@ -88,4 +88,4 @@ finally {
     $credential=Join-Path $root 'runs\stage0-host\secrets\stage1-session.txt';if(Test-Path -LiteralPath $credential){Remove-Item -LiteralPath $credential}
 }
 } finally { $gateLock.Dispose() }
-if($checkpoint.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" -Apply } catch { Write-Warning "Stage 6 was accepted, but evidence cleanup failed: $($_.Exception.Message)" } }
+if($checkpoint.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" } catch { Write-Warning "Stage 6 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)" } }

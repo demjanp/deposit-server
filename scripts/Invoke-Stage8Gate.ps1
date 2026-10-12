@@ -78,4 +78,4 @@ if($run.status -eq 'verified'){$run.status='accepted';$run.accepted=$true;$run.p
 Save-Checkpoint
 if($run.status -ne 'accepted'){Write-Error "Stage 8 is incomplete; evidence: $evidence";exit 1}
 } finally { $gateLock.Dispose() }
-if($run.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" -Apply } catch { Write-Warning "Stage 8 was accepted, but evidence cleanup failed: $($_.Exception.Message)" } }
+if($run.status -eq 'accepted') { try { & "$PSScriptRoot\Cleanup-Stage0Evidence.ps1" } catch { Write-Warning "Stage 8 was accepted, but Stage 0 cleanup failed: $($_.Exception.Message)" } }

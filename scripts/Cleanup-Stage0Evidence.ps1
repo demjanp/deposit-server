@@ -1,264 +1,278 @@
-param(
-    [string]$Root = 'C:\data_processed\Deposit_v2\stage0',
-    [ValidateRange(1, 3650)][int]$MinimumAgeDays = 30,
-    [ValidatePattern('^[a-zA-Z0-9_-]+$')][string[]]$AbandonResumePrefix = @(),
-    [switch]$Apply
-)
-
 $ErrorActionPreference = 'Stop'
-$rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-$evidencePath = [IO.Path]::GetFullPath((Join-Path $rootPath 'evidence')).TrimEnd('\')
+if ($args.Count -ne 0) { throw 'Cleanup-Stage0Evidence.ps1 takes no command-line arguments.' }
 
-if (!(Test-Path -LiteralPath $rootPath -PathType Container)) { throw "Stage 0 root does not exist: $rootPath" }
-if (!(Test-Path -LiteralPath $evidencePath -PathType Container)) { throw "Evidence directory does not exist: $evidencePath" }
+# Keep only the reusable installation, pinned tool/dependency caches, Maven
+# caches, and current stage checkpoints. Everything else under this fixed root
+# is disposable test output or historical work.
+$rootPath = [IO.Path]::GetFullPath('C:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+$repo = Split-Path $PSScriptRoot -Parent
+$runPath = Join-Path $rootPath 'runs\stage0-host'
+$runnerPath = Join-Path $rootPath 'runner'
+$evidencePath = Join-Path $rootPath 'evidence'
+
+if ($rootPath -ne 'C:\data_processed\Deposit_v2\stage0') {
+    throw "Refusing unexpected Stage 0 root: $rootPath"
+}
+if (!(Test-Path -LiteralPath $rootPath -PathType Container)) {
+    throw "Stage 0 root does not exist: $rootPath"
+}
 
 function Assert-NoReparseAncestors([string]$Path) {
     $current = Get-Item -LiteralPath $Path -Force
     while ($null -ne $current) {
-        if (($current.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Refusing cleanup through reparse point: $($current.FullName)" }
+        if (($current.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing cleanup through reparse point: $($current.FullName)"
+        }
         $current = $current.Parent
     }
 }
 
-Assert-NoReparseAncestors $rootPath
-Assert-NoReparseAncestors $evidencePath
-$gateLockPath = Join-Path $rootPath 'gate.lock'
-if ((Test-Path -LiteralPath $gateLockPath) -and ((Get-Item -LiteralPath $gateLockPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse-point gate lock: $gateLockPath" }
-
-# Share the gate and runner locks so cleanup cannot overlap either writer.
-$locks = New-Object 'System.Collections.Generic.List[System.IO.FileStream]'
-try {
-    $locks.Add([IO.File]::Open($gateLockPath, 'OpenOrCreate', 'ReadWrite', 'None'))
-    $runnerDirectory = Join-Path $rootPath 'runner'
-    if (Test-Path -LiteralPath $runnerDirectory -PathType Container) {
-        if (((Get-Item -LiteralPath $runnerDirectory -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse-point runner directory: $runnerDirectory" }
-        $runnerLockPath = Join-Path $runnerDirectory 'writer.lock'
-        if ((Test-Path -LiteralPath $runnerLockPath) -and ((Get-Item -LiteralPath $runnerLockPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse-point runner lock: $runnerLockPath" }
-        $locks.Add([IO.File]::Open($runnerLockPath, 'OpenOrCreate', 'ReadWrite', 'None'))
-    }
-} catch {
-    foreach ($heldLock in $locks) { $heldLock.Dispose() }
-    throw 'A Stage 0 gate is running or the gate lock is unavailable. Run cleanup after the gate has finished.'
-}
-
-function Add-JsonStrings($Value, [System.Collections.Generic.List[string]]$Strings) {
-    if ($null -eq $Value) { return }
-    if ($Value -is [string]) { $Strings.Add($Value); return }
-    if ($Value -is [System.Collections.IDictionary]) {
-        foreach ($item in $Value.Values) { Add-JsonStrings $item $Strings }
-        return
-    }
-    if ($Value -is [System.Collections.IEnumerable]) {
-        foreach ($item in $Value) { Add-JsonStrings $item $Strings }
-        return
-    }
-    if ($Value -is [pscustomobject]) {
-        foreach ($property in $Value.PSObject.Properties) { Add-JsonStrings $property.Value $Strings }
-    }
-}
-
-function Add-ResumeReferences($Value, [System.Collections.Generic.List[string]]$Strings) {
-    if ($null -eq $Value) { return }
-    if ($Value -is [System.Collections.IDictionary]) {
-        foreach ($key in $Value.Keys) {
-            if ([string]$key -ieq 'resumeFrom' -and $Value[$key] -is [string]) { $Strings.Add($Value[$key]) }
-            else { Add-ResumeReferences $Value[$key] $Strings }
-        }
-        return
-    }
-    if ($Value -is [pscustomobject]) {
-        foreach ($property in $Value.PSObject.Properties) {
-            if ($property.Name -ieq 'resumeFrom' -and $property.Value -is [string]) { $Strings.Add($property.Value) }
-            else { Add-ResumeReferences $property.Value $Strings }
-        }
-        return
-    }
-    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
-        foreach ($item in $Value) { Add-ResumeReferences $item $Strings }
-    }
-}
-
-function Add-GateReferences($Value, [System.Collections.Generic.List[string]]$Strings) {
-    if ($null -eq $Value) { return }
-    if ($Value -is [System.Collections.IDictionary]) {
-        foreach ($key in $Value.Keys) {
-            if ([string]$key -ieq 'gate' -and $Value[$key] -is [string]) { $Strings.Add($Value[$key]) }
-            else { Add-GateReferences $Value[$key] $Strings }
-        }
-        return
-    }
-    if ($Value -is [pscustomobject]) {
-        foreach ($property in $Value.PSObject.Properties) {
-            if ($property.Name -ieq 'gate' -and $property.Value -is [string]) { $Strings.Add($property.Value) }
-            else { Add-GateReferences $property.Value $Strings }
-        }
-        return
-    }
-    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
-        foreach ($item in $Value) { Add-GateReferences $item $Strings }
-    }
-}
-
-function Get-ReferenceRecords {
-    $records = New-Object 'System.Collections.Generic.List[object]'
-    $metadataNames = @('checkpoint.json', 'cumulative-checkpoint.json', 'evidence-paths.json', 'results.json', 'state.json', 'repair-counts.json')
-    $metadataFiles = @()
-
-    # Root checkpoints and their .previous/.partial copies record accepted gates and resume state.
-    $metadataFiles += Get-ChildItem -LiteralPath $rootPath -File -Force -ErrorAction Stop |
-        Where-Object { $_.Name -match '^stage.*checkpoint\.json(?:\.(?:previous|partial))?$' }
-    # Gate, runtime and runner metadata contain explicit links and resumable state.
-    $metadataFiles += Get-ChildItem -LiteralPath $evidencePath -File -Recurse -Force -ErrorAction Stop |
-        Where-Object { $_.Name -in $metadataNames }
-    foreach ($directoryName in @('runs', 'runner')) {
-        $directoryPath = Join-Path $rootPath $directoryName
-        if (Test-Path -LiteralPath $directoryPath -PathType Container) {
-            $metadataFiles += Get-ChildItem -LiteralPath $directoryPath -File -Recurse -Force -ErrorAction Stop |
-                Where-Object { $_.Name -in $metadataNames -or $_.Name -like '*.result.json' }
-        }
-    }
-
-    $hubDirectory = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'deposit-hub'
-    foreach ($documentName in @('implementation_plan.md', 'implementation_status.md')) {
-        $documentPath = Join-Path $hubDirectory $documentName
-        if (!(Test-Path -LiteralPath $documentPath -PathType Leaf)) { throw "Required retention document is missing: $documentPath" }
-        try {
-            $documentText = Get-Content -LiteralPath $documentPath -Raw -ErrorAction Stop
-            $records.Add([pscustomobject]@{ Source = $documentPath; Value = $documentText; Kind = 'document' })
-        } catch { throw "Could not read retention document '$documentPath'; no evidence will be deleted." }
-    }
-
-    foreach ($file in $metadataFiles) {
-        try {
-            $json = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
-            $paths = New-Object 'System.Collections.Generic.List[string]'
-            Add-JsonStrings $json $paths
-            foreach ($path in $paths) { $records.Add([pscustomobject]@{ Source = $file.FullName; Value = $path; Kind = 'path' }) }
-            $resumeReferences = New-Object 'System.Collections.Generic.List[string]'
-            Add-ResumeReferences $json $resumeReferences
-            foreach ($resumeReference in $resumeReferences) { $records.Add([pscustomobject]@{ Source = $file.FullName; Value = $resumeReference; Kind = 'resume' }) }
-            $gateReferences = New-Object 'System.Collections.Generic.List[string]'
-            Add-GateReferences $json $gateReferences
-            foreach ($gateReference in $gateReferences) { $records.Add([pscustomobject]@{ Source = $file.FullName; Value = $gateReference; Kind = 'gate' }) }
-        } catch {
-            throw "Could not read cleanup reference metadata '$($file.FullName)'; no evidence will be deleted."
-        }
-    }
-    return $records.ToArray()
-}
-
-function Test-ContainsReparsePoint([string]$Path) {
+function Assert-NoReparseTree([string]$Path) {
     $pending = New-Object 'System.Collections.Generic.Stack[string]'
     $pending.Push($Path)
     while ($pending.Count -gt 0) {
-        $current = $pending.Pop()
-        $item = Get-Item -LiteralPath $current -Force
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $true }
-        if ($item.PSIsContainer) {
-            foreach ($child in Get-ChildItem -LiteralPath $current -Force -ErrorAction Stop) { $pending.Push($child.FullName) }
+        $currentPath = $pending.Pop()
+        $current = Get-Item -LiteralPath $currentPath -Force
+        if (($current.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing cleanup of a tree containing a reparse point: $currentPath"
+        }
+        if ($current.PSIsContainer) {
+            foreach ($child in Get-ChildItem -LiteralPath $currentPath -Force -ErrorAction Stop) {
+                $pending.Push($child.FullName)
+            }
         }
     }
-    return $false
+}
+
+function Assert-UnderRoot([string]$Path) {
+    $fullPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    if (!$fullPath.StartsWith($rootPath + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing path outside Stage 0 root: $fullPath"
+    }
+    return $fullPath
+}
+
+Assert-NoReparseAncestors $rootPath
+
+if (!(Test-Path -LiteralPath (Join-Path $runPath 'owner.json') -PathType Leaf)) {
+    throw "The owned stage0-host installation is missing; refusing broad cleanup: $runPath"
+}
+$owner = Get-Content -LiteralPath (Join-Path $runPath 'owner.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+if ($owner.runId -ne 'stage0-host' -or $owner.root -ne $rootPath) {
+    throw 'The stage0-host ownership marker does not match the approved installation.'
+}
+
+# Current checkpoints are prerequisite inputs for future cumulative gates.
+# Retain them regardless of age/status, but refuse to delete anything if one is
+# unreadable. Their .previous/.partial copies are disposable recovery history.
+$checkpointPattern = '^stage(?:0|[1-9]|5\.5|65|10|11)-checkpoint\.json$'
+$checkpointNames = @()
+foreach ($checkpointFile in @(Get-ChildItem -LiteralPath $rootPath -File -Force | Where-Object { $_.Name -match $checkpointPattern })) {
+    try {
+        $null = Get-Content -LiteralPath $checkpointFile.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "Cannot read prerequisite checkpoint '$($checkpointFile.FullName)'; no cleanup was performed."
+    }
+    $checkpointNames += $checkpointFile.Name
+}
+if ($checkpointNames -notcontains 'stage0-checkpoint.json') {
+    throw 'The accepted Stage 0 checkpoint is missing; refusing broad cleanup.'
+}
+$stage0Checkpoint = Get-Content -LiteralPath (Join-Path $rootPath 'stage0-checkpoint.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+if ($stage0Checkpoint.status -ne 'accepted') {
+    throw 'Stage 0 is not accepted; refusing to remove diagnostic/recovery evidence.'
+}
+if (!(Test-Path -LiteralPath (Join-Path $runPath 'neo4j') -PathType Container)) {
+    throw 'The owned Neo4j installation is missing; refusing broad cleanup.'
+}
+
+# Validate all pinned assets before deleting anything. These are reusable build
+# inputs for Stage 10/11, unlike prior outputs and evidence.
+$manifestPath = Join-Path $repo 'runtime\artifacts.json'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+$licenseOverrides = Get-Content -LiteralPath (Join-Path $repo 'runtime\license-overrides.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+$locks = @(
+    (Join-Path (Join-Path $repo 'runtime') $manifest.dependencyLock),
+    (Join-Path (Join-Path $repo 'runtime') $manifest.ocflDependencyLock),
+    (Join-Path (Join-Path $repo 'runtime') $manifest.formatDependencyLock)
+)
+$requiredCacheFiles = @($manifest.artifacts | ForEach-Object { [string]$_.file })
+$expectedCacheHashes = @{}
+foreach ($artifact in @($manifest.artifacts)) { $expectedCacheHashes[[string]$artifact.file] = [string]$artifact.sha256 }
+$dependencyCacheNames = @('spatial-dependencies', 'ocfl-dependencies', 'format-dependencies')
+for ($index = 0; $index -lt $locks.Count; $index++) {
+    $lock = Get-Content -LiteralPath $locks[$index] -Raw | ConvertFrom-Json -ErrorAction Stop
+    foreach ($dependency in @($lock.dependencies | Where-Object ship)) {
+        $relative = Join-Path $dependencyCacheNames[$index] ([string]$dependency.file)
+        $requiredCacheFiles += $relative
+        $expectedCacheHashes[$relative] = [string]$dependency.sha256
+    }
+}
+$requiredCacheFiles = @($requiredCacheFiles | Sort-Object -Unique)
+foreach ($relative in $requiredCacheFiles) {
+    $artifactPath = Join-Path (Join-Path $rootPath 'cache') $relative
+    if (!(Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+        throw "A pinned build artifact is missing; no cleanup was performed: $artifactPath"
+    }
+    if ((Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash -ne $expectedCacheHashes[$relative]) {
+        throw "A pinned build artifact failed its checksum; no cleanup was performed: $artifactPath"
+    }
+}
+foreach ($license in $licenseOverrides.PSObject.Properties) {
+    $licensePath = Join-Path (Join-Path $rootPath 'cache') ([string]$license.Value.file)
+    if (!(Test-Path -LiteralPath $licensePath -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $licensePath -Algorithm SHA256).Hash -ne [string]$license.Value.sha256) {
+        throw "A pinned license text is missing or changed; no cleanup was performed: $licensePath"
+    }
+}
+
+$toolsPath = Join-Path $rootPath 'tools'
+$mavenArtifact = $manifest.artifacts | Where-Object id -eq 'maven' | Select-Object -First 1
+$requiredToolDirectories = @(
+    (Split-Path ([string]$manifest.javaHome) -Leaf),
+    (Split-Path ([string]$manifest.neo4jHome) -Leaf),
+    ([string]$mavenArtifact.file -replace '-bin\.zip$', '')
+)
+foreach ($toolDirectory in $requiredToolDirectories) {
+    if (!(Test-Path -LiteralPath (Join-Path $toolsPath $toolDirectory) -PathType Container)) {
+        throw "A pinned build tool is missing; no cleanup was performed: $toolDirectory"
+    }
+}
+
+# Refuse to overlap a gate, a Stage 0 phase, a saved Codex run, or any Java
+# process launched from this test root.
+New-Item -ItemType Directory -Path $runnerPath -Force | Out-Null
+New-Item -ItemType Directory -Path $evidencePath -Force | Out-Null
+$lockPaths = @(
+    (Join-Path $rootPath 'gate.lock'),
+    (Join-Path $runPath 'phase.lock'),
+    (Join-Path $runnerPath 'writer.lock')
+)
+$heldLocks = New-Object 'System.Collections.Generic.List[System.IO.FileStream]'
+try {
+    foreach ($lockPath in $lockPaths) {
+        $heldLocks.Add([IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None'))
+    }
+} catch {
+    foreach ($heldLock in $heldLocks) { $heldLock.Dispose() }
+    throw 'A Stage 0 gate, phase, or Codex runner is active; no cleanup was performed.'
 }
 
 try {
-    $cutoff = [DateTime]::UtcNow.AddDays(-$MinimumAgeDays)
-    $directories = @(Get-ChildItem -LiteralPath $evidencePath -Directory -Force | Sort-Object Name)
-    $candidates = New-Object 'System.Collections.Generic.List[object]'
-    $stage0Failures = @{}
-    $stage0CheckpointFiles = @(Get-ChildItem -LiteralPath $rootPath -File -Force | Where-Object { $_.Name -match '^stage0-checkpoint\.json(?:\.(?:previous|partial))?$' })
-    foreach ($file in $stage0CheckpointFiles) {
-        try { $stage0Checkpoint = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json -ErrorAction Stop } catch { throw "Could not read '$($file.FullName)'; no evidence will be deleted." }
-        if ($stage0Checkpoint.status -eq 'failed' -and $stage0Checkpoint.gate) {
-            $updated = $file.LastWriteTimeUtc
-            if ($stage0Checkpoint.updated) { try { $updated = [DateTime]::Parse($stage0Checkpoint.updated).ToUniversalTime() } catch { throw "Invalid timestamp in '$($file.FullName)'; no evidence will be deleted." } }
-            $gateName = [string]$stage0Checkpoint.gate
-            if (!$stage0Failures.ContainsKey($gateName) -or $updated -gt $stage0Failures[$gateName]) { $stage0Failures[$gateName] = $updated }
+    $activeJava = @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {
+        $_.CommandLine -and $_.CommandLine.IndexOf($rootPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    })
+    if ($activeJava.Count -gt 0) {
+        throw 'A Java process is using the Stage 0 root; stop it before cleanup.'
+    }
+
+    # Build the complete deletion list and inspect every target before the
+    # first removal. This prevents traversal through links and avoids partial
+    # cleanup caused by a late path-safety failure.
+    $keepRootDirectories = @('runs', 'cache', 'tools', 'maven-repository', 'maven-user', 'runner', 'evidence')
+    $keepRootFiles = @('gate.lock') + $checkpointNames
+    $rootTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $rootPath -Force -ErrorAction Stop)) {
+        if ($entry.PSIsContainer) {
+            if ($keepRootDirectories -contains $entry.Name) { continue }
+        } elseif ($keepRootFiles -contains $entry.Name) { continue }
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $rootTargets += $target
+    }
+
+    $runsPath = Join-Path $rootPath 'runs'
+    foreach ($protectedPath in @(
+        $runsPath,
+        $runPath,
+        (Join-Path $rootPath 'cache'),
+        $toolsPath,
+        (Join-Path $rootPath 'maven-repository'),
+        (Join-Path $rootPath 'maven-user'),
+        $runnerPath,
+        $evidencePath
+    )) {
+        if (Test-Path -LiteralPath $protectedPath) { Assert-NoReparseTree $protectedPath }
+    }
+    $runsTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $runsPath -Force -ErrorAction Stop)) {
+        if ($entry.Name -eq 'stage0-host') { continue }
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $runsTargets += $target
+    }
+    $hostRunTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $runPath -Force -ErrorAction Stop)) {
+        if ($entry.Name -in @('neo4j', 'owner.json', 'phase.lock')) { continue }
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $hostRunTargets += $target
+    }
+
+    $requiredCacheRootNames = @($manifest.artifacts | ForEach-Object { [string]$_.file }) + $dependencyCacheNames + @('licenses')
+    $cacheTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath (Join-Path $rootPath 'cache') -Force -ErrorAction Stop)) {
+        if ($requiredCacheRootNames -contains $entry.Name) { continue }
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $cacheTargets += $target
+    }
+    foreach ($index in 0..($locks.Count - 1)) {
+        $lock = Get-Content -LiteralPath $locks[$index] -Raw | ConvertFrom-Json -ErrorAction Stop
+        $dependencyDirectory = Join-Path (Join-Path $rootPath 'cache') $dependencyCacheNames[$index]
+        $keep = @($lock.dependencies | Where-Object ship | ForEach-Object { [string]$_.file })
+        foreach ($entry in @(Get-ChildItem -LiteralPath $dependencyDirectory -Force -ErrorAction Stop)) {
+            if ($keep -contains $entry.Name) { continue }
+            $target = Assert-UnderRoot $entry.FullName
+            Assert-NoReparseTree $target
+            $cacheTargets += $target
+        }
+    }
+    $licenseDirectory = Join-Path (Join-Path $rootPath 'cache') 'licenses'
+    if (Test-Path -LiteralPath $licenseDirectory -PathType Container) {
+        $requiredLicenseNames = @($licenseOverrides.PSObject.Properties | ForEach-Object { Split-Path ([string]$_.Value.file) -Leaf })
+        foreach ($entry in @(Get-ChildItem -LiteralPath $licenseDirectory -Force -ErrorAction Stop)) {
+            if ($requiredLicenseNames -contains $entry.Name) { continue }
+            $target = Assert-UnderRoot $entry.FullName
+            Assert-NoReparseTree $target
+            $cacheTargets += $target
         }
     }
 
-    for ($index = 0; $index -lt $directories.Count; $index++) {
-        $directory = $directories[$index]
-        Write-Progress -Activity 'Reviewing Stage 0 evidence' -Status "$($index + 1) of $($directories.Count): $($directory.Name)" -PercentComplete ([int](100 * ($index + 1) / [Math]::Max(1, $directories.Count)))
-
-        $checkpointPath = Join-Path $directory.FullName 'checkpoint.json'
-        $checkpoint = $null
-        $updated = $null
-        if (Test-Path -LiteralPath $checkpointPath -PathType Leaf) {
-            try { $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch {
-                Write-Warning "Keeping '$($directory.Name)': checkpoint is unreadable."
-                continue
-            }
-            if ($checkpoint.status -eq 'failed' -and $checkpoint.updated) {
-                try { $updated = [DateTime]::Parse($checkpoint.updated).ToUniversalTime() } catch { continue }
-            }
-            if ($checkpoint.status -and $checkpoint.status -ne 'failed') { continue }
-            if ([string]$checkpoint.stage -in @('6', '6.5') -and $directory.Name -notin $AbandonResumePrefix) { continue }
-        }
-        # Stage 0 records its failed status in the root checkpoint; its evidence folder has results.json instead.
-        if ($null -eq $updated -and $stage0Failures.ContainsKey($directory.Name)) { $updated = $stage0Failures[$directory.Name] }
-        if ($null -eq $updated) { continue }
-        if ($updated -gt $cutoff) { continue }
-
-        $candidates.Add([pscustomobject]@{ Directory = $directory; Checkpoint = $checkpoint; Updated = $updated })
+    $requiredToolNames = $requiredToolDirectories + @('neo4j.sha256', 'maven.sha256', 'temurin.sha256')
+    $toolTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $toolsPath -Force -ErrorAction Stop)) {
+        if ($requiredToolNames -contains $entry.Name) { continue }
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $toolTargets += $target
     }
-    Write-Progress -Activity 'Reviewing Stage 0 evidence' -Completed
 
-    $referenceRecords = @(Get-ReferenceRecords)
-    $logPath = Join-Path $rootPath 'evidence-cleanup.jsonl'
-    $removed = 0
-    for ($candidateIndex = 0; $candidateIndex -lt $candidates.Count; $candidateIndex++) {
-        $candidate = $candidates[$candidateIndex]
-        Write-Progress -Activity 'Cleaning failed Stage 0 evidence' -Status "$($candidateIndex + 1) of $($candidates.Count): $($candidate.Directory.Name)" -PercentComplete ([int](100 * ($candidateIndex + 1) / [Math]::Max(1, $candidates.Count)))
-        $path = [IO.Path]::GetFullPath($candidate.Directory.FullName).TrimEnd('\')
-        if (!$path.StartsWith($evidencePath + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing path outside evidence: $path" }
-
-        $isReferenced = $false
-        foreach ($record in $referenceRecords) {
-            if ($record.Source.StartsWith($path + '\', [StringComparison]::OrdinalIgnoreCase)) { continue }
-            $reference = $record.Value
-            if ([string]::IsNullOrWhiteSpace($reference)) { continue }
-            if ($record.Kind -eq 'resume' -and $reference.Equals($candidate.Directory.Name, [StringComparison]::OrdinalIgnoreCase)) {
-                $isReferenced = $true
-                break
-            }
-            if ($record.Kind -eq 'gate' -and $reference.Equals($candidate.Directory.Name, [StringComparison]::OrdinalIgnoreCase)) {
-                $isReferenced = $true
-                break
-            }
-            if ($record.Kind -eq 'document' -and $reference.IndexOf($candidate.Directory.Name, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                $isReferenced = $true
-                break
-            }
-            if ($record.Kind -ne 'path') { continue }
-            try { $resolvedReference = [IO.Path]::GetFullPath($reference).TrimEnd('\') } catch { continue }
-            if ($resolvedReference.Equals($path, [StringComparison]::OrdinalIgnoreCase) -or
-                $resolvedReference.StartsWith($path + '\', [StringComparison]::OrdinalIgnoreCase)) {
-                $isReferenced = $true
-                break
-            }
-        }
-        if ($isReferenced) { Write-Output "KEEP (referenced): $($candidate.Directory.Name)"; continue }
-        if (Test-ContainsReparsePoint $path) { Write-Warning "Keeping '$($candidate.Directory.Name)': contains a reparse point."; continue }
-
-        if ($Apply) {
-            # Recheck containment immediately before deletion.
-            $confirmPath = [IO.Path]::GetFullPath($path).TrimEnd('\')
-            if (!$confirmPath.StartsWith($evidencePath + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing path outside evidence: $confirmPath" }
-            Write-Output "Deleting: $($candidate.Directory.Name)"
-            Remove-Item -LiteralPath $confirmPath -Recurse -Force -ErrorAction Stop
-            $removed++
-            $action = 'deleted'
-        } else {
-            $action = 'would delete'
-        }
-        $record = [pscustomobject]@{ time = [DateTime]::UtcNow.ToString('o'); path = $path; status = 'failed'; updated = $candidate.Updated.ToString('o'); action = $action }
-        if ($Apply) { Add-Content -LiteralPath $logPath -Value ($record | ConvertTo-Json -Compress) -Encoding UTF8 }
-        Write-Output "$($action.ToUpperInvariant()): $($candidate.Directory.Name) (failed $($candidate.Updated.ToString('u')))"
+    $runnerTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $runnerPath -Force -ErrorAction Stop)) {
+        if ($entry.Name -eq 'writer.lock') { continue }
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $runnerTargets += $target
     }
-    Write-Progress -Activity 'Cleaning failed Stage 0 evidence' -Completed
-    if ($Apply) { Write-Output "Cleanup complete. Deleted $removed failed evidence folder(s). Log: $logPath" }
-    else { Write-Output "Preview complete. Re-run with -Apply to delete eligible folders. No evidence was deleted." }
+    $evidenceTargets = @()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $evidencePath -Force -ErrorAction Stop)) {
+        $target = Assert-UnderRoot $entry.FullName
+        Assert-NoReparseTree $target
+        $evidenceTargets += $target
+    }
+
+    # Evidence, input snapshots, old builds, diagnostic outputs, runner history,
+    # stale runtime versions and unpinned artifacts are regenerated when needed.
+    # Maven caches and the accepted checkpoints remain for fast cumulative runs.
+    $targets = @($rootTargets + $runsTargets + $hostRunTargets + $cacheTargets + $toolTargets + $runnerTargets + $evidenceTargets)
+    foreach ($target in $targets) {
+        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
+    }
+
+    New-Item -ItemType Directory -Path $evidencePath -Force | Out-Null
+    Write-Output "Stage 0 cleanup complete. Removed $($targets.Count) obsolete path trees."
+    Write-Output 'Retained the owned stage0-host installation, accepted stage checkpoints, pinned tools/artifacts, and Maven caches.'
 } finally {
-    foreach ($heldLock in $locks) { $heldLock.Dispose() }
+    foreach ($heldLock in $heldLocks) { $heldLock.Dispose() }
 }
