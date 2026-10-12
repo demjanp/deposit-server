@@ -8,9 +8,10 @@ public final class ResourceLinkEncoder {
     public static String url(String publicBaseUrl,String namespaceId,String resourceId){
         String ns=RequestContext.uuid(namespaceId),resource=RequestContext.uuid(resourceId);
         try{
-            URI base=new URI(publicBaseUrl);if(!base.isAbsolute()||base.getHost()==null||base.getRawQuery()!=null||base.getRawFragment()!=null||base.getUserInfo()!=null)throw new IllegalArgumentException();
-            String path=base.getRawPath()==null?"":base.getRawPath();if(path.endsWith("/"))path=path.substring(0,path.length()-1);
-            return new URI(base.getScheme(),null,base.getHost(),base.getPort(),path+"/resources/"+ns+"/"+resource,null,null).toASCIIString();
+            URI base=new URI(publicBaseUrl);if(!base.isAbsolute()||base.isOpaque()||base.getHost()==null||base.getRawQuery()!=null||base.getRawFragment()!=null||base.getUserInfo()!=null
+                ||!("http".equalsIgnoreCase(base.getScheme())||"https".equalsIgnoreCase(base.getScheme())))throw new IllegalArgumentException();
+            String value=base.toASCIIString();while(value.endsWith("/"))value=value.substring(0,value.length()-1);
+            return new URI(value+"/resources/"+ns+"/"+resource).toASCIIString();
         }catch(URISyntaxException|RuntimeException e){throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid configured resource URL");}
     }
     public static String markdown(String publicBaseUrl,String namespaceId,String resourceId,String storedFilename){

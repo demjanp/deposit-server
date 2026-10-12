@@ -99,7 +99,7 @@ $gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
       @{suite='org.deposit.it.Stage9CoreIT';name='preparedRowsAnalysisReplaysAfterIndependentRevisionAndKeepsPlanStale'},
       @{suite='org.deposit.it.Stage9CoreIT';name='preparedPatternAnalysisReplaysAfterIndependentRevisionAndKeepsPlanStale'},
       @{suite='org.deposit.it.Stage9CoreIT';name='queryExportUsesTypedQueryRowsAndPublishesDownloadableCsv'},
-      @{suite='org.deposit.it.Stage9CoreIT';name='dResourceQueryExportFailsBeforePublishingResourceOrGrant'},
+      @{suite='org.deposit.it.Stage9CoreIT';name='dResourceQueryExportEmitsAuthenticatedLinkWithoutGrantingReferencedResource'},
       @{suite='org.deposit.it.Stage9CoreIT';name='queryExportRetainsEmptyResultColumnsAndRejectsNativeObjects'},
       @{suite='org.deposit.it.Stage9CoreIT';name='lateXlsxCellLimitFailurePublishesNoResourceOrGrant'},
       @{suite='org.deposit.it.Stage9CoreIT';name='xlsxAcceptsTheMaximumCellTextLength'},

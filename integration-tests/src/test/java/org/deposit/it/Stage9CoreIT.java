@@ -174,13 +174,16 @@ class Stage9CoreIT {
     private static Set<String> stagedExportNames(java.nio.file.Path directory){try(var files=java.nio.file.Files.list(directory)){return files.map(path->path.getFileName().toString()).collect(java.util.stream.Collectors.toCollection(TreeSet::new));}catch(java.io.IOException e){throw new AssertionError(e);}}
     private static void armExportPause(String point,String mode){call("stage0.storage.arm",point,mode);}
     private static boolean awaitExportPause(java.time.Duration timeout)throws InterruptedException{var marker=java.nio.file.Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host/stage4-pause.json");long deadline=System.nanoTime()+timeout.toNanos();while(System.nanoTime()<deadline){if(java.nio.file.Files.exists(marker))return true;Thread.sleep(10);}return false;}
-    @Test void dResourceQueryExportFailsBeforePublishingResourceOrGrant(){
+    @Test void dResourceQueryExportEmitsAuthenticatedLinkWithoutGrantingReferencedResource(){
         String file=upload("resource payload".getBytes(StandardCharsets.UTF_8),"source.txt");
         call("deposit.create.class","FileRecord",m("descriptors",List.of(m("name","File","type","DResource"))),token);
         call("deposit.create.object","FileRecord",m("descriptors",m("File",m("resourceId",file))),token);
-        long resourcesBefore,grantsBefore;try(var session=driver.session()){var record=session.run("MATCH (r:DResource {namespaceId:$ns}) RETURN count(r) AS resources",m("ns",namespace)).single();resourcesBefore=record.get("resources").asLong();grantsBefore=session.run("MATCH (g:DepositExportGrant {namespaceId:$ns}) RETURN count(g) AS grants",m("ns",namespace)).single().get("grants").asLong();}
-        try{call("deposit.save.csv",m("query","SELECT FileRecord.File"),m(),m(),token);fail("DResource export must fail while Stage 10 links are unavailable");}catch(org.neo4j.driver.exceptions.Neo4jException expected){assertTrue(expected.getMessage().contains("VALIDATION_FAILED"));}
-        try(var session=driver.session()){assertEquals(resourcesBefore,session.run("MATCH (r:DResource {namespaceId:$ns}) RETURN count(r) AS resources",m("ns",namespace)).single().get("resources").asLong());assertEquals(grantsBefore,session.run("MATCH (g:DepositExportGrant {namespaceId:$ns}) RETURN count(g) AS grants",m("ns",namespace)).single().get("grants").asLong());}
+        long sourceGrants;try(var session=driver.session()){sourceGrants=session.run("MATCH (g:DepositExportGrant {resourceId:$id}) RETURN count(g) AS n",m("id",file)).single().get("n").asLong();}
+        var saved=call("deposit.save.csv",m("query","SELECT FileRecord.File"),m(),m("filename","resource-links.csv"),token).get("data");
+        String base=Objects.requireNonNull(System.getenv("STAGE0_HTTP_BASE"));
+        String expected="FileRecord.File\r\n[source.txt]("+base+"/resources/"+namespace+"/"+file+")\r\n";
+        assertEquals(expected,downloadText(saved.get("resourceId").asString(),saved.get("bytes").asLong(),token));
+        try(var session=driver.session()){assertEquals(sourceGrants,session.run("MATCH (g:DepositExportGrant {resourceId:$id}) RETURN count(g) AS n",m("id",file)).single().get("n").asLong(),"Rendering the link must not grant access to its target");}
     }
     @Test void queryExportRetainsEmptyResultColumnsAndRejectsNativeObjects(){
         call("deposit.create.class","Specimen",m("descriptors",List.of(m("name","Code","type","String"))),token);call("deposit.create.object","Specimen",m("descriptors",m("Code","Q-1")),token);

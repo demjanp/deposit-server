@@ -28,9 +28,11 @@ public final class DepositExtension extends ExtensionFactory<DepositExtension.De
                 });
             }
             @Override public void shutdown() {
-                if(server!=null && server.storage!=null)server.storage.close();
-                if(initializer!=null)initializer.interrupt();
-                if(server!=null) {dependencies.management().unregisterTransactionEventListener(dependencies.databaseId().name(),server);dependencies.monitors().removeMonitorListener(server);ServerContext.detach(dependencies.databaseId().databaseId().uuid());}
+                try{if(server!=null)server.shutdown();}
+                finally{
+                    if(initializer!=null){initializer.interrupt();try{initializer.join(60_000);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+                    if(server!=null) {dependencies.management().unregisterTransactionEventListener(dependencies.databaseId().name(),server);dependencies.monitors().removeMonitorListener(server);ServerContext.detach(dependencies.databaseId().databaseId().uuid());}
+                }
             }
         };
     }

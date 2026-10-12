@@ -50,6 +50,18 @@ public final class AccountService extends ActionService {
         session.baselines.put("server",c.revision);
         return new LoginRow(token,Json.map("user",repo.data(user),"expiresAt",Instant.ofEpochMilli(session.created+1_800_000).toString()),c.meta());
     }
+    /** Browser credentials share the same hash and throttle policy but create a transport-bound session. */
+    public String loginBrowser(String username,String password,String origin) {
+        c.server.guard(c.state,false);
+        username=name(username);password=string(password);
+        c.server.checkLoginDelay(username,origin,c.state.kernel);
+        Node user=repo.find("User","username",username);
+        boolean valid=user!=null&&Boolean.TRUE.equals(user.getProperty("enabled",false))&&matchesPassword(user,password);
+        if(!valid){c.server.loginFailed(username,origin);c.fail("AUTH_FAILED","Invalid credentials");}
+        String token=ServerContext.randomToken();var session=new ServerContext.Session(CoreRepository.id(user),null,c.server.sessionTime(),ServerContext.Transport.BROWSER);
+        session.csrfToken=ServerContext.randomToken();c.state.afterCommit.add(()->c.server.sessions.put(Json.hash(token),session));
+        c.revision=c.server.revision(c.state);return token;
+    }
     public ValueRow logout(Map<String,Object> request) {
         fields(request);readContext();authenticate();
         if(c.state.scoped||c.state.mutation)c.fail("VALIDATION_FAILED","Logout requires separate transaction");

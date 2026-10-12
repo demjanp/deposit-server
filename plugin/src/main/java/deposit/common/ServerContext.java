@@ -49,6 +49,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         return cancelled;
     }
     public final ConcurrentMap<String,Session> sessions=new ConcurrentHashMap<>();
+    private final ConcurrentMap<String,java.util.concurrent.atomic.AtomicInteger> activeReaders=new ConcurrentHashMap<>();
     private final ConcurrentMap<String,Failures> failures=new ConcurrentHashMap<>();
     private final Semaphore serverLock=new Semaphore(1,true);
     private final AuthorizationGuard authorization = new AuthorizationGuard();
@@ -58,8 +59,12 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public final String runId=UUID.randomUUID().toString();
     private volatile long revision;
     private volatile boolean initialized;
+    private final Object lifecycleLock=new Object();
+    private volatile boolean stopping;
+    private ResourceDownloadServer downloads;
+    public volatile String downloadPublicBaseUrl;
     private GraphDatabaseAPI database;
-    public StorageManager storage;
+    public volatile StorageManager storage;
     private volatile java.util.function.Consumer<String> storageObserver=point->{};
     public void storagePoint(String point){storageObserver.accept(point);}
     public GraphDatabaseAPI database() {return database;}
@@ -130,9 +135,8 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if(state.serverLocked) return revision+(state.serverChanged?1:0);
         acquire(state.kernel);try {return revision;} finally {serverLock.release();}
     }
-    public synchronized void initialize(GraphDatabaseAPI db) {
-        if(initialized) return;
-        database=db;
+    public void initialize(GraphDatabaseAPI db) {
+        synchronized(lifecycleLock){if(initialized)return;if(stopping)throw new IllegalStateException("Deposit is shutting down");database=db;}
         SchemaRepository.initialize(db);
         try {
             secretPath=Path.of(System.getProperty("deposit.config")).toAbsolutePath().getParent().resolve("deposit-bootstrap.secret");
@@ -144,11 +148,30 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             if(!bootstrapped) {
                 bootstrapHash=Json.hash(secret(secretPath));
             }
-            storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();storage.start();
-            initialized=true;
-            readiness.complete(null);
-        } catch(Exception e) {if(storage!=null){try{storage.close();}catch(Exception close){e.addSuppressed(close);}storage=null;}throw new IllegalStateException("Cannot initialize Deposit",e);}
+            storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();
+            synchronized(lifecycleLock){
+                if(stopping)throw new IllegalStateException("Deposit stopped during initialization");
+                storage.start();downloads=new ResourceDownloadServer(this,db);downloads.start();downloadPublicBaseUrl=downloads.publicBaseUrl();
+                initialized=true;readiness.complete(null);
+            }
+        } catch(Exception e) {
+            synchronized(lifecycleLock){if(downloads!=null){try{downloads.close();}catch(Exception close){e.addSuppressed(close);}downloads=null;}if(storage!=null){try{storage.close();}catch(Exception close){e.addSuppressed(close);}storage=null;}}
+            throw new IllegalStateException("Cannot initialize Deposit",e);
+        }
     }
+    public void shutdown(){
+        synchronized(lifecycleLock){
+            stopping=true;readiness.completeExceptionally(new IllegalStateException("Deposit is shutting down"));
+            try{if(downloads!=null)downloads.close();}
+            finally{downloads=null;try{if(storage!=null)storage.close();}finally{storage=null;}}
+        }
+    }
+    public AutoCloseable pinResource(String resourceId){
+        var count=activeReaders.compute(resourceId,(key,current)->{if(current==null)current=new java.util.concurrent.atomic.AtomicInteger();current.incrementAndGet();return current;});
+        java.util.concurrent.atomic.AtomicBoolean closed=new java.util.concurrent.atomic.AtomicBoolean();
+        return ()->{if(closed.compareAndSet(false,true))activeReaders.computeIfPresent(resourceId,(key,current)->current.decrementAndGet()==0?null:current);};
+    }
+    public boolean hasReaderPin(String resourceId){var value=activeReaders.get(resourceId);return value!=null&&value.get()>0;}
     private static String secret(Path path) throws java.io.IOException {
         if(!Files.exists(path)) {
             Path temporary=path.resolveSibling(path.getFileName()+"."+UUID.randomUUID()+".partial");
@@ -178,7 +201,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if(protect)guard(c.state, false);
         if(c.token==null || c.token.isEmpty()) {c.fail("AUTH_REQUIRED","Session token required");}
         var session=sessions.get(Json.hash(c.token));
-        if(session==null || !session.principal.equals(principal)) {c.fail("AUTH_FAILED","Invalid session");}
+        if(session==null || session.transport!=Transport.BOLT || !Objects.equals(session.principal,principal)) {c.fail("AUTH_FAILED","Invalid session");}
         synchronized(session) {
             long now=sessionTime();
             if(now-session.touched>=1_800_000L || now-session.created>=28_800_000L) {sessions.remove(Json.hash(c.token));c.fail("SESSION_EXPIRED","Session expired");}
@@ -190,6 +213,21 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         track(c);
         return session;
     }
+    /** Browser validation is deliberately separate from Bolt principal authentication. */
+    public Session authenticateBrowser(RequestContext c) {
+        guard(c.state,false);
+        if(c.token==null||c.token.isEmpty())c.fail("AUTH_REQUIRED","Browser session required");
+        String hash=Json.hash(c.token);Session session=sessions.get(hash);
+        if(session==null||session.transport!=Transport.BROWSER)c.fail("AUTH_FAILED","Invalid browser session");
+        synchronized(session){long now=sessionTime();if(now-session.touched>=1_800_000L||now-session.created>=28_800_000L){sessions.remove(hash,session);c.fail("SESSION_EXPIRED","Browser session expired");}}
+        if(c.state.tokenHash!=null&&!c.state.tokenHash.equals(hash))c.fail("VALIDATION_FAILED","Cannot mix sessions in a transaction");
+        c.state.tokenHash=hash;c.session=session;c.actorId=session.actor;track(c);return session;
+    }
+    public boolean touchBrowserSession(String token,Session expected) {
+        String hash=Json.hash(token);if(sessions.get(hash)!=expected||expected.transport!=Transport.BROWSER)return false;
+        synchronized(expected){long now=sessionTime();if(sessions.get(hash)!=expected||now-expected.touched>=1_800_000L||now-expected.created>=28_800_000L){sessions.remove(hash,expected);return false;}expected.touched=now;return true;}
+    }
+    public enum Transport { BOLT, BROWSER }
     public void checkLoginDelay(String username,String origin,KernelTransaction tx) {
         long delay=Math.max(delay("user:"+username),delay("origin:"+origin));
         long until=System.currentTimeMillis()+delay;
@@ -207,14 +245,15 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         void prune() {while(!times.isEmpty() && times.getFirst()<System.currentTimeMillis()-300_000) times.removeFirst();}
     }
     public static final class Session {
-        public final String actor,principal; public final long created;
+        public final String actor,principal; public final long created;public final Transport transport;public volatile String csrfToken;
         public long touched; public volatile String namespace;
         public volatile boolean administrative;
         public final Map<String,Long> baselines=new HashMap<>();
         public long observationGeneration;
         public volatile String preparedAction, lastOperation, lastScope;
         public TxState mutationOwner;
-        public Session(String actor,String principal,long created) {this.actor=actor;this.principal=principal;this.created=created;this.touched=created;}
+        public Session(String actor,String principal,long created) {this(actor,principal,created,Transport.BOLT);}
+        public Session(String actor,String principal,long created,Transport transport) {this.actor=actor;this.principal=principal;this.created=created;this.touched=created;this.transport=transport;}
     }
     public static final class TxState {
         public final KernelTransaction kernel;

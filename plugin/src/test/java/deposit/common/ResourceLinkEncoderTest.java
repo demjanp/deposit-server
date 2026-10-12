@@ -9,10 +9,14 @@ class ResourceLinkEncoderTest {
     @Test void preservesConfiguredPrefixAndUsesOnlyCanonicalIdentifiers(){
         assertEquals("https://deposit.example/base/resources/"+NS+"/"+RESOURCE,ResourceLinkEncoder.url("https://deposit.example/base/",NS,RESOURCE));
     }
+    @Test void preservesAlreadyEncodedReverseProxyPrefixes(){
+        assertEquals("https://deposit.example/base%20path/resources/"+NS+"/"+RESOURCE,ResourceLinkEncoder.url("https://deposit.example/base%20path/",NS,RESOURCE));
+    }
     @Test void markdownEscapesLabelAndUrlDelimiters(){
         assertEquals("[a\\[b\\]\\\\c.csv](https://deposit.example/resources/"+NS+"/"+RESOURCE+")",ResourceLinkEncoder.markdown("https://deposit.example",NS,RESOURCE,"a[b]\\c.csv"));
     }
     @Test void refusesQueryAndCredentialBearingBases(){
         assertThrows(ExceptionHandler.DepositException.class,()->ResourceLinkEncoder.url("https://user:secret@example.test/?token=x",NS,RESOURCE));
+        assertThrows(ExceptionHandler.DepositException.class,()->ResourceLinkEncoder.url("javascript:alert(1)",NS,RESOURCE));
     }
 }

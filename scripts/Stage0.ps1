@@ -34,7 +34,7 @@ if($EvidenceGroup) {$evidence=Join-Path $Root ("evidence\$EvidenceGroup\phases\"
 if($Phase -in @('Install','Start','Stop','Kill','Test','Reset','All') -and $RunId -ne 'stage0-host') {throw 'Only the single stage0-host Neo4j installation is authorized'}
 $installation = Join-Path $run 'neo4j'
 $savedEnvironment=@{}
-foreach($key in @('JAVA_HOME','MAVEN_USER_HOME','MAVEN_OPTS','NEO4J_HOME','NEO4J_CONF','TEMP','TMP','STAGE0_URI','STAGE0_PASSWORD','STAGE0_NEO4J_VERSION','STAGE0_EXPECTED_FAILURE','STAGE0_EVIDENCE','STAGE0_TEST_MODE','STAGE0_BASELINE_MAP')) {$savedEnvironment[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
+foreach($key in @('JAVA_HOME','MAVEN_USER_HOME','MAVEN_OPTS','NEO4J_HOME','NEO4J_CONF','TEMP','TMP','STAGE0_URI','STAGE0_HTTP_BASE','STAGE0_PASSWORD','STAGE0_NEO4J_VERSION','STAGE0_EXPECTED_FAILURE','STAGE0_EVIDENCE','STAGE0_TEST_MODE','STAGE0_BASELINE_MAP','SE_CACHE_PATH','SE_AVOID_STATS')) {$savedEnvironment[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
 $credentialTarget = "Deposit/Stage0/$RunId"
 $utf8 = New-Object Text.UTF8Encoding($false)
 $initialInputs=if($InputsFile) {Get-Content -LiteralPath $InputsFile -Raw | ConvertFrom-Json} else {Get-Stage0Inputs $repo}
@@ -200,7 +200,7 @@ function Invoke-Install {
     $resources = (Join-Path $run 'resources').Replace('\','/')
     $permissions='dbms.security.procedures.allowlist=deposit.*,apoc.version'
     if(!$WithoutProbe) {$permissions="dbms.security.procedures.allowlist=deposit.*,stage0.geometry.*,stage0.security.*,stage0.storage.*,apoc.version`ndbms.security.procedures.unrestricted=stage0.geometry.*,stage0.security.*,stage0.storage.*"}
-    [IO.File]::WriteAllText($configFile, "resourceRoot=$resources`nexportRoot=$($run.Replace('\','/'))/exports`n", $utf8)
+    & "$PSScriptRoot\Configure-DepositDownloads.ps1" -ConfigPath $configFile -ResourceRoot $resources -ExportRoot (Join-Path $run 'exports') | Out-Null
     $config = @"
 server.default_listen_address=127.0.0.1
 server.bolt.enabled=true
@@ -348,12 +348,20 @@ function Invoke-Stop([bool]$Force) {
 function Invoke-Test {
     Assert-Run
     $env:STAGE0_URI="bolt://127.0.0.1:$Port"
+    $downloadConfig=Get-Content "$installation\conf\deposit.properties" -Raw
+    $downloadBase=([regex]::Match($downloadConfig,'(?m)^download\.publicBaseUrl=(.+)$')).Groups[1].Value.Trim()
+    if(!$downloadBase){throw 'Installed download base URL is missing'}
+    $env:STAGE0_HTTP_BASE=$downloadBase
     $env:STAGE0_PASSWORD=[DepositCredentialStore]::Read($credentialTarget)
     $env:STAGE0_EVIDENCE=$evidence
     $env:STAGE0_TEST_MODE=$TestMode
     $env:STAGE0_BASELINE_MAP=Join-Path $run 'fixture-uuid-baseline.tsv'
     $env:STAGE0_EXPECTED_FAILURE=$ExpectedFailure
     $env:STAGE0_NEO4J_VERSION=$manifest.neo4jVersion
+    $previousSeleniumCache=$env:SE_CACHE_PATH
+    $previousSeleniumStats=$env:SE_AVOID_STATS
+    $env:SE_CACHE_PATH=Join-Path $Root 'cache\selenium'
+    $env:SE_AVOID_STATS='true'
     try {
         Push-Location $repo
         $ErrorActionPreference='Continue'
@@ -368,6 +376,9 @@ function Invoke-Test {
     } finally {
         $ErrorActionPreference='Stop'; Pop-Location
         Remove-Item Env:\STAGE0_PASSWORD -ErrorAction SilentlyContinue
+        Remove-Item Env:\STAGE0_HTTP_BASE -ErrorAction SilentlyContinue
+        if($null -eq $previousSeleniumCache){Remove-Item Env:\SE_CACHE_PATH -ErrorAction SilentlyContinue}else{$env:SE_CACHE_PATH=$previousSeleniumCache}
+        if($null -eq $previousSeleniumStats){Remove-Item Env:\SE_AVOID_STATS -ErrorAction SilentlyContinue}else{$env:SE_AVOID_STATS=$previousSeleniumStats}
     }
 }
 function Invoke-Reset {

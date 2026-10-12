@@ -33,6 +33,12 @@ public abstract class BaseService {
         if(user==null || !Boolean.TRUE.equals(user.getProperty("enabled",false))) c.fail("AUTH_FAILED","Account unavailable");
         return user;
     }
+    protected Node authenticateBrowser() {
+        c.server.authenticateBrowser(c);
+        Node user=repo.find("User","id",c.actorId);
+        if(user==null||!Boolean.TRUE.equals(user.getProperty("enabled",false)))c.fail("AUTH_FAILED","Account unavailable");
+        return user;
+    }
     protected void scoped(String minimum) {
         authenticate();
         if(c.state.selection) c.fail("VALIDATION_FAILED","Selection and scoped work need separate transactions");

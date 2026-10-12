@@ -23,7 +23,7 @@ class Stage55CoreIT {
         assertEquals("_CON.photo-"+Stage4CoreIT.hash(Stage4CoreIT.ABC)+".jpg",Stage4CoreIT.resourcePath(id).getFileName().toString());
         Stage4CoreIT.awaitStagingCleanup(id);assertTrue(Files.isDirectory(ROOT.resolve("resources/staging")));assertTrue(Files.isDirectory(ROOT.resolve("resources/ocfl-work")));
         assertFalse(Files.exists(ROOT.resolve("resources/live")));assertFalse(Files.exists(ROOT.resolve("resources/deleted")));
-        assertTrue(call("deposit.resource.info",m("resourceId",id),ctx(Stage4CoreIT.token)).get("data").get("downloadUrl").isNull());
+        assertEquals(System.getenv("STAGE0_HTTP_BASE")+"/resources/"+Stage4CoreIT.ns+"/"+id,call("deposit.resource.info",m("resourceId",id),ctx(Stage4CoreIT.token)).get("data").get("downloadUrl").asString());
     }
     @Test void historyAndNamespaceLifecycleNeverRewriteOrMoveObjects()throws Exception {
         Stage5CoreIT.token=Stage4CoreIT.token;Stage5CoreIT.fixture5();Stage5CoreIT.stage4();
