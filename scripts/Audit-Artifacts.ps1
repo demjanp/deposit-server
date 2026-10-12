@@ -16,6 +16,8 @@ $dependencyLock=Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock)
 $files+=@($dependencyLock.dependencies | Where-Object ship | ForEach-Object {Get-Item (Join-Path $Root "cache\spatial-dependencies\$($_.file)")})
 $ocflLock=Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json
 $files+=@($ocflLock.dependencies | Where-Object ship | ForEach-Object {Get-Item (Join-Path $Root "cache\ocfl-dependencies\$($_.file)")})
+$formatLock=Get-Content (Join-Path "$repo\runtime" $manifest.formatDependencyLock) -Raw | ConvertFrom-Json
+$files+=@($formatLock.dependencies | Where-Object ship | ForEach-Object {Get-Item (Join-Path $Root "cache\format-dependencies\$($_.file)")})
 $files+=Get-Item (Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-stage65.jar')
 foreach($file in $files) {
     $jar=[IO.Compression.ZipFile]::OpenRead($file.FullName)
@@ -23,7 +25,7 @@ foreach($file in $files) {
         $components=New-Object System.Collections.Generic.List[string]
         $licenseEvidence=New-Object System.Collections.Generic.List[object]
         foreach($entry in $jar.Entries) {
-            if($entry.FullName -match '^(org/(neo4j|locationtech/jts|slf4j)|io/ocfl|com/fasterxml/jackson|com/github/benmanes/caffeine|com/google/common)/.*\.class$') {
+            if($entry.FullName -match '^(org/(neo4j|locationtech/jts|slf4j|apache/poi|apache/xmlbeans|apache/commons/(collections4|compress|io)|apache/logging/log4j|xerial/sqlitejdbc|sqlite)|io/ocfl|com/fasterxml/jackson|com/github/benmanes/caffeine|com/google/common|com/github/virtuald/curvesapi)/.*\.class$') {
                 if(!$classes.ContainsKey($entry.FullName)) {$classes[$entry.FullName]=New-Object System.Collections.Generic.List[object]}
                 $stream=$entry.Open();$hash=[Security.Cryptography.SHA256]::Create()
                 try {$classHash=[BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','').ToLowerInvariant()}finally{$stream.Dispose();$hash.Dispose()}

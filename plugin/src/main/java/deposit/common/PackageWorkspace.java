@@ -55,10 +55,15 @@ final class PackageWorkspace implements AutoCloseable {
     }
     private long detach(long at)throws IOException{byte[] header=new byte[HEADER];nodes.seek(at);nodes.readFully(header);long copy=nodes.length();nodes.seek(copy);nodes.write(header);number(copy,13,0);if(type(at)=='o')number(copy,21,number(at,21)==0?at:number(at,21));return copy;}
     private long string(String text)throws IOException{long at=allocate('s');number(at,29,nodes.length());nodes.seek(nodes.length());for(int start=0;start<text.length();){int count=Math.min(text.length()-start,textBuffer.length/2);for(int i=0;i<count;i++){char value=text.charAt(start+i);textBuffer[i*2]=(byte)(value>>>8);textBuffer[i*2+1]=(byte)value;}nodes.write(textBuffer,0,count*2);start+=count;}number(at,21,text.length());return at;}
-    private Object read(long at)throws IOException{if((++reads&1023)==0)cancelled();return switch(type(at)){case 'n'->null;case 't'->true;case 'f'->false;case 'o'->new TreeMapView(at);case 'a'->new TreeListView(at);case 's'->number(at,21)>32768?new Text(at):text(at);case 'd'->{String s=text(at);try{yield s.indexOf('.')>=0||s.indexOf('e')>=0||s.indexOf('E')>=0?Double.valueOf(s):(Object)Long.valueOf(s);}catch(NumberFormatException e){throw new IOException("Invalid JSON number",e);}}default->throw new IOException("Invalid staged token");};}
+    private Object read(long at)throws IOException{return read(at,false);}
+    private Object read(long at,boolean payload)throws IOException{if((++reads&1023)==0)cancelled();return switch(type(at)){case 'n'->null;case 't'->true;case 'f'->false;case 'o'->new TreeMapView(at,payload);case 'a'->new TreeListView(at,payload);case 's'->payload||number(at,21)<=32768?text(at):new Text(at);case 'd'->{String s=text(at);try{yield s.indexOf('.')>=0||s.indexOf('e')>=0||s.indexOf('E')>=0?Double.valueOf(s):(Object)Long.valueOf(s);}catch(NumberFormatException e){throw new IOException("Invalid JSON number",e);}}default->throw new IOException("Invalid staged token");};}
+    /** Lazy application view: only each requested scalar is materialized, never the full JSON tree. */
+    Map<String,Object> payload(Map<String,Object> source){return source instanceof TreeMapView view?new TreeMapView(view.at,true):source;}
     private String text(long at)throws IOException{long size=number(at,21);if(size>Integer.MAX_VALUE)throw new IOException("String exceeds package bounds");char[] chars=new char[(int)size];nodes.seek(number(at,29));for(int start=0;start<chars.length;){int count=Math.min(chars.length-start,textBuffer.length/2);nodes.readFully(textBuffer,0,count*2);for(int i=0;i<count;i++)chars[start+i]=(char)((textBuffer[i*2]&255)<<8|(textBuffer[i*2+1]&255));start+=count;}return new String(chars);}
     private String key(long at)throws IOException{Object value=read(at);return value instanceof Text text?text.fingerprint(): (String)value;}
-    private Object fieldValue(long keyAt,long mapAt)throws IOException{
+    private Object fieldValue(long keyAt,long mapAt)throws IOException{return fieldValue(keyAt,mapAt,false);}
+    private Object fieldValue(long keyAt,long mapAt,boolean payload)throws IOException{
+        if(payload)return read(number(keyAt,5),true);
         String key=key(keyAt);long valueAt=number(keyAt,5);
         if(Set.of("comment","data","description","summary").contains(key)&&type(valueAt)=='s')return new Text(valueAt).fingerprint();
         long owner=number(mapAt,21)==0?mapAt:number(mapAt,21);
@@ -82,7 +87,7 @@ final class PackageWorkspace implements AutoCloseable {
         return view.dictionary();
     }
     private final class TreeMapView extends AbstractMap<String,Object>{
-        final long at;TreeMapView(long at){this.at=at;}PackageWorkspace owner(){return PackageWorkspace.this;}
+        final long at;final boolean payload;TreeMapView(long at,boolean payload){this.at=at;this.payload=payload;}PackageWorkspace owner(){return PackageWorkspace.this;}
         Map<String,Object> dictionary(){return new AbstractMap<>(){
             public Set<Entry<String,Object>> entrySet(){return new AbstractSet<>(){
                 public int size(){return TreeMapView.this.size();}
@@ -90,20 +95,20 @@ final class PackageWorkspace implements AutoCloseable {
             };}
         };}
         @Override public int size(){try{return count(at);}catch(IOException e){throw unchecked(e);}}
-        @Override public Object get(Object key){if(!(key instanceof String s))return null;Long child;try{child=fields.get((number(at,21)==0?at:number(at,21))+":"+fingerprint(s));}catch(IOException e){throw unchecked(e);}try{return child==null?null:fieldValue(child,at);}catch(IOException e){throw unchecked(e);}}
+        @Override public Object get(Object key){if(!(key instanceof String s))return null;Long child;try{child=fields.get((number(at,21)==0?at:number(at,21))+":"+fingerprint(s));}catch(IOException e){throw unchecked(e);}try{return child==null?null:fieldValue(child,at,payload);}catch(IOException e){throw unchecked(e);}}
         @Override public boolean containsKey(Object key){try{return key instanceof String s&&fields.containsKey((number(at,21)==0?at:number(at,21))+":"+fingerprint(s));}catch(IOException e){throw unchecked(e);}}
         @Override public Set<Entry<String,Object>> entrySet(){return new AbstractSet<>(){
             public int size(){return TreeMapView.this.size();}
-            public Iterator<Entry<String,Object>> iterator(){try{return new Iterator<>(){long child=number(at,5);public boolean hasNext(){return child!=0;}public Entry<String,Object> next(){if(child==0)throw new NoSuchElementException();try{long current=child;child=PackageWorkspace.this.next(child);return new SimpleImmutableEntry<>(key(current),fieldValue(current,at));}catch(IOException e){throw unchecked(e);}}};}catch(IOException e){throw unchecked(e);}}
+            public Iterator<Entry<String,Object>> iterator(){try{return new Iterator<>(){long child=number(at,5);public boolean hasNext(){return child!=0;}public Entry<String,Object> next(){if(child==0)throw new NoSuchElementException();try{long current=child;child=PackageWorkspace.this.next(child);return new SimpleImmutableEntry<>(payload?text(current):key(current),fieldValue(current,at,payload));}catch(IOException e){throw unchecked(e);}}};}catch(IOException e){throw unchecked(e);}}
         };}
     }
     private final class TreeListView extends AbstractList<Object>{
-        final long at;TreeListView(long at){this.at=at;}PackageWorkspace owner(){return PackageWorkspace.this;}
+        final long at;final boolean payload;TreeListView(long at,boolean payload){this.at=at;this.payload=payload;}PackageWorkspace owner(){return PackageWorkspace.this;}
         @Override public int size(){try{return count(at);}catch(IOException e){throw unchecked(e);}}
-        @Override public Object get(int index){Objects.checkIndex(index,size());try{long child=number(at,5);for(int i=0;i<index;i++)child=next(child);return read(child);}catch(IOException e){throw unchecked(e);}}
+        @Override public Object get(int index){Objects.checkIndex(index,size());try{long child=number(at,5);for(int i=0;i<index;i++)child=next(child);return read(child,payload);}catch(IOException e){throw unchecked(e);}}
         @Override public boolean equals(Object other){if(other==this)return true;if(!(other instanceof List<?> list)||size()!=list.size())return false;var left=iterator();var right=list.iterator();while(left.hasNext())if(!Objects.equals(left.next(),right.next()))return false;return true;}
         @Override public int hashCode(){int hash=1;for(Object value:this)hash=31*hash+Objects.hashCode(value);return hash;}
-        @Override public Iterator<Object> iterator(){try{return new Iterator<>(){long child=number(at,5);public boolean hasNext(){return child!=0;}public Object next(){if(child==0)throw new NoSuchElementException();try{long current=child;child=PackageWorkspace.this.next(child);return read(current);}catch(IOException e){throw unchecked(e);}}};}catch(IOException e){throw unchecked(e);}}
+        @Override public Iterator<Object> iterator(){try{return new Iterator<>(){long child=number(at,5);public boolean hasNext(){return child!=0;}public Object next(){if(child==0)throw new NoSuchElementException();try{long current=child;child=PackageWorkspace.this.next(child);return read(current,payload);}catch(IOException e){throw unchecked(e);}}};}catch(IOException e){throw unchecked(e);}}
     }
     private long placementHash(String key)throws IOException{
         for(int start=0;start<key.length();){cancelled();int count=Math.min(key.length()-start,textBuffer.length/2);for(int i=0;i<count;i++){char value=key.charAt(start+i);textBuffer[i*2]=(byte)(value>>>8);textBuffer[i*2+1]=(byte)value;}placement.update(textBuffer,0,count*2);start+=count;}

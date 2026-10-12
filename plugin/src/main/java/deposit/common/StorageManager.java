@@ -36,7 +36,7 @@ public final class StorageManager implements AutoCloseable {
         try(var tx=db.beginTx()){for(Node loc:core(tx).nodes("DepositResourceLocation",Map.of()))if(loc.hasProperty("path")||loc.hasProperty("suffix"))throw new IllegalStateException("Legacy resource records require fresh provisioning");}
         // Complete persisted purges before discovery validates any partially removed objects.
         for(String id:ids("DepositPruneItem")){collect(id);collect(id);}
-        try{expireImportPlans();}catch(java.io.IOException e){throw new IllegalStateException("Cannot expire staged import plans",e);}
+        try{expireImportPlans();expireTables();}catch(java.io.IOException e){throw new IllegalStateException("Cannot expire staged operational data",e);}
         for(String id:ids("DepositResourceLocation")) {
             if(System.nanoTime()>deadline)throw new IllegalStateException("Resource recovery exceeded startup bound");
             process(id,true);
@@ -44,7 +44,18 @@ public final class StorageManager implements AutoCloseable {
         discoverOrphans();
         try{content.recoverWork();}catch(java.io.IOException e){throw new IllegalStateException("Cannot reconcile resource work",e);}
     }
-    private void tick(){try {expireImportPlans();for(String id:ids("DepositResourceLocation")){if(Thread.currentThread().isInterrupted())return;process(id,false);}for(String id:ids("DepositPruneItem"))collect(id);}catch(Exception e){diagnostic="Resource maintenance pending: "+e.getClass().getSimpleName();}}
+    private void tick(){try {expireImportPlans();expireTables();for(String id:ids("DepositResourceLocation")){if(Thread.currentThread().isInterrupted())return;process(id,false);}for(String id:ids("DepositPruneItem"))collect(id);}catch(Exception e){diagnostic="Resource maintenance pending: "+e.getClass().getSimpleName();}}
+    private void expireTables() throws java.io.IOException {
+        long now=server.sessionTime();List<String> expired=new ArrayList<>();
+        try(var tx=db.beginTx()){CoreRepository core=core(tx);for(Node table:core.nodes("DepositTabularTable",Map.of()))if(number(table,"expiresAt",0)<=now){String id=CoreRepository.id(table);boolean pinned=false;for(Node plan:core.nodes("DepositImportPlan",Map.of("tableId",id)))if("ready".equals(text(plan,"state"))&&number(plan,"expiresAt",0)>now){pinned=true;break;}if(!pinned)expired.add(id);} }
+        for(String id:expired)try(var tx=db.beginTx()){
+            CoreRepository core=core(tx);Node table=core.find("DepositTabularTable","id",id);if(table==null||number(table,"expiresAt",0)>now)continue;
+            String namespace=text(table,"namespaceId");core.lockNamespace(namespace);boolean pinned=false;for(Node plan:core.nodes("DepositImportPlan",Map.of("tableId",id)))if("ready".equals(text(plan,"state"))&&number(plan,"expiresAt",0)>now){pinned=true;break;}if(pinned)continue;
+            String relative=text(table,"path");Files.deleteIfExists(files.path(relative));if(table.hasProperty("rowIndexPath"))Files.deleteIfExists(files.path(text(table,"rowIndexPath")));String source=text(table,"sourceResourceId");
+            for(Node lease:core.nodes("DepositResourceLease",Map.of("tableId",id)))lease.delete();table.delete();
+            Node loc=core.find("DepositResourceLocation","id",source);if(loc!=null)new ResourceRepository(tx,core).orphan(loc);tx.commit();
+        }
+    }
     private void expireImportPlans()throws java.io.IOException {
         long now=server.sessionTime();List<String> expired=new ArrayList<>();
         try(var tx=db.beginTx()){for(Node plan:core(tx).nodes("DepositImportPlan",Map.of()))if(number(plan,"expiresAt",0)<=now)expired.add(CoreRepository.id(plan));}
@@ -111,6 +122,7 @@ public final class StorageManager implements AutoCloseable {
         try(var tx=db.beginTx()) {
             for(Node loc:core(tx).nodes("DepositResourceLocation",Map.of())) {knownIds.add(CoreRepository.id(loc));if(loc.hasProperty("stagingPath"))knownStaging.add(text(loc,"stagingPath").replace('\\','/'));}
             for(Node plan:core(tx).nodes("DepositImportPlan",Map.of()))if(number(plan,"expiresAt",0)>server.sessionTime()&&plan.hasProperty("stagingPath"))knownStaging.add(text(plan,"stagingPath").replace('\\','/'));
+            for(Node table:core(tx).nodes("DepositTabularTable",Map.of()))if(number(table,"expiresAt",0)>server.sessionTime()){if(table.hasProperty("path"))knownStaging.add(text(table,"path").replace('\\','/'));if(table.hasProperty("rowIndexPath"))knownStaging.add(text(table,"rowIndexPath").replace('\\','/'));}
         }
         String unknown="00000000-0000-0000-0000-000000000000";
         try {

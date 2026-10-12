@@ -42,12 +42,12 @@ class Stage7CoreIT {
 
     @Test void resultingNamespaceCompatibilityAndClassRenameAreAtomic(){
         call("deposit.create.class","Find",m("descriptors",List.of(m("name","Code","type","String"))),token);
-        var def=m("objects",m("root",m("className","Find","root",true,"matchDescriptors",List.of("Code"))));
+        var def=m("objects",m("root",m("className","Find","root",true,"descriptors",List.of(m("name","Code")))));
         String pattern=id(call("deposit.create.pattern","ByCode",def,m(),token));
         call("deposit.set.class","Find",m("name","Specimen"),token);
         var data=call("deposit.get.pattern",m("id",pattern),token).get("node").asNode();
         assertTrue(data.get("definition").asString().contains("Specimen"));
-        var incompatible=m("objects",m("root",m("className","Specimen","root",true,"matchDescriptors",List.of())));
+        var incompatible=m("objects",m("root",m("className","Specimen","root",true,"descriptors",List.of())));
         try(var s=driver.session()){
             var e=assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.create.pattern","Conflict",incompatible,m(),token));
             assertTrue(e.getMessage().contains("VALIDATION_FAILED"),e.getMessage());
@@ -94,7 +94,7 @@ class Stage7CoreIT {
         assertTrue(failure.getMessage().contains("VALIDATION_FAILED"),failure.getMessage());
         assertEquals(revision,call("deposit.get.revision",token).get("data").get("sequence").asLong());
         assertEquals(1,query("MATCH (p:Pattern {namespaceId:$ns}) RETURN count(p) AS n",m("ns",namespace)).getFirst().get("n").asLong());
-        var unknownKey=m("objects",m("find",m("className","Find","root",true,"matchDescriptors",List.of("Missing"))));
+        var unknownKey=m("objects",m("find",m("className","Find","root",true,"descriptors",List.of(m("name","Missing")))));
         assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,
             ()->call("deposit.create.pattern","UnknownKey",unknownKey,m(),token));
     }
@@ -129,12 +129,12 @@ class Stage7CoreIT {
         call("deposit.create.class","Thing",m("descriptors",List.of(m("name","Code","type","String"))),token);
         String absent=id(call("deposit.create.object","Thing",m(),token)),unknown=id(call("deposit.create.object","Thing",m("descriptors",m("Code",null)),token));
         call("deposit.create.object","Thing",m("descriptors",m("Code","known")),token);
-        String pattern=id(call("deposit.create.pattern","Exact",m("objects",m("thing",m("className","Thing","root",true,"matchEmpty",true))),m(),token));
+        String pattern=id(call("deposit.create.pattern","Exact",m("objects",m("thing",m("className","Thing","root",true,"matchEmpty",true,"descriptors",List.of(m("name","Code"))))),m(),token));
         assertEquals(3,bindings(pattern,m(),m()).size());
         var empty=bindings(pattern,m("thing",m()),m());assertEquals(1,empty.size());assertEquals(absent,((Map<?,?>)((Map<?,?>)empty.getFirst()).get("bindings")).get("thing"));
         var nulls=bindings(pattern,m("thing",m("Code",null)),m());assertEquals(1,nulls.size());assertEquals(unknown,((Map<?,?>)((Map<?,?>)nulls.getFirst()).get("bindings")).get("thing"));
-        call("deposit.set.pattern",m("id",pattern),m("definition",m("objects",m("thing",m("className","Thing","root",true,"matchEmpty",false,"matchDescriptors",List.of("Code"))))),token);
-        assertEquals(1,bindings(pattern,m("thing",m()),m()).size());
+        call("deposit.set.pattern",m("id",pattern),m("definition",m("objects",m("thing",m("className","Thing","root",true,"matchEmpty",false,"descriptors",List.of(m("name","Code")))))),token);
+        assertEquals(3,bindings(pattern,m("thing",m()),m()).size());
         assertEquals(3,bindings(pattern,m(),m()).size());
     }
     @Test void directedCyclicAliasesOverlapAndPaginationAreDeterministic(){

@@ -41,7 +41,8 @@ public final class ProcedureService {
             case "deposit.get.objectsByPattern"->new PatternService(c).search(r,false);
             case "deposit.get.objectsByPatternPage"->new PatternService(c).search(r,true);
             case "deposit.get.data","deposit.get.namespaceData","deposit.save.data","deposit.load.data"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
-            case "deposit.import.analyze","deposit.get.importPlan","deposit.import.apply","deposit.import.namespaceData"->Stream.of(new DataRow(new ImportService(c).execute(p,r),c.meta()));
+            case "deposit.import.analyze","deposit.get.importPlan","deposit.import.apply","deposit.import.dataByPattern","deposit.import.namespaceData"->Stream.of(new DataRow(new ImportService(c).execute(p,r),c.meta()));
+            case "deposit.load.csv","deposit.load.xlsx","deposit.load.gpkg","deposit.get.table","deposit.get.tablePage","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg","deposit.get.layout","deposit.import.rows"->{Object value=new TabularService(c).execute(p,r);if(value instanceof Stream<?> stream)yield stream;if(value instanceof DataRow row)yield Stream.of(row);yield Stream.of(new DataRow(ValueCodec.map(value),c.meta()));}
             case "deposit.resource.beginUpload","deposit.resource.uploadChunk","deposit.resource.finishUpload","deposit.resource.abortUpload"->Stream.of(new DataRow(resource.transfer(p.substring(p.lastIndexOf('.')+1),r),c.meta()));
             case "deposit.resource.info","deposit.resource.downloadChunk"->Stream.of(new DataRow(resource.read(r,p.endsWith("downloadChunk")),c.meta()));
             case "deposit.admin.pruneResources"->Stream.of(new DataRow(resource.prune(r),c.meta()));

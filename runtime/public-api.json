@@ -1785,8 +1785,19 @@
   {
     "name": "deposit.import.apply",
     "args": [
-      {"name": "planId", "type": "String", "binding": "planId"},
-      {"name": "resolutions", "type": "List<Map<String,Object>>", "binding": "resolutions"}
+      {"name": "planId", "type": "String", "binding": "planId"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.import.dataByPattern",
+    "args": [
+      {"name": "pattern", "type": "Object", "binding": "pattern"},
+      {"name": "values", "type": "Map<String,Object>", "binding": "values"},
+      {"name": "rules", "type": "Map<String,Object>", "binding": "rules"}
     ],
     "output": "data",
     "mode": "WRITE",
@@ -1801,6 +1812,118 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.import.rows",
+    "args": [
+      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
+      {"name": "targets", "type": "Map<String,Object>", "binding": "targets"},
+      {"name": "relationships", "type": "List<Object>", "binding": "relationships"},
+      {"name": "rules", "type": "Map<String,Object>", "binding": "rules"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.load.csv",
+    "args": [
+      {"name": "resourceId", "type": "String", "binding": "resourceId"},
+      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.load.xlsx",
+    "args": [
+      {"name": "resourceId", "type": "String", "binding": "resourceId"},
+      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.load.gpkg",
+    "args": [
+      {"name": "resourceId", "type": "String", "binding": "resourceId"},
+      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.table",
+    "args": [{"name": "tableId", "type": "String", "binding": "tableId"}],
+    "output": "query",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.tablePage",
+    "args": [
+      {"name": "tableId", "type": "String", "binding": "tableId"},
+      {"name": "page", "type": "Map<String,Object>", "binding": "+"}
+    ],
+    "output": "page",
+    "mode": "WRITE",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.layout",
+    "args": [
+      {"name": "selection", "type": "Map<String,Object>", "binding": "selection"},
+      {"name": "options", "type": "Map<String,Object>", "binding": "options"}
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.save.csv",
+    "args": [
+      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
+      {"name": "parameters", "type": "Map<String,Object>", "binding": "parameters"},
+      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.save.xlsx",
+    "args": [
+      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
+      {"name": "parameters", "type": "Map<String,Object>", "binding": "parameters"},
+      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
+    "action": true
+  },
+  {
+    "name": "deposit.save.gpkg",
+    "args": [
+      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
+      {"name": "parameters", "type": "Map<String,Object>", "binding": "parameters"},
+      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "operational",
     "action": true
   },
   {

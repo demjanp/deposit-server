@@ -13,7 +13,11 @@ report that gap rather than inventing it. Preserve established project structure
 
 ## 1. Initial analysis
 Read Stage N, dependencies, approved designs, relevant status and source.
-Delegate architectural analysis to architect with a scoped handoff.
+Delegate architectural analysis to architect with a scoped handoff. Keep routine
+implementation with Luna and use `expert_implementer` only when an
+implementation escalation threshold in shared AGENTS.md applies. Ordinary
+repeated implementation failures go to the expert first; architectural
+uncertainties remain with architect.
 If material unresolved questions remain, return only a numbered list of questions,
 each with a recommended solution, short rationale and significant tradeoffs.
 Otherwise return a design/implementation proposal with scope and acceptance
@@ -49,12 +53,21 @@ implement. A textual instruction cannot itself change the client's mode.
 
 ## 5. Implement and verify
 Start after explicit instruction to implement and when editing is allowed.
-Use Luna for implementation and project-specific build/tests. Consult architect
-for the escalation cases in AGENTS.md; it remains advisory. Correct failures,
-then run the necessary regression checks. Report actual results and incomplete
-criteria. If new evidence demands a material design change outside authorization,
-complete unaffected work and present the question before the affected changes.
-Do not automatically update knowledge-base status or design records.
+Use Luna for routine implementation and project-specific build/tests. Escalate
+difficult implementation failures to `expert_implementer` only at the thresholds
+in shared AGENTS.md; count correction attempts rather than individual failed
+tests. The expert can edit only within the authorized stage scope, and Luna
+stops editing its affected files during that intervention. Consult architect for
+architectural decisions or contradictions; it remains advisory. Correct
+failures, then run the necessary regression checks. Report actual results and
+incomplete criteria. Follow the shared **Implementation continuity** rule: continue until
+the approved stage scope and required verification are complete. If new evidence
+demands a material design decision outside authorization, consult architect and
+ask the user as needed; keep completing unaffected work. That decision or
+incomplete criteria alone is not grounds to end implementation. Hand back
+incomplete work as blocked only for an external action obstacle explicitly
+approved by architect after reasonable repository remedies are exhausted. Do not
+automatically update knowledge-base status or design records.
 
 Before the full acceptance gate, run a stage-relevant preflight:
 

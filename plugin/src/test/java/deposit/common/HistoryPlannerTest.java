@@ -32,7 +32,7 @@ class HistoryPlannerTest {
     @Test void securityAndAggregatedFieldsAreNotCanonical(){var s=fixture();s.get(HistoryCodec.key("Object","o")).put("descriptors",Map.of("Mass",10L));assertThrows(ExceptionHandler.DepositException.class,()->HistoryCodec.validate(s));s.get(HistoryCodec.key("Object","o")).remove("descriptors");s.get(HistoryCodec.key("Namespace","ns")).put("roles",List.of("owner"));assertThrows(ExceptionHandler.DepositException.class,()->HistoryCodec.validate(s));}
     @Test void nullValueStillRetainsDeclarationDependencies(){var s=fixture();var journal=new ChangeSet(s);s.get(HistoryCodec.key("Descriptor","d")).put("value",null);journal.checkpoint(s);assertTrue(journal.dependencies.containsAll(List.of(HistoryCodec.key("Membership","m"),HistoryCodec.key("Class","c"),HistoryCodec.key("ClassDescriptor","decl"),HistoryCodec.key("Object","o"))));var selected=revision("a",1,"edit",null,Map.of(HistoryCodec.key("Descriptor","d"),journal.before.get(HistoryCodec.key("Descriptor","d"))),Map.of(HistoryCodec.key("Descriptor","d"),journal.after.get(HistoryCodec.key("Descriptor","d"))),journal.touches);selected=new Revision(selected.id(),selected.sequence(),selected.data(),selected.before(),selected.after(),selected.touches(),journal.dependencies);var later=revision("schema",2,"edit",null,Map.of(),Map.of(),Map.of(HistoryCodec.key("ClassDescriptor","decl"),Set.of("*")));assertFalse(HistoryPlanner.inverse(2,s,selected,List.of(selected,later)).conflicts().isEmpty());}
     @Test void patternHistoryRetainsDeclarationDependenciesAndRejectsIncompatibleRestore(){
-        var state=fixture();var definition=Json.map("objects",Json.map("specimen",Json.map("className","Specimen","root",true,"matchDescriptors",List.of("Mass"))));
+        var state=fixture();var definition=Json.map("objects",Json.map("specimen",Json.map("className","Specimen","root",true,"descriptors",List.of(Json.map("name","Mass")))));
         String key=HistoryCodec.key("Pattern","pattern");state.put(key,image("pattern","Pattern","name","ByMass","comment","old","definition",definition));
         var journal=new ChangeSet(state);state.get(key).put("comment","new");journal.checkpoint(state);
         assertTrue(journal.dependencies.contains("ClassDescriptor\u0000decl"));
@@ -40,7 +40,7 @@ class HistoryPlannerTest {
         var target=new Revision("pattern-edit",1,Json.map("kind","edit"),Map.of(key,journal.before.get(key)),Map.of(key,journal.after.get(key)),journal.touches,journal.dependencies);
         var later=revision("schema",2,"edit",null,Map.of(),Map.of(),Map.of("ClassDescriptor\u0000decl",Set.of("*")));
         assertFalse(HistoryPlanner.inverse(2,state,target,List.of(target,later)).conflicts().isEmpty());
-        state.put("Pattern\u0000other",image("other","Pattern","name","Other","definition",Json.map("objects",Json.map("specimen",Json.map("className","Specimen","root",true,"matchDescriptors",List.of())))));
+        state.put("Pattern\u0000other",image("other","Pattern","name","Other","definition",Json.map("objects",Json.map("specimen",Json.map("className","Specimen","root",true,"descriptors",List.of())))));
         assertFalse(HistoryPlanner.restore(2,fixture(),state,"incompatible").plan().conflicts().isEmpty());
     }
 }

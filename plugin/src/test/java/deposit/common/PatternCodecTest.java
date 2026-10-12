@@ -6,10 +6,11 @@ import org.junit.jupiter.api.Test;
 
 class PatternCodecTest {
     private Map<String,Object> definition(Map<String,Object> role){return Json.map("objects",Json.map("root",role));}
-    @Test void matchingKeysCanReferenceSchemaOutsideFormFields(){
-        var definition=definition(Json.map("className","Thing","root",true,"matchDescriptors",List.of("Code")));
+    @Test void declaredDescriptorsAreTheMatchingScopeAndLegacyKeyControlIsRejected(){
+        var definition=definition(Json.map("className","Thing","root",true,"descriptors",List.of(Json.map("name","Code"))));
         assertDoesNotThrow(()->PatternCodec.validate(List.of(definition),Map.of("Thing",Map.of("Code","String"))));
         assertThrows(ExceptionHandler.DepositException.class,()->PatternCodec.validate(List.of(definition),Map.of("Thing",Map.of())));
+        assertThrows(ExceptionHandler.DepositException.class,()->PatternCodec.normalize(definition(Json.map("className","Thing","root",true,"matchDescriptors",List.of("Code")))));
     }
     @Test void missingDeclarationProposalsMustAgreeAcrossDefinitions(){
         var string=definition(Json.map("className","Thing","root",true,"descriptors",List.of(Json.map("name","Code","type","String"))));
@@ -18,8 +19,8 @@ class PatternCodecTest {
         assertDoesNotThrow(()->PatternCodec.validate(List.of(string,string),Map.of("Thing",Map.of())));
     }
     @Test void sameClassAliasesShareNormalizedMatchingTuple(){
-        var first=Json.map("className","Thing","root",true,"matchDescriptors",List.of("Code","Mass"),"relationships",List.of(Json.map("label","next","targetName","second")));
-        var second=Json.map("className","Thing","matchDescriptors",List.of("Mass","Code"));
+        var first=Json.map("className","Thing","root",true,"descriptors",List.of(Json.map("name","Code"),Json.map("name","Mass")),"relationships",List.of(Json.map("label","next","targetName","second")));
+        var second=Json.map("className","Thing","descriptors",List.of(Json.map("name","Mass"),Json.map("name","Code")));
         var definition=Json.map("objects",Json.map("first",first,"second",second));
         var schema=Map.of("Thing",Map.of("Code","String","Mass","Integer"));
         assertDoesNotThrow(()->PatternCodec.validate(List.of(definition),schema));

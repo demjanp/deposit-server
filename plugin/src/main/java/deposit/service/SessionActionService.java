@@ -53,7 +53,7 @@ public final class SessionActionService extends BaseService {
             c.actionScope=scope(procedure,arguments);c.operational=operational(procedure);
             c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:baseline(c.actionScope);
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);
-            if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData").contains(procedure))authorize(procedure,c.actionScope,exportRole(procedure,arguments));
+            if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,exportRole(procedure,arguments));
             if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",baseline(active()));
         }
         synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}
@@ -70,6 +70,7 @@ public final class SessionActionService extends BaseService {
         Object options=null;
         if(procedure.equals("deposit.save.data")||procedure.equals("deposit.get.data"))options=arguments!=null&&arguments.size()>1?arguments.get(1):null;
         else if(procedure.equals("deposit.get.namespaceData"))options=arguments!=null&&!arguments.isEmpty()?arguments.get(0):null;
+        else if(procedure.equals("deposit.save.csv")||procedure.equals("deposit.save.xlsx")||procedure.equals("deposit.save.gpkg"))return "viewer";
         return options instanceof Map<?,?> m&&Boolean.TRUE.equals(ValueCodec.map(m).get("includeHistory"))?"owner":"viewer";
     }
     private long baseline(String scope){
@@ -146,7 +147,7 @@ public final class SessionActionService extends BaseService {
         String hash=fingerprint(procedure,args);repo.lockActor(c.actorId);Node action=prepared.find(c.actorId,key);
         if(action!=null){prepared.lock(action);if(!hash.equals(action.getProperty("inputHash")))c.fail("OPERATION_MISMATCH","Recovery key input changed");checkAccess(action);}
         else{
-            String scope=scope(procedure,args);String authorizationRole=Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData").contains(procedure)?exportRole(procedure,args):null;authorize(procedure,scope,authorizationRole);var bindings=new LinkedHashMap<String,Object>();new ArgumentService(c,bindings,false).request(procedure,args);
+            String scope=scope(procedure,args);String authorizationRole=Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure)?exportRole(procedure,args):null;authorize(procedure,scope,authorizationRole);var bindings=new LinkedHashMap<String,Object>();new ArgumentService(c,bindings,false).request(procedure,args);
             var properties=Json.map("operationId",UUID.randomUUID().toString(),"procedure",procedure,"scope",scope,"inputHash",hash,"bindings",Json.write(bindings),"runId",c.server.runId,"operational",operational(procedure));
             if(authorizationRole!=null)properties.put("authorizationRole",authorizationRole);
             if(!operational(procedure))properties.put("expectedRevision",baseline(scope));

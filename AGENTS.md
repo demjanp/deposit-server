@@ -22,20 +22,75 @@ project mappings and approved decisions within a task.
 ### Routing
 Use the main Luna agent for conversation, routine planning, implementation,
 test execution and documentation. Use project-stage for a numbered master-plan
-stage; use project-task for other development tasks.
-Delegate stage architecture and material architectural uncertainty to architect.
-Also consult architect for complex algorithms, security/data integrity,
-transaction/versioning changes, cross-component contracts, or two unsuccessful
-repair attempts at the same failure. Require architect consultation for
-substantive architectural follow-up questions, including challenges to prior
-recommendations, comparisons of architectural alternatives, or changes to
-previously proposed decisions. This includes questions affecting data models,
-interfaces, compatibility, security, transaction semantics, data integrity, or
-architectural invariants. Keep routine clarifications, straightforward
-acceptance of recommendations, and minor implementation details with Luna.
-Avoid redundant consultation when architect has already analyzed the same issue
-and no new information or concerns have arisen. Luna presents the architect's
-conclusions and recommendations to the user; architect remains advisory.
+stage; use project-task for other development tasks. The architect (`gpt-6-astra`,
+medium reasoning) advises on architecture and remains read-only. The
+expert_implementer (`gpt-6.1-sol`, high reasoning) can implement difficult fixes
+within the implementation scope already authorized by the user.
+
+Keep routine implementation with Luna. Invoke expert_implementer only when at
+least one of these conditions applies:
+
+1. Two consecutive evidence-driven correction attempts, each followed by
+   relevant tests, fail to resolve the same underlying problem. Count correction
+   attempts, not individual failed tests.
+2. Corrections repeatedly reintroduce regressions that had already been
+   resolved.
+3. A technically complex defect needs substantially deeper code-level
+   reasoning.
+4. Luna identifies a well-supported implementation problem it cannot resolve
+   reliably.
+
+Do not invoke the expert for ordinary implementation work. Escalation is
+instruction-guided delegation, not a deterministic runtime trigger. Use the
+supported custom-agent name `expert_implementer`; do not invent routing settings
+in config.toml.
+
+On escalation, Luna stops editing the affected files and gives the expert a
+focused handoff: task and acceptance criteria, relevant source paths,
+architectural constraints, current diff, failed tests, and attempted fixes.
+Avoid repeating project context already established. The expert owns edits to
+those files until it returns its diagnosis and changes; do not allow concurrent
+edits to the same files. Luna coordinates the work, reviews and integrates the
+result, runs required validation, and resumes normal implementation after a
+successful intervention. Do not invoke the expert repeatedly for the same
+unresolved issue without new evidence. If intervention fails, require an
+explicit diagnosis and decide whether architectural consultation or another
+evidence-based action is warranted.
+
+Architectural decisions and material questions remain subject to architect
+consultation. This includes complex algorithms; security or data-integrity
+design; transaction or versioning changes; cross-component contracts; and
+questions affecting data models, interfaces, compatibility, transaction
+semantics, or architectural invariants. Ordinary repeated implementation
+failures go to the expert first; consult the architect when evidence shows
+architectural uncertainty or contradiction. The expert does not replace
+architect and must ask Luna to arrange architect advice rather than making
+material design decisions or starting another agent. Also consult architect for stage
+architecture and other material architectural questions, including challenges
+to prior recommendations, comparisons of alternatives, and proposed changes to
+previous decisions. Keep routine clarifications and minor implementation
+details with Luna. Avoid redundant consultation when no new evidence or concern
+has arisen. Luna presents the architect's advisory conclusions to the user.
+Architect approval is required only for an incomplete-work interruption under
+the external-blocker rule below.
+
+### Implementation continuity
+Once implementation is explicitly authorized, continue until the agreed scope
+and required verification are complete. Missing features, stubs, failing tests,
+absent acceptance-gate tooling, complexity, elapsed time, and context compaction
+are work to resolve, not grounds for ending the implementation. Consult architect
+when required and keep progressing on work that is not blocked.
+
+An incomplete implementation may be handed back as blocked only when evidence
+shows that resolution requires an action outside the repository and architect
+explicitly approves the interruption. Give architect the observed failure,
+remedies already attempted, remaining work, and exact external action required.
+Architect must confirm that no reasonable remedy within the authorized
+repository work remains. Finish all unblocked work before handing back, and
+report the approved blocker, external action, remaining work, and resumption
+criteria. Architect approval cannot authorize a scope change or override the
+user's instructions. Honor an explicit user stop or change of scope and
+higher-priority execution restrictions.
 
 Luna writes and updates documentation only when the user explicitly requests
 those changes. For a significant architectural decision recorded in documentation,
@@ -44,13 +99,13 @@ existing specifications, and relevant cross-component contracts. Luna resolves
 any inconsistencies identified before reporting completion. Routine documentation
 changes do not require architect review.
 
-Send a compact handoff: requested phase, repository/project-entry/KB paths,
-approved decisions, exact question, relevant files and observed failures. Ask for
-advisory analysis, not implementation.
-If architect or its configured model is unavailable, disclose this; do not claim
-Sol reviewed the work. Resolve a model change with the user when specialist
-analysis is necessary. Routing delegates to a separate agent; it does not change
-the main conversation's model.
+For architect consultation, send a compact handoff with the requested phase,
+repository/project-entry/KB paths, approved decisions, exact question, relevant
+files and observed failures. Ask architect for advisory analysis, not
+implementation. If architect or its configured model is unavailable, disclose
+this; do not claim architect review occurred. Resolve a model change with the
+user when specialist analysis is necessary. Routing delegates to a separate
+agent; it does not change the main conversation's model.
 
 ### User-controlled phases
 Follow the phase requested by the user. A request to plan or discuss permits

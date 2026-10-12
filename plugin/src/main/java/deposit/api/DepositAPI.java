@@ -227,7 +227,29 @@ public final class DepositAPI extends BaseAPI {
  @Procedure(name="deposit.get.importPlan",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p109(@Name("planId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.importPlan",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.import.apply",mode=Mode.WRITE)
- public Stream<PublicResults.DataRow> p110(@Name("planId") String a0,@Name("resolutions") List<Map<String,Object>> a1,@Name("token") String token) { return invokePublic(token,"deposit.import.apply",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ public Stream<PublicResults.DataRow> p110(@Name("planId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.import.apply",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.import.namespaceData",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p111(@Name("packageResourceId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.import.namespaceData",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.load.csv",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p112(@Name("resourceId") String a0,@Name("formatOptions") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.load.csv",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.load.xlsx",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p113(@Name("resourceId") String a0,@Name("formatOptions") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.load.xlsx",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.load.gpkg",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p114(@Name("resourceId") String a0,@Name("formatOptions") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.load.gpkg",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.table",mode=Mode.WRITE)
+ public Stream<PublicResults.QueryRow> p115(@Name("tableId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.table",Arrays.asList(a0)).map(PublicResults::query); }
+ @Procedure(name="deposit.get.tablePage",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p116(@Name("tableId") String a0,@Name("page") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.get.tablePage",Arrays.asList(a0,a1)).map(PublicResults::page); }
+ @Procedure(name="deposit.save.csv",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p117(@Name("source") Map<String,Object> a0,@Name("parameters") Map<String,Object> a1,@Name("formatOptions") Map<String,Object> a2,@Name("token") String token) { return invokePublic(token,"deposit.save.csv",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
+ @Procedure(name="deposit.save.xlsx",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p118(@Name("source") Map<String,Object> a0,@Name("parameters") Map<String,Object> a1,@Name("formatOptions") Map<String,Object> a2,@Name("token") String token) { return invokePublic(token,"deposit.save.xlsx",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
+ @Procedure(name="deposit.save.gpkg",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p119(@Name("source") Map<String,Object> a0,@Name("parameters") Map<String,Object> a1,@Name("formatOptions") Map<String,Object> a2,@Name("token") String token) { return invokePublic(token,"deposit.save.gpkg",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.layout",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p120(@Name("selection") Map<String,Object> a0,@Name("options") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.get.layout",Arrays.asList(a0,a1)).map(PublicResults::data); }
+ @Procedure(name="deposit.import.rows",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p121(@Name("source") Map<String,Object> a0,@Name("targets") Map<String,Object> a1,@Name("relationships") List<Object> a2,@Name("rules") Map<String,Object> a3,@Name("token") String token) { return invokePublic(token,"deposit.import.rows",Arrays.asList(a0,a1,a2,a3)).map(PublicResults::data); }
+ @Procedure(name="deposit.import.dataByPattern",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> p122(@Name("pattern") Object a0,@Name("values") Map<String,Object> a1,@Name("rules") Map<String,Object> a2,@Name("token") String token) { return invokePublic(token,"deposit.import.dataByPattern",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
 }

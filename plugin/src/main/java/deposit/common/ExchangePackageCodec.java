@@ -40,6 +40,12 @@ public final class ExchangePackageCodec {
 
     /** Validate archive paths, compression, bounds and manifest checksums without buffering blobs. */
     public static PackageData validate(Path archive) throws IOException {return validate(archive,false,()->{},java.util.function.Function.identity());}
+    /** Validate with a disk-backed package view whose lifetime covers the callback. */
+    public static <T> T withValidatedPackage(Path archive,Runnable checkpoint,java.util.function.Function<PackageData,T> action)throws IOException {
+        Objects.requireNonNull(action,"action");
+        return validate(archive,true,checkpoint==null?()->{}:checkpoint,pkg->{try{return action.apply(pkg);}catch(RuntimeException failure){throw new CallbackFailure(failure);}});
+    }
+    private static final class CallbackFailure extends RuntimeException {final RuntimeException failure;CallbackFailure(RuntimeException failure){this.failure=failure;}}
     private static <T> T validate(Path archive,boolean streaming,Runnable checkpoint,java.util.function.Function<PackageData,T> finish) throws IOException {
         checkpoint.run();if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Package validation cancelled");
         var seen=new HashSet<String>();var hashes=new HashMap<String,String>();var sizes=new HashMap<String,Long>();
@@ -80,8 +86,8 @@ public final class ExchangePackageCodec {
         validateGraph(graph,seen,manifest,workspace);
         if((history!=null)!=Boolean.TRUE.equals(manifest.get("includeHistory"))&&manifest.containsKey("includeHistory"))throw new IOException("History manifest mismatch");
         if(history!=null){if(!Objects.equals(history.get("namespaceId"),manifest.get("sourceNamespaceId")))throw new IOException("History provenance Namespace differs");validateHistory(history,graph,"namespace".equals(manifest.get("scope")),workspace);}
-        return finish.apply(workspace==null?original:new PackageData(manifest,graph,history));
-        } catch(UncheckedIOException e){throw e.getCause();} catch(RuntimeException e){throw new IOException("Invalid package record",e);} finally {try(var paths=Files.walk(workspacePath)){paths.sorted(Comparator.reverseOrder()).forEach(path->{try{Files.deleteIfExists(path);}catch(IOException ignored){}});}}
+        return finish.apply(workspace==null?original:new PackageData(workspace.payload(manifest),workspace.payload(graph),history==null?null:workspace.payload(history)));
+        } catch(CallbackFailure e){throw e.failure;} catch(UncheckedIOException e){throw e.getCause();} catch(RuntimeException e){throw new IOException("Invalid package record",e);} finally {try(var paths=Files.walk(workspacePath)){paths.sorted(Comparator.reverseOrder()).forEach(path->{try{Files.deleteIfExists(path);}catch(IOException ignored){}});}}
     }
     public static Object encodeValue(String type,Object value){
         if(value==null)return null;

@@ -26,6 +26,36 @@ class ExchangePackageStreamingTest {
             Path graph=temp.resolve(UUID.randomUUID()+".json");Files.writeString(graph,json);Path zip=archive(graph,manifest());assertThrows(IOException.class,()->ExchangePackageCodec.validateSummary(zip));
         }
     }
+    @Test void validatedPackageCallbackExceptionsRemainDomainExceptions()throws Exception{
+        var ns=manifest();Path graph=temp.resolve("callback-graph.json");Json.write(Files.newOutputStream(graph),Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"resources",List.of(),"userTools",List.of()));Path zip=archive(graph,ns);var expected=new IllegalStateException("caller failure");
+        var actual=assertThrows(IllegalStateException.class,()->ExchangePackageCodec.withValidatedPackage(zip,()->{},pkg->{throw expected;}));assertSame(expected,actual);
+    }
+    @Test void validatedCallbackPreservesOriginalTextDictionaryKeysAndPatternComments()throws Exception{
+        var manifest=manifest();String ns=(String)manifest.get("sourceNamespaceId"),classId=UUID.randomUUID().toString(),objectId=UUID.randomUUID().toString();
+        String longText="original α 😀\n".repeat(4000),longKey="scientific-key-".repeat(3000),scientificId=UUID.randomUUID().toString().toUpperCase(Locale.ROOT);
+        manifest.put("description",longText);
+        var dictionary=new LinkedHashMap<String,Object>();
+        for(String key:List.of("id","comment","description","data","summary",longKey))dictionary.put(key,Json.map("type","String","value",key.equals("id")?scientificId:longText));
+        dictionary.put("nested",Json.map("type","DDict","value",Json.map("objectId",Json.map("type","String","value",scientificId),"rootIds",Json.map("type","List","value",Json.map("itemType","String","items",List.of(scientificId))))));
+        var definition=Json.map("objects",Json.map("specimen",Json.map("className","Specimen","root",true,"comment",longText,"descriptors",List.of(Json.map("name","Payload","comment",longText)))));
+        var graph=Json.map("classes",List.of(Json.map("kind","Class","id",classId,"namespaceId",ns,"name","Specimen","comment",longText,"descriptors",List.of(Json.map("kind","ClassDescriptor","id",UUID.randomUUID().toString(),"namespaceId",ns,"classId",classId,"name","Payload","type","DDict","comment",longText)))),
+            "objects",List.of(Json.map("kind","Object","id",objectId,"namespaceId",ns,"classId",classId)),
+            "descriptors",List.of(Json.map("kind","Descriptor","id",UUID.randomUUID().toString(),"namespaceId",ns,"objectId",objectId,"name","Payload","value",dictionary)),
+            "memberships",List.of(Json.map("kind","Membership","id",UUID.randomUUID().toString(),"namespaceId",ns,"objectId",objectId,"classId",classId)),
+            "geometries",List.of(),"relationships",List.of(),"classRelationships",List.of(),"resources",List.of(),
+            "patterns",List.of(Json.map("kind","Pattern","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","SpecimenKey","comment",longText,"definition",definition)),
+            "userTools",List.of(Json.map("kind","UserTool","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","Opaque","data",longText,"comment",longText)));
+        Path zip=temp.resolve("payload.zip");ExchangePackageCodec.write(zip,manifest,graph,null,Map.of());
+        var expected=ExchangePackageCodec.validate(zip);
+        ExchangePackageCodec.withValidatedPackage(zip,()->{},pkg->{
+            assertEquals(expected.manifest(),pkg.manifest());assertEquals(expected.graph(),pkg.graph());assertEquals(Json.write(expected.graph()),Json.write(pkg.graph()));
+            var descriptor=ValueCodec.map(((List<?>)pkg.graph().get("descriptors")).getFirst());var actualDictionary=ValueCodec.map(descriptor.get("value"));
+            assertTrue(actualDictionary.containsKey(longKey));assertEquals(longText,ValueCodec.map(actualDictionary.get(longKey)).get("value"));
+            assertEquals(dictionary,ExchangePackageCodec.decodeValue("DDict",actualDictionary));
+            assertEquals(PatternCodec.normalize(definition),PatternCodec.normalize(ValueCodec.map(ValueCodec.map(((List<?>)pkg.graph().get("patterns")).getFirst()).get("definition"))));
+            return null;
+        });
+    }
     @Test void spillMapRetainsUpdatesDeletesAndCategoryQualifiedKeys()throws Exception{
         try(var workspace=new PackageWorkspace(temp)){Map<String,String> map=workspace.map();for(int i=0;i<6000;i++)map.put("Object\u0000"+i,"v"+i);for(int i=0;i<6000;i+=2)map.remove("Object\u0000"+i);for(int i=0;i<6000;i++)map.put("Pattern\u0000"+i,"p"+i);assertEquals(9000,map.size());for(int i=0;i<6000;i++){assertEquals("p"+i,map.get("Pattern\u0000"+i));assertEquals(i%2==0?null:"v"+i,map.get("Object\u0000"+i));}map.clear();assertTrue(map.isEmpty());map.put("Object\u0000same","one");map.put("Pattern\u0000same","two");assertEquals("one",map.get("Object\u0000same"));}
         try(var paths=Files.list(temp)){assertEquals(0,paths.count());}
@@ -51,10 +81,11 @@ class ExchangePackageStreamingTest {
         var manifest=manifest();manifest.put("historyMode","persistent");String ns=(String)manifest.get("sourceNamespaceId"),epoch=UUID.randomUUID().toString(),id=UUID.randomUUID().toString();
         var lower=new LinkedHashMap<String,Object>();var upper=new LinkedHashMap<String,Object>();
         for(int i=0;i<12000;i++){String entity=String.format("abcdefab-cdef-4abc-8def-%012x",i);lower.put(HistoryCodec.key("Object",entity),List.of("name"));upper.put(HistoryCodec.key("Object",entity.toUpperCase(Locale.ROOT)),List.of("name"));}
-        var image=Json.map("kind","Namespace","id",ns,"namespaceId",ns,"name","N");var baseline=Json.map("id",id,"revisionId",id,"namespaceId",ns,"historyEpochId",epoch,"sequence",0L,"kind","baseline","parentRevisionId",null,"changes",List.of(Json.map("entityKind","Namespace","entityId",ns,"before",null,"after",image)),"touches",lower,"dependencies",List.of());
+        String summary="original history α ".repeat(3000);var image=Json.map("kind","Namespace","id",ns,"namespaceId",ns,"name","N");var baseline=Json.map("id",id,"revisionId",id,"namespaceId",ns,"historyEpochId",epoch,"sequence",0L,"kind","baseline","summary",summary,"parentRevisionId",null,"changes",List.of(Json.map("entityKind","Namespace","entityId",ns,"before",null,"after",image)),"touches",lower,"dependencies",List.of());
         var first=new LinkedHashMap<>(baseline);first.put("touches",upper);var epochRecord=Json.map("id",epoch,"mode","persistent","closed",false,"startedSequence",0L,"endedSequence",null,"baselineRevisionId",id,"headRevisionId",id,"baseline",baseline,"revisions",List.of(first));var history=Json.map("namespaceId",ns,"historyMode","persistent","activeEpochId",epoch,"headRevisionId",id,"epochs",List.of(epochRecord),"complete",true);
         var graph=Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"resources",List.of(),"userTools",List.of(Json.map("kind","UserTool","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","Tool","data","opaque")));
         Path zip=temp.resolve("journal.zip");ExchangePackageCodec.write(zip,manifest,graph,history,Map.of());runProbe(zip);
+        ExchangePackageCodec.withValidatedPackage(zip,()->{},pkg->{var epochView=ValueCodec.map(((List<?>)pkg.history().get("epochs")).getFirst());assertEquals(summary,ValueCodec.map(epochView.get("baseline")).get("summary"));assertEquals(summary,ValueCodec.map(((List<?>)epochView.get("revisions")).getFirst()).get("summary"));return null;});
     }
     private void runProbe(Path archive)throws Exception{
         Path scratch=Files.createDirectory(temp.resolve("scratch"));Path log=temp.resolve("probe.log");String java=Path.of(System.getProperty("java.home"),"bin","java.exe").toString();
@@ -63,5 +94,5 @@ class ExchangePackageStreamingTest {
         try{assertTrue(process.waitFor(120,TimeUnit.SECONDS),"Constrained-heap validation timed out");assertEquals(0,process.exitValue(),Files.readString(log));}finally{if(process.isAlive())process.destroyForcibly().waitFor();}
         try(var paths=Files.list(scratch)){assertEquals(0,paths.count(),"Validation workspace leaked");}
     }
-    public static class Probe {public static void main(String[] args)throws Exception{var result=ExchangePackageCodec.validateSummary(Path.of(args[0]));if(result.counts().get("userTools")!=1L)throw new AssertionError(result);System.out.println("bounded-validation-passed");}}
+    public static class Probe {public static void main(String[] args)throws Exception{var archive=Path.of(args[0]);var result=ExchangePackageCodec.validateSummary(archive);if(result.counts().get("userTools")!=1L)throw new AssertionError(result);ExchangePackageCodec.withValidatedPackage(archive,()->{},pkg->{if(((List<?>)pkg.graph().get("userTools")).size()!=1)throw new AssertionError();return null;});System.out.println("bounded-validation-passed");}}
 }

@@ -1,5 +1,5 @@
 name = "architect"
-description = "Consult for master-plan stage architecture, material design questions, cross-component interfaces, complex algorithms, integrity/security risks, and difficult or repeatedly failing repairs."
+description = "Consult for master-plan stage architecture, material design questions, cross-component interfaces, complex algorithms, integrity/security risks, and architectural contradictions."
 model = "gpt-6-astra"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
@@ -24,4 +24,12 @@ user approval. Return concise, actionable findings with file/section references:
 Include only sections needed for the delegated question. If source access is
 blocked, explain the gap rather than inventing an answer. Reuse the parent's
 compact handoff; avoid rereading unrelated project history.
+
+For a proposed interruption of incomplete implementation, approve only a
+demonstrated blocker requiring an action outside the repository after reasonable
+repository remedies have been exhausted. Return an explicit APPROVED or NOT
+APPROVED decision, rationale, evidence, exact external action required, and work
+that can still proceed. Missing implementation, tests, or acceptance-gate
+tooling alone are not external blockers. Approval to interrupt does not authorize
+a scope change or override the user's instructions.
 """

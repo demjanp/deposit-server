@@ -18,7 +18,7 @@ public abstract class ActionService extends BaseService {
         if(serverScope)c.server.lockServer(c.state);
         if(!serverScope) {repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);}
         String scope=serverScope?"server":c.namespaceId;
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",Set.of("deposit.import.analyze","deposit.import.apply").contains(procedure)?null:c.expectedRevision)));
+        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)?null:c.expectedRevision)));
         Node binding=repo.binding(c.actorId,c.operationId);
         if(binding!=null && !scope.equals(binding.getProperty("scope"))) c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
         Node receipt=repo.receipt(scope,c.operationId);

@@ -77,15 +77,14 @@ class ExchangePackageCodecTest {
         assertNull(ExchangePackageCodec.encodeValue("Integer",null));
     }
 
-    @Test void patternNormalizationKeepsDefaultAndExplicitEmptyMatchScopesDistinct() {
+    @Test void patternNormalizationUsesDescriptorListAsMatchingScope() {
         var role=Json.map("className","Specimen","root",true);
         var definition=PatternService.normalizeDefinition(Json.map("objects",Json.map("specimen",role)));
         var normalized=ValueCodec.map(ValueCodec.map(definition.get("objects")).get("specimen"));
         assertFalse(normalized.containsKey("matchDescriptors"));
         assertEquals(false,normalized.get("alwaysCreate"));
         role.put("matchDescriptors",List.of());
-        var explicit=PatternService.normalizeDefinition(Json.map("objects",Json.map("specimen",role)));
-        assertEquals(List.of(),ValueCodec.map(ValueCodec.map(explicit.get("objects")).get("specimen")).get("matchDescriptors"));
+        assertThrows(ExceptionHandler.DepositException.class,()->PatternService.normalizeDefinition(Json.map("objects",Json.map("specimen",role))));
     }
 
     @Test void graphRejectsMissingMembershipAbsentValueAndProhibitedEmptyLists()throws Exception{

@@ -103,6 +103,7 @@ public final class ValueCodec {
         if(type.equals("DDict")) {var result=new TreeMap<String,Object>();for(var e:map(value).entrySet()) {var m=map(e.getValue());String t=(String)m.get("type");result.put(e.getKey(),Json.map("type",t,"value",jsonValue(t,m.get("value"))));}return result;}
         return value;
     }
+    public static String jsonText(String type,Object value) {return Json.write(jsonValue(type,normalize(type,value)));}
     private static long integer(Object v,boolean json) {return (Long)normalize("Integer",v,0,json);}
     public static Map<String,Object> durationMap(TemporalAmount d) {return Json.map("months",d.get(ChronoUnit.MONTHS),"days",d.get(ChronoUnit.DAYS),"seconds",d.get(ChronoUnit.SECONDS),"nanoseconds",d.get(ChronoUnit.NANOS));}
     public static Map<String,Object> pointMap(Point point) {return Json.map("srid",(long)point.getCRS().getCode(),"coordinates",Arrays.stream(point.getCoordinate().getCoordinate()).boxed().toList());}

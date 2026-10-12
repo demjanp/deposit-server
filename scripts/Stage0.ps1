@@ -27,6 +27,7 @@ if ($Root -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Stage 0 must use th
 $manifest = Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $spatialLock = Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock) -Raw | ConvertFrom-Json
 $ocflLock = Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json
+$formatLock = Get-Content (Join-Path "$repo\runtime" $manifest.formatDependencyLock) -Raw | ConvertFrom-Json
 $run = Join-Path $Root "runs\$RunId"
 $evidence = Join-Path $run ('evidence\'+$Phase+'-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))
 if($EvidenceGroup) {$evidence=Join-Path $Root ("evidence\$EvidenceGroup\phases\"+$Phase+'-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))}
@@ -74,6 +75,15 @@ function Test-Artifacts([switch]$VerifyChecksums,[switch]$SkipProvided) {
         $file=Join-Path $Root "$($manifest.neo4jHome)\lib\$($artifact.file)"
         if(!(Test-Path -LiteralPath $file) -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $artifact.sha256){throw "Provided OCFL dependency differs from the pinned runtime: $($artifact.file)"}
     }
+    if($VerifyChecksums -and (Get-FileHash "$repo\runtime\format-dependencies.pom.xml" -Algorithm SHA256).Hash -ne $formatLock.sourcePomSha256) {throw 'Format dependency lock does not match its source POM'}
+    foreach($artifact in @($formatLock.dependencies | Where-Object ship)) {
+        $file=Join-Path $Root "cache\format-dependencies\$($artifact.file)"
+        if(!(Test-Path -LiteralPath $file) -or ($VerifyChecksums -and (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $artifact.sha256)) {throw "Format dependency missing or checksum mismatch: $($artifact.file)"}
+    }
+    foreach($artifact in @($formatLock.dependencies | Where-Object {-not $_.ship -and -not $SkipProvided})) {
+        $file=Join-Path $Root "$($manifest.neo4jHome)\lib\$($artifact.file)"
+        if(!(Test-Path -LiteralPath $file) -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $artifact.sha256){throw "Provided format dependency differs from the pinned runtime: $($artifact.file)"}
+    }
 }
 function Invoke-Provision {
     New-Item -ItemType Directory -Force "$Root\cache","$Root\tools" | Out-Null
@@ -101,6 +111,15 @@ function Invoke-Provision {
         if(!(Test-Path -LiteralPath $file)) {
             Invoke-WebRequest -UseBasicParsing -Uri $artifact.url -OutFile "$file.partial"
             if((Get-FileHash -LiteralPath "$file.partial" -Algorithm SHA256).Hash -ne $artifact.sha256) {throw "OCFL dependency download hash mismatch: $($artifact.file)"}
+            Move-Item -LiteralPath "$file.partial" -Destination $file
+        }
+    }
+    New-Item -ItemType Directory -Force "$Root\cache\format-dependencies" | Out-Null
+    foreach($artifact in @($formatLock.dependencies | Where-Object ship)) {
+        $file=Join-Path $Root "cache\format-dependencies\$($artifact.file)"
+        if(!(Test-Path -LiteralPath $file)) {
+            Invoke-WebRequest -UseBasicParsing -Uri $artifact.url -OutFile "$file.partial"
+            if((Get-FileHash -LiteralPath "$file.partial" -Algorithm SHA256).Hash -ne $artifact.sha256) {throw "Format dependency download hash mismatch: $($artifact.file)"}
             Move-Item -LiteralPath "$file.partial" -Destination $file
         }
     }
@@ -175,6 +194,7 @@ function Invoke-Install {
     foreach($artifact in @($ocflLock.dependencies | Where-Object ship)) {
         Copy-Item -LiteralPath (Join-Path $Root "cache\ocfl-dependencies\$($artifact.file)") -Destination "$installation\plugins"
     }
+    foreach($artifact in @($formatLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\format-dependencies\$($artifact.file)") -Destination "$installation\plugins"}
     Write-Json @{inputs=$(if($DiagnosticBuild){$null}else{$receipt.inputs});diagnostic=[bool]$DiagnosticBuild;runtime=@(@{path='bin\neo4j.bat';sha256=(Get-FileHash (Join-Path $runtimeDirectory 'bin\neo4j.bat') -Algorithm SHA256).Hash.ToLowerInvariant()});plugins=@(Get-ChildItem "$installation\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$run\installed-artifacts.json"
     $configFile = (Join-Path $installation 'conf\deposit.properties').Replace('\','/')
     $resources = (Join-Path $run 'resources').Replace('\','/')
@@ -382,6 +402,7 @@ function Invoke-Evidence {
     Write-Json $manifest "$evidence\artifact-manifest.json"
     Write-Json $spatialLock "$evidence\spatial-dependencies.json"
     Write-Json $ocflLock "$evidence\ocfl-dependencies.json"
+    Write-Json $formatLock "$evidence\format-dependencies.json"
     $os=Get-CimInstance Win32_OperatingSystem
     Write-Json @{os=$os.Caption;version=$os.Version;javaHome=$env:JAVA_HOME;runId=$RunId;diagnostic=[bool]$DiagnosticBuild} "$evidence\environment.json"
     $initialInputs.serverBaseline | Set-Content "$evidence\server-commit.txt"
@@ -409,12 +430,13 @@ function Invoke-Package {
     foreach($id in @('apoc','spatial','bcrypt-provider')) {$artifact=$manifest.artifacts | Where-Object id -eq $id; Copy-Item -LiteralPath (Join-Path $Root "cache\$($artifact.file)") -Destination "$destination\plugins"}
     foreach($artifact in @($spatialLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\spatial-dependencies\$($artifact.file)") -Destination "$destination\plugins"}
     foreach($artifact in @($ocflLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\ocfl-dependencies\$($artifact.file)") -Destination "$destination\plugins"}
+    foreach($artifact in @($formatLock.dependencies | Where-Object ship)) {Copy-Item -LiteralPath (Join-Path $Root "cache\format-dependencies\$($artifact.file)") -Destination "$destination\plugins"}
     & "$PSScriptRoot\Audit-Artifacts.ps1" -Root $Root -Inputs $initialInputs.sha256
     Copy-Item -LiteralPath "$Root\evidence\artifact-audit\inventory.json" -Destination "$destination\runtime-inventory.json"
     Copy-Item -LiteralPath (Join-Path $Root "$($manifest.neo4jHome)\ThirdPartyLicenses.txt") -Destination "$destination\notices\Neo4j-ThirdPartyLicenses.txt"
     Copy-Item -Path "$Root\evidence\artifact-audit\notices\*" -Destination "$destination\notices"
     Copy-Item -Path "$Root\cache\licenses\*" -Destination "$destination\notices"
-    Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$repo\runtime\ocfl-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
+    Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$repo\runtime\ocfl-runtime-lock.json","$repo\runtime\format-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
     Copy-Item -Path "$repo\runtime\distribution\*" -Destination "$destination\conf"
     Write-Json @{inputs=$initialInputs.sha256;plugins=@(Get-ChildItem "$destination\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$destination\distribution-manifest.json"
     [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage65.zip")
