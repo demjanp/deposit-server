@@ -42,6 +42,25 @@ The gate covers a clean build, one authenticated installation with independent c
 .\scripts\Test-Stage0Environment.ps1 -Build -RunPrefix environment-01 -Port 17770
 ```
 
+## Test workflow during development
+
+For a narrow change, run the affected existing integration selection against the test installation. Rebuild and install when the plugin or runtime inputs changed; start the owned installation before invoking tests:
+
+```powershell
+.\scripts\Stage0.ps1 -Phase Build -RunId stage0-host
+.\scripts\Stage0.ps1 -Phase Install -RunId stage0-host -Port 17770
+.\scripts\Stage0.ps1 -Phase Start -RunId stage0-host -Port 17770
+.\scripts\Stage0.ps1 -Phase Test -RunId stage0-host -Port 17770 -TestSelection Stage9FormatIT
+```
+
+Use the selection that covers the changed contract, then expand to related suites as the change stabilizes. Run the relevant cumulative stage gate before milestone acceptance; run the full cumulative gate when shared behavior or milestone acceptance requires it. Do not repeat an unchanged full gate after every narrow edit.
+
+Keep the pinned download and Maven caches. Reuse the existing installation only when its build/runtime identity matches and the tests permit shared state. Use the single authorized host sequentially; do not run tests concurrently against its Neo4j instance. Reset or restart only when a test requires fresh state or explicitly exercises recovery, and preserve the required process-termination boundaries. Failed runs and their evidence remain available for inspection.
+
+Completed results carry manifests that identify their source and lifecycle. The gate cleanup follows the retention rules in the hub plan; do not manually remove evidence from an active or unsuccessful run.
+
+For Stages 10 and 11, record actual test elapsed time and peak test-owned storage as diagnostic evidence. Include temporary and overlapping output and known test-owned paths outside the Stage 0 root. Test speed is not an acceptance or stop criterion for those stages. Apply the storage investigation and stop/report rules in the hub implementation plan.
+
 All Maven output uses `C:\data_processed\Deposit_v2\stage0\build\<artifactId>\target`, including direct wrapper invocations.
 
 The reactor modules are `plugin`, `runtime-probe` and `integration-tests`. Neo4j APIs remain provided; JTS comes from Neo4j. The published Spatial thin JAR and 26 pinned support JARs avoid the fat artifact's conflicting Neo4j client classes. Maven caches, dependency locks, source snapshots and build receipts make installations reviewable and repeatable.
