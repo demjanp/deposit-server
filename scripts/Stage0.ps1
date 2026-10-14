@@ -352,9 +352,12 @@ function Invoke-Stop([bool]$Force) {
         $owner=Get-Content (Join-Path $run 'owner.json') -Raw | ConvertFrom-Json
         if($owner.releaseMode){$env:JAVA_HOME=Join-Path $Root $manifest.javaHome;$env:NEO4J_HOME=$installation;$env:NEO4J_CONF=Join-Path $installation 'conf';$env:PATH=(Join-Path $env:JAVA_HOME 'bin')+';'+$env:PATH;$ErrorActionPreference='Continue';& (Join-Path $run 'distribution\deposit.bat') stop *> "$evidence\release-stop.log";$stopCode=$LASTEXITCODE;$ErrorActionPreference='Stop';if($stopCode -ne 0){throw 'Packaged deposit.bat stop failed'} }
         else {
+        . (Join-Path $PSScriptRoot 'Request-DepositStop.ps1')
+        $drain=Request-DepositStop -Neo4jHome $installation -TargetProcessId $owned.ProcessId
         # Windows `neo4j stop` only controls a service, not `neo4j console`.
-        $args="-NoProfile -File `"$PSScriptRoot\Stop-Console.ps1`" -TargetProcessId $($owned.ProcessId)"
-        $helper=Start-Process powershell.exe -ArgumentList $args -WindowStyle Hidden -PassThru -RedirectStandardOutput "$evidence\stop.log" -RedirectStandardError "$evidence\stop.err.log"
+        $identityBase64=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($drain|ConvertTo-Json -Compress)))
+        $stopArgs="-NoProfile -File `"$PSScriptRoot\Stop-Console.ps1`" -IdentityBase64 $identityBase64"
+        $helper=Start-Process powershell.exe -ArgumentList $stopArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput "$evidence\stop.log" -RedirectStandardError "$evidence\stop.err.log"
         [void]$helper.Handle
         try {
             if(!$helper.WaitForExit(10000)) {$helper.Kill(); throw 'Graceful console signal timed out'}
@@ -362,7 +365,7 @@ function Invoke-Stop([bool]$Force) {
         } finally {$helper.Dispose()}
         }
     }
-        if (!$processHandle.WaitForExit(30000)) {throw 'Owned server did not stop within 30 seconds'}
+        if (!$processHandle.WaitForExit(60000)) {throw 'Owned server did not stop within 60 seconds after Deposit cleanup'}
     } finally {$processHandle.Dispose()}
 }
 function Invoke-Reset {
@@ -416,7 +419,7 @@ function Invoke-Package {
     Copy-Item -Path "$repo\runtime\distribution\neo4j.conf","$repo\runtime\distribution\deposit.properties" -Destination "$destination\conf"
     Copy-Item -LiteralPath "$repo\runtime\distribution\deposit.bat","$repo\runtime\distribution\deposit.ps1" -Destination $destination
     New-Item -ItemType Directory -Force "$destination\helpers" | Out-Null
-    Copy-Item -LiteralPath "$PSScriptRoot\Credentials.ps1","$PSScriptRoot\Configure-DepositDownloads.ps1","$PSScriptRoot\Stop-Console.ps1","$repo\runtime\distribution\helpers\deposit-worker.ps1" -Destination "$destination\helpers"
+    Copy-Item -LiteralPath "$PSScriptRoot\Credentials.ps1","$PSScriptRoot\Configure-DepositDownloads.ps1","$PSScriptRoot\Stop-Console.ps1","$PSScriptRoot\Request-DepositStop.ps1","$repo\runtime\distribution\helpers\deposit-worker.ps1" -Destination "$destination\helpers"
     # Keep the hub as the sole source; extract its operations section into the release package.
     $hubServerDoc=Join-Path (Split-Path $repo -Parent) 'deposit-hub\deposit-server.md'
     if(!(Test-Path -LiteralPath $hubServerDoc -PathType Leaf)) {throw 'Deposit Hub server documentation is required to package OPERATIONS.md'}

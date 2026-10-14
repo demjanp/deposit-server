@@ -18,6 +18,7 @@ class Stage11ShutdownIT {
     static final Path READY=ROOT.resolve("secrets/stage11-drain-ready.txt");
     static final Path RELEASE=ROOT.resolve("secrets/stage11-drain-release.txt");
     static final Path FIXTURE=ROOT.resolve("secrets/stage11-drain-fixture.properties");
+    static Path control;
     static org.neo4j.driver.Driver driver;
     static URI base;
     static final String PASSWORD=Objects.requireNonNull(System.getenv("STAGE0_PASSWORD"));
@@ -27,6 +28,8 @@ class Stage11ShutdownIT {
         base=URI.create(Objects.requireNonNull(System.getenv("STAGE0_HTTP_BASE")));
         driver=GraphDatabase.driver(URI_VALUE,AuthTokens.basic("neo4j",PASSWORD),Config.builder().withConnectionTimeout(5,TimeUnit.SECONDS).build());
         driver.verifyConnectivity();
+        Properties configuration=new Properties();try(var input=Files.newInputStream(ROOT.resolve("neo4j/conf/deposit.properties"))){configuration.load(input);}
+        control=Path.of(configuration.getProperty("secretRoot")).resolve("deposit-control");
     }
     @AfterAll static void close(){if(driver!=null)driver.close();}
     static Map<String,Object> m(Object... values){var result=new LinkedHashMap<String,Object>();for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}
@@ -63,10 +66,17 @@ class Stage11ShutdownIT {
             tx.run("CREATE (:Stage11ShutdownDrain {id:$id})",Map.of("id",writeId)).consume();
             Properties fixture=new Properties();fixture.setProperty("writeId",writeId);fixture.setProperty("namespace",namespace);fixture.setProperty("resource",resource);
             try(var output=Files.newOutputStream(FIXTURE,StandardOpenOption.CREATE_NEW)){fixture.store(output,"Stage 11 service drain fixture");}
-            Files.writeString(READY,"ready\n",StandardOpenOption.CREATE_NEW);
+            // Client-side buffering alone does not prove a server reader/handler is still admitted.
+            long admissionDeadline=System.nanoTime()+Duration.ofSeconds(5).toNanos();com.fasterxml.jackson.databind.JsonNode counts;
+            do{counts=new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(control.resolve("run.json")));if(counts.path("transactions").asInt()>0&&counts.path("readers").asInt()>0&&counts.path("handlers").asInt()>0)break;Thread.sleep(50);}while(System.nanoTime()<admissionDeadline);
+            assertTrue(counts.path("transactions").asInt()>0&&counts.path("readers").asInt()>0&&counts.path("handlers").asInt()>0,"the transaction and server-side reader/handler must all be admitted");
+            Files.writeString(READY,"ready:"+writeId+"\n",StandardOpenOption.CREATE_NEW);
             long deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
             while(!Files.exists(RELEASE)&&System.nanoTime()<deadline)Thread.sleep(50);
             assertTrue(Files.exists(RELEASE),"the gate must start service shutdown and release the held work");
+            var rejected=assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.utils.login","stage1-admin","stage1-account-password"));
+            // Preserve the existing sanitized INTERNAL_ERROR envelope for lifecycle rejection.
+            assertTrue(rejected.getMessage().contains("DEPOSIT_ERROR")&&rejected.getMessage().contains("\"code\":\"INTERNAL_ERROR\"")&&rejected.getMessage().contains("diagnosticReference"),"new Deposit procedure admission must close with its existing error semantics while the held transaction remains usable: "+rejected.getMessage());
             stream.close();tx.commit();
         } finally {try{stream.close();}catch(Exception ignored){}}
     }

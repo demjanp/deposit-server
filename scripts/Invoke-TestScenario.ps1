@@ -70,7 +70,8 @@ function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[stri
     $childErrorLog = [IO.Path]::ChangeExtension($LogPath,".$Label.err.log")
     $command = '& ' + (Quote-PowerShell $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments)
     $child = Start-PowerShellChild $command
-    $code = Complete-PowerShellChild $child $childLog $childErrorLog 180000
+    $timeout = if ($Label -eq 'stage0-Stop') { 330000 } else { 180000 }
+    $code = Complete-PowerShellChild $child $childLog $childErrorLog $timeout
     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
     foreach ($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
     if ($code -ne 0) { throw "$Label failed; see $childLog" }

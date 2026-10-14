@@ -10,8 +10,26 @@ $script:StatePath=Join-Path $script:PackageRoot 'deposit.install.json'
 $manifestPath=Join-Path $script:PackageRoot 'artifacts.json'
 if(!(Test-Path -LiteralPath $manifestPath)){$manifestPath=Join-Path (Split-Path $script:PackageRoot -Parent) 'artifacts.json'}
 $script:Manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+. (Join-Path $script:PackageRoot 'helpers\Request-DepositStop.ps1')
 
 function Fail([string]$Message) { throw $Message }
+function Drain-Installation($State) {
+    $owned=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {$_.CommandLine -and $_.CommandLine.Contains([IO.Path]::GetFullPath($State.neo4jHome)) -and $_.CommandLine -match 'org\.neo4j\.server\.(Neo4jCommunity|CommunityEntryPoint)|Neo4jBoot'})
+    if($owned.Count -ne 1){Fail 'Cannot identify the single owned Deposit runtime for cleanup'}
+    return (Request-DepositStop -Neo4jHome $State.neo4jHome -TargetProcessId $owned[0].ProcessId)
+}
+function Get-DepositServiceIncarnation($State) {
+    $service=Get-CimInstance Win32_Service -Filter "Name='$($State.serviceName)'"
+    if(!$service -or $service.State -ne 'Running' -or [long]$service.ProcessId -le 0){Fail 'The Deposit service is not running as the expected service incarnation'}
+    $process=Get-CimInstance Win32_Process -Filter "ProcessId=$($service.ProcessId)"
+    if(!$process -or !$process.CreationDate){Fail 'Cannot establish the running Deposit service process incarnation'}
+    return [pscustomobject]@{name=[string]$service.Name;pid=[long]$service.ProcessId;startMillis=([DateTimeOffset]$process.CreationDate.ToUniversalTime()).ToUnixTimeMilliseconds()}
+}
+function Assert-DepositServiceIncarnation($State,$Identity,$Drain) {
+    $current=Get-DepositServiceIncarnation $State
+    if($current.name -ne $Identity.name -or $current.pid -ne $Identity.pid -or $current.startMillis -ne $Identity.startMillis){Fail 'Deposit service restarted during its drain; refusing to stop a replacement service'}
+    [void](Assert-DepositStopIdentity $Drain)
+}
 function Read-State {
     if(!(Test-Path -LiteralPath $script:StatePath -PathType Leaf)){Fail 'Deposit is not configured. Run deposit.bat setup <neo4j-home> <java-home> <data-root> <export-root>.'}
     $state=Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json -ErrorAction Stop
@@ -51,6 +69,26 @@ function Set-SecretDirectoryAccess([string]$Path,[string]$ServiceAccount) {
     $serviceRule=New-Object System.Security.AccessControl.FileSystemAccessRule($service,'Modify','ContainerInherit,ObjectInherit','None','Allow');$acl.AddAccessRule($serviceRule)
     Set-Acl -LiteralPath $resolved -AclObject $acl
     foreach($file in Get-ChildItem -LiteralPath $resolved -File -Force){if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){Fail "Secret file cannot be a reparse point: $($file.Name)"};if($file.Name -notmatch '^deposit-(?:bootstrap\.secret|.+-cursor\.key)(?:\.[0-9a-f]{32}\.partial)?$'){Fail "Unexpected file in the Deposit secret directory: $($file.Name)"};$fileAcl=New-Object System.Security.AccessControl.FileSecurity;$fileAcl.SetAccessRuleProtection($true,$false);$fileAcl.SetOwner($operator);$fileAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($operator,'FullControl','None','None','Allow')));$fileAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($service,'Modify','None','None','Allow')));Set-Acl -LiteralPath $file.FullName -AclObject $fileAcl}
+    Set-ControlDirectoryAccess $resolved $operator $service
+}
+function Set-ControlDirectoryAccess([string]$SecretRoot,$Operator,$Runtime) {
+    $control=Join-Path $SecretRoot 'deposit-control';if(!(Test-Path -LiteralPath $control)){return}
+    $pending=New-Object System.Collections.Generic.Queue[string];$pending.Enqueue($control)
+    $entries=New-Object System.Collections.Generic.List[object]
+    $uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    while($pending.Count){$directory=$pending.Dequeue();$item=Get-Item -LiteralPath $directory -Force;if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){Fail 'Unsafe shutdown control directory during identity migration'};$entries.Add($item)
+        foreach($child in Get-ChildItem -LiteralPath $directory -Force){
+            if($child.Attributes -band [IO.FileAttributes]::ReparsePoint){Fail 'Shutdown control entries cannot be reparse points'}
+            if($child.PSIsContainer){if($directory -ne $control -or $child.Name -notmatch "^$uuid`$"){Fail 'Unexpected shutdown control directory'};$pending.Enqueue($child.FullName)}
+            else{$pattern=if($directory -eq $control){"^run\.json(?:\.$uuid\.partial)?`$"}else{"^(?:request|ack)-$uuid\.json(?:\.$uuid\.partial)?`$"};if($child.Name -notmatch $pattern){Fail 'Unexpected shutdown control file'};$entries.Add($child)}
+        }
+    }
+    # Validate the complete tree before changing access; paths come only from the protected fixed directory.
+    foreach($entry in $entries){
+        if($entry.PSIsContainer){$acl=New-Object System.Security.AccessControl.DirectorySecurity;$acl.SetAccessRuleProtection($true,$false);$acl.SetOwner($Operator);$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($Operator,'FullControl','ContainerInherit,ObjectInherit','None','Allow')));$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($Runtime,'Modify','ContainerInherit,ObjectInherit','None','Allow')))}
+        else{$acl=New-Object System.Security.AccessControl.FileSecurity;$acl.SetAccessRuleProtection($true,$false);$acl.SetOwner($Operator);$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($Operator,'FullControl','None','None','Allow')));$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($Runtime,'Modify','None','None','Allow')))}
+        Set-Acl -LiteralPath $entry.FullName -AclObject $acl
+    }
 }
 function Migrate-DepositSecrets($State,[string]$ServiceAccount) {
     $config=Join-Path $State.neo4jHome 'conf\deposit.properties';$configText=[IO.File]::ReadAllText($config);$matches=[regex]::Matches($configText,'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
@@ -159,9 +197,10 @@ function Service([string]$Operation,$State) {
     }
     $service=Get-Service -Name $State.serviceName -ErrorAction SilentlyContinue
     if($Operation -eq 'remove'){
-        if($service -and $service.Status -ne 'Stopped'){Stop-Service -Name $State.serviceName -ErrorAction Stop; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
+        if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-Installation $State;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
         & $neo4j windows-service uninstall
         if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service removal failed'}
+        $null=Migrate-DepositSecrets $State ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
         $State.mode='local';$State.PSObject.Properties.Remove('serviceAccount');Save-State $State
         Write-Output 'Deposit Windows service removed.';return
     }
@@ -170,7 +209,7 @@ function Service([string]$Operation,$State) {
         if(!$service){Fail 'Service is not installed. Run deposit.bat install-service <dedicated-account> from an elevated shell.'}
         Start-Service -Name $State.serviceName -ErrorAction Stop;return
     }
-    if($Operation -eq 'stop') {if($service -and $service.Status -ne 'Stopped'){Stop-Service -Name $State.serviceName -ErrorAction Stop;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))};return}
+    if($Operation -eq 'stop') {if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-Installation $State;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))};return}
     if($Operation -eq 'status') {if(!$service){Write-Output 'Service is not installed.';exit 3};Write-Output "Service status: $($service.Status)";if($service.Status -ne 'Running'){exit 3};return}
 }
 function Start-Local($State) {
@@ -191,8 +230,9 @@ function Stop-Local($State,[switch]$Force) {
     $identity=Get-Content -LiteralPath $file -Raw|ConvertFrom-Json;$proc=Get-CimInstance Win32_Process -Filter "ProcessId=$($identity.pid)"
     if(!$proc -or !$proc.CreationDate -or !$proc.CommandLine -or !$proc.CommandLine.Contains([IO.Path]::GetFullPath($State.neo4jHome)) -or $proc.CreationDate.ToUniversalTime().ToString('o') -ne $identity.created){Fail 'The recorded PID does not identify this installation; refusing to stop it'}
     $process=Get-Process -Id $identity.pid
+    [void]$process.Handle
     if($Force){Stop-Process -Id $identity.pid -Force}
-    else {& (Join-Path $script:PackageRoot 'helpers\Stop-Console.ps1') -TargetProcessId $identity.pid}
+    else {$drain=Drain-Installation $State;$identityBase64=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($drain|ConvertTo-Json -Compress)));& (Join-Path $script:PackageRoot 'helpers\Stop-Console.ps1') -IdentityBase64 $identityBase64}
     if(!$process.WaitForExit(60000)){Fail 'Neo4j did not stop cleanly within 60 seconds'}
     Remove-Item -LiteralPath $file -Force
 }

@@ -168,6 +168,8 @@ public final class ResourceDownloadServer implements AutoCloseable {
         synchronized(drainMonitor){if(stopping)return;stopping=true;}
         if(listener!=null)listener.stop(0);
     }
+    int activeReaderCount(){return activeReads.size();}
+    int activeHandlerCount(){return activeExchanges.size();}
     @Override public void close(){
         stopAccepting();
         for(var read:activeReads)try{read.close();}catch(IOException e){LOG.log(System.Logger.Level.WARNING,"Unable to close active resource stream during shutdown");}

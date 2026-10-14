@@ -14,6 +14,7 @@ public final class DepositExtension extends ExtensionFactory<DepositExtension.De
         return new LifecycleAdapter() {
             private ServerContext server;
             private Thread initializer;
+            private ShutdownControl control;
             @Override public void start() {
                 if(dependencies.databaseId().isSystemDatabase()) return;
                 server=ServerContext.attach(dependencies.databaseId().databaseId().uuid());
@@ -26,9 +27,12 @@ public final class DepositExtension extends ExtensionFactory<DepositExtension.De
                         server.initialize(dependencies.database());
                     } catch(Throwable failure) {server.initializationFailed(failure);}
                 });
+                try{control=ShutdownControl.start(server,dependencies.databaseId().databaseId().uuid(),()->awaitInitializer(initializer,60_000));}
+                catch(java.io.IOException failure){server.beginStop();awaitInitializer(initializer,60_000);throw new IllegalStateException("Cannot establish protected shutdown control",failure);}
             }
             @Override public void stop() {if(server!=null)server.beginStop();}
             @Override public void shutdown() {
+                if(control!=null)control.close();
                 if(server!=null)server.beginStop();
                 awaitInitializer(initializer,60_000);
                 if(server!=null)server.shutdown();

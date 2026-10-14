@@ -65,7 +65,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private final Object shutdownMonitor=new Object();
     private boolean shutdownRunning,shutdownComplete;
     private final Object drainMonitor=new Object();
-    private ResourceDownloadServer downloads;
+    private volatile ResourceDownloadServer downloads;
     public volatile String downloadPublicBaseUrl;
     private GraphDatabaseAPI database;
     public volatile StorageManager storage;
@@ -196,9 +196,20 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             if(!readiness.isDone())readiness.completeExceptionally(new IllegalStateException("Deposit is shutting down"));
         }
     }
+    /** Called by the authenticated launcher before it signals Neo4j teardown. */
+    public void closeAdmission(){
+        beginStop();
+        ResourceDownloadServer currentDownloads=downloads;
+        if(currentDownloads!=null)currentDownloads.stopAccepting();
+    }
+    Map<String,Object> shutdownCounts(){
+        ResourceDownloadServer currentDownloads=downloads;
+        return Map.of("transactions",transactions.size(),"readers",currentDownloads==null?0:currentDownloads.activeReaderCount(),
+            "handlers",currentDownloads==null?0:currentDownloads.activeHandlerCount());
+    }
     public void shutdown(){shutdown(30,TimeUnit.SECONDS);}
     void shutdown(long timeout,TimeUnit unit){
-        beginStop();
+        closeAdmission();
         synchronized(shutdownMonitor){
             while(shutdownRunning)try{shutdownMonitor.wait();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Interrupted while waiting for Deposit shutdown",e);}
             if(shutdownComplete)return;
