@@ -75,17 +75,24 @@ $checkpointSourceSnapshots = @()
 foreach ($checkpointFile in @(Get-ChildItem -LiteralPath $rootPath -File -Force | Where-Object { $_.Name -match $checkpointPattern })) {
     try {
         $checkpoint = Get-Content -LiteralPath $checkpointFile.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
-        if ($checkpoint.sourceSnapshot.path) {
-            $snapshotPath = [IO.Path]::GetFullPath([string]$checkpoint.sourceSnapshot.path)
-            $inputsRoot = [IO.Path]::GetFullPath((Join-Path $rootPath 'inputs')).TrimEnd('\') + '\'
-            $expectedName = [string]$checkpoint.sourceSnapshot.inputs + '.zip'
-            if (!$snapshotPath.StartsWith($inputsRoot,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($snapshotPath) -ne $expectedName) {
-                throw 'Checkpoint source snapshot path does not match its source identity.'
-            }
-            if (Test-Path -LiteralPath $snapshotPath -PathType Leaf) { $checkpointSourceSnapshots += $snapshotPath }
-        }
     } catch {
-        throw "Cannot read prerequisite checkpoint '$($checkpointFile.FullName)'; no cleanup was performed."
+        throw "Cannot parse prerequisite checkpoint '$($checkpointFile.FullName)'; no cleanup was performed."
+    }
+    $snapshotProperty=$checkpoint.PSObject.Properties['sourceSnapshot']
+    if($snapshotProperty -and $null -ne $snapshotProperty.Value) {
+        $snapshot=$snapshotProperty.Value
+        $pathProperty=$snapshot.PSObject.Properties['path']
+        $inputsProperty=$snapshot.PSObject.Properties['inputs']
+        if(!$pathProperty -or !$inputsProperty -or [string]::IsNullOrWhiteSpace([string]$pathProperty.Value) -or [string]$inputsProperty.Value -notmatch '^[A-Fa-f0-9]{64}$') {
+            throw "Invalid source snapshot metadata in prerequisite checkpoint '$($checkpointFile.FullName)'; no cleanup was performed."
+        }
+        try {$snapshotPath=[IO.Path]::GetFullPath([string]$pathProperty.Value)} catch {throw "Invalid source snapshot path in prerequisite checkpoint '$($checkpointFile.FullName)'; no cleanup was performed."}
+        $inputsRoot = [IO.Path]::GetFullPath((Join-Path $rootPath 'inputs')).TrimEnd('\') + '\'
+        $expectedName = [string]$inputsProperty.Value + '.zip'
+        if (!$snapshotPath.StartsWith($inputsRoot,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($snapshotPath) -ne $expectedName) {
+            throw "Checkpoint source snapshot path does not match its source identity in '$($checkpointFile.FullName)'; no cleanup was performed."
+        }
+        if (Test-Path -LiteralPath $snapshotPath -PathType Leaf) { $checkpointSourceSnapshots += $snapshotPath }
     }
     $checkpointNames += $checkpointFile.Name
 }

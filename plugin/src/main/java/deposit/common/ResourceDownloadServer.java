@@ -20,6 +20,9 @@ public final class ResourceDownloadServer implements AutoCloseable {
     private final ServerContext server;private final BrowserDownloadService service;private final URI publicBase;
     private final String prefix,cookiePath,origin;private final InetSocketAddress bindAddress;private final boolean secure;
     private HttpServer listener;private ExecutorService executor;private volatile boolean stopping;
+    private final Object drainMonitor=new Object();
+    private final Set<HttpExchange> activeExchanges=ConcurrentHashMap.newKeySet();
+    private final Set<BrowserDownloadService.ResourceRead> activeReads=ConcurrentHashMap.newKeySet();
 
     public ResourceDownloadServer(ServerContext server,GraphDatabaseAPI database)throws Exception{
         this.server=server;service=new BrowserDownloadService(server,database);
@@ -43,6 +46,8 @@ public final class ResourceDownloadServer implements AutoCloseable {
 
     private void handle(HttpExchange exchange){
         String diagnostic=UUID.randomUUID().toString();
+        boolean accepted;synchronized(drainMonitor){accepted=!stopping;if(accepted)activeExchanges.add(exchange);}
+        if(!accepted){sendText(exchange,503,"Download listener is stopping");closeExchange(exchange);return;}
         try{
             if(stopping){sendText(exchange,503,"Download listener is stopping");return;}
             secureHeaders(exchange.getResponseHeaders());String route=route(exchange.getRequestURI());String method=exchange.getRequestMethod();
@@ -59,7 +64,7 @@ public final class ResourceDownloadServer implements AutoCloseable {
         }catch(IllegalArgumentException e){sendText(exchange,400,"Invalid request");}
         catch(IOException e){LOG.log(System.Logger.Level.WARNING,"Download request ended before completion; reference {0}",diagnostic);closeExchange(exchange);}
         catch(Throwable e){LOG.log(System.Logger.Level.ERROR,"Download request failed; reference {0}",diagnostic);sendText(exchange,500,"Request failed; reference "+diagnostic);}
-        finally{closeExchange(exchange);}
+        finally{closeExchange(exchange);activeExchanges.remove(exchange);synchronized(drainMonitor){drainMonitor.notifyAll();}}
     }
 
     private String route(URI uri){
@@ -73,6 +78,8 @@ public final class ResourceDownloadServer implements AutoCloseable {
         BrowserDownloadService.ResourceRead read;
         try{read=service.openResource(token,namespace,resource,exchange.getRequestHeaders().getFirst("Range"));}
         catch(BrowserDownloadService.DownloadFailure failure){if(failure.status==401){clearSession(exchange);redirectLogin(exchange,absoluteRoute(route));return;}if(failure.status==416)exchange.getResponseHeaders().set("Content-Range","bytes */"+failure.rangeSize);throw failure;}
+        boolean admitted;synchronized(drainMonitor){admitted=!stopping;if(admitted)activeReads.add(read);}
+        if(!admitted){read.close();sendText(exchange,503,"Download listener is stopping");return;}
         try(read){
             Headers headers=exchange.getResponseHeaders();headers.set("Content-Type",safeMediaType(read.mediaType));headers.set("Content-Length",Long.toString(read.length));headers.set("Content-Disposition",attachment(read.filename));headers.set("Cache-Control","private, no-store");headers.set("ETag","\""+read.checksum+"\"");headers.set("Connection","close");
             if(read.partial)headers.set("Content-Range","bytes "+read.offset+"-"+(read.offset+read.length-1)+"/"+read.size);
@@ -87,7 +94,7 @@ public final class ResourceDownloadServer implements AutoCloseable {
                 try{out.close();}catch(IOException ignored){}
                 if(complete)closeExchange(exchange);
             }
-        }
+        }finally{activeReads.remove(read);synchronized(drainMonitor){drainMonitor.notifyAll();}}
     }
     private long safeSize(String token,String namespace,String resource){try(var read=service.openResource(token,namespace,resource,null)){return read.size;}catch(Exception ignored){return 0;}}
     private String absoluteRoute(String route){return prefix+route;}
@@ -157,5 +164,31 @@ public final class ResourceDownloadServer implements AutoCloseable {
     private static String trimSlashes(String path){int end=path.length();while(end>0&&path.charAt(end-1)=='/')end--;return path.substring(0,end);}
     private static void closeExchange(HttpExchange exchange){try{exchange.close();}catch(Exception ignored){}}
 
-    @Override public void close(){stopping=true;if(listener!=null)listener.stop(1);if(executor!=null){executor.shutdown();try{if(!executor.awaitTermination(5,TimeUnit.SECONDS))executor.shutdownNow();}catch(InterruptedException e){executor.shutdownNow();Thread.currentThread().interrupt();}}}
+    public void stopAccepting(){
+        synchronized(drainMonitor){if(stopping)return;stopping=true;}
+        if(listener!=null)listener.stop(0);
+    }
+    @Override public void close(){
+        stopAccepting();
+        for(var read:activeReads)try{read.close();}catch(IOException e){LOG.log(System.Logger.Level.WARNING,"Unable to close active resource stream during shutdown");}
+        for(HttpExchange exchange:activeExchanges)closeExchange(exchange);
+        if(executor==null)return;
+        executor.shutdown();
+        if(awaitHandlers(30,TimeUnit.SECONDS))return;
+        for(var read:activeReads)try{read.close();}catch(IOException ignored){}
+        for(HttpExchange exchange:activeExchanges)closeExchange(exchange);
+        executor.shutdownNow();
+        if(awaitHandlers(30,TimeUnit.SECONDS))return;
+        throw new IllegalStateException("Download handlers did not drain; resource storage remains open");
+    }
+    private boolean awaitHandlers(long timeout,TimeUnit unit){
+        long deadline=System.nanoTime()+unit.toNanos(timeout);
+        synchronized(drainMonitor){
+            while(!activeExchanges.isEmpty()||!activeReads.isEmpty()){
+                long remaining=deadline-System.nanoTime();if(remaining<=0)return false;
+                try{TimeUnit.NANOSECONDS.timedWait(drainMonitor,remaining);}catch(InterruptedException e){Thread.currentThread().interrupt();return false;}
+            }
+        }
+        try{return executor.awaitTermination(Math.max(1,deadline-System.nanoTime()),TimeUnit.NANOSECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();return false;}
+    }
 }

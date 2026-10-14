@@ -23,8 +23,9 @@ public final class BrowserDownloadService {
     public static final class ResourceRead implements AutoCloseable {
         public final InputStream stream;public final String filename,mediaType,checksum;public final long size,offset,length;public final boolean partial;
         private final AutoCloseable pin;
+        private final java.util.concurrent.atomic.AtomicBoolean closed=new java.util.concurrent.atomic.AtomicBoolean();
         private ResourceRead(InputStream stream,AutoCloseable pin,String filename,String mediaType,String checksum,long size,Range range){this.stream=stream;this.pin=pin;this.filename=filename;this.mediaType=mediaType;this.checksum=checksum;this.size=size;offset=range.offset;length=range.length;partial=range.partial;}
-        @Override public void close()throws IOException {try{stream.close();}finally{try{pin.close();}catch(Exception e){throw new IOException("Reader pin release failed",e);}}}
+        @Override public void close()throws IOException {if(!closed.compareAndSet(false,true))return;try{stream.close();}finally{try{pin.close();}catch(Exception e){throw new IOException("Reader pin release failed",e);}}}
     }
 
     public Login login(String username,String password,String origin,String remoteAddress){

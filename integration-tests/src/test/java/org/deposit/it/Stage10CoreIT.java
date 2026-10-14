@@ -72,7 +72,7 @@ class Stage10CoreIT {
     @BeforeAll static void connect()throws Exception{
         base=URI.create(Objects.requireNonNull(System.getenv("STAGE0_HTTP_BASE"),"Installed download listener URL missing"));
         http=client();driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")));driver.verifyConnectivity();
-        Path bootstrap=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host/neo4j/conf/deposit-bootstrap.secret");if(Files.exists(bootstrap))call("deposit.utils.bootstrap",Files.readString(bootstrap).trim(),USER,PASSWORD);
+        Path bootstrap=Stage0Paths.bootstrapSecret();if(Files.exists(bootstrap))call("deposit.utils.bootstrap",Files.readString(bootstrap).trim(),USER,PASSWORD);
     }
     @AfterAll static void close(){if(driver!=null)driver.close();}
     @BeforeEach void setup(){token=login(USER,PASSWORD);namespace=nodeId(call("deposit.create.namespace","Stage10-"+UUID.randomUUID(),m("historyMode","disabled"),token));call("deposit.set.activeNamespace",m("id",namespace),token);}

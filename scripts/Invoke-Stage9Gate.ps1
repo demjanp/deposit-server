@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$RunPrefix=('stage9-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmss')),
+  [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,36}$')][string]$RunPrefix=('stage9-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmss')),
   [int]$Port=17770
 )
 Set-StrictMode -Version Latest
@@ -40,11 +40,36 @@ $gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
     if(Test-Path $checkpointPath){[IO.File]::Replace($temporary,$checkpointPath,$checkpointPath+'.previous')}else{[IO.File]::Move($temporary,$checkpointPath)}
     Copy-Item -LiteralPath $checkpointPath -Destination (Join-Path $evidence 'checkpoint.json') -Force
   }
-  function Clear-TestSessions {foreach($name in @('stage1-session.txt','stage55-session.txt')){$credential=Join-Path $root ('runs\stage0-host\secrets\'+$name);if(Test-Path -LiteralPath $credential){Remove-Item -LiteralPath $credential}}}
+  function Clear-TestSessions {foreach($name in @('stage1-session.txt','stage55-session.txt','stage10-download-test.p12','stage10-download-test.password')){$credential=Join-Path $root ('runs\stage0-host\secrets\'+$name);if(Test-Path -LiteralPath $credential){Remove-Item -LiteralPath $credential}}}
+  function Stop-Stage0InstallationIfOwned {
+    $ownerMarker=Join-Path $root 'runs\stage0-host\owner.json'
+    if(Test-Path -LiteralPath $ownerMarker -PathType Leaf) {Phase Stop;return $true}
+    $installation=Join-Path $root 'runs\stage0-host\neo4j'
+    $orphan=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction Stop | Where-Object {
+      $_.CommandLine -and $_.CommandLine.Contains($installation) -and $_.CommandLine -match 'org\.neo4j\.server\.(Neo4jCommunity|CommunityEntryPoint)|Neo4jBoot'
+    })
+    if($orphan.Count) {throw "Stage 0 owner marker is missing but an installation process appears active (PID $($orphan[0].ProcessId)); do not stop without ownership evidence"}
+    return $false
+  }
   function Phase([string]$Name,[hashtable]$Options=@{}) {
     Save-Checkpoint
-    try {& "$PSScriptRoot\Stage0.ps1" -Phase $Name -RunId stage0-host -Port $Port -EvidenceGroup $RunPrefix -InputsFile $inputsFile @Options}
-    finally {$phase=Get-Content "$root\runs\stage0-host\checkpoint.json" -Raw|ConvertFrom-Json;$run.phases+=@($phase);Save-Checkpoint}
+    $invocationId=[Guid]::NewGuid().ToString();$invocationStarted=[DateTime]::UtcNow;$invocationError=$null
+    try {& "$PSScriptRoot\Stage0.ps1" -Phase $Name -RunId stage0-host -Port $Port -EvidenceGroup $RunPrefix -InputsFile $inputsFile -PhaseInvocationId $invocationId @Options}
+    catch {$invocationError=$_.Exception}
+    finally {
+      $phasePath=Join-Path $root 'runs\stage0-host\checkpoint.json'
+      if(!(Test-Path -LiteralPath $phasePath -PathType Leaf)){throw "Stage 0 did not publish a checkpoint for Stage 9 phase $Name"}
+      $phase=Get-Content -LiteralPath $phasePath -Raw|ConvertFrom-Json;$phaseUpdated=[DateTime]::MinValue
+      if(!$phase.updated -or ![DateTime]::TryParse([string]$phase.updated,[ref]$phaseUpdated) -or $phaseUpdated.ToUniversalTime() -lt $invocationStarted.AddSeconds(-2)){throw "Stage 0 checkpoint is stale for Stage 9 phase $Name"}
+      $expectedEvidenceRoot=[IO.Path]::GetFullPath((Join-Path $evidence 'phases')).TrimEnd('\')+'\';$actualEvidence=[IO.Path]::GetFullPath([string]$phase.evidence)
+      if($phase.phase -ne $Name -or $phase.phaseInvocationId -ne $invocationId -or $phase.runId -ne 'stage0-host' -or [int]$phase.port -ne $Port -or !$actualEvidence.StartsWith($expectedEvidenceRoot,[StringComparison]::OrdinalIgnoreCase)){throw "Stage 0 checkpoint identity mismatch for Stage 9 phase $Name"}
+      $phaseCopy=Join-Path $actualEvidence "checkpoint-$Name.json"
+      if(!(Test-Path -LiteralPath $phaseCopy -PathType Leaf)){throw "Stage 0 phase evidence is missing its checkpoint for Stage 9 phase $Name"}
+      $copied=Get-Content -LiteralPath $phaseCopy -Raw|ConvertFrom-Json
+      if($copied.phaseInvocationId -ne $invocationId -or $copied.phase -ne $Name -or $copied.evidence -ne $phase.evidence){throw "Stage 0 phase evidence checkpoint identity mismatch for Stage 9 phase $Name"}
+      $run.phases+=@($phase);Save-Checkpoint
+    }
+    if($invocationError){throw $invocationError}
     if($phase.phase -ne $Name -or $phase.status -ne 'passed'){throw "Stage 0 phase failed: $Name"}
   }
   Save-Checkpoint
@@ -52,7 +77,7 @@ $gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
   try {
     & python "$PSScriptRoot\Test-Stage65Catalog.py" | Tee-Object -FilePath (Join-Path $evidence 'public-catalog-checks.log')
     if($LASTEXITCODE -ne 0){throw 'Public procedure catalog/source contract failed'}
-    Phase Stop;Clear-TestSessions;Phase Provision
+    Stop-Stage0InstallationIfOwned | Out-Null;Clear-TestSessions;Phase Provision
     & "$PSScriptRoot\Test-Stage0Environment.ps1" -Build -Stage2Checks -Stage3Checks -Stage4Checks -Stage5Checks -Stage55Checks -RunPrefix ($RunPrefix+'-runtime') -Port $Port -InputsFile $inputsFile
     # The environment matrix ends by validating the normal probe-free package.
     # Reinstall the probe-enabled Stage 0 test runtime before cumulative tests.
@@ -76,7 +101,7 @@ $gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
       }
     }
     $expected=@{'org.deposit.it.Stage1LifecycleIT'=5;'org.deposit.it.Stage1CoreIT'=9;'org.deposit.it.Stage2CoreIT'=15;'org.deposit.it.Stage3CoreIT'=16;'org.deposit.it.Stage4CoreIT'=10;'org.deposit.it.Stage5CoreIT'=24;'org.deposit.it.Stage55CoreIT'=5;'org.deposit.it.Stage6CoreIT'=18;'org.deposit.it.Stage65CoreIT'=26;'org.deposit.it.Stage65RecoveryIT'=3;'org.deposit.it.Stage6RecoveryIT'=3;'org.deposit.it.Stage55RecoveryIT'=3;'org.deposit.it.Stage1RecoveryIT'=2;'org.deposit.it.Stage2RecoveryIT'=2;'org.deposit.it.Stage3RecoveryIT'=2;'org.deposit.it.Stage4RecoveryIT'=2;'org.deposit.it.Stage5RecoveryIT'=2;'org.deposit.it.Stage7CoreIT'=16;'org.deposit.it.Stage7RecoveryIT'=3;'org.deposit.it.Stage8CoreIT'=7;'org.deposit.it.Stage8RecoveryIT'=2;'org.deposit.it.Stage9CoreIT'=26;'org.deposit.it.Stage9FormatIT'=5;'org.deposit.it.Stage9RecoveryIT'=3}
-    if($cases.Count -ne 209){throw "Incomplete cumulative Stage 1-9 coverage: $($cases.Count) test cases"}
+    if($cases.Count -ne 209){throw "Incomplete in-scope Stage 1-9 coverage: $($cases.Count) test cases"}
     foreach($class in $expected.Keys){if(@($cases|Where-Object class -eq $class).Count -ne $expected[$class]){throw "Incomplete suite $class"}}
     foreach($requiredCase in @(
       @{suite='org.deposit.it.Stage8CoreIT';name='fixedSnapshotAppliesOnceAndUuidIndependentReanalysisReuses'},
@@ -158,8 +183,26 @@ $gateLock=[IO.File]::Open("$root\gate.lock",'OpenOrCreate','ReadWrite','None')
   } catch {$run.status='incomplete';$run.cause=$_.Exception.Message}
   finally {
     Remove-Item Env:\STAGE7_PACKAGE_OUTPUT -ErrorAction SilentlyContinue
-    try {if((Get-Content "$root\runs\stage0-host\checkpoint.json" -Raw|ConvertFrom-Json).status -eq 'passed'){Phase Stop}else{& "$PSScriptRoot\Stage0.ps1" -Phase Stop -RunId stage0-host -Port $Port -EvidenceGroup $RunPrefix -InputsFile $inputsFile};Clear-TestSessions}
-    catch {$run.status='incomplete';$run.accepted=$false;$run.cause='Final stop failed: '+$_.Exception.Message}
+    try {
+      $ownerMarker=Join-Path $root 'runs\stage0-host\owner.json'
+      if(Test-Path -LiteralPath $ownerMarker -PathType Leaf) {
+        Phase Stop
+        $run.cleanup=@{status='passed';action='stopped-owned-installation'}
+      } else {
+        # Reset or an early provisioning/package failure may leave no owned
+        # installation. Check for an apparent orphan, but never stop a process
+        # without the Stage 0 ownership marker and its PID/creation identity.
+        Stop-Stage0InstallationIfOwned | Out-Null
+        $run.cleanup=@{status='skipped';reason='No Stage 0 owner marker or matching Neo4j process was found'}
+      }
+      Clear-TestSessions
+    }
+    catch {
+      $cleanupError=$_.Exception.Message
+      $run.cleanup=@{status='failed';failure=$cleanupError}
+      if(!$run.cause) {$run.cause='Final stop failed: '+$cleanupError}
+      $run.status='incomplete';$run.accepted=$false
+    }
   }
   if($run.status -eq 'verified'){$run.status='accepted';$run.accepted=$true;$run.pending=@()}
   Save-Checkpoint

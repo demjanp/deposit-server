@@ -18,7 +18,7 @@ class Stage7CoreIT {
     static org.neo4j.driver.Record call(String proc,Object... args){var p=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){p.put("p"+i,args[i]);names.add("$p"+i);}return query("CALL "+proc+"("+String.join(",",names)+")",p).getFirst();}
     static String id(org.neo4j.driver.Record r){return r.get("node").asNode().get("id").asString();}
     static String key(){return UUID.randomUUID().toString();}
-    @BeforeAll static void connect() throws Exception {driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")));driver.verifyConnectivity();Path secret=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host/neo4j/conf/deposit-bootstrap.secret");if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);}
+    @BeforeAll static void connect() throws Exception {driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")));driver.verifyConnectivity();Path secret=Stage0Paths.bootstrapSecret();if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);}
     @AfterAll static void disconnect(){if(driver!=null)driver.close();}
     @BeforeEach void setup(){token=call("deposit.utils.login",USER,PASSWORD).get("value").asString();name="Stage7-"+key();namespace=id(call("deposit.create.namespace",name,m("historyMode","persistent"),token));call("deposit.set.activeNamespace",m("id",namespace),token);}
 

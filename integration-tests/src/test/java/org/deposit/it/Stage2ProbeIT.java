@@ -19,13 +19,13 @@ class Stage2ProbeIT {
     static void clock(long offset){query("CALL stage0.security.clock($offset)",m("offset",offset));}
     static void fault(String operation){query("CALL stage0.security.failCommit($id)",m("id",operation));}
     @Test @Order(1) void competingBootstrapAfterRollback() throws Exception {
-        String secret=Files.readString(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")).trim();var request=m("bootstrapSecret",secret,"username",USER,"password",PASS);
+        String secret=Files.readString(Stage0Paths.bootstrapSecret()).trim();var request=m("bootstrapSecret",secret,"username",USER,"password",PASS);
         try(var s=driver.session();var tx=s.beginTransaction()){tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).consume();tx.rollback();}
         try(var pool=Executors.newFixedThreadPool(2)) {
             var start=new CountDownLatch(1);var a=pool.submit(()->{start.await();return special("deposit.utils.bootstrap",request);});var b=pool.submit(()->{start.await();return special("deposit.utils.bootstrap",request);});start.countDown();
             int successes=0;for(var task:List.of(a,b))try{task.get(15,TimeUnit.SECONDS);successes++;}catch(ExecutionException e){assertTrue(e.getCause().getMessage().contains("AUTH_FAILED"));}assertEquals(1,successes);
         }
-        admin=login(USER,PASS);assertEquals(1,sr(admin));assertFalse(Files.exists(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")));
+        admin=login(USER,PASS);assertEquals(1,sr(admin));assertFalse(Files.exists(Stage0Paths.bootstrapSecret()));
     }
     @Test @Order(2) void idleAndAbsoluteExpiryUseFixedProductionLimits() {
         String token=login(USER,PASS);clock(1_799_000);sr(token);clock(3_600_001);error("SESSION_EXPIRED",()->call("deposit.get.user",Map.of(),ctx(token)));

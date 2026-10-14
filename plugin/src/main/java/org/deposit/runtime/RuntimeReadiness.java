@@ -18,9 +18,9 @@ public final class RuntimeReadiness {
         try (var input = Files.newInputStream(Path.of(file))) {
             config.load(input);
             Set<String> required=Set.of("resourceRoot","exportRoot","download.listenAddress","download.port","download.publicBaseUrl");
-            Set<String> optional=Set.of("download.tlsKeyStore","download.tlsKeyStorePasswordFile");
+            Set<String> optional=Set.of("download.tlsKeyStore","download.tlsKeyStorePasswordFile","secretRoot");
             if (!config.stringPropertyNames().containsAll(required)
-                || !Set.of("resourceRoot","exportRoot","download.listenAddress","download.port","download.publicBaseUrl","download.tlsKeyStore","download.tlsKeyStorePasswordFile").containsAll(config.stringPropertyNames())) {
+                || !Set.of("resourceRoot","exportRoot","download.listenAddress","download.port","download.publicBaseUrl","download.tlsKeyStore","download.tlsKeyStorePasswordFile","secretRoot").containsAll(config.stringPropertyNames())) {
                 throw new IllegalStateException("Invalid Deposit configuration keys");
             }
             boolean hasKeyStore=config.stringPropertyNames().contains("download.tlsKeyStore");
@@ -51,6 +51,11 @@ public final class RuntimeReadiness {
             Path exportRoot=Path.of(config.getProperty("exportRoot"));
             if(!exportRoot.isAbsolute()||!Files.isDirectory(exportRoot)||!Files.isWritable(exportRoot))
                 throw new IllegalStateException("Deposit exportRoot must be an absolute writable directory");
+            if(config.containsKey("secretRoot")) {
+                Path secretRoot=Path.of(config.getProperty("secretRoot"));
+                if(!secretRoot.isAbsolute()||!Files.isDirectory(secretRoot)||Files.isSymbolicLink(secretRoot)||!Files.isWritable(secretRoot))
+                    throw new IllegalStateException("Deposit secretRoot must be an absolute writable directory");
+            }
             if(hasKeyStore) {
                 Path keyStore=Path.of(config.getProperty("download.tlsKeyStore"));
                 Path passwordFile=Path.of(config.getProperty("download.tlsKeyStorePasswordFile"));

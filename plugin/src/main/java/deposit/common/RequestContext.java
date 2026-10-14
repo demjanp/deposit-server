@@ -35,8 +35,7 @@ public final class RequestContext {
         expectedRevision=expected==null?null:((Number)expected).longValue();
         var internal=(InternalTransaction)tx;
         server=ServerContext.forDatabase(internal.getDatabaseId());
-        server.requireReady();
-        state=server.state(internal.kernelTransaction());
+        state=server.admit(internal.kernelTransaction());
     }
     public static String uuid(Object value) {
         if(!(value instanceof String s)) throw ExceptionHandler.fail("VALIDATION_FAILED","Expected UUID");

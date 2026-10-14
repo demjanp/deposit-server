@@ -26,6 +26,7 @@ if(Test-Path -LiteralPath $marker) {Move-Item -LiteralPath $marker -Destination 
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $runner=Join-Path $PSScriptRoot 'Invoke-CodexStage0.ps1'
 $command="& '$($runner.Replace("'","''"))' -Mode Work -Name '$Name' -RepairCause '$Name' -WorkPackage '$($package.Replace("'","''"))' -OwnerResultId '$childOwnerId'"
+$command+=" -CapturedInputsHash '$($inputs.sha256)'"
 if($InputsFile) {$command+=" -InputsFile '$($InputsFile.Replace("'","''"))'"}
 $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
 $launcher=Start-Process powershell.exe -ArgumentList '-NoProfile','-EncodedCommand',$encoded -WindowStyle Hidden -PassThru -RedirectStandardOutput "$evidence\work.out.log" -RedirectStandardError "$evidence\work.err.log"
@@ -51,7 +52,10 @@ $deadline=[DateTime]::UtcNow.AddSeconds(180)
     & $runner -Mode Resume -Name $Name -WorkPackage $package -OwnerResultId $childOwnerId
     $after=Get-Content $stateFile -Raw | ConvertFrom-Json
     $result=Get-Content $marker -Raw | ConvertFrom-Json
-    if($after.inputs -ne $inputs.sha256 -or $after.sessionId -ne $before.sessionId -or $after.status -ne 'completed' -or $result.phase -ne 'resumed') {throw 'The explicit interrupted session did not resume successfully'}
+    if($after.capturedInputs -ne $inputs.sha256 -or $after.inputs -ne $inputs.sha256 -or $after.observedInputs -ne $inputs.sha256) {throw "Live-runner input identity mismatch: expected $($inputs.sha256); captured=$($after.capturedInputs), saved=$($after.inputs), observed=$($after.observedInputs)"}
+    if($after.sessionId -ne $before.sessionId) {throw "Live-runner resumed a different session: before=$($before.sessionId), after=$($after.sessionId)"}
+    if($after.status -ne 'completed') {throw "Live-runner session did not complete: status=$($after.status), exitCode=$($after.exitCode), failureCause=$($after.failureCause)"}
+    if($result.phase -ne 'resumed') {throw "Live-runner marker has wrong phase: expected resumed, observed $($result.phase)"}
     $proof=@{status='passed';inputs=$inputs.sha256;sessionId=$after.sessionId;runner=$Name;interruptedProcessId=$owned[0].ProcessId;interruptedCreated=$owned[0].CreationDate.ToUniversalTime().ToString('o');workPackageHash=(Get-FileHash $package -Algorithm SHA256).Hash;updated=[DateTime]::UtcNow.ToString('o')}
     $proof | ConvertTo-Json | Set-Content "$evidence\result.json" -Encoding UTF8
     $proof | ConvertTo-Json | Set-Content "$root\runner-live-acceptance.json" -Encoding UTF8

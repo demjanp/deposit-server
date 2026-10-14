@@ -45,3 +45,23 @@ function Set-OwnerOnlyDirectory([string]$Path) {
     $acl.AddAccessRule($rule)
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
+
+if(-not('DepositServiceAccount' -as [type])){
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DepositServiceAccount {
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr OpenSCManager(string machine,string database,uint access);
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr OpenService(IntPtr manager,string name,uint access);
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool ChangeServiceConfig(IntPtr service,uint serviceType,uint startType,uint errorControl,string binaryPath,string loadOrderGroup,IntPtr tag,string dependencies,string account,IntPtr password,string displayName);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool CloseServiceHandle(IntPtr handle);
+    public static bool Set(string serviceName,string account,string password) {
+        IntPtr manager=OpenSCManager(null,null,0x0001); if(manager==IntPtr.Zero)return false;
+        try { IntPtr service=OpenService(manager,serviceName,0x0002); if(service==IntPtr.Zero)return false;
+            try { IntPtr secret=String.IsNullOrEmpty(password)?IntPtr.Zero:Marshal.StringToHGlobalUni(password); try { return ChangeServiceConfig(service,0xffffffff,0xffffffff,0xffffffff,null,null,IntPtr.Zero,null,account,secret,null); } finally { if(secret!=IntPtr.Zero)Marshal.ZeroFreeGlobalAllocUnicode(secret); } }
+            finally { CloseServiceHandle(service); }
+        } finally { CloseServiceHandle(manager); }
+    }
+}
+'@
+}

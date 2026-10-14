@@ -30,9 +30,15 @@ class Stage4CrashIT {
                     if(point.startsWith("publication")||point.equals("ready-before-commit")||point.startsWith("staging-cleanup"))return call("deposit.resource.finishUpload",m("uploadId",upload),finish);
                     return call("deposit.admin.pruneResources",m("dryRun",false,"minimumAgeHours",0L),Stage4CoreIT.op());
                 });
+                if(point.startsWith("collection")) {
+                    var prune=task.get(10,TimeUnit.SECONDS).get("data");
+                    p.setProperty("prune",prune.get("pruneId").asString());
+                    var candidates=prune.get("candidateIds").asList(v->v.asString());
+                    String eligibility=collectionEligibility(resource);
+                    assertTrue(candidates.contains(resource),"Target was not scheduled for collection; candidates="+candidates+"; target="+eligibility);
+                }
                 Path marker=ROOT.resolve("stage4-pause.json");long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);while(!Files.exists(marker)&&System.nanoTime()<deadline)Thread.sleep(50);
                 assertTrue(Files.exists(marker),"Storage barrier not reached: "+point);assertTrue(Files.readString(marker).contains(point));
-                if(point.startsWith("collection"))p.setProperty("prune",task.get(5,TimeUnit.SECONDS).get("data").get("pruneId").asString());
                 try(var out=Files.newOutputStream(FIXTURE)){p.store(out,"Stage 4 real crash fixture");}
                 String record=Files.readString(ROOT.resolve("process.json"));Matcher pid=Pattern.compile("\"pid\"\\s*:\\s*(\\d+)").matcher(record);assertTrue(pid.find());ProcessHandle process=ProcessHandle.of(Long.parseLong(pid.group(1))).orElseThrow();
                 // Windows ProcessHandle does not expose commandLine reliably; the native helper
@@ -43,6 +49,26 @@ class Stage4CrashIT {
                 Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("storage-kill.txt"),point+"\npid="+process.pid()+"\n");
             }
         }finally{close();}
+    }
+    private static String collectionEligibility(String resource) {
+        var row=query("MATCH (l:DepositResourceLocation {id:$id}) " +
+                "OPTIONAL MATCH (r:DResource {id:$id}) " +
+                "OPTIONAL MATCH (r)-[:HAS_RESOURCE]-() " +
+                "WITH l,r,count(*) AS attachmentEdges " +
+                "OPTIONAL MATCH (r)-[:RETAINS_RESOURCE]-() " +
+                "WITH l,r,attachmentEdges,count(*) AS retainedEdges " +
+                "OPTIONAL MATCH (g:DepositExportGrant {resourceId:$id}) " +
+                "WITH l,r,attachmentEdges,retainedEdges,count(g) AS grants " +
+                "OPTIONAL MATCH (lease:DepositResourceLease {resourceId:$id}) " +
+                "WITH l,r,attachmentEdges,retainedEdges,grants,count(lease) AS leases " +
+                "OPTIONAL MATCH (t:DepositTransfer {resourceId:$id}) " +
+                "RETURN properties(l) AS location,properties(r) AS resource,attachmentEdges,retainedEdges,grants,leases,collect(properties(t)) AS transfers",
+                m("id",resource)).getFirst();
+        return "location="+row.get("location")+", resource="+row.get("resource")+
+                ", attachmentEdges="+row.get("attachmentEdges")+
+                ", retainedEdges="+row.get("retainedEdges")+
+                ", grants="+row.get("grants")+", leases="+row.get("leases")+
+                ", transfers="+row.get("transfers");
     }
     @Test void verify()throws Exception {
         connect();try {

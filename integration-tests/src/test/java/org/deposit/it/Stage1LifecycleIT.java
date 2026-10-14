@@ -31,13 +31,13 @@ class Stage1LifecycleIT {
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
         assertEquals("0.0.0-stage65",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
-        String secret=Files.readString(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")).trim();
+        String secret=Files.readString(Stage0Paths.bootstrapSecret()).trim();
         var request=m("bootstrapSecret",secret,"username",ACCOUNT,"password",PASSWORD);
         try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(ACCOUNT,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("data").get("username").asString());tx.rollback();}
-        assertTrue(Files.exists(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")));
+        assertTrue(Files.exists(Stage0Paths.bootstrapSecret()));
         assertEquals(0,query("MATCH (u:User) RETURN count(u) AS n",Map.of()).getFirst().get("n").asInt());
         var result=special("deposit.utils.bootstrap",request);userId=id(result);assertEquals(1,revision(result));
-        assertFalse(Files.exists(ROOT.resolve("neo4j/conf/deposit-bootstrap.secret")));
+        assertFalse(Files.exists(Stage0Paths.bootstrapSecret()));
         error("AUTH_FAILED",()->special("deposit.utils.bootstrap",request));
         var login=special("deposit.utils.login",m("username",ACCOUNT,"password",PASSWORD));token=login.get("value").asString();serverRevision=revision(login);
         otherToken=special("deposit.utils.login",m("username",ACCOUNT,"password",PASSWORD)).get("value").asString();assertNotEquals(token,otherToken);

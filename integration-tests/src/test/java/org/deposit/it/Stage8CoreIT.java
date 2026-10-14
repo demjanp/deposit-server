@@ -19,7 +19,7 @@ class Stage8CoreIT {
     static String key(){return UUID.randomUUID().toString();}
     static void fails(String code,Runnable work){var e=assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,work::run);assertTrue(e.getMessage().contains(code),e.getMessage());}
     static String login(){return call("deposit.utils.login",USER,PASSWORD).get("value").asString();}
-    @BeforeAll static void connect()throws Exception{driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")));driver.verifyConnectivity();Path secret=ROOT.resolve("neo4j/conf/deposit-bootstrap.secret");if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);}
+    @BeforeAll static void connect()throws Exception{driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")));driver.verifyConnectivity();Path secret=Stage0Paths.bootstrapSecret();if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);}
     @AfterAll static void disconnect(){if(driver!=null)driver.close();}
     @BeforeEach void setup(){token=login();name="Stage8-"+key();namespace=id(call("deposit.create.namespace",name,m("historyMode","persistent"),token));call("deposit.set.activeNamespace",m("id",namespace),token);}
     private String export(){return call("deposit.save.data",m(),m("includeHistory",true),token).get("data").get("resourceId").asString();}

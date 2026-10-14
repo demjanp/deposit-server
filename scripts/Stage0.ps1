@@ -8,12 +8,16 @@ param(
     [ValidateRange(1024,65535)][int]$Port = 17770,
     [string]$Root = 'C:\data_processed\Deposit_v2\stage0',
     [string]$InputsFile,
+    [string]$ReleasePackage,
+    [string]$BoltUri,
+    [ValidatePattern('^[a-fA-F0-9-]{36}$')][string]$PhaseInvocationId,
+    [switch]$AllowTestProbe,
     [switch]$DiagnosticBuild,
     [switch]$SkipReadiness,
     [switch]$WithoutProbe,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$TestSelection = 'RuntimeIT',
     [ValidateSet('seed','verify')][string]$TestMode = 'seed',
-    [ValidateSet('incompatible-spatial','missing-spatial','invalid-deposit-config')][string]$ExpectedFailure = 'incompatible-spatial',
+    [ValidateSet('incompatible-spatial','missing-spatial','invalid-deposit-config')][string]$ExpectedFailure,
     [ValidateRange(5,300)][int]$StartupTimeoutSeconds = 90
 )
 Set-StrictMode -Version Latest
@@ -173,10 +177,40 @@ function Invoke-Install {
         if ($receipt.inputs -ne $initialInputs.sha256) {throw 'Build receipt is stale; rebuild current inputs before installation'}
     }
     if (Test-Path "$run\owner.json") { Assert-Run; throw 'Stop and reset stage0-host before reinstalling' }
-    Write-Json @{runId=$RunId;root=$Root;port=$Port;diagnostic=[bool]$DiagnosticBuild} "$run\owner.json"
+    $releaseMode=![string]::IsNullOrWhiteSpace($ReleasePackage)
+    Write-Json @{runId=$RunId;root=$Root;port=$Port;diagnostic=[bool]$DiagnosticBuild;releaseMode=$releaseMode} "$run\owner.json"
     Copy-Item -LiteralPath $runtimeDirectory -Destination $installation -Recurse
     New-Item -ItemType Directory -Force "$run\resources\staging","$run\resources\ocfl","$run\resources\ocfl-work","$run\exports","$run\secrets" | Out-Null
     Set-OwnerOnlyDirectory "$run\secrets"
+    if($releaseMode) {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archivePath=[IO.Path]::GetFullPath($ReleasePackage);$evidenceRoot=[IO.Path]::GetFullPath((Join-Path $Root 'evidence')).TrimEnd('\')+'\'
+        if(!$archivePath.StartsWith($evidenceRoot,[StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $archivePath -PathType Leaf)){throw 'Release package must be the recorded Stage 0 evidence artifact'}
+        $distribution=Join-Path $run 'distribution';New-Item -ItemType Directory -Path $distribution -Force|Out-Null
+        $zip=[IO.Compression.ZipFile]::OpenRead($archivePath)
+        try {
+            foreach($entry in $zip.Entries){
+                if(!$entry.Name){continue}
+                $relative=$entry.FullName.Replace('/','\');$target=[IO.Path]::GetFullPath((Join-Path $distribution $relative))
+                if(!$target.StartsWith([IO.Path]::GetFullPath($distribution).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Release archive contains a path outside its extraction directory'}
+                New-Item -ItemType Directory -Force (Split-Path $target -Parent)|Out-Null
+                $input=$entry.Open();$output=[IO.File]::Open($target,'CreateNew','Write','None');try{$input.CopyTo($output)}finally{$output.Dispose();$input.Dispose()}
+            }
+        } finally {$zip.Dispose()}
+        $releaseManifest=Get-Content -LiteralPath (Join-Path $distribution 'release-manifest.json') -Raw|ConvertFrom-Json
+        if($releaseManifest.version -ne '0.0.0-stage65' -or $releaseManifest.neo4jVersion -ne $manifest.neo4jVersion -or $releaseManifest.files.Count -ne $releaseManifest.fileCount){throw 'Release manifest version or file inventory is invalid'}
+        foreach($item in $releaseManifest.files){$path=Join-Path $distribution ([string]$item.path.Replace('/','\'));if(!(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$item.sha256 -or (Get-Item -LiteralPath $path).Length -ne [long]$item.length){throw "Release artifact failed manifest verification: $($item.path)"}}
+        $unexpected=@(Get-ChildItem -LiteralPath $distribution -File -Recurse|Where-Object {$_.FullName.Substring($distribution.Length+1).Replace('\','/') -notin @($releaseManifest.files.path) -and $_.Name -ne 'release-manifest.json'})
+        if($unexpected.Count){throw 'Release archive has unmanifested files'}
+        $env:JAVA_HOME=Join-Path $Root $manifest.javaHome;$env:NEO4J_HOME=$installation;$env:NEO4J_CONF=Join-Path $installation 'conf';$env:PATH=(Join-Path $env:JAVA_HOME 'bin')+';'+$env:PATH
+        $launcher=Join-Path $distribution 'deposit.bat';$arguments=@('setup',$installation,$env:JAVA_HOME,(Join-Path $run 'resources'),(Join-Path $run 'exports'),[string]$Port)
+        $ErrorActionPreference='Continue';& $launcher @arguments *> "$evidence\release-setup.log";$ErrorActionPreference='Stop'
+        if($LASTEXITCODE -ne 0){throw 'Packaged deposit.bat setup failed; see release-setup.log'}
+        $plugins=@(Get-ChildItem "$installation\plugins" -Filter *.jar|Sort-Object Name|ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
+        $runtime=@(@{path='bin\neo4j.bat';sha256=(Get-FileHash (Join-Path $runtimeDirectory 'bin\neo4j.bat') -Algorithm SHA256).Hash.ToLowerInvariant()})
+        Write-Json @{inputs=$initialInputs.sha256;diagnostic=$false;releasePackage=(Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLowerInvariant();releaseManifest=(Get-FileHash (Join-Path $distribution 'release-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant();runtime=$runtime;plugins=$plugins} "$run\installed-artifacts.json"
+        Write-Json @{distribution=$distribution;archive=$archivePath;sha256=(Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()} "$run\release-install.json"
+    } else {
     $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage65.jar"
     $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage65.jar"
     if ($DiagnosticBuild) { $plugin="$Root\diagnostic-build\deposit-plugin.jar"; $probe="$Root\diagnostic-build\deposit-runtime-probe.jar" }
@@ -198,9 +232,10 @@ function Invoke-Install {
     Write-Json @{inputs=$(if($DiagnosticBuild){$null}else{$receipt.inputs});diagnostic=[bool]$DiagnosticBuild;runtime=@(@{path='bin\neo4j.bat';sha256=(Get-FileHash (Join-Path $runtimeDirectory 'bin\neo4j.bat') -Algorithm SHA256).Hash.ToLowerInvariant()});plugins=@(Get-ChildItem "$installation\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$run\installed-artifacts.json"
     $configFile = (Join-Path $installation 'conf\deposit.properties').Replace('\','/')
     $resources = (Join-Path $run 'resources').Replace('\','/')
+    $secretRoot=Join-Path $installation 'deposit-secrets';New-Item -ItemType Directory -Path $secretRoot -Force|Out-Null;Set-OwnerOnlyDirectory $secretRoot
     $permissions='dbms.security.procedures.allowlist=deposit.*,apoc.version'
     if(!$WithoutProbe) {$permissions="dbms.security.procedures.allowlist=deposit.*,stage0.geometry.*,stage0.security.*,stage0.storage.*,apoc.version`ndbms.security.procedures.unrestricted=stage0.geometry.*,stage0.security.*,stage0.storage.*"}
-    & "$PSScriptRoot\Configure-DepositDownloads.ps1" -ConfigPath $configFile -ResourceRoot $resources -ExportRoot (Join-Path $run 'exports') | Out-Null
+    & "$PSScriptRoot\Configure-DepositDownloads.ps1" -ConfigPath $configFile -ResourceRoot $resources -ExportRoot (Join-Path $run 'exports') -SecretRoot $secretRoot | Out-Null
     $config = @"
 server.default_listen_address=127.0.0.1
 server.bolt.enabled=true
@@ -218,6 +253,7 @@ server.jvm.additional=-Ddeposit.config=$configFile
 server.jvm.additional=-Djava.io.tmpdir=$($env:TEMP.Replace('\','/'))
 "@
     [IO.File]::WriteAllText("$installation\conf\neo4j.conf", $config, $utf8)
+    }
     $bytes = New-Object byte[] 32
     $random = [Security.Cryptography.RandomNumberGenerator]::Create()
     try {$random.GetBytes($bytes)} finally {$random.Dispose()}
@@ -267,11 +303,31 @@ function Invoke-Start {
     $null=Get-ToolDirectory $manifest 'temurin' $Root
     $actualNames=@(Get-ChildItem "$installation\plugins" -Filter *.jar | ForEach-Object Name | Sort-Object)
     $expectedNames=@($installed.plugins | ForEach-Object name | Sort-Object)
+    if($AllowTestProbe){
+        $probeName='deposit-runtime-probe-0.0.0-stage65.jar';$probePath=Join-Path $installation ('plugins\'+$probeName);$builtProbe=Join-Path $Root 'build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage65.jar'
+        if(!(Test-Path -LiteralPath $probePath -PathType Leaf) -or !(Test-Path -LiteralPath $builtProbe -PathType Leaf) -or (Get-FileHash $probePath -Algorithm SHA256).Hash -ne (Get-FileHash $builtProbe -Algorithm SHA256).Hash){throw 'Stage 9 test probe differs from the isolated build artifact'}
+        $expectedNames+=@($probeName)
+    }
     if (Compare-Object $actualNames $expectedNames) {throw 'Installed plugin set differs from the recorded manifest'}
     foreach ($artifact in $installed.plugins) {
         if ((Get-FileHash (Join-Path "$installation\plugins" $artifact.name) -Algorithm SHA256).Hash -ne $artifact.sha256) {throw 'Installed plugin changed; stop and archive/reset stage0-host'}
     }
     if (Get-OwnedProcess) { throw 'Owned server is already running' }
+    $releaseInstall=Join-Path $run 'release-install.json'
+    if(Test-Path -LiteralPath $releaseInstall){
+        $release=Get-Content -LiteralPath $releaseInstall -Raw|ConvertFrom-Json
+        $archive=Join-Path $release.distribution 'deposit.bat'
+        $env:JAVA_HOME=Join-Path $Root $manifest.javaHome;$env:NEO4J_HOME=$installation;$env:NEO4J_CONF=Join-Path $installation 'conf';$env:PATH=(Join-Path $env:JAVA_HOME 'bin')+';'+$env:PATH
+        $launcherArguments='/d /c ""'+$archive+'" start"'
+        $launcherProcess=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList $launcherArguments -PassThru -WindowStyle Hidden -RedirectStandardOutput "$evidence\release-start.out.log" -RedirectStandardError "$evidence\release-start.err.log"
+        try {if(!$launcherProcess.WaitForExit(150000)){$launcherProcess.Kill();throw 'Packaged deposit.bat start timed out'}} finally {$launcherProcess.Dispose()}
+        $identityPath=Join-Path $installation 'deposit-process.json';$deadline=[DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds);$identity=$null
+        while([DateTime]::UtcNow -lt $deadline -and !$identity){if(Test-Path -LiteralPath $identityPath){$identity=Get-Content -LiteralPath $identityPath -Raw|ConvertFrom-Json}else{Start-Sleep -Milliseconds 250}}
+        if(!$identity){throw 'Packaged launcher did not record process ownership'}
+        Write-Json @{pid=$identity.pid;created=$identity.created;launcherPid=$identity.workerPid;releaseMode=$true} "$run\process.json"
+        if(!$SkipReadiness){Invoke-Readiness ([DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds))}
+        return
+    }
     $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,$Port)
     try {$listener.Start()} finally {$listener.Stop()}
     $env:NEO4J_HOME=$installation; $env:NEO4J_CONF="$installation\conf"
@@ -316,7 +372,8 @@ function Invoke-Readiness([DateTime]$Deadline) {
     try {
         $remaining=[int]($Deadline-[DateTime]::UtcNow).TotalMilliseconds
         if($remaining -le 0) {throw 'Readiness deadline exhausted'}
-        $arguments="-Djava.io.tmpdir=$env:TEMP -cp `"$Root\build\deposit-integration-tests\target\classes;$Root\build\deposit-integration-tests\target\dependency\*`" org.deposit.it.ReadinessClient bolt://127.0.0.1:$Port"
+        $readinessUri=if($BoltUri){$BoltUri}else{"bolt://127.0.0.1:$Port"}
+        $arguments="-Djava.io.tmpdir=$env:TEMP -cp `"$Root\build\deposit-integration-tests\target\classes;$Root\build\deposit-integration-tests\target\dependency\*`" org.deposit.it.ReadinessClient `"$readinessUri`""
         $client=Start-Process "$env:JAVA_HOME\bin\java.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput "$evidence\readiness.out.log" -RedirectStandardError "$evidence\readiness.err.log"
         [void]$client.Handle
         try {
@@ -333,6 +390,9 @@ function Invoke-Stop([bool]$Force) {
     try {
     if ($Force) {Stop-Process -Id $owned.ProcessId -Force}
     else {
+        $releaseInstall=Join-Path $run 'release-install.json'
+        if(Test-Path -LiteralPath $releaseInstall){$release=Get-Content -LiteralPath $releaseInstall -Raw|ConvertFrom-Json;$env:JAVA_HOME=Join-Path $Root $manifest.javaHome;$env:NEO4J_HOME=$installation;$env:NEO4J_CONF=Join-Path $installation 'conf';$env:PATH=(Join-Path $env:JAVA_HOME 'bin')+';'+$env:PATH;$ErrorActionPreference='Continue';& (Join-Path $release.distribution 'deposit.bat') stop *> "$evidence\release-stop.log";$stopCode=$LASTEXITCODE;$ErrorActionPreference='Stop';if($stopCode -ne 0){throw 'Packaged deposit.bat stop failed'} }
+        else {
         # Windows `neo4j stop` only controls a service, not `neo4j console`.
         $args="-NoProfile -File `"$PSScriptRoot\Stop-Console.ps1`" -TargetProcessId $($owned.ProcessId)"
         $helper=Start-Process powershell.exe -ArgumentList $args -WindowStyle Hidden -PassThru -RedirectStandardOutput "$evidence\stop.log" -RedirectStandardError "$evidence\stop.err.log"
@@ -341,13 +401,16 @@ function Invoke-Stop([bool]$Force) {
             if(!$helper.WaitForExit(10000)) {$helper.Kill(); throw 'Graceful console signal timed out'}
             if ($helper.ExitCode -ne 0) {throw 'Graceful console signal failed'}
         } finally {$helper.Dispose()}
+        }
     }
         if (!$processHandle.WaitForExit(30000)) {throw 'Owned server did not stop within 30 seconds'}
     } finally {$processHandle.Dispose()}
 }
 function Invoke-Test {
     Assert-Run
-    $env:STAGE0_URI="bolt://127.0.0.1:$Port"
+    $env:STAGE0_URI=if($BoltUri){$BoltUri}else{"bolt://127.0.0.1:$Port"}
+    $parsedBoltUri=$null
+    if(![Uri]::TryCreate($env:STAGE0_URI,[UriKind]::Absolute,[ref]$parsedBoltUri) -or $parsedBoltUri.Scheme -notin @('bolt','bolt+s','neo4j','neo4j+s') -or !$parsedBoltUri.Port){throw 'Stage 0 Bolt URI is invalid or uses an unsupported scheme'}
     $downloadConfig=Get-Content "$installation\conf\deposit.properties" -Raw
     $downloadBase=([regex]::Match($downloadConfig,'(?m)^download\.publicBaseUrl=(.+)$')).Groups[1].Value.Trim()
     if(!$downloadBase){throw 'Installed download base URL is missing'}
@@ -430,6 +493,20 @@ function Invoke-Evidence {
         if(Test-Path -LiteralPath (Join-Path $run $name)) {Copy-Item -LiteralPath (Join-Path $run $name) -Destination $evidence}
     }
 }
+function New-DeterministicZip([string]$SourceDirectory,[string]$Destination) {
+    Add-Type -AssemblyName System.IO.Compression
+    $archive=[IO.Compression.ZipFile]::Open($Destination,[IO.Compression.ZipArchiveMode]::Create)
+    try {
+        $base=[IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\')+'\'
+        foreach($file in (Get-ChildItem -LiteralPath $SourceDirectory -File -Recurse | Sort-Object { $_.FullName.Substring($base.Length).Replace('\','/') })) {
+            $relative=$file.FullName.Substring($base.Length).Replace('\','/')
+            $entry=$archive.CreateEntry($relative,[IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime=[DateTimeOffset]'2026-10-08T00:00:00Z'
+            $input=[IO.File]::OpenRead($file.FullName);$output=$entry.Open()
+            try {$input.CopyTo($output)} finally {$output.Dispose();$input.Dispose()}
+        }
+    } finally {$archive.Dispose()}
+}
 function Invoke-Package {
     Test-Artifacts
     Invoke-ProvisionLicenses
@@ -440,7 +517,7 @@ function Invoke-Package {
     if($expected.Count -ne 1 -or (Get-FileHash $plugin -Algorithm SHA256).Hash -ne $expected[0].sha256) {throw 'Plugin changed since build'}
     $jar=[IO.Compression.ZipFile]::OpenRead($plugin)
     try {if(@($jar.Entries | Where-Object {$_.FullName.EndsWith('.class') -and !$_.FullName.StartsWith('org/deposit/runtime/') -and !$_.FullName.StartsWith('deposit/')}).Count) {throw 'Normal plugin contains foreign/test classes'}} finally {$jar.Dispose()}
-    $destination=Join-Path $run 'distribution'
+    $destination=Join-Path $evidence 'distribution'
     if(Test-Path -LiteralPath $destination) {throw 'Distribution already exists; choose a fresh RunId'}
     New-Item -ItemType Directory -Force "$destination\plugins","$destination\conf","$destination\notices" | Out-Null
     Copy-Item -LiteralPath $plugin -Destination "$destination\plugins"
@@ -454,10 +531,30 @@ function Invoke-Package {
     Copy-Item -Path "$Root\evidence\artifact-audit\notices\*" -Destination "$destination\notices"
     Copy-Item -Path "$Root\cache\licenses\*" -Destination "$destination\notices"
     Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$repo\runtime\ocfl-runtime-lock.json","$repo\runtime\format-runtime-lock.json","$Root\build\deposit-plugin\target\build-metadata.json" -Destination $destination
-    Copy-Item -Path "$repo\runtime\distribution\*" -Destination "$destination\conf"
-    Write-Json @{inputs=$initialInputs.sha256;plugins=@(Get-ChildItem "$destination\plugins" -Filter *.jar | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})} "$destination\distribution-manifest.json"
-    [IO.Compression.ZipFile]::CreateFromDirectory($destination,"$run\deposit-server-0.0.0-stage65.zip")
-    Write-Json @{path="$run\deposit-server-0.0.0-stage65.zip";sha256=(Get-FileHash "$run\deposit-server-0.0.0-stage65.zip" -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256} "$evidence\distribution.json"
+    Copy-Item -Path "$repo\runtime\distribution\neo4j.conf","$repo\runtime\distribution\deposit.properties" -Destination "$destination\conf"
+    Copy-Item -LiteralPath "$repo\runtime\distribution\deposit.bat","$repo\runtime\distribution\deposit.ps1" -Destination $destination
+    New-Item -ItemType Directory -Force "$destination\helpers" | Out-Null
+    Copy-Item -LiteralPath "$PSScriptRoot\Credentials.ps1","$PSScriptRoot\Configure-DepositDownloads.ps1","$PSScriptRoot\Stop-Console.ps1","$repo\runtime\distribution\helpers\deposit-worker.ps1" -Destination "$destination\helpers"
+    # Keep the hub as the sole source; extract its operations section into the release package.
+    $hubServerDoc=Join-Path (Split-Path $repo -Parent) 'deposit-hub\deposit-server.md'
+    if(!(Test-Path -LiteralPath $hubServerDoc -PathType Leaf)) {throw 'Deposit Hub server documentation is required to package OPERATIONS.md'}
+    $hubServerText=[IO.File]::ReadAllText($hubServerDoc)
+    $operationsMatch=[regex]::Match($hubServerText,'(?ms)^## Operations[ \t]*\r?\n(.*?)(?=^## Runtime[ \t]*\r?$)')
+    if(!$operationsMatch.Success) {throw 'Windows operations section is missing from Deposit Hub server documentation'}
+    $operationsText="# Deposit Server on Windows`r`n`r`n"+$operationsMatch.Groups[1].Value.Trim()+"`r`n"
+    [IO.File]::WriteAllText((Join-Path $destination 'OPERATIONS.md'),$operationsText,(New-Object Text.UTF8Encoding($false)))
+    $pluginManifest=@(Get-ChildItem "$destination\plugins" -Filter *.jar | Sort-Object Name | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
+    Write-Json ([ordered]@{schemaVersion=1;inputs=$initialInputs.sha256;version='0.0.0-stage65';neo4jVersion=$manifest.neo4jVersion;javaMajor=21;plugins=$pluginManifest}) "$destination\distribution-manifest.json"
+    $releaseFiles=@(Get-ChildItem -LiteralPath $destination -File -Recurse | Sort-Object FullName | ForEach-Object {@{path=$_.FullName.Substring($destination.Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant();length=$_.Length}})
+    Write-Json ([ordered]@{schemaVersion=1;version='0.0.0-stage65';inputs=$initialInputs.sha256;neo4jVersion=$manifest.neo4jVersion;javaMajor=21;artifactManifest='artifacts.json';licenseNoticeDirectory='notices';fileCount=$releaseFiles.Count;files=$releaseFiles}) "$destination\release-manifest.json"
+    $archivePath=Join-Path $evidence 'deposit-server-0.0.0-stage65.zip'
+    New-DeterministicZip $destination $archivePath
+    Write-Json @{path=$archivePath;sha256=(Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLowerInvariant();inputs=$initialInputs.sha256;files=$releaseFiles.Count} "$evidence\distribution.json"
+    # Keep the established Stage 0 cumulative evidence contract: downstream
+    # checks inspect the unpacked distribution beside the installed runtime.
+    $installedDistribution=Join-Path $run 'distribution'
+    if(Test-Path -LiteralPath $installedDistribution) {throw 'Installed distribution already exists; reset before packaging'}
+    Copy-Item -LiteralPath $destination -Destination $installedDistribution -Recurse
 }
 
 $cleanupBarrier=Enter-Stage0CleanupBarrier $Root
@@ -515,7 +612,7 @@ try {
     try {
         try {Invoke-Evidence} catch {$evidenceFailure=$_.Exception.Message; $status='failed'}
         $phaseWatch.Stop()
-        $checkpoint=@{runId=$RunId;port=$Port;phase=$Phase;status=$status;failure=$failure;evidenceFailure=$evidenceFailure;diagnostic=[bool]$DiagnosticBuild;readinessBypassed=[bool]$SkipReadiness;inputs=$initialInputs.sha256;evidence=$evidence;testSelection=$TestSelection;testMode=$TestMode;expectedFailure=$ExpectedFailure;withoutProbe=[bool]$WithoutProbe;elapsedSeconds=[Math]::Round($phaseWatch.Elapsed.TotalSeconds,3);updated=[DateTime]::UtcNow.ToString('o');nextAction='Review scenario evidence; a phase result alone never establishes Stage 0 acceptance'}
+        $checkpoint=@{runId=$RunId;port=$Port;phase=$Phase;phaseInvocationId=$PhaseInvocationId;status=$status;failure=$failure;evidenceFailure=$evidenceFailure;diagnostic=[bool]$DiagnosticBuild;readinessBypassed=[bool]$SkipReadiness;inputs=$initialInputs.sha256;evidence=$evidence;testSelection=$TestSelection;testMode=$TestMode;expectedFailure=$ExpectedFailure;withoutProbe=[bool]$WithoutProbe;elapsedSeconds=[Math]::Round($phaseWatch.Elapsed.TotalSeconds,3);updated=[DateTime]::UtcNow.ToString('o');nextAction='Review scenario evidence; a phase result alone never establishes Stage 0 acceptance'}
         try {Write-Json $checkpoint "$evidence\checkpoint-$Phase.json"}
         finally {Write-Json $checkpoint "$run\checkpoint.json"}
     } finally {

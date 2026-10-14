@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory=$true)][string]$WorkPackage,
     [string]$Root='C:\data_processed\Deposit_v2\stage0',
     [string]$InputsFile,
+    [ValidatePattern('^[a-fA-F0-9]{64}$')][string]$CapturedInputsHash,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$OwnerResultId,
     [ValidatePattern('^[a-z0-9-]+$')][string]$RepairCause,
     [ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$Name='stage0'
@@ -41,6 +42,7 @@ function Save-State($State) {
 $resultOutcome='failed'
 try {
     $inputs=if($InputsFile -and $Mode -ne 'Resume') {Get-Content -LiteralPath $InputsFile -Raw | ConvertFrom-Json} else {Get-Stage0Inputs $repo}
+    $currentInputs=Get-Stage0Inputs $repo
     $workPackageHash=(Get-FileHash -LiteralPath $WorkPackage -Algorithm SHA256).Hash
     $counts=@{}
     if(Test-Path $countsFile) {(Get-Content $countsFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object {$counts[$_.Name]=[int]$_.Value}}
@@ -48,12 +50,21 @@ try {
     if($Mode -ne 'Review' -and $RepairCause -and $counts.ContainsKey($RepairCause) -and $counts[$RepairCause] -ge 3) {throw 'Three failed repairs of this cause require reassessment'}
     $previous=$null
     if (Test-Path $stateFile) {$previous=Get-Content $stateFile -Raw | ConvertFrom-Json}
+    $capturedIdentity=$CapturedInputsHash
+    if($Mode -eq 'Resume' -and $previous -and $previous.PSObject.Properties['capturedInputs']) {
+        if($capturedIdentity -and $capturedIdentity -ne $previous.capturedInputs) {throw 'Cannot change captured inputs when resuming'}
+        $capturedIdentity=[string]$previous.capturedInputs
+    }
+    if($capturedIdentity) {
+        if($inputs.sha256 -ne $capturedIdentity) {throw "Captured input baseline mismatch before runner invocation: expected $capturedIdentity, received $($inputs.sha256)"}
+        if($currentInputs.sha256 -ne $capturedIdentity) {throw "Captured inputs changed before runner invocation: expected $capturedIdentity, observed $($currentInputs.sha256)"}
+    }
     if ($Mode -eq 'Resume') {
         if (!$previous -or !$previous.sessionId) {throw 'An explicit saved session ID is required'}
         $savedStage=if($previous.PSObject.Properties['stage']) {[string]$previous.stage} else {'0'}
         if($PSBoundParameters.ContainsKey('Stage') -and $Stage -ne $savedStage) {throw 'Cannot change stage when resuming'}
         $Stage=$savedStage
-        if ($previous.inputs -ne $inputs.sha256) {throw 'Inputs changed: use a new work package/name; stale evidence cannot be resumed'}
+        if (!$capturedIdentity -and $previous.inputs -ne $inputs.sha256) {throw 'Inputs changed: use a new work package/name; stale evidence cannot be resumed'}
         if (!$previous.PSObject.Properties['workPackageHash'] -or $previous.workPackageHash -ne $workPackageHash) {throw 'Work package changed or is unbound; start a new work package/name'}
         if ($previous.PSObject.Properties['failureCause'] -and $previous.failureCause -and $counts.ContainsKey($previous.failureCause) -and $counts[$previous.failureCause] -ge 3) {throw 'Three failures of the same cause require reassessment'}
         if(!$previous.PSObject.Properties['repairCause'] -or !$previous.repairCause) {throw 'Saved session has no bound repair cause; start an explicitly identified work package'}
@@ -73,7 +84,7 @@ try {
     if ($Mode -eq 'Resume') {$arguments+=@('resume',$previous.sessionId,'-')}
     else {$arguments+='-'}
     if ($Mode -eq 'Review') {$prompt="Read-only review. Do not modify files. Inspect the implementation and available evidence; report concrete defects and pending acceptance. `n"+$prompt}
-    $state=@{stage=$Stage;sessionId=$null;inputs=$inputs.sha256;workPackageHash=$workPackageHash;mode=$Mode;status='running';events=$events;repairCause=$RepairCause;failureCause=$null;nextAction='Resume the explicit session after revalidating inputs'}
+    $state=@{stage=$Stage;sessionId=$null;inputs=$inputs.sha256;observedInputs=$currentInputs.sha256;capturedInputs=$capturedIdentity;workPackageHash=$workPackageHash;mode=$Mode;status='running';events=$events;repairCause=$RepairCause;failureCause=$null;nextAction='Resume the explicit session after revalidating inputs'}
     if($Mode -eq 'Resume') {$state.sessionId=$previous.sessionId}
     Save-State $state
     $eventWriter=New-Object IO.StreamWriter($events,$false,(New-Object Text.UTF8Encoding($false)))
@@ -93,6 +104,12 @@ try {
     $ErrorActionPreference='Stop'
     $after=Get-Stage0Inputs $repo
     if ($Mode -eq 'Review' -and $after.sha256 -ne $inputs.sha256) {throw 'Read-only review changed inputs'}
+    if($capturedIdentity -and $after.sha256 -ne $capturedIdentity) {
+        $state.inputs=$capturedIdentity; $state.observedInputs=$after.sha256; $state.status='failed'; $state.failureCause='captured-inputs-changed'; $state.exitCode=$script:codexExitCode
+        $state.nextAction='Preserve this evidence; captured inputs changed during the bound fixture run'
+        Save-State $state
+        throw "Captured inputs changed during runner invocation: expected $capturedIdentity, observed $($after.sha256); evidence was preserved"
+    }
     $result=@{status='failed';failureCause='codex-process-failure';summary='No structured result'}
     if($exitCode -eq 0 -and (Test-Path $resultFile)) {$result=Get-Content $resultFile -Raw | ConvertFrom-Json}
     if($result.status -ne 'completed') {
@@ -108,7 +125,7 @@ try {
         }
         $state.failureCause=$cause
     }
-    $state.inputs=$after.sha256; $state.status=$result.status; $state.exitCode=$exitCode
+    $state.inputs=if($capturedIdentity){$capturedIdentity}else{$after.sha256}; $state.observedInputs=$after.sha256; $state.status=$result.status; $state.exitCode=$exitCode
     if($result.status -eq 'completed') {$resultOutcome='passed'}
     $state.nextAction='Inspect the structured result and scenario evidence; no automatic stage acceptance'
     Save-State $state

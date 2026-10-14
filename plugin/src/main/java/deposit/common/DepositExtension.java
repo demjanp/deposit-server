@@ -27,13 +27,19 @@ public final class DepositExtension extends ExtensionFactory<DepositExtension.De
                     } catch(Throwable failure) {server.initializationFailed(failure);}
                 });
             }
+            @Override public void stop() {if(server!=null)server.beginStop();}
             @Override public void shutdown() {
-                try{if(server!=null)server.shutdown();}
-                finally{
-                    if(initializer!=null){initializer.interrupt();try{initializer.join(60_000);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
-                    if(server!=null) {dependencies.management().unregisterTransactionEventListener(dependencies.databaseId().name(),server);dependencies.monitors().removeMonitorListener(server);ServerContext.detach(dependencies.databaseId().databaseId().uuid());}
-                }
+                if(server!=null)server.beginStop();
+                awaitInitializer(initializer,60_000);
+                if(server!=null)server.shutdown();
+                if(server!=null) {dependencies.management().unregisterTransactionEventListener(dependencies.databaseId().name(),server);dependencies.monitors().removeMonitorListener(server);ServerContext.detach(dependencies.databaseId().databaseId().uuid());}
             }
         };
+    }
+    static void awaitInitializer(Thread initializer,long timeoutMillis){
+        if(initializer==null)return;
+        initializer.interrupt();
+        try{initializer.join(timeoutMillis);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Interrupted while joining Deposit initialization",e);}
+        if(initializer.isAlive())throw new IllegalStateException("Deposit initialization did not stop; storage remains open");
     }
 }
