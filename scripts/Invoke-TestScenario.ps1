@@ -57,8 +57,12 @@ function Complete-PowerShellChild($Child,[string]$OutputPath,[string]$ErrorPath,
     $process = $Child.Process
     if (!$process.WaitForExit($TimeoutMilliseconds)) { $process.Kill(); $null = $process.WaitForExit(15000); throw 'Scenario subprocess timed out.' }
     $process.WaitForExit()
-    [IO.File]::WriteAllText($OutputPath,$Child.StandardOutput.Result,$utf8)
-    [IO.File]::WriteAllText($ErrorPath,$Child.StandardError.Result,$utf8)
+    $stdout = if ($Child.StandardOutput.Wait(5000)) { try { $Child.StandardOutput.Result } catch { "Scenario stdout collection failed: $($_.Exception.Message)" } }
+        else { 'Scenario child exited, but a descendant kept stdout open; remaining output was omitted.' }
+    $stderr = if ($Child.StandardError.Wait(5000)) { try { $Child.StandardError.Result } catch { "Scenario stderr collection failed: $($_.Exception.Message)" } }
+        else { 'Scenario child exited, but a descendant kept stderr open; remaining output was omitted.' }
+    [IO.File]::WriteAllText($OutputPath,$stdout,$utf8)
+    [IO.File]::WriteAllText($ErrorPath,$stderr,$utf8)
     return $process.ExitCode
 }
 function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[string]$Label) {
