@@ -46,7 +46,6 @@ class Stage4CrashIT {
                 Path helper=Path.of("..","scripts","Kill-TestOwnedJvm.ps1").toAbsolutePath().normalize();assertTrue(Files.isRegularFile(helper));
                 Process killer=new ProcessBuilder("powershell.exe","-NoProfile","-File",helper.toString()).redirectErrorStream(true).start();assertTrue(killer.waitFor(15,TimeUnit.SECONDS));assertEquals(0,killer.exitValue(),new String(killer.getInputStream().readAllBytes()));process.onExit().get(15,TimeUnit.SECONDS);
                 try{task.get(10,TimeUnit.SECONDS);}catch(ExecutionException expected){assertTrue(expected.getCause() instanceof org.neo4j.driver.exceptions.Neo4jException);}
-                Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("storage-kill.txt"),point+"\npid="+process.pid()+"\n");
             }
         }finally{close();}
     }

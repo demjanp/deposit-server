@@ -10,7 +10,7 @@ import org.junit.jupiter.api.*;
 /** OCFL acceptance from public Bolt contracts and independently inspected stored bytes. */
 @Timeout(120)
 class Stage55CoreIT {
-    @BeforeAll static void start(){connect();Stage4CoreIT.token=Stage3CoreIT.login();}
+    @BeforeAll static void start(){connect();ensureAccount();Stage4CoreIT.token=Stage3CoreIT.login();}
     @AfterAll static void stop(){close();}
     @BeforeEach void fixture(){new Stage4CoreIT().fixture();}
     @Test void immutableObjectIdentityProfileAndStagingSeparation()throws Exception {

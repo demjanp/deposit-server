@@ -14,7 +14,6 @@ class Stage3RecoveryIT {
             var receipt=call("deposit.get.operation",m("operationId",p.getProperty("operation")),ctx(token));var replay=call("deposit.apply.batch",request,context);
             assertEquals(receipt.get("data").get("outcome").asMap(),replay.get("data").asMap());assertEquals(Stage3CoreIT.TEXT,replay.get("data").get("results").get("tool").get("data").asString());
             assertEquals("current",call("deposit.get.userTool",m("id",p.getProperty("tool")),ctx(token)).get("data").get("data").asString());assertEquals(Long.parseLong(p.getProperty("sequence")),revision(call("deposit.get.activeNamespace",Map.of(),ctx(token))));
-            Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage3-recovery.txt"),"Batch outcome recovered exactly; current tool unchanged; no duplicate commands or revision.\n");
         }finally {close();}
     }
 }

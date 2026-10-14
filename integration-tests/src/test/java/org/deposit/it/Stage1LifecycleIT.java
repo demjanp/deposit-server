@@ -28,6 +28,11 @@ class Stage1LifecycleIT {
     static long revision(org.neo4j.driver.Record row) {return row.get("meta").get("revision").asLong();}
     static String id(org.neo4j.driver.Record row) {return row.get("data").get("id").asString();}
     static void error(String code,Runnable action) {var e=assertThrows(org.neo4j.driver.exceptions.ClientException.class,action::run);assertTrue(e.getMessage().contains("\"code\":\""+code+"\""),e.getMessage());}
+    static void ensureAccount() {
+        Path secret=Stage0Paths.bootstrapSecret();
+        if(Files.exists(secret)) special("deposit.utils.bootstrap",m("bootstrapSecret",readSecret(secret),"username",ACCOUNT,"password",PASSWORD));
+    }
+    private static String readSecret(Path path) {try{return Files.readString(path).trim();}catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}}
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
         assertEquals("0.0.0-stage65",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
@@ -87,6 +92,5 @@ class Stage1LifecycleIT {
         call("deposit.set.activeNamespace",m("id",otherNs),ctx(token));error("SCOPE_MISMATCH",()->call("deposit.create.class",request,context));call("deposit.set.activeNamespace",m("id",ns),ctx(token));
     }
     @Test @Order(5) void persistPublicFixtureIdentity() throws Exception {
-        Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage1-lifecycle.tsv"),"N1\t"+ns+"\nN2\t"+otherNs+"\nadmin\t"+userId+"\n");
     }
 }

@@ -20,6 +20,7 @@ class Stage1CoreIT {
     static final Properties recovery=new Properties();
     @BeforeAll static void setup() {
         Stage1LifecycleIT.connect();
+        ensureAccount();
         var login=special("deposit.utils.login",m("username",ACCOUNT,"password",PASSWORD));token=login.get("value").asString();
         second=special("deposit.utils.login",m("username",ACCOUNT,"password",PASSWORD)).get("value").asString();
         String name="Core-"+UUID.randomUUID();var nsContext=write(token,revision(login));
@@ -160,12 +161,10 @@ class Stage1CoreIT {
         recovery.setProperty("namespaceCursor",get("deposit.get.objectPage",m("classId",recovery.getProperty("bulk"),"pageSize",1000L)).get("meta").get("nextCursor").asString());
         recovery.setProperty("serverCursor",get("deposit.get.namespacePage",m("pageSize",1L)).get("meta").get("nextCursor").asString());
         var fixture=ROOT.resolve("stage1-fixture.properties");try(var output=Files.newOutputStream(fixture)){recovery.store(output,"Stage 1 public identities and receipt inputs");}
-        Files.copy(fixture,Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage1-fixture.properties"),StandardCopyOption.REPLACE_EXISTING);
         var tokenFile=ROOT.resolve("secrets/stage1-session.txt");Files.writeString(tokenFile,"");var acl=Files.getFileAttributeView(tokenFile,AclFileAttributeView.class);acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(Files.getOwner(tokenFile)).setPermissions(EnumSet.allOf(AclEntryPermission.class)).build()));Files.writeString(tokenFile,token);
         assertEquals(0,query("MATCH (o:Object {namespaceId:$ns}) OPTIONAL MATCH (o)-[m:MEMBER_OF]->(:Class) WITH o,count(m) AS memberships WHERE memberships<>1 RETURN count(o) AS n",m("ns",namespace)).getFirst().get("n").asInt());
         assertEquals(0,query("MATCH (n:Revision {namespaceId:$ns}) RETURN count(n) AS n",m("ns",namespace)).getFirst().get("n").asInt());
         var graph=query("MATCH (n) WHERE n.namespaceId=$ns OR n.id=$ns RETURN labels(n) AS labels, count(n) AS count ORDER BY labels",m("ns",namespace));
-        Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage1-graph-state.txt"),graph.stream().map(r->r.asMap().toString()).reduce("",(a,b)->a+b+"\n"));
     }
     @Test @Order(9) void catalogAndFailureEnvelopeMatchPublicConventions() {
         var catalog=query("SHOW PROCEDURES YIELD name,signature WHERE name STARTS WITH 'deposit.' RETURN name,signature",Map.of());assertEquals(124,catalog.size());

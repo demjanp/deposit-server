@@ -11,20 +11,20 @@ import org.neo4j.driver.*;
 /** Independent public-contract corpus. Expected values never call plugin helpers. */
 @Timeout(120)
 class Stage6CoreIT {
-    static String token,second,ns,clazz,s1,s2,s3,c1,c2;static final List<String> trace=new ArrayList<>();
-    @BeforeAll static void start(){connect();token=Stage3CoreIT.login();second=Stage3CoreIT.login();}
-    @AfterAll static void finish()throws Exception{Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage6-corpus-actual.txt"),String.join("\n",trace));close();}
+    static String token,second,ns,clazz,s1,s2,s3,c1,c2;
+    @BeforeAll static void start(){connect();ensureAccount();token=Stage3CoreIT.login();second=Stage3CoreIT.login();}
+    @AfterAll static void finish(){close();}
     @BeforeEach void seed(){Stage3CoreIT.token=token;Stage3CoreIT.second=second;new Stage3CoreIT().namespace();ns=Stage3CoreIT.namespace;
         clazz=id(change("deposit.create.class",m("name","Specimen","descriptors",List.of(m("name","Code","type","String"),m("name","Mass","type","Float"),m("name","N","type","Integer")))));
         String context=id(change("deposit.create.class",m("name","Context","descriptors",List.of(m("name","Code","type","String")))));
-        s1=object(clazz,m("Code","S1","Mass",10.0,"N",10L));s2=object(clazz,m("Code","S2","Mass",20.0,"N",20L));s3=object(clazz,m("Code","S3"));c1=object(context,m("Code","C1"));c2=object(context,m("Code","C2"));edge(s1,c1,"foundIn");edge(s2,c1,"foundIn");trace.add("fixture "+m("ns",ns,"S1",s1,"S2",s2,"S3",s3,"C1",c1,"C2",c2));}
+        s1=object(clazz,m("Code","S1","Mass",10.0,"N",10L));s2=object(clazz,m("Code","S2","Mass",20.0,"N",20L));s3=object(clazz,m("Code","S3"));c1=object(context,m("Code","C1"));c2=object(context,m("Code","C2"));edge(s1,c1,"foundIn");edge(s2,c1,"foundIn");}
     static org.neo4j.driver.Record change(String p,Map<String,Object> r){return Stage3CoreIT.writeCall(p,r);}
     static String object(String c,Map<String,Object> d){return id(change("deposit.create.object",m("classId",c,"descriptors",d)));}
     static void edge(String a,String b,String label){change("deposit.create.relationship",m("sourceId",a,"targetId",b,"label",label));}
     static List<org.neo4j.driver.Record> q(String text){return q(text,Map.of());}
-    static List<org.neo4j.driver.Record> q(String text,Map<String,Object> params){var result=query("CALL deposit.get.query($r,$c)",m("r",m("query",text,"parameters",params),"c",ctx(token)));trace.add(text+" parameters="+params+" => "+result);return result;}
+    static List<org.neo4j.driver.Record> q(String text,Map<String,Object> params){return query("CALL deposit.get.query($r,$c)",m("r",m("query",text,"parameters",params),"c",ctx(token)));}
     static org.neo4j.driver.Record page(Map<String,Object> r){return call("deposit.get.queryPage",r,ctx(token));}
-    static void codes(String query,String... expected){var actual=q(query).stream().map(r->r.get("data").get("code").asString()).toList();trace.add("expected="+List.of(expected));assertEquals(List.of(expected),actual);}
+    static void codes(String query,String... expected){var actual=q(query).stream().map(r->r.get("data").get("code").asString()).toList();assertEquals(List.of(expected),actual);}
     static void set(String id,String name,Object value){change("deposit.set.descriptor",m("objectId",id,"name",name,"value",value));}
     static void typed(String id,String name,String type,Object value){set(id,name,m("type",type,"value",value));}
     static List<Object> values(String text,String key){return q(text).stream().map(r->r.get("data").get(key).asObject()).toList();}

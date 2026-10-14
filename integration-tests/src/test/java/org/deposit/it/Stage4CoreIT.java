@@ -9,10 +9,10 @@ import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 
 /** Public Bolt contracts plus independent filesystem/graph inspection; no implementation imports. */
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class) @Timeout(120)
+@Timeout(120)
 class Stage4CoreIT {
     static String token,ns,object;static final byte[] ABC="abc".getBytes(StandardCharsets.UTF_8);
-    @BeforeAll static void connect4(){connect();token=Stage3CoreIT.login();}
+    @BeforeAll static void connect4(){connect();ensureAccount();token=Stage3CoreIT.login();}
     @AfterAll static void close4(){close();}
     @BeforeEach void fixture(){ns=id(call("deposit.create.namespace",m("name","Stage4-"+UUID.randomUUID(),"historyMode","disabled"),write(token,revision(call("deposit.get.user",Map.of(),ctx(token))))));Stage3CoreIT.select(token,ns);String clazz=id(mutate("deposit.create.class",m("name","Specimen")));object=id(mutate("deposit.create.object",m("classId",clazz)));}
     static long seq(){return revision(call("deposit.get.activeNamespace",Map.of(),ctx(token)));}
@@ -30,8 +30,7 @@ class Stage4CoreIT {
     static void assertStored(String id)throws Exception{Path path=resourcePath(id);assertTrue(Files.isRegularFile(path));assertTrue(Files.isRegularFile(objectRoot(id).resolve("0=ocfl_object_1.1")));assertFalse(Files.exists(objectRoot(id).resolve("v2")));}
     static long physicalBytes(String id)throws Exception{try(var files=Files.walk(objectRoot(id))){long total=0;for(Path p:files.filter(Files::isRegularFile).toList())total+=Files.size(p);return total;}}
     static void awaitStagingCleanup(String id)throws Exception{long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);while(System.nanoTime()<end){if(query("MATCH (l:DepositResourceLocation {id:$id}) RETURN l.stagingPath AS path",m("id",id)).getFirst().get("path").isNull())return;Thread.sleep(50);}fail("Committed staging copy not cleaned");}
-    @AfterEach void evidence()throws Exception{Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve(ns+"-stage4.txt"),query("MATCH (n {namespaceId:$ns}) RETURN labels(n) AS labels,properties(n) AS properties ORDER BY n.id",m("ns",ns)).toString());}
-    @Test @Order(1) void sequentialChunksReplayResumeAndPublication()throws Exception{
+    @Test void sequentialChunksReplayResumeAndPublication()throws Exception{
         long before=seq();var beginContext=op();var metadata=meta(ABC,"note.txt");String upload=call("deposit.resource.beginUpload",metadata,beginContext).get("data").get("uploadId").asString();
         var chunkContext=op();var one=chunk(upload,0,new byte[]{97});assertEquals(1,call("deposit.resource.uploadChunk",one,chunkContext).get("data").get("nextOffset").asLong());
         assertEquals(1,call("deposit.resource.beginUpload",metadata,beginContext).get("data").get("nextOffset").asLong());
@@ -98,7 +97,7 @@ class Stage4CoreIT {
         do{status=call("deposit.admin.pruneResourcesStatus",m("pruneId",prune),ctx(token)).get("data");if(status.get("state").asString().equals("completed"))break;Thread.sleep(50);}while(System.nanoTime()<deadline);
         assertEquals("completed",status.get("state").asString());assertEquals(expectedPhysical,status.get("reclaimedBytes").asLong());assertFalse(Files.exists(resourcePath(id)));
     }
-    @Test @Order(100) void persistRecoveryFixture()throws Exception {
+    @Test void persistRecoveryFixture()throws Exception {
         String resource=upload(ABC,"persist.txt");var g=descriptor("G","DGeometry",geometry("POINT Z (12 34 56)",4326L,3));descriptor("F","DResource",m("resourceId",resource));
         var properties=new Properties();properties.setProperty("namespace",ns);properties.setProperty("object",object);properties.setProperty("resource",resource);properties.setProperty("geometry",g.get("data").get("geometryId").asString());properties.setProperty("sequence",Long.toString(seq()));try(var out=Files.newOutputStream(ROOT.resolve("stage4-fixture.properties"))){properties.store(out,"Stage 4 recovery fixture");}
     }

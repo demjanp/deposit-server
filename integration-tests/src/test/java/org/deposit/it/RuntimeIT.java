@@ -83,7 +83,6 @@ class RuntimeIT {
         assertEquals(0,query("MATCH (:Stage0Fixture {name:'C2'})--() RETURN count(*) AS n").getFirst().get("n").asInt());
         try(var session=driver.session();var tx=session.beginTransaction()) {tx.run("CREATE (:Stage0Uncommitted {name:'must-not-persist'})").consume(); tx.rollback();}
         assertEquals(0,query("MATCH (n:Stage0Uncommitted) RETURN count(n) AS n").getFirst().get("n").asInt());
-        var evidence=Path.of(System.getenv("STAGE0_EVIDENCE")); Files.createDirectories(evidence);
         var mapping=Stream.concat(existing.stream(),fixtures.stream()).map(r->r.get("name").asString()+"\t"+r.get("id").asString()).toList();
         var baseline=Path.of(System.getenv("STAGE0_BASELINE_MAP"));
         if(Files.exists(baseline)) assertEquals(Files.readAllLines(baseline),mapping,"Fixture UUIDs must survive restart unchanged");
@@ -91,7 +90,6 @@ class RuntimeIT {
             assertFalse(VERIFY_ONLY,"Persistence verification requires the original seed UUID map");
             Files.write(baseline,mapping,java.nio.file.StandardOpenOption.CREATE_NEW);
         }
-        Files.write(evidence.resolve("fixture-uuid-map.tsv"),mapping);
         assertIndependentSessions();
     }
     static void assertIndependentSessions() {
@@ -209,8 +207,6 @@ class RuntimeIT {
         var baseline=Path.of(System.getenv("STAGE0_BASELINE_MAP")+".geometry");
         if(Files.exists(baseline)) assertEquals(Files.readAllLines(baseline),state,"Geometry identity and coordinates must survive restart");
         else {assertFalse(VERIFY_ONLY,"Geometry baseline is required");Files.write(baseline,state,java.nio.file.StandardOpenOption.CREATE_NEW);}
-        Files.write(Path.of(System.getenv("STAGE0_EVIDENCE"),"geometry-state.tsv"),state);
-        Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE"),"spatial-index-state.txt"),inspect(namespace,null)+"\n"+inspect(namespace,4326L)+"\n"+inspect(namespace,999999999L)+"\n"+inspect(otherNamespace,999999999L));
     }
 
     @Test @Order(8) void callerRollbackIncludesSpatialGraphAndIndex() {

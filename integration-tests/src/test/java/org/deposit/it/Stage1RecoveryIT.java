@@ -30,7 +30,6 @@ class Stage1RecoveryIT {
             assertEquals(30,query("CALL deposit.get.object($r,$c) YIELD node MATCH (node)-[:HAS_DESCRIPTOR]->(d:Descriptor {name:'Mass'}) RETURN sum(d.value) AS total",m("r",m("classId",fixture.getProperty("Specimen")),"c",ctx(token))).getFirst().get("total").asInt());
             // Persist this actual session for the next process-termination check; never copy it to evidence.
             Files.writeString(ROOT.resolve("secrets/stage1-session.txt"),token);
-            Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage1-recovery.txt"),"Namespace "+fixture.getProperty("namespace")+" sequence "+expected+"; old session rejected; server revision reset; receipt unchanged; 1007 bulk Objects retained.\n");
         } finally {Stage1LifecycleIT.close();}
     }
 }

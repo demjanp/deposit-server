@@ -191,11 +191,17 @@ def validate(path: pathlib.Path) -> None:
         if set(graph) != expected:
             raise ValueError("graph categories are incomplete")
         history = json.loads(archive.read("history.json")) if "history.json" in hashes else None
-        print(json.dumps(semantic(manifest,graph,history,hashes),sort_keys=True))
+        semantic(manifest,graph,history,hashes)
+        print("PASS: Deposit package validation")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("usage: Test-Stage7Package.py <package.zip>")
-    validate(pathlib.Path(sys.argv[1]))
+        print("FAIL: Deposit package validation; usage: Test-Stage7Package.py <package.zip>")
+        raise SystemExit(1)
+    try:
+        validate(pathlib.Path(sys.argv[1]))
+    except Exception as failure:
+        print(f"FAIL: Deposit package validation: {failure}")
+        raise SystemExit(1)
     print("independent-package-validation-passed")

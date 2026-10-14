@@ -17,7 +17,6 @@ class Stage2RecoveryIT {
             var receipt=call("deposit.get.operation",m("operationId",fixture.getProperty("operation"),"scope","server"),ctx(token));
             var result=call("deposit.delete.namespace",request,context);assertEquals(0,revision(result));assertEquals(receipt.get("data").get("outcome").asMap(),result.get("data").asMap());assertTrue(result.get("data").get("deletedIds").asList().contains(fixture.getProperty("deleted")));
             select(token,fixture.getProperty("survivor"));call("deposit.delete.namespace",request,context);assertEquals(fixture.getProperty("survivor"),id(call("deposit.get.activeNamespace",Map.of(),ctx(token))));
-            Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage2-recovery.txt"),"Server revision reset; selection and mode reset; deletion receipt recovered unchanged; selected survivor retained.\n");
         }finally{close();}
     }
 }

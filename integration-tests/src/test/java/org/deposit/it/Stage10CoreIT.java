@@ -80,7 +80,6 @@ class Stage10CoreIT {
     @Test void browserLoginReusesCookieStreamsExactBytesAndSupportsRangesAndCsrfLogout()throws Exception{
         byte[] bytes="the exact browser attachment bytes".getBytes(StandardCharsets.UTF_8);String resource=upload(bytes,"payload.txt");var info=call("deposit.resource.info",resource,token).get("data");
         String url=info.get("downloadUrl").asString();assertEquals(base+"/resources/"+namespace+"/"+resource,url);URI resourceUri=URI.create(url);
-        Files.writeString(Path.of(System.getenv("STAGE0_EVIDENCE")).resolve("stage10-browser-url.txt"),url+"\n");
         HttpResponse<String> unauthenticated=get(client(),resourceUri);assertEquals(303,unauthenticated.statusCode());assertEquals("no-referrer",unauthenticated.headers().firstValue("Referrer-Policy").orElseThrow());assertTrue(unauthenticated.headers().firstValue("Location").orElseThrow().startsWith(base.getRawPath()+"/login?return="));
         HttpClient browser=client();URI loginUri=uri("/login");HttpResponse<String> page=get(browser,loginUri);assertEquals(200,page.statusCode());assertEquals("same-origin",page.headers().firstValue("Referrer-Policy").orElseThrow());assertTrue(page.body().contains("Deposit login"));String loginCsrf=csrf(page.body());
         for(String rejectedOrigin:Arrays.asList(null,"null","https://evil.example")){
@@ -200,9 +199,6 @@ class Stage10CoreIT {
             ((JavascriptExecutor)browser).executeScript("const a=document.createElement('a');a.href=arguments[0];a.hidden=true;document.body.appendChild(a);a.click();a.remove();",exportedCsv.toString());
             Path secondDownload=awaitDownload(downloadDirectory,hash(content(csv.get("resourceId").asString(),csv.get("bytes").asLong(),token)),browser,loginDiagnostics);
             browser.findElement(By.xpath("//button[normalize-space()='Log out']")).click();new WebDriverWait(browser,Duration.ofSeconds(15)).until(ExpectedConditions.visibilityOfElementLocated(By.name("username")));
-            Capabilities capabilities=((org.openqa.selenium.HasCapabilities)browser).getCapabilities();
-            Map<String,Object> evidence=Map.of("browser",capabilities.getBrowserName(),"browserVersion",capabilities.getBrowserVersion(),"headless",true,"generatedResourceUrl",linkedResource.toString(),"firstDownload",Map.of("bytes",Files.size(firstDownload),"sha256",hash(Files.readAllBytes(firstDownload))),"subsequentExportDownload",Map.of("bytes",Files.size(secondDownload),"sha256",hash(Files.readAllBytes(secondDownload))),"sessionReusedWithoutLogin",true,"logoutCompleted",true,"secretsRecorded",false);
-            new com.fasterxml.jackson.databind.ObjectMapper().writeValue(Path.of(System.getenv("STAGE0_EVIDENCE"),"stage10-browser-automation.json").toFile(),evidence);
         }finally{
             if(browser!=null)browser.quit();
             try(var paths=Files.walk(downloadDirectory)){for(Path entry:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(entry);}
