@@ -7,12 +7,12 @@ param(
     [ValidateSet('seed','verify')][string]$TestMode = 'seed',
     [ValidateSet('incompatible-spatial','missing-spatial','invalid-deposit-config')][string]$FailureMode,
     [string]$CrashPoint,
-    [string]$Root = 'C:\data_processed\Deposit_v2\stage0'
+    [string]$Root = 'D:\data_processed\Deposit_v2\stage0'
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
-$approvedRoot = [IO.Path]::GetFullPath('C:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
 if ($Kind -eq 'Integration' -and ![string]::Equals([IO.Path]::GetFullPath($Root).TrimEnd('\'),$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) {
     throw "Integration tests must use the installed Stage 0 inputs at $approvedRoot"
 }
@@ -34,6 +34,12 @@ if ($Kind -eq 'Unit') {
 
 $savedEnvironment = @{}
 try {
+if ($Kind -eq 'Unit') {
+    $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME')) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+    $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
+    $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
+}
 if ($Kind -eq 'Integration') {
     . "$PSScriptRoot\Credentials.ps1"
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json

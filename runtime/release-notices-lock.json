@@ -1,0 +1,1818 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "file": "GeographicLib-Java-1.49.jar",
+      "id": "net.sf.geographiclib:GeographicLib-Java:1.49",
+      "version": "1.49",
+      "sha256": "78c292f7e6910d51a15fc9088c301fac3b4c0a43ac5ae17499f5763b4dd9aca8",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/GeographicLib-Java-1.49-source-notices.txt",
+          "sha256": "a3ec7a764431baa4459fffc9326111b1eb4afe6e8b28503c9276974a33649726",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/net/sf/geographiclib/GeographicLib-Java/1.49/GeographicLib-Java-1.49-sources.jar",
+            "sha256": "d892f796fa1aabab6f9bc64712bcd1a844c0d1b1fcdb40b184efaccd034131cc",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geographic-LICENSE.txt",
+          "sha256": "edc9241a9e81d2bb2bcd6d7317134c527926286aa2ae0627368a14a3b972c6f3",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geographiclib/geographiclib/v1.49/LICENSE.txt",
+            "sha256": "edc9241a9e81d2bb2bcd6d7317134c527926286aa2ae0627368a14a3b972c6f3"
+          }
+        }
+      ]
+    },
+    {
+      "file": "SparseBitSet-1.3.jar",
+      "id": "com.zaxxer:SparseBitSet:1.3",
+      "version": "1.3",
+      "sha256": "f76b85adb0c00721ae267b7cfde4da7f71d3121cc2160c9fc00c0c89f8c53c8a",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/SparseBitSet-1.3-source-notices.txt",
+          "sha256": "b604f9705db091c8c56f9624dbd94b5945b3f10bb698e47f11d4d32ebe6907e4",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3-sources.jar",
+            "sha256": "36c10ff58efbd4a3cf8b98043ff2637cc167cef4e3d016f06825d40c91e8eb3a",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "apiguardian-api-1.1.2.jar",
+      "id": "org.apiguardian:apiguardian-api:1.1.2",
+      "version": "1.1.2",
+      "sha256": "b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "apoc-2026.05.0-core.jar",
+      "id": "apoc",
+      "version": "2026.05.0",
+      "sha256": "1d7983f9a45092a08d555bdbc0c1ea9dd2222666b213c2649d383bde78a22bf5",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE.txt",
+          "sha256": "4e7f90c86ab51278228bce153122f1d8df30149d13ce9ef524c8444a84c32dcc"
+        },
+        {
+          "entry": "META-INF/NOTICE.txt",
+          "sha256": "26ebc5e05468959b3ae5010f10e0c3fb0cbf8d7d2f1242005bf5656c1348c69f"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "bcprov-jdk18on-1.82.jar",
+      "id": "bcrypt-provider",
+      "version": "1.82",
+      "sha256": "14cde2fdfaa8890480a8e5b67aceef0c90f96682c1e23c133bafdc9e0b3255ce",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/bcprov-LICENSE.html",
+          "sha256": "edbbb10380b1271998b867a2e36b1cbee226e03d438726e1a91f80c5dde11849",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/bcgit/bc-java/r1rv82/LICENSE.html",
+            "sha256": "edbbb10380b1271998b867a2e36b1cbee226e03d438726e1a91f80c5dde11849"
+          }
+        }
+      ]
+    },
+    {
+      "file": "bytes-1.6.1.jar",
+      "id": "at.favre.lib:bytes:1.6.1",
+      "version": "1.6.1",
+      "sha256": "0f57d113cb5a89372466f96e48e1f0d8c74a5fc5a49bbb7a78be1faa2ceccb3d",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/bytes-1.6.1-source-notices.txt",
+          "sha256": "e7dcf1f3ca18312910de81673fdf6d0f0a4627bbe7c64649f7dd84a252c9f34c",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/at/favre/lib/bytes/1.6.1/bytes-1.6.1-sources.jar",
+            "sha256": "04182a053dcdbd53079aab0f22f06d5389821d0ad32afb977d7c32fd0467446a",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "commons-collections4-4.5.0.jar",
+      "id": "org.apache.commons:commons-collections4:4.5.0",
+      "version": "4.5.0",
+      "sha256": "00f93263c267be201b8ae521b44a7137271b16688435340bf629db1bac0a5845",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "entry": "META-INF/NOTICE.txt",
+          "sha256": "bdd8b7d5699e3720277bf2d2b521a2d7cf265815378b6c2e095cbc72d5b0e981"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "commons-math3-3.6.1.jar",
+      "id": "org.apache.commons:commons-math3:3.6.1",
+      "version": "3.6.1",
+      "sha256": "1e56d7b058d28b65abd256b8458e3885b674c1d588fa43cd7d1cbb9c7ef2b308",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE.txt",
+          "sha256": "64f23963615950bad9ddd31569a7f09afbbe11b81d94873ffd9b1cac6081a11d"
+        },
+        {
+          "entry": "META-INF/NOTICE.txt",
+          "sha256": "5495442a32bfc2b93b4a8f2c34c5c218d16cca434aa5684fb953d9419120e3fa"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "curvesapi-1.08.jar",
+      "id": "com.github.virtuald:curvesapi:1.08",
+      "version": "1.08",
+      "sha256": "ad95b08b8bbf9d7d17e5e00814898fa23324f32bc5b62f1a37801e6a56ce0079",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/curvesapi-1.08-source-notices.txt",
+          "sha256": "9e5b13d749633cf6beb0222b8dba9b5ca445d7a955d6c638f5a6be9aace04ba0",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/com/github/virtuald/curvesapi/1.08/curvesapi-1.08-sources.jar",
+            "sha256": "9e57375e8ee46f543297c2e9272be0aab05caab885202378c653c48d792f6d09",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "deposit-plugin-0.0.0-stage65.jar",
+      "id": "org.deposit:deposit-plugin:0.0.0-stage65",
+      "version": "0.0.0-stage65",
+      "sha256": null,
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "LICENSE",
+          "sha256": "b53ff95308a5f767d8c87503cc12e3a09666121104fbc15f1b0e2086c375c98f",
+          "kind": "projectLicenseText",
+          "source": {
+            "url": "repository:LICENSE",
+            "sha256": "b53ff95308a5f767d8c87503cc12e3a09666121104fbc15f1b0e2086c375c98f"
+          }
+        }
+      ]
+    },
+    {
+      "file": "ejml-core-0.41.jar",
+      "id": "org.ejml:ejml-core:0.41",
+      "version": "0.41",
+      "sha256": "8d36469e8414d79c875defc0af3b980525d384761c9471d15a4f365b936dd1d5",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/ejml-core-0.41-source-notices.txt",
+          "sha256": "e93c62476402ebd3bf770d1be1e7a7154637a612ca111e0ea54bd177e18192d1",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/org/ejml/ejml-core/0.41/ejml-core-0.41-sources.jar",
+            "sha256": "f527f13a202efcc7909f6c413dc030aa090e19d0f26971c03456b7a0db7d2b19",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "ejml-ddense-0.41.jar",
+      "id": "org.ejml:ejml-ddense:0.41",
+      "version": "0.41",
+      "sha256": "355347e9cac7e96d5d724d331a9b04bb14a8a02e1d111f1ac51c79f25d937123",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/ejml-ddense-0.41-source-notices.txt",
+          "sha256": "eec05663637bc92c75b1ec6b2cac5953f8734e2faba6b8e176fb24f80f443ea3",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/org/ejml/ejml-ddense/0.41/ejml-ddense-0.41-sources.jar",
+            "sha256": "9b26516e568e94d4e21e0dbb5b66017c6834d154a4298166d1293354ea46ce9a",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "error_prone_annotations-2.43.0.jar",
+      "id": "com.google.errorprone:error_prone_annotations:2.43.0",
+      "version": "2.43.0",
+      "sha256": "48272e75c16e1f7bdc7bd19529ccacd5ee170404701d7f5a23441bb5847957f5",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/error_prone_annotations-2.43.0-source-notices.txt",
+          "sha256": "1a6610111c96833c93b5bf83fed94ac0f6ad1624a5eff22a000fa552ab7bcc01",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.43.0/error_prone_annotations-2.43.0-sources.jar",
+            "sha256": "458c91db60611551ede96c331c0632ee6d6cb0e5fcf1793d73017207530ebb52",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "failsafe-3.3.2.jar",
+      "id": "dev.failsafe:failsafe:3.3.2",
+      "version": "3.3.2",
+      "sha256": "2c5dc879a6dac7ea3a7b29d795e27bd49b8e7908b05c2f3e56053c19d79850f5",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/failsafe-3.3.2-source-notices.txt",
+          "sha256": "7a6642c2420655853ca59d68e0ea12caac9b8d638dc6003f910f426026edb1b3",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/dev/failsafe/failsafe/3.3.2/failsafe-3.3.2-sources.jar",
+            "sha256": "06ec410527503e74734d656e8cc1934aa6fef44ddd89dd4df13cb11b2bd83a9b",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "failureaccess-1.0.3.jar",
+      "id": "com.google.guava:failureaccess:1.0.3",
+      "version": "1.0.3",
+      "sha256": "cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "gt-api-33.2.jar",
+      "id": "org.geotools:gt-api:33.2",
+      "version": "33.2",
+      "sha256": "379e389a2565def1d9182885f753272c912d8b4fa760d999f116ec7eff4e8b41",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/gt-api-33.2-source-notices.txt",
+          "sha256": "0c9367edd3b20f37edbf203d86e6723e7d06589df7c070442fcaedab49c81aea",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/gt-api/33.2/gt-api-33.2-sources.jar",
+            "sha256": "56e8ee01c582c49f7ea4a20e3b1c2534e74563d9f2bb9a6034bf7d7947a1cbe1",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "gt-epsg-hsql-33.2.jar",
+      "id": "org.geotools:gt-epsg-hsql:33.2",
+      "version": "33.2",
+      "sha256": "429e1af63596b5fcf86f18c425ea9007fbcb1a26fe15ca0abea221958f68b590",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/gt-epsg-hsql-33.2-source-notices.txt",
+          "sha256": "2861e32f0f62e3f8415350dc98076a5185abe1eaaa45201cbd8edc6a1dec05f1",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/gt-epsg-hsql/33.2/gt-epsg-hsql-33.2-sources.jar",
+            "sha256": "3a5e18369fe4720e51504b64ab04ada866fe988ef9f6f9bac799e0c676884966",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-EPSG.md",
+          "sha256": "3cb5d366eb824312c9e0c7a94e7d0d3bf3a6ee4901d017f3e3be245235daff1c",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/EPSG.md",
+            "sha256": "3cb5d366eb824312c9e0c7a94e7d0d3bf3a6ee4901d017f3e3be245235daff1c"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-HSQL.md",
+          "sha256": "93eb0babe75b422ea15923640a5c46ef3f22cb33986922f358740790ca824aa4",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/HSQL.md",
+            "sha256": "93eb0babe75b422ea15923640a5c46ef3f22cb33986922f358740790ca824aa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "gt-http-33.2.jar",
+      "id": "org.geotools:gt-http:33.2",
+      "version": "33.2",
+      "sha256": "ea42b313f20fd58542212f2e1d58f390653825174a5c684153c62e1d1b456c4c",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/gt-http-33.2-source-notices.txt",
+          "sha256": "735e7843733a33294d44e476c9631ec21efbb3fc6d284517123e25ea1fabe954",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/gt-http/33.2/gt-http-33.2-sources.jar",
+            "sha256": "afeb02e69cbc31ec5404cd4ae43f2e76884117b6fd3fa5720a66af74627c1bb7",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "gt-main-33.2.jar",
+      "id": "org.geotools:gt-main:33.2",
+      "version": "33.2",
+      "sha256": "147da408d0da37866141b46cc8bc1879b41a1c7914f09b865014d26a11e80589",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/gt-main-33.2-source-notices.txt",
+          "sha256": "1c1b2decf137caf7f8b8ea4bba8b17ae66ae83a064362e19b6c75423a95b869a",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/gt-main/33.2/gt-main-33.2-sources.jar",
+            "sha256": "7b129ebe54e9c9ee406c87c149c87e0a22110e6a8944a3bfd2977bf0c20e9977",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "gt-metadata-33.2.jar",
+      "id": "org.geotools:gt-metadata:33.2",
+      "version": "33.2",
+      "sha256": "d581346c64db5a07e2ec92005926cc460df8e829f7f3d8e16711404c344405e3",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/gt-metadata-33.2-source-notices.txt",
+          "sha256": "ca5f0e4f24d680ece4692a633791c640bebcef7dfbb34e36a14bb6bf9a51bf7d",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/gt-metadata/33.2/gt-metadata-33.2-sources.jar",
+            "sha256": "3700168f43dc413302be2bab45c5c996e0dd0c52559c06f9151f713f5202c1a2",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "gt-referencing-33.2.jar",
+      "id": "org.geotools:gt-referencing:33.2",
+      "version": "33.2",
+      "sha256": "081242d1327edd183c113a012854d5352bf332dd3ae74734b24d30b1bb0552f2",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/gt-referencing-33.2-source-notices.txt",
+          "sha256": "a7b18db6c00c5528f87239fad1675cb4827a1529aabea32abafcf85147cfb45f",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/gt-referencing/33.2/gt-referencing-33.2-sources.jar",
+            "sha256": "4eb5846eaaf364d0228dcc47a847913cd9c1eebc6b7b478a996b37d6e20a2a3d",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "guava-33.5.0-jre.jar",
+      "id": "com.google.guava:guava:33.5.0-jre",
+      "version": "33.5.0-jre",
+      "sha256": "1e301f0c52ac248b0b14fdc3d12283c77252d4d6f48521d572e7d8c4c2cc4ac7",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "hsqldb-2.7.2.jar",
+      "id": "org.hsqldb:hsqldb:2.7.2",
+      "version": "2.7.2",
+      "sha256": "aa455133e664f6a7e6f30cd0cd4f8ad83dfbd94eb717c438548e446784614a92",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/hsqldb-2.7.2-source-notices.txt",
+          "sha256": "d806043dcd025bb483ffa7cc9c0737782bbec5d69ca1db23e0a0dd31a27961cd",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/org/hsqldb/hsqldb/2.7.2/hsqldb-2.7.2-sources.jar",
+            "sha256": "ca7ec40180317929b6871eabe9d9fe2bbe384375061f4226208647670349cc6e",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "indriya-2.2.jar",
+      "id": "tech.units:indriya:2.2",
+      "version": "2.2",
+      "sha256": "5b61eafd63fd235898dea0e5e614e9636c9d7783705a0c9f1794dd07e3a84b35",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/indriya-2.2-source-notices.txt",
+          "sha256": "874e23c8d87414024a350191646871ca59f4486ab6619b2e3653272d7bd7cc49",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/tech/units/indriya/2.2/indriya-2.2-sources.jar",
+            "sha256": "6a51f189f9c292640506ef726d463feb9171aa95d3c871df5658b334c9df2152",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "j2objc-annotations-3.1.jar",
+      "id": "com.google.j2objc:j2objc-annotations:3.1",
+      "version": "3.1",
+      "sha256": "84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/j2objc-annotations-3.1-source-notices.txt",
+          "sha256": "901ebc54e77ffa60c9dbb427c917dc2bb8fdbaa1b3789691166be09dc36741b1",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1-sources.jar",
+            "sha256": "295938307f4016b3f128f7347101b236ada1394808104519c9e93cd61b64602b",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "jai_core-1.1.3.jar",
+      "id": "javax.media:jai_core:1.1.3",
+      "version": "1.1.3",
+      "sha256": "8b696cf067533545f44c2f68339e24ab1a2669153ed2081aa5be8749f4d592bf",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/JAI-LICENSE.txt",
+          "sha256": "5e2dd74e1156705516f7feb3465f2b50787f6cc8d65df4577f7a0207d0b1d02b",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://download.java.net/media/jai/builds/release/1_1_3/LICENSE-jai.txt",
+            "sha256": "5e2dd74e1156705516f7feb3465f2b50787f6cc8d65df4577f7a0207d0b1d02b"
+          }
+        }
+      ]
+    },
+    {
+      "file": "jakarta.inject-api-2.0.1.jar",
+      "id": "jakarta.inject:jakarta.inject-api:2.0.1",
+      "version": "2.0.1",
+      "sha256": "f7dc98062fccf14126abb751b64fab12c312566e8cbdc8483598bffcea93af7c",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "entry": "META-INF/NOTICE.md",
+          "sha256": "992ed62dd3ee17d73ce6a4a5e02dd0fed9eb326bf386aa5304e6a512214df540"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "jgridshift-core-1.3.jar",
+      "id": "it.geosolutions.jgridshift:jgridshift-core:1.3",
+      "version": "1.3",
+      "sha256": "303eb6a6f6f87369f6b9e3dcacefd6f9b0ad55920cd65a7f162ab9a23401c722",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/jgridshift-LGPL.txt",
+          "sha256": "a190dc9c8043755d90f8b0a75fa66b9e42d4af4c980bf5ddc633f0124db3cee7",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geosolutions-it/jgridshift/6f81611f1b1248538a1a46084e3e1b3ecbf87ccf/lgpl.txt",
+            "sha256": "a190dc9c8043755d90f8b0a75fa66b9e42d4af4c980bf5ddc633f0124db3cee7"
+          }
+        },
+        {
+          "path": "runtime/notices/jgridshift-source-notice.txt",
+          "sha256": "befa1c06f6aa8e46e68692d4018ea3484c4b07bf7155926fa2cb56bd4669d9df",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geosolutions-it/jgridshift/6f81611f1b1248538a1a46084e3e1b3ecbf87ccf/core/src/main/java/au/com/objectix/jgridshift/GridShift.java",
+            "sha256": "35f57509b9276b17bf53b2bb34a0c8671b97d0043142f5339214b1d383ead327",
+            "extraction": "Initial copyright/license comment block; exact bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
+      "id": "com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava",
+      "version": "9999.0-empty-to-avoid-conflict-with-guava",
+      "sha256": "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        }
+      ]
+    },
+    {
+      "file": "neo4j-spatial-server-plugin-2025.10.0.jar",
+      "id": "spatial",
+      "version": "2025.10.0",
+      "sha256": "fcdae34c8566a89efaae0faed4b33f2d704e1bff76710349af80846b0670069a",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/spatial-LICENSE",
+          "sha256": "7ece31128a388cf106c55dcb1e5f36001c38bef98b679e6293e1a9ea3b47c7fb",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/neo4j-contrib/spatial/2025.10.0/LICENSE.txt",
+            "sha256": "7ece31128a388cf106c55dcb1e5f36001c38bef98b679e6293e1a9ea3b47c7fb"
+          }
+        }
+      ]
+    },
+    {
+      "file": "net.opengis.ows-33.2.jar",
+      "id": "org.geotools.ogc:net.opengis.ows:33.2",
+      "version": "33.2",
+      "sha256": "20e3074d43c2a436efa2c816cf8e3c25ea01bb0f24e0f5012a4f97abc5cf7de3",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/net.opengis.ows-33.2-source-notices.txt",
+          "sha256": "0d97e4ce59de03c3bf7381c6c3431c04ea4a80cdf02ad5de76f86aa940711ccb",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/ogc/net.opengis.ows/33.2/net.opengis.ows-33.2-sources.jar",
+            "sha256": "c6ec839997f55be517123144a925c7ec48173bbea94b0a5937bf83b305a15f4f",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "ocfl-java-api-2.2.3.jar",
+      "id": "io.ocfl:ocfl-java-api:2.2.3",
+      "version": "2.2.3",
+      "sha256": "5eedc5cbd25fe53a554f13387fbc7c52cd6f57d3858c46aff8085f9c238828ef",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/ocfl-java-api-2.2.3-source-notices.txt",
+          "sha256": "ae29784b5ccb3c38c76a2bf2cd5d16a29f175b7691a6e4e642aba769f51d7fee",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/io/ocfl/ocfl-java-api/2.2.3/ocfl-java-api-2.2.3-sources.jar",
+            "sha256": "781fd8cf0bd5417356bf0b4510a674b7231accba7d4813d9919cabdeee4ab3c7",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/ocfl-LICENSE.txt",
+          "sha256": "1371d8c79c7587bcdd6efa1da7244f355f5e81c762323ee9aafc4b7487d7017f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/OCFL/ocfl-java/v2.2.3/LICENSE.txt",
+            "sha256": "1371d8c79c7587bcdd6efa1da7244f355f5e81c762323ee9aafc4b7487d7017f"
+          }
+        }
+      ]
+    },
+    {
+      "file": "ocfl-java-core-2.2.3.jar",
+      "id": "io.ocfl:ocfl-java-core:2.2.3",
+      "version": "2.2.3",
+      "sha256": "95d3f2d3a8b6843cc22cabdec21fbc8d1dc01dc9dd17c9495a56561b442df8f0",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/ocfl-java-core-2.2.3-source-notices.txt",
+          "sha256": "d26513b35bc0a0bd714c2bd965e0358234e5cfa0152a2c9aacb57d9892083afe",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/io/ocfl/ocfl-java-core/2.2.3/ocfl-java-core-2.2.3-sources.jar",
+            "sha256": "6e84a6d139f04b86ad580f0d43d03d671dbdd84bd2480d61f396ccb9a24e3f1f",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/ocfl-LICENSE.txt",
+          "sha256": "1371d8c79c7587bcdd6efa1da7244f355f5e81c762323ee9aafc4b7487d7017f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/OCFL/ocfl-java/v2.2.3/LICENSE.txt",
+            "sha256": "1371d8c79c7587bcdd6efa1da7244f355f5e81c762323ee9aafc4b7487d7017f"
+          }
+        }
+      ]
+    },
+    {
+      "file": "org.eclipse.emf.common-2.15.0.jar",
+      "id": "org.eclipse.emf:org.eclipse.emf.common:2.15.0",
+      "version": "2.15.0",
+      "sha256": "bdb51f83b2daa51446b4ae5d606464e4b22fb7ef98f0477ac95de72551e2978a",
+      "embedded": [
+        {
+          "entry": "about.html",
+          "sha256": "54d5be3a7464e789d63b9a3786bd96af45073f57a95ca9c6a96d682557f3cb7e"
+        },
+        {
+          "entry": "about.ini",
+          "sha256": "e48eda0ce62db248bd05267961a567705ef34561e6f10e1bc03ae260969386dc"
+        },
+        {
+          "entry": "about.mappings",
+          "sha256": "3a8de0fd42cfe94f523322d90e5c216d7b4016b25a0c57c27cdb92b61b5d63dc"
+        },
+        {
+          "entry": "about.properties",
+          "sha256": "4c9fd15d3ba0021204d1790ef5b780f27dce006bb4fd5e348718116488ee3ab4"
+        }
+      ],
+      "supplemental": [
+        {
+          "path": "runtime/notices/org.eclipse.emf.common-2.15.0-source-notices.txt",
+          "sha256": "df2d6571ffcfad2d4e08b2c847225c346ba55ad1bfb21d0920cc671cd213faf0",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/org/eclipse/emf/org.eclipse.emf.common/2.15.0/org.eclipse.emf.common-2.15.0-sources.jar",
+            "sha256": "3de4925921c9000c85bbff6bb2b7eac58762fcda62a2c870952e609659d91ad5",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/EPL-1.0.html",
+          "sha256": "a40741b59364cc49449255e9b9bfe1fcfe6a2e7ab4d37ca89db3bacbfb14e9d2",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.eclipse.org/legal/epl-v10.html",
+            "sha256": "a40741b59364cc49449255e9b9bfe1fcfe6a2e7ab4d37ca89db3bacbfb14e9d2"
+          }
+        },
+        {
+          "path": "runtime/notices/EPL-2.0.html",
+          "sha256": "c510be040326acef9a648096369e28069967b87851b5b40e6e090b1794188ffe",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.eclipse.org/legal/epl-2.0/",
+            "sha256": "c510be040326acef9a648096369e28069967b87851b5b40e6e090b1794188ffe"
+          }
+        }
+      ],
+      "declarationDiscrepancy": "Upstream declarations differ; unresolved: dependency-lock POM declares EPL 1.0; embedded about.html declares EPL 2.0. Both declarations and texts are preserved."
+    },
+    {
+      "file": "org.eclipse.emf.ecore-2.15.0.jar",
+      "id": "org.eclipse.emf:org.eclipse.emf.ecore:2.15.0",
+      "version": "2.15.0",
+      "sha256": "d5e3c25344fe27f14f514f5d6deb6e9cc3f6153fa462361261a8d49a3dfe9bbf",
+      "embedded": [
+        {
+          "entry": "about.html",
+          "sha256": "6c9bb853edb62bb9281cd2daab3cc450c248d177a2e5cb38f203ece27ebb7e16"
+        },
+        {
+          "entry": "about.ini",
+          "sha256": "e48eda0ce62db248bd05267961a567705ef34561e6f10e1bc03ae260969386dc"
+        },
+        {
+          "entry": "about.mappings",
+          "sha256": "3a8de0fd42cfe94f523322d90e5c216d7b4016b25a0c57c27cdb92b61b5d63dc"
+        },
+        {
+          "entry": "about.properties",
+          "sha256": "89db48489ed7c7ccfc33035824482d5de99c0b8d0e0b87e40ff3ced836d736a4"
+        }
+      ],
+      "supplemental": [
+        {
+          "path": "runtime/notices/org.eclipse.emf.ecore-2.15.0-source-notices.txt",
+          "sha256": "5c51ca5bbcb300d8f4613e63edd82a753b9c50f8a564763ad2e0809e5b6123b9",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/org/eclipse/emf/org.eclipse.emf.ecore/2.15.0/org.eclipse.emf.ecore-2.15.0-sources.jar",
+            "sha256": "0ce6ba6a0a0fe057267902792bb5371ff1be20bf8af4e9dbb88e27c63df0598e",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/EPL-1.0.html",
+          "sha256": "a40741b59364cc49449255e9b9bfe1fcfe6a2e7ab4d37ca89db3bacbfb14e9d2",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.eclipse.org/legal/epl-v10.html",
+            "sha256": "a40741b59364cc49449255e9b9bfe1fcfe6a2e7ab4d37ca89db3bacbfb14e9d2"
+          }
+        },
+        {
+          "path": "runtime/notices/EPL-2.0.html",
+          "sha256": "c510be040326acef9a648096369e28069967b87851b5b40e6e090b1794188ffe",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.eclipse.org/legal/epl-2.0/",
+            "sha256": "c510be040326acef9a648096369e28069967b87851b5b40e6e090b1794188ffe"
+          }
+        }
+      ],
+      "declarationDiscrepancy": "Upstream declarations differ; unresolved: dependency-lock POM declares EPL 1.0; embedded about.html declares EPL 2.0. Both declarations and texts are preserved."
+    },
+    {
+      "file": "org.eclipse.emf.ecore.xmi-2.15.0.jar",
+      "id": "org.eclipse.emf:org.eclipse.emf.ecore.xmi:2.15.0",
+      "version": "2.15.0",
+      "sha256": "712ff33fef916d2fa4d838992fccae85c4817a71639a9a5933fc44568ed6dc57",
+      "embedded": [
+        {
+          "entry": "about.html",
+          "sha256": "f78849e99387ad99cef971a902128dacca80e2fe17deacf09df074c7d38be1e4"
+        }
+      ],
+      "supplemental": [
+        {
+          "path": "runtime/notices/org.eclipse.emf.ecore.xmi-2.15.0-source-notices.txt",
+          "sha256": "f96002c12822522529dcabdfa09822bbf96f2e0cbed9b1a7a1eff3e03fc2e6e5",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/org/eclipse/emf/org.eclipse.emf.ecore.xmi/2.15.0/org.eclipse.emf.ecore.xmi-2.15.0-sources.jar",
+            "sha256": "3a1014c1a0032e33788dfe5a7fef758cf9e145d2e401398ccbf5ee70e2a9998a",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/EPL-1.0.html",
+          "sha256": "a40741b59364cc49449255e9b9bfe1fcfe6a2e7ab4d37ca89db3bacbfb14e9d2",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.eclipse.org/legal/epl-v10.html",
+            "sha256": "a40741b59364cc49449255e9b9bfe1fcfe6a2e7ab4d37ca89db3bacbfb14e9d2"
+          }
+        },
+        {
+          "path": "runtime/notices/EPL-2.0.html",
+          "sha256": "c510be040326acef9a648096369e28069967b87851b5b40e6e090b1794188ffe",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://www.eclipse.org/legal/epl-2.0/",
+            "sha256": "c510be040326acef9a648096369e28069967b87851b5b40e6e090b1794188ffe"
+          }
+        }
+      ],
+      "declarationDiscrepancy": "Upstream declarations differ; unresolved: dependency-lock POM declares EPL 1.0; embedded about.html declares EPL 2.0. Both declarations and texts are preserved."
+    },
+    {
+      "file": "org.w3.xlink-33.2.jar",
+      "id": "org.geotools.ogc:org.w3.xlink:33.2",
+      "version": "33.2",
+      "sha256": "cfa71fa32fcf3487ba0d1888c90d57a45574b7062a26a54f3fd1e5ccff8fa780",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/org.w3.xlink-33.2-source-notices.txt",
+          "sha256": "1e9486b6d4454fa8d3c1793fe3ea5587afc719c38876b16b378ba3c5cd16a343",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.osgeo.org/repository/release/org/geotools/ogc/org.w3.xlink/33.2/org.w3.xlink-33.2-sources.jar",
+            "sha256": "df5574260830193004c2864360d3a68e700c84bf0185fc43bb11b66c9d8cd820",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-LICENSE.md",
+          "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/LICENSE.md",
+            "sha256": "994ce1902a23c74519b5d118c6bbb657edabce91dd6b7cc825d86bb8f5c9780f"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-GeoTools.md",
+          "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/GeoTools.md",
+            "sha256": "17e4f4338f6364576cf201182a0419d96181e8cf265b73952bea2e9000a07fa4"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-OGC.md",
+          "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/OGC.md",
+            "sha256": "92e7f53513fd7e4c8459e9d33d709775ada098d594b5a6e20d00e67745cd8d4a"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-W3C.md",
+          "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/W3C.md",
+            "sha256": "6736e37f92df9c547ea75bf005ff7bcad0a75cfdac46ec27c7a6c1122763dfb2"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-README.md",
+          "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/README.md",
+            "sha256": "43920463752117334f1a8172c5b14c82832a02035a8e43ad806385249f9c45c9"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-COLORBREWER.md",
+          "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/COLORBREWER.md",
+            "sha256": "af2d1abeb8fdf92fb4c411d5dfcce6bac4ea4033bf20b4cd0d612a4f18b56ee5"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-CreativeCommonsByAttribution.md",
+          "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/CreativeCommonsByAttribution.md",
+            "sha256": "582441af51c200f050e55ee378f75bc6d7dd009429bff798bf6ef13daa7b73ac"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-Bitstream-Vera-Fonts.md",
+          "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/Bitstream-Vera-Fonts.md",
+            "sha256": "8f82fbeab9c8a7af5cbd61a30e39c769ec42d1370abbf0ecb7bcbcf9c6689835"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-PostgreSQL.md",
+          "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/PostgreSQL.md",
+            "sha256": "64e8e182ccc063bd69e20e3903713dd05a33848471969f973bd8d2003fd8c9df"
+          }
+        },
+        {
+          "path": "runtime/notices/geotools-netCDF.md",
+          "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89",
+          "kind": "upstreamSupplementaryLicenseBundle",
+          "source": {
+            "url": "https://raw.githubusercontent.com/geotools/geotools/33.2/licenses/netCDF.md",
+            "sha256": "9cd33a66378e34280d452ab557237be0d288e519f0ac27e17df72b5778752d89"
+          }
+        }
+      ]
+    },
+    {
+      "file": "poi-5.5.1.jar",
+      "id": "org.apache.poi:poi:5.5.1",
+      "version": "5.5.1",
+      "sha256": "6c52e876ca75775a11b56e4b36a7541f682827f56406725fcd87560b792ee3d8",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE",
+          "sha256": "6e7c918e5a49f677c1b85a9eb2d035cd85c217fc42af6b4a336964a434001a9c"
+        },
+        {
+          "entry": "META-INF/NOTICE",
+          "sha256": "8e41ec916a59981a28397e2b46d7fb851eea02f7d179d75f030eb248916a4a09"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "poi-ooxml-5.5.1.jar",
+      "id": "org.apache.poi:poi-ooxml:5.5.1",
+      "version": "5.5.1",
+      "sha256": "bd7be2fdfe3fd2c1684fa813351c2798fd636b44f6236e0674500d4f8ff1c2f9",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE",
+          "sha256": "6e7c918e5a49f677c1b85a9eb2d035cd85c217fc42af6b4a336964a434001a9c"
+        },
+        {
+          "entry": "META-INF/NOTICE",
+          "sha256": "8e41ec916a59981a28397e2b46d7fb851eea02f7d179d75f030eb248916a4a09"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "poi-ooxml-lite-5.5.1.jar",
+      "id": "org.apache.poi:poi-ooxml-lite:5.5.1",
+      "version": "5.5.1",
+      "sha256": "e6e37adeb6d6ee8b40ec491ad955d934d8f99827ab050f105b18286e59b1d9e7",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE",
+          "sha256": "6e7c918e5a49f677c1b85a9eb2d035cd85c217fc42af6b4a336964a434001a9c"
+        },
+        {
+          "entry": "META-INF/NOTICE",
+          "sha256": "8e41ec916a59981a28397e2b46d7fb851eea02f7d179d75f030eb248916a4a09"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "re2j-1.8.jar",
+      "id": "com.google.re2j:re2j:1.8",
+      "version": "1.8",
+      "sha256": "7b52c72156dd7f98b3237a5b35c1d34fba381b21048c89208913ad80a45dfbd7",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/re2j-1.8-source-notices.txt",
+          "sha256": "ab1ee8022632554f586c2b3eeeaededa1759f0929900c8a16cfdcb6f232bf807",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/com/google/re2j/re2j/1.8/re2j-1.8-sources.jar",
+            "sha256": "4378db846db2d91c8028fe32efcb183a1f1b4157339d0a3b4c46b2c6b0655d7c",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        },
+        {
+          "path": "runtime/notices/re2j-LICENSE",
+          "sha256": "26a6133577cc8e48d7c002ac4d4a554786e7c0e1732e10f2db205e5e494c411b",
+          "kind": "upstreamLicenseText",
+          "source": {
+            "url": "https://raw.githubusercontent.com/google/re2j/re2j-1.8/LICENSE",
+            "sha256": "26a6133577cc8e48d7c002ac4d4a554786e7c0e1732e10f2db205e5e494c411b"
+          }
+        }
+      ]
+    },
+    {
+      "file": "si-quantity-2.1.jar",
+      "id": "si.uom:si-quantity:2.1",
+      "version": "2.1",
+      "sha256": "2cdcfd3e5395db5576f5efc0f224b5bbd0731f3ec7552afee6ee7b63a4f65820",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/si-quantity-2.1-source-notices.txt",
+          "sha256": "8d1a18d40d1656285328d6d6fb05deb6e087e10e6622e4dd07b38c7d7d15a0a0",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/si/uom/si-quantity/2.1/si-quantity-2.1-sources.jar",
+            "sha256": "d96d441ae3d87f72148bd5eb895dd14231f3efca0f66466b29b1eb48cbeabfb3",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "si-units-2.1.jar",
+      "id": "si.uom:si-units:2.1",
+      "version": "2.1",
+      "sha256": "491ed9956ddf4b2e30180b087e1f6fb51debccb6d46785ae0d52026342013c51",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/si-units-2.1-source-notices.txt",
+          "sha256": "c546f4873b36c251dc1b7880dbab962989dcb2dc05ca43723585f37bcf43ac7e",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/si/uom/si-units/2.1/si-units-2.1-sources.jar",
+            "sha256": "57a59c8e0ceb48e84024c2a9ad54cba76828049111dc8b8ab8ec8f17072c3f07",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "sqlite-jdbc-3.53.4.0.jar",
+      "id": "org.xerial:sqlite-jdbc:3.53.4.0",
+      "version": "3.53.4.0",
+      "sha256": "bcb1f51e36f940867e83342f9efbf5968ac44a6bef4d397bb4af7b17b45cd2fb",
+      "embedded": [
+        {
+          "entry": "META-INF/maven/org.xerial/sqlite-jdbc/LICENSE",
+          "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+        },
+        {
+          "entry": "META-INF/maven/org.xerial/sqlite-jdbc/LICENSE.zentus",
+          "sha256": "89167dab92289c7e5e2b65b044f0856b703d05e5d5e35c3548e73d9c7d2f5048"
+        }
+      ],
+      "supplemental": []
+    },
+    {
+      "file": "systems-common-2.1.jar",
+      "id": "systems.uom:systems-common:2.1",
+      "version": "2.1",
+      "sha256": "b3cc1f3e604dcd18d3bba266db5fd01744bbd6b02f147377d4016585ba375cff",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/systems-common-2.1-source-notices.txt",
+          "sha256": "126ad018759ba09795c8b72e658de17674a94194c8bb6baf1163cedd8b3b39d9",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/systems/uom/systems-common/2.1/systems-common-2.1-sources.jar",
+            "sha256": "60912984b4cd10d223ca37254d2fb5d56829ff4739632f06907e078b46ff4325",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "unit-api-2.2.jar",
+      "id": "javax.measure:unit-api:2.2",
+      "version": "2.2",
+      "sha256": "667487e1ee57298cdc767885f00b86c899b2fe7e72dc00b6560a6aa64f2bc9c4",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/unit-api-2.2-source-notices.txt",
+          "sha256": "3f6d9cc176657ef2c9eee17f3e44af9ae1416140afe8954b3531b13244647ef2",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/javax/measure/unit-api/2.2/unit-api-2.2-sources.jar",
+            "sha256": "61423f0fcb16319c189d14da7f71dc6711d68ff949ac90c9bb1301c530b490fe",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "uom-lib-common-2.2.jar",
+      "id": "tech.uom.lib:uom-lib-common:2.2",
+      "version": "2.2",
+      "sha256": "a01ece1c236b7b15a431b0383bdddf06dc6d7a85290e9a62b63904e1e4e0dc0d",
+      "embedded": [],
+      "supplemental": [
+        {
+          "path": "runtime/notices/uom-lib-common-2.2-source-notices.txt",
+          "sha256": "57ebbb7c9bcc94ca48542cd2d676f58d19b573cbe99258a20b4e2d94d3f74ba7",
+          "kind": "sourceCopyrightAndLicenseHeaders",
+          "source": {
+            "url": "https://repo.maven.apache.org/maven2/tech/uom/lib/uom-lib-common/2.2/uom-lib-common-2.2-sources.jar",
+            "sha256": "660ba0301ae9b9186190eb5a853009992f59e624e7eaedb7495424ac9e866e09",
+            "extraction": "All distinct source comment blocks containing copyright, (c), licensed under, redistribution and use, This software is the work, GNU Lesser, or GNU General; exact comment bytes retained."
+          }
+        }
+      ]
+    },
+    {
+      "file": "xmlbeans-5.3.0.jar",
+      "id": "org.apache.xmlbeans:xmlbeans:5.3.0",
+      "version": "5.3.0",
+      "sha256": "6cc69da3b4d35b83c5e477cd4daba204e44109833e34af2b9a8a2c8788289917",
+      "embedded": [
+        {
+          "entry": "META-INF/LICENSE.txt",
+          "sha256": "85e8c4e923b3a90af6abcd3979b5edf53a49a3870371c7be20f9eec465af89d4"
+        },
+        {
+          "entry": "META-INF/NOTICE.txt",
+          "sha256": "8c9e43041b8313ef1cc50c814624c9a6ab6f5140c08edfffdb403447763ee959"
+        }
+      ],
+      "supplemental": []
+    }
+  ]
+}

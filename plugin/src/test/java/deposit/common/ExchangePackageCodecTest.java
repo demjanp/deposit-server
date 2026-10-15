@@ -98,6 +98,27 @@ class ExchangePackageCodecTest {
     }
     private Map<String,Object> historicalImage(String ns,String kind,String id,Object... fields){var image=Json.map("namespaceId",ns,"kind",kind,"id",id);image.putAll(Json.map(fields));return image;}
     private Map<String,Object> bundle(String ns,List<Map<String,Object>> images){String epoch=UUID.randomUUID().toString(),id=UUID.randomUUID().toString();var changes=images.stream().map(image->Json.map("entityKind",image.get("kind"),"entityId",image.get("id"),"before",null,"after",image)).toList();var baseline=Json.map("id",id,"revisionId",id,"namespaceId",ns,"historyEpochId",epoch,"sequence",0L,"kind","baseline","parentRevisionId",null,"changes",changes,"touches",Map.of(),"dependencies",List.of());var envelope=Json.map("id",epoch,"mode","persistent","closed",false,"startedSequence",0L,"endedSequence",null,"baselineRevisionId",id,"headRevisionId",id,"baseline",baseline,"revisions",List.of(baseline));return Json.map("namespaceId",ns,"historyMode","persistent","activeEpochId",epoch,"headRevisionId",id,"epochs",List.of(envelope),"complete",true);}
+    @Test void sharedRevisionSpoolExportsClosedAndActiveEpochsWithIndependentBaselines()throws Exception{
+        var manifest=manifest();manifest.put("historyMode","persistent");String ns=(String)manifest.get("sourceNamespaceId");
+        var root=historicalImage(ns,"Namespace",ns,"name","Scientific namespace","description","");
+        var closed=bundle(ns,List.of(root));var closedEpoch=ValueCodec.map(((List<?>)closed.get("epochs")).getFirst());closedEpoch.put("closed",true);closedEpoch.put("endedSequence",1L);
+        var active=bundle(ns,List.of(root));var activeEpoch=ValueCodec.map(((List<?>)active.get("epochs")).getFirst());activeEpoch.put("startedSequence",2L);
+        var activeBaseline=ValueCodec.map(activeEpoch.get("baseline"));activeBaseline.put("sequence",2L);
+        try(var records=new ExportRecords(temp)){
+            records.addRevision("history-revisions",ValueCodec.map(closedEpoch.get("baseline")));
+            var first=records.revisions("history-revisions",0,1);closedEpoch.put("baseline",first.getFirst());closedEpoch.put("revisions",first);
+            records.addRevision("history-revisions",activeBaseline);
+            var second=records.revisions("history-revisions",1,2);activeEpoch.put("baseline",second.getFirst());activeEpoch.put("revisions",second);
+            active.put("epochs",List.of(closedEpoch,activeEpoch));Path archive=temp.resolve("closed-and-active.zip");
+            ExchangePackageCodec.write(archive,manifest,graph(),active,Map.of());
+            assertDoesNotThrow(()->ExchangePackageCodec.validate(archive));
+            assertDoesNotThrow(()->ExchangePackageCodec.validateSummary(archive));
+            var incorrectlyShared=new LinkedHashMap<>(activeEpoch);incorrectlyShared.put("revisions",records.revisions("history-revisions"));
+            var invalid=new LinkedHashMap<>(active);invalid.put("epochs",List.of(closedEpoch,incorrectlyShared));
+            Path bad=temp.resolve("shared-epochs.zip");ExchangePackageCodec.write(bad,manifest,graph(),invalid,Map.of());
+            var failure=assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validateSummary(bad));assertTrue(failure.getMessage().contains("baseline"),failure.getMessage());
+        }
+    }
     private Map<String,Object> onlyEpoch(Map<String,Object> history){return ValueCodec.map(((List<?>)history.get("epochs")).getFirst());}
     @Test void historyUsesHistoricalDeclarationsLargeScientificStringsAndCompleteBeforeStates()throws Exception{
         var manifest=manifest();manifest.put("historyMode","persistent");String ns=(String)manifest.get("sourceNamespaceId"),clazz=UUID.randomUUID().toString(),object=UUID.randomUUID().toString(),descriptor=UUID.randomUUID().toString();String value=" Unicode ? ".repeat(5000);

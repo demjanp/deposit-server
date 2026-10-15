@@ -1,0 +1,114 @@
+
+Source entries: org/ejml/EjmlParameters.java, org/ejml/FancyPrint.java, org/ejml/LinearSolverSafe.java, org/ejml/LinearSolverSparseSafe.java, org/ejml/LinearSolverToSparse.java, org/ejml/MatrixDimensionException.java, org/ejml/UtilEjml.java, org/ejml/data/BMatrixRMaj.java, org/ejml/data/CMatrixD1.java, org/ejml/data/CMatrixRMaj.java, org/ejml/data/ComplexPolar_F32.java, org/ejml/data/ComplexPolar_F64.java, org/ejml/data/Complex_F32.java, org/ejml/data/Complex_F64.java, org/ejml/data/DEigenpair.java, org/ejml/data/DGrowArray.java, org/ejml/data/DMatrix1Row.java, org/ejml/data/DMatrix2.java, org/ejml/data/DMatrix2x2.java, org/ejml/data/DMatrix3.java, org/ejml/data/DMatrix3x3.java, org/ejml/data/DMatrix4.java, org/ejml/data/DMatrix4x4.java, org/ejml/data/DMatrix5.java, org/ejml/data/DMatrix5x5.java, org/ejml/data/DMatrix6.java, org/ejml/data/DMatrix6x6.java, org/ejml/data/DMatrixD1.java, org/ejml/data/DScalar.java, org/ejml/data/ElementLocation.java, org/ejml/data/FEigenpair.java, org/ejml/data/FGrowArray.java, org/ejml/data/FMatrix1Row.java, org/ejml/data/FMatrix2.java, org/ejml/data/FMatrix2x2.java, org/ejml/data/FMatrix3.java, org/ejml/data/FMatrix3x3.java, org/ejml/data/FMatrix4.java, org/ejml/data/FMatrix4x4.java, org/ejml/data/FMatrix5.java, org/ejml/data/FMatrix5x5.java, org/ejml/data/FMatrix6.java, org/ejml/data/FMatrix6x6.java, org/ejml/data/FMatrixD1.java, org/ejml/data/FScalar.java, org/ejml/data/IGrowArray.java, org/ejml/data/IScalar.java, org/ejml/data/Matrix.java, org/ejml/data/ZMatrixD1.java, org/ejml/data/ZMatrixRMaj.java, org/ejml/ops/CommonOps_BDRM.java, org/ejml/ops/ComplexMath_F32.java, org/ejml/ops/ComplexMath_F64.java, org/ejml/ops/ConvertMatrixData.java, org/ejml/ops/DConvertArrays.java, org/ejml/ops/DConvertMatrixStruct.java, org/ejml/ops/DMonoid.java, org/ejml/ops/DOperatorBinary.java, org/ejml/ops/DOperatorBinaryIdx.java, org/ejml/ops/DOperatorUnary.java, org/ejml/ops/DSemiRing.java, org/ejml/ops/DSemiRings.java, org/ejml/ops/FConvertArrays.java, org/ejml/ops/FConvertMatrixStruct.java, org/ejml/ops/FMonoid.java, org/ejml/ops/FOperatorBinary.java, org/ejml/ops/FOperatorBinaryIdx.java, org/ejml/ops/FOperatorUnary.java, org/ejml/ops/FSemiRing.java, org/ejml/ops/FSemiRings.java, org/ejml/ops/MatrixFeatures_D.java, org/ejml/ops/MatrixFeatures_F.java, org/ejml/ops/QuickSort_S32.java, org/ejml/ops/ReadCsv.java, org/ejml/ops/SortCoupledArray_F32.java, org/ejml/ops/SortCoupledArray_F64.java, org/ejml/sparse/ComputePermutation.java, pabeles/concurrency/IntObjectConsumer.java, pabeles/concurrency/IntObjectTask.java, pabeles/concurrency/IntOperatorTask.java, pabeles/concurrency/IntProducerNumber.java, pabeles/concurrency/IntRangeConsumer.java, pabeles/concurrency/IntRangeObjectConsumer.java, pabeles/concurrency/IntRangeObjectTask.java, pabeles/concurrency/IntRangeTask.java
+/*
+ * Copyright (c) 2020, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/EjmlUnitTests.java, org/ejml/concurrency/EjmlConcurrency.java, org/ejml/data/DMatrix.java, org/ejml/data/DMatrixRBlock.java, org/ejml/data/DMatrixRMaj.java, org/ejml/data/DMatrixSparseCSC.java, org/ejml/data/DMatrixSparseTriplet.java, org/ejml/data/FMatrix.java, org/ejml/data/FMatrixRBlock.java, org/ejml/data/FMatrixRMaj.java, org/ejml/data/FMatrixSparseCSC.java, org/ejml/data/FMatrixSparseTriplet.java, org/ejml/data/MatrixSparse.java, org/ejml/masks/DMaskFactory.java, org/ejml/masks/DMaskPrimitive.java, org/ejml/masks/DMaskSparse.java, org/ejml/masks/DMaskSparseStructural.java, org/ejml/masks/FMaskFactory.java, org/ejml/masks/FMaskPrimitive.java, org/ejml/masks/FMaskSparse.java, org/ejml/masks/FMaskSparseStructural.java, org/ejml/masks/Mask.java, org/ejml/masks/MaskBuilder.java, org/ejml/ops/ConvertMatrixType.java, org/ejml/ops/DMonoids.java, org/ejml/ops/FMonoids.java, org/ejml/ops/IPredicateBinary.java, org/ejml/ops/IPredicatesBinary.java, org/ejml/ops/MatrixIO.java, pabeles/concurrency/ConcurrencyOps.java, pabeles/concurrency/GrowArray.java
+/*
+ * Copyright (c) 2021, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/data/CMatrix.java, org/ejml/data/DMatrixIterator.java, org/ejml/data/FMatrixIterator.java, org/ejml/data/ReshapeMatrix.java, org/ejml/data/SingularMatrixException.java, org/ejml/data/ZMatrix.java, org/ejml/interfaces/decomposition/BidiagonalDecomposition_F32.java, org/ejml/interfaces/decomposition/BidiagonalDecomposition_F64.java, org/ejml/interfaces/decomposition/CholeskyDecomposition_F32.java, org/ejml/interfaces/decomposition/CholeskyDecomposition_F64.java, org/ejml/interfaces/decomposition/CholeskyLDLDecomposition_F32.java, org/ejml/interfaces/decomposition/CholeskyLDLDecomposition_F64.java, org/ejml/interfaces/decomposition/CholeskySparseDecomposition.java, org/ejml/interfaces/decomposition/CholeskySparseDecomposition_F64.java, org/ejml/interfaces/decomposition/DecompositionInterface.java, org/ejml/interfaces/decomposition/EigenDecomposition.java, org/ejml/interfaces/decomposition/EigenDecomposition_F32.java, org/ejml/interfaces/decomposition/EigenDecomposition_F64.java, org/ejml/interfaces/decomposition/LUDecomposition_F32.java, org/ejml/interfaces/decomposition/LUDecomposition_F64.java, org/ejml/interfaces/decomposition/LUSparseDecomposition.java, org/ejml/interfaces/decomposition/LUSparseDecomposition_F64.java, org/ejml/interfaces/decomposition/QRPDecomposition_F32.java, org/ejml/interfaces/decomposition/QRPDecomposition_F64.java, org/ejml/interfaces/decomposition/QRSparseDecomposition.java, org/ejml/interfaces/decomposition/SingularValueDecomposition_F32.java, org/ejml/interfaces/decomposition/SingularValueDecomposition_F64.java, org/ejml/interfaces/decomposition/TridiagonalSimilarDecomposition_F32.java, org/ejml/interfaces/decomposition/TridiagonalSimilarDecomposition_F64.java, org/ejml/interfaces/linsol/LinearSolverDense.java, org/ejml/interfaces/linsol/ReducedRowEchelonForm.java, org/ejml/interfaces/linsol/ReducedRowEchelonForm_F32.java, org/ejml/interfaces/linsol/ReducedRowEchelonForm_F64.java
+/*
+ * Copyright (c) 2009-2017, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/data/DMatrixFixed.java, org/ejml/data/DMatrixSparse.java, org/ejml/data/DSubmatrixD1.java, org/ejml/data/FMatrixFixed.java, org/ejml/data/FMatrixSparse.java, org/ejml/data/FSubmatrixD1.java, org/ejml/data/MatrixType.java, org/ejml/data/Submatrix.java, org/ejml/interfaces/decomposition/BidiagonalDecomposition.java, org/ejml/interfaces/decomposition/CholeskyDecomposition.java, org/ejml/interfaces/decomposition/CholeskyLDLDecomposition.java, org/ejml/interfaces/decomposition/LUDecomposition.java, org/ejml/interfaces/decomposition/QRDecomposition.java, org/ejml/interfaces/decomposition/QRPDecomposition.java, org/ejml/interfaces/decomposition/SingularValueDecomposition.java, org/ejml/interfaces/decomposition/TridiagonalSimilarDecomposition.java, org/ejml/interfaces/linsol/LinearSolver.java, org/ejml/interfaces/linsol/LinearSolverSparse.java, org/ejml/ops/ReadMatrixCsv.java
+/*
+ * Copyright (c) 2009-2020, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/interfaces/SolveNullSpace.java, org/ejml/interfaces/decomposition/DecompositionSparseInterface.java
+/*
+ * Copyright (c) 2009-2018, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/interfaces/decomposition/CholeskySparseDecomposition_F32.java, org/ejml/interfaces/decomposition/LUSparseDecomposition_F32.java, org/ejml/sparse/FillReducing.java
+/*
+ * Copyright (c) 2009-2019, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

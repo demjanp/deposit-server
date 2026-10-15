@@ -10,7 +10,7 @@ import org.neo4j.driver.*;
 /** Stage 8 import analysis, apply, stale-plan, and clone acceptance. */
 @Timeout(120)
 class Stage8CoreIT {
-    static Driver driver;static final Path ROOT=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host");static final String USER="stage1-admin",PASSWORD="stage1-account-password";
+    static Driver driver;static final Path ROOT=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host");static final String USER="stage1-admin",PASSWORD="stage1-account-password";
     String token,namespace,name;
     static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
     static List<org.neo4j.driver.Record> query(String q,Map<String,Object> p){try(var s=driver.session()){return s.run("CYPHER 25 "+q,p,TransactionConfig.builder().withTimeout(Duration.ofSeconds(45)).build()).list();}}

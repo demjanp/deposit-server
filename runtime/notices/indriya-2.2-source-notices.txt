@@ -1,0 +1,31 @@
+
+Source entries: tech/units/indriya/AbstractQuantity.java, tech/units/indriya/AbstractSystemOfUnits.java, tech/units/indriya/AbstractUnit.java, tech/units/indriya/ComparableQuantity.java, tech/units/indriya/format/AbstractQuantityFormat.java, tech/units/indriya/format/AbstractUnitFormat.java, tech/units/indriya/format/CommonFormatter.java, tech/units/indriya/format/ConverterFormatter.java, tech/units/indriya/format/DefaultFormatService.java, tech/units/indriya/format/EBNFHelper.java, tech/units/indriya/format/EBNFUnitFormat.java, tech/units/indriya/format/FormatBehavior.java, tech/units/indriya/format/FormatConstants.java, tech/units/indriya/format/LocalUnitFormat.java, tech/units/indriya/format/NumberDelimiterQuantityFormat.java, tech/units/indriya/format/SimpleQuantityFormat.java, tech/units/indriya/format/SimpleUnitFormat.java, tech/units/indriya/format/SymbolMap.java, tech/units/indriya/format/Token.java, tech/units/indriya/format/TokenException.java, tech/units/indriya/format/TokenMgrError.java, tech/units/indriya/format/UnitStyle.java, tech/units/indriya/function/AbstractConverter.java, tech/units/indriya/function/AddConverter.java, tech/units/indriya/function/Calculus.java, tech/units/indriya/function/ConverterCompositionHandler.java, tech/units/indriya/function/DefaultNumberSystem.java, tech/units/indriya/function/DoubleMultiplyConverter.java, tech/units/indriya/function/ExpConverter.java, tech/units/indriya/function/IdentityMultiplyConverter.java, tech/units/indriya/function/LogConverter.java, tech/units/indriya/function/MixedRadix.java, tech/units/indriya/function/MultiplyConverter.java, tech/units/indriya/function/PowerOfIntConverter.java, tech/units/indriya/function/PowerOfPiConverter.java, tech/units/indriya/function/QuantityStreams.java, tech/units/indriya/function/QuantitySummaryStatistics.java, tech/units/indriya/function/RationalConverter.java, tech/units/indriya/function/RationalNumber.java, tech/units/indriya/function/package-info.java, tech/units/indriya/internal/format/DefaultCharStream.java, tech/units/indriya/internal/format/RationalNumberFormat.java, tech/units/indriya/internal/format/RationalNumberScanner.java, tech/units/indriya/internal/format/UnitFormatParser.java, tech/units/indriya/internal/format/UnitTokenConstants.java, tech/units/indriya/internal/format/UnitTokenManager.java, tech/units/indriya/internal/format/l10n/MultiPropertyResourceBundle.java, tech/units/indriya/internal/function/Calculator.java, tech/units/indriya/internal/function/Lazy.java, tech/units/indriya/internal/function/ScaleHelper.java, tech/units/indriya/internal/function/radix/MixedRadixSupport.java, tech/units/indriya/internal/function/radix/Radix.java, tech/units/indriya/internal/function/simplify/CompositionTask.java, tech/units/indriya/internal/function/simplify/CompositionTaskArrayAdapter.java, tech/units/indriya/internal/function/simplify/CompositionTaskBitScanner.java, tech/units/indriya/internal/function/simplify/UnitCompositionHandlerYieldingNormalForm.java, tech/units/indriya/package-info.java, tech/units/indriya/quantity/DefaultQuantityFactory.java, tech/units/indriya/quantity/MixedQuantity.java, tech/units/indriya/quantity/NumberQuantity.java, tech/units/indriya/quantity/Quantities.java, tech/units/indriya/quantity/QuantityRange.java, tech/units/indriya/quantity/time/TemporalQuantity.java, tech/units/indriya/quantity/time/TimeQuantities.java, tech/units/indriya/quantity/time/TimeUnitQuantity.java, tech/units/indriya/quantity/time/TimedData.java, tech/units/indriya/quantity/time/TimedQuantityData.java, tech/units/indriya/spi/AbstractMeasurement.java, tech/units/indriya/spi/AbstractServiceProvider.java, tech/units/indriya/spi/AbstractSystemOfUnitsService.java, tech/units/indriya/spi/DefaultServiceProvider.java, tech/units/indriya/spi/DimensionalModel.java, tech/units/indriya/spi/Measurement.java, tech/units/indriya/spi/NumberSystem.java, tech/units/indriya/spi/Range.java, tech/units/indriya/spi/ServiceConstants.java, tech/units/indriya/spi/StandardModel.java, tech/units/indriya/spi/UnitNameProvider.java, tech/units/indriya/unit/AlternateUnit.java, tech/units/indriya/unit/AnnotatedUnit.java, tech/units/indriya/unit/BaseUnit.java, tech/units/indriya/unit/DefaultSystemOfUnitsService.java, tech/units/indriya/unit/ProductUnit.java, tech/units/indriya/unit/TransformedUnit.java, tech/units/indriya/unit/UnitDimension.java, tech/units/indriya/unit/Units.java, tech/units/indriya/unit/package-info.java
+/*
+ * Units of Measurement Reference Implementation
+ * Copyright (c) 2005-2023, Jean-Marie Dautelle, Werner Keil, Otavio Santana.
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+ *    and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of JSR-385, Indriya nor the names of their contributors may be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */

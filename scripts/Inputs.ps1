@@ -27,9 +27,9 @@ function Get-Stage0Inputs([string]$Repo) {
     return @{schemaVersion=2;sha256=$hash;files=$records.ToArray();serverFingerprint=$repositoryHashes.server;hubFingerprint=$repositoryHashes.hub;serverBaseline=('filesystem:'+$repositoryHashes.server);hubBaseline=('filesystem:'+$repositoryHashes.hub)}
 }
 
-function Enter-Stage0CleanupBarrier([string]$Root='C:\data_processed\Deposit_v2\stage0') {
+function Enter-Stage0CleanupBarrier([string]$Root='D:\data_processed\Deposit_v2\stage0') {
     $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
-    if($rootPath -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
+    if($rootPath -ne 'D:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
     if(!(Test-Path -LiteralPath $rootPath -PathType Container)) {throw "Stage 0 root does not exist: $rootPath"}
     return [IO.File]::Open((Join-Path $rootPath 'cleanup-barrier.lock'),'OpenOrCreate','ReadWrite','ReadWrite')
 }

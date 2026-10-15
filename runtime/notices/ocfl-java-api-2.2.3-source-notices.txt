@@ -1,0 +1,50 @@
+
+Source entries: io/ocfl/api/DigestAlgorithmRegistry.java, io/ocfl/api/MutableOcflRepository.java, io/ocfl/api/OcflConfig.java, io/ocfl/api/OcflConstants.java, io/ocfl/api/OcflFileRetriever.java, io/ocfl/api/OcflObjectUpdater.java, io/ocfl/api/OcflOption.java, io/ocfl/api/OcflRepository.java, io/ocfl/api/exception/AlreadyExistsException.java, io/ocfl/api/exception/CorruptObjectException.java, io/ocfl/api/exception/FixityCheckException.java, io/ocfl/api/exception/InvalidInventoryException.java, io/ocfl/api/exception/InvalidVersionException.java, io/ocfl/api/exception/LockException.java, io/ocfl/api/exception/NotFoundException.java, io/ocfl/api/exception/ObjectOutOfSyncException.java, io/ocfl/api/exception/OcflDbException.java, io/ocfl/api/exception/OcflExtensionException.java, io/ocfl/api/exception/OcflFileAlreadyExistsException.java, io/ocfl/api/exception/OcflIOException.java, io/ocfl/api/exception/OcflInputException.java, io/ocfl/api/exception/OcflJavaException.java, io/ocfl/api/exception/OcflNoSuchFileException.java, io/ocfl/api/exception/OcflStateException.java, io/ocfl/api/exception/OverwriteException.java, io/ocfl/api/exception/PathConstraintException.java, io/ocfl/api/exception/RepositoryConfigurationException.java, io/ocfl/api/exception/ValidationException.java, io/ocfl/api/io/FixityCheckChannel.java, io/ocfl/api/io/FixityCheckInputStream.java, io/ocfl/api/model/DigestAlgorithm.java, io/ocfl/api/model/FileChange.java, io/ocfl/api/model/FileChangeHistory.java, io/ocfl/api/model/FileChangeType.java, io/ocfl/api/model/FileDetails.java, io/ocfl/api/model/InventoryType.java, io/ocfl/api/model/ObjectDetails.java, io/ocfl/api/model/ObjectVersionId.java, io/ocfl/api/model/OcflObjectVersion.java, io/ocfl/api/model/OcflObjectVersionFile.java, io/ocfl/api/model/OcflVersion.java, io/ocfl/api/model/User.java, io/ocfl/api/model/ValidationCode.java, io/ocfl/api/model/ValidationIssue.java, io/ocfl/api/model/ValidationResults.java, io/ocfl/api/model/VersionDetails.java, io/ocfl/api/model/VersionInfo.java, io/ocfl/api/model/VersionNum.java, io/ocfl/api/util/Enforce.java
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2019-2021 University of Wisconsin Board of Regents
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+Source entries: io/ocfl/api/model/SizeDigestAlgorithm.java, io/ocfl/api/model/StandardDigestAlgorithm.java
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2024 OCFL Java Implementers Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */

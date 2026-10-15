@@ -1,0 +1,388 @@
+
+Source entries: net/opengis/ows10/AcceptFormatsType.java, net/opengis/ows10/AcceptVersionsType.java, net/opengis/ows10/AddressType.java, net/opengis/ows10/BoundingBoxType.java, net/opengis/ows10/CapabilitiesBaseType.java, net/opengis/ows10/CodeType.java, net/opengis/ows10/ContactType.java, net/opengis/ows10/DCPType.java, net/opengis/ows10/DescriptionType.java, net/opengis/ows10/DocumentRoot.java, net/opengis/ows10/ExceptionReportType.java, net/opengis/ows10/ExceptionType.java, net/opengis/ows10/GetCapabilitiesType.java, net/opengis/ows10/HTTPType.java, net/opengis/ows10/IdentificationType.java, net/opengis/ows10/MetadataType.java, net/opengis/ows10/OnlineResourceType.java, net/opengis/ows10/OperationType.java, net/opengis/ows10/OperationsMetadataType.java, net/opengis/ows10/Ows10Factory.java, net/opengis/ows10/Ows10Package.java, net/opengis/ows10/RequestMethodType.java, net/opengis/ows10/ResponsiblePartySubsetType.java, net/opengis/ows10/ResponsiblePartyType.java, net/opengis/ows10/SectionsType.java, net/opengis/ows10/ServiceIdentificationType.java, net/opengis/ows10/ServiceProviderType.java, net/opengis/ows10/TelephoneType.java, net/opengis/ows10/WGS84BoundingBoxType.java, net/opengis/ows10/impl/AcceptFormatsTypeImpl.java, net/opengis/ows10/impl/AcceptVersionsTypeImpl.java, net/opengis/ows10/impl/AddressTypeImpl.java, net/opengis/ows10/impl/BoundingBoxTypeImpl.java, net/opengis/ows10/impl/CapabilitiesBaseTypeImpl.java, net/opengis/ows10/impl/CodeTypeImpl.java, net/opengis/ows10/impl/ContactTypeImpl.java, net/opengis/ows10/impl/DCPTypeImpl.java, net/opengis/ows10/impl/DescriptionTypeImpl.java, net/opengis/ows10/impl/DocumentRootImpl.java, net/opengis/ows10/impl/ExceptionReportTypeImpl.java, net/opengis/ows10/impl/ExceptionTypeImpl.java, net/opengis/ows10/impl/GetCapabilitiesTypeImpl.java, net/opengis/ows10/impl/HTTPTypeImpl.java, net/opengis/ows10/impl/IdentificationTypeImpl.java, net/opengis/ows10/impl/MetadataTypeImpl.java, net/opengis/ows10/impl/OnlineResourceTypeImpl.java, net/opengis/ows10/impl/OperationTypeImpl.java, net/opengis/ows10/impl/OperationsMetadataTypeImpl.java, net/opengis/ows10/impl/Ows10FactoryImpl.java, net/opengis/ows10/impl/Ows10PackageImpl.java, net/opengis/ows10/impl/RequestMethodTypeImpl.java, net/opengis/ows10/impl/ResponsiblePartySubsetTypeImpl.java, net/opengis/ows10/impl/ResponsiblePartyTypeImpl.java, net/opengis/ows10/impl/SectionsTypeImpl.java, net/opengis/ows10/impl/ServiceIdentificationTypeImpl.java, net/opengis/ows10/impl/ServiceProviderTypeImpl.java, net/opengis/ows10/impl/TelephoneTypeImpl.java, net/opengis/ows10/impl/WGS84BoundingBoxTypeImpl.java, net/opengis/ows11/AbstractReferenceBaseType.java, net/opengis/ows11/AcceptFormatsType.java, net/opengis/ows11/AcceptVersionsType.java, net/opengis/ows11/AddressType.java, net/opengis/ows11/AllowedValuesType.java, net/opengis/ows11/AnyValueType.java, net/opengis/ows11/BasicIdentificationType.java, net/opengis/ows11/BoundingBoxType.java, net/opengis/ows11/CapabilitiesBaseType.java, net/opengis/ows11/CodeType.java, net/opengis/ows11/ContactType.java, net/opengis/ows11/ContentsBaseType.java, net/opengis/ows11/DCPType.java, net/opengis/ows11/DatasetDescriptionSummaryBaseType.java, net/opengis/ows11/DescriptionType.java, net/opengis/ows11/DocumentRoot.java, net/opengis/ows11/DomainMetadataType.java, net/opengis/ows11/DomainType.java, net/opengis/ows11/ExceptionReportType.java, net/opengis/ows11/ExceptionType.java, net/opengis/ows11/GetCapabilitiesType.java, net/opengis/ows11/GetResourceByIdType.java, net/opengis/ows11/HTTPType.java, net/opengis/ows11/IdentificationType.java, net/opengis/ows11/KeywordsType.java, net/opengis/ows11/LanguageStringType.java, net/opengis/ows11/ManifestType.java, net/opengis/ows11/MetadataType.java, net/opengis/ows11/NoValuesType.java, net/opengis/ows11/OnlineResourceType.java, net/opengis/ows11/OperationType.java, net/opengis/ows11/OperationsMetadataType.java, net/opengis/ows11/Ows11Factory.java, net/opengis/ows11/Ows11Package.java, net/opengis/ows11/RangeClosureType.java, net/opengis/ows11/RangeType.java, net/opengis/ows11/ReferenceGroupType.java, net/opengis/ows11/ReferenceType.java, net/opengis/ows11/RequestMethodType.java, net/opengis/ows11/ResponsiblePartySubsetType.java, net/opengis/ows11/ResponsiblePartyType.java, net/opengis/ows11/SectionsType.java, net/opengis/ows11/ServiceProviderType.java, net/opengis/ows11/ServiceReferenceType.java, net/opengis/ows11/TelephoneType.java, net/opengis/ows11/UnNamedDomainType.java, net/opengis/ows11/ValueType.java, net/opengis/ows11/ValuesReferenceType.java, net/opengis/ows11/WGS84BoundingBoxType.java
+/**
+ * <copyright>
+ * </copyright>
+ *
+ * $Id$
+ */
+
+Source entries: net/opengis/ows11/Ows11Package.java
+/**
+ * <!-- begin-user-doc -->
+ * The <b>Package</b> for the model.
+ * It contains accessors for the meta objects to represent
+ * <ul>
+ *   <li>each class,</li>
+ *   <li>each feature of each class,</li>
+ *   <li>each enum,</li>
+ *   <li>and each data type</li>
+ * </ul>
+ * <!-- end-user-doc -->
+ * <!-- begin-model-doc -->
+ * This XML Schema Document encodes the parts of ISO 19115 used by the common "ServiceIdentification" and "ServiceProvider" sections of the GetCapabilities operation response, known as the service metadata XML document. The parts encoded here are the MD_Keywords, CI_ResponsibleParty, and related classes. The UML package prefixes were omitted from XML names, and the XML element names were all capitalized, for consistency with other OWS Schemas. This document also provides a simple coding of text in multiple languages, simplified from Annex J of ISO 19115.
+ * 		Copyright (c) 2006 Open Geospatial Consortium, Inc. All Rights Reserved.
+ * 
+ *    See http://www.w3.org/XML/1998/namespace.html and
+ *    http://www.w3.org/TR/REC-xml for information about this namespace.
+ * 
+ *     This schema document describes the XML namespace, in a form
+ *     suitable for import by other schema documents.
+ * 
+ *     Note that local names in this namespace are intended to be defined
+ *     only by the World Wide Web Consortium or its subgroups.  The
+ *     following names are currently defined in this namespace and should
+ *     not be used with conflicting semantics by any Working Group,
+ *     specification, or document instance:
+ * 
+ *     base (as an attribute name): denotes an attribute whose value
+ *          provides a URI to be used as the base for interpreting any
+ *          relative URIs in the scope of the element on which it
+ *          appears; its value is inherited.  This name is reserved
+ *          by virtue of its definition in the XML Base specification.
+ * 
+ *     id   (as an attribute name): denotes an attribute whose value
+ *          should be interpreted as if declared to be of type ID.
+ *          This name is reserved by virtue of its definition in the
+ *          xml:id specification.
+ * 
+ *     lang (as an attribute name): denotes an attribute whose value
+ *          is a language code for the natural language of the content of
+ *          any element; its value is inherited.  This name is reserved
+ *          by virtue of its definition in the XML specification.
+ * 
+ *     space (as an attribute name): denotes an attribute whose
+ *          value is a keyword indicating what whitespace processing
+ *          discipline is intended for the content of the element; its
+ *          value is inherited.  This name is reserved by virtue of its
+ *          definition in the XML specification.
+ * 
+ *     Father (in any context at all): denotes Jon Bosak, the chair of
+ *          the original XML Working Group.  This name is reserved by
+ *          the following decision of the W3C XML Plenary and
+ *          XML Coordination groups:
+ * 
+ *              In appreciation for his vision, leadership and dedication
+ *              the W3C XML Plenary on this 10th day of February, 2000
+ *              reserves for Jon Bosak in perpetuity the XML name
+ *              xml:Father
+ * 
+ * This schema defines attributes and an attribute group
+ *         suitable for use by
+ *         schemas wishing to allow xml:base, xml:lang, xml:space or xml:id
+ *         attributes on elements they define.
+ * 
+ *         To enable this, such a schema must import this schema
+ *         for the XML namespace, e.g. as follows:
+ *         &lt;schema . . .&gt;
+ *          . . .
+ *          &lt;import namespace="http://www.w3.org/XML/1998/namespace"
+ *                     schemaLocation="http://www.w3.org/2001/xml.xsd"/&gt;
+ * 
+ *         Subsequently, qualified reference to any of the attributes
+ *         or the group defined below will have the desired effect, e.g.
+ * 
+ *         &lt;type . . .&gt;
+ *          . . .
+ *          &lt;attributeGroup ref="xml:specialAttrs"/&gt;
+ * 
+ *          will define a type which will schema-validate an instance
+ *          element with any of those attributes
+ * In keeping with the XML Schema WG's standard versioning
+ *    policy, this schema document will persist at
+ *    http://www.w3.org/2007/08/xml.xsd.
+ *    At the date of issue it can also be found at
+ *    http://www.w3.org/2001/xml.xsd.
+ *    The schema document at that URI may however change in the future,
+ *    in order to remain compatible with the latest version of XML Schema
+ *    itself, or with the XML namespace itself.  In other words, if the XML
+ *    Schema or XML namespaces change, the version of this document at
+ *    http://www.w3.org/2001/xml.xsd will change
+ *    accordingly; the version at
+ *    http://www.w3.org/2007/08/xml.xsd will not change.
+ * <!-- end-model-doc -->
+ * @see net.opengis.ows11.Ows11Factory
+ * @model kind="package"
+ *        annotation="http://www.w3.org/XML/1998/namespace lang='en'"
+ * @generated
+ */
+
+Source entries: net/opengis/ows20/Ows20Package.java
+/**
+ * <!-- begin-user-doc -->
+ * The <b>Package</b> for the model.
+ * It contains accessors for the meta objects to represent
+ * <ul>
+ *   <li>each class,</li>
+ *   <li>each feature of each class,</li>
+ *   <li>each enum,</li>
+ *   <li>and each data type</li>
+ * </ul>
+ * <!-- end-user-doc -->
+ * <!-- begin-model-doc -->
+ * This XML Schema Document encodes the parts of ISO 19115 used
+ *     by the common "ServiceIdentification" and "ServiceProvider" sections of the
+ *     GetCapabilities operation response, known as the service metadata XML
+ *     document. The parts encoded here are the MD_Keywords, CI_ResponsibleParty,
+ *     and related classes. The UML package prefixes were omitted from XML names,
+ *     and the XML element names were all capitalized, for consistency with other
+ *     OWS Schemas. This document also provides a simple coding of text in
+ *     multiple languages, simplified from Annex J of ISO 19115.
+ * 
+ *     OWS is an OGC Standard.
+ *     Copyright (c) 2009 Open Geospatial Consortium.
+ *     To obtain additional rights of use, visit http://www.opengeospatial.org/legal/ .
+ * 
+ * This XML Schema Document includes and imports, directly or
+ *       indirectly, all the XML Schemas defined by the OWS Common Implemetation
+ *       Specification.
+ * 
+ *       OWS is an OGC Standard.
+ *       Copyright (c) 2009 Open Geospatial Consortium.
+ *       To obtain additional rights of use, visit http://www.opengeospatial.org/legal/ .
+ * 
+ * This XML Schema Document encodes the GetResourceByID
+ *     operation request message. This typical operation is specified as a base
+ *     for profiling in specific OWS specifications. For information on the
+ *     allowed changes and limitations in such profiling, see Subclause 9.4.1 of
+ *     the OWS Common specification.
+ * 
+ *     OWS is an OGC Standard.
+ *     Copyright (c) 2009 Open Geospatial Consortium.
+ *     To obtain additional rights of use, visit http://www.opengeospatial.org/legal/ .
+ * 
+ * This XML Schema Document encodes the Exception Report
+ *     response to all OWS operations.
+ * 
+ *     OWS is an OGC Standard.
+ *     Copyright (c) 2009 Open Geospatial Consortium.
+ *     To obtain additional rights of use, visit http://www.opengeospatial.org/legal/ .
+ * 
+ * This XML Schema Document encodes the allowed values (or
+ *     domain) of a quantity, often for an input or output parameter to an OWS.
+ *     Such a parameter is sometimes called a variable, quantity, literal, or
+ *     typed literal. Such a parameter can use one of many data types, including
+ *     double, integer, boolean, string, or URI. The allowed values can also be
+ *     encoded for a quantity that is not explicit or not transferred, but is
+ *     constrained by a server implementation.
+ * 
+ *     OWS is an OGC Standard.
+ *     Copyright (c) 2009 Open Geospatial Consortium.
+ *     To obtain additional rights of use, visit http://www.opengeospatial.org/legal/
+ * 
+ * This XML Schema Document encodes the typical Contents
+ *     section of an OWS service metadata (Capabilities) document. This Schema
+ *     can be built upon to define the Contents section for a specific OWS. If
+ *     the ContentsBaseType in this XML Schema cannot be restricted and extended
+ *     to define the Contents section for a specific OWS, all other relevant
+ *     parts defined in owsContents.xsd shall be used by the "ContentsType" in
+ *     the wxsContents.xsd prepared for the specific OWS.
+ * 
+ *     OWS is an OGC Standard.
+ *     Copyright (c) 2009 Open Geospatial Consortium.
+ *     To obtain additional rights of use, visit http://www.opengeospatial.org/legal/
+ * 
+ * This XML Schema Document specifies types and elements for
+ *     input and output of operation data, allowing including multiple data items
+ *     with each data item either included or referenced. The contents of each
+ *     type and element specified here can be restricted and/or extended for each
+ *     use in a specific OWS specification.
+ * 
+ *     OWS is an OGC Standard.
+ *     Copyright (c) 2009 Open Geospatial Consortium.
+ *     To obtain additional rights of use, visit http://www.opengeospatial.org/legal/ .
+ * 
+ * This XML Schema Document encodes a new AdditionalParameters
+ *     element that contains one or more AdditionalParameter elements, which each
+ *     contain a specific parameter name and one or more values of that parameter.
+ *     This AdditionalParameters element is substitutable for ows:Metadata,
+ *     anywhere that element is allowed. The document also encodes a new nilValue
+ *     element of a newly defined NilValue type that allows the specification of
+ *     a nilReason attribute.
+ * 
+ *    OWS is an OGC Standard.
+ *    Copyright (c) 2009 Open Geospatial Consortium.
+ *    To obtain additional rights of use, visit http://www.opengeospatial.org/legal/ .
+ * 
+ * 
+ *    <div xmlns="http://www.w3.org/1999/xhtml">
+ *     <h1>About the XML namespace</h1>
+ * 
+ *     <div class="bodytext">
+ *      <p>
+ *       This schema document describes the XML namespace, in a form
+ *       suitable for import by other schema documents.
+ *      </p>
+ *      <p>
+ *       See <a href="http://www.w3.org/XML/1998/namespace.html">
+ *       http://www.w3.org/XML/1998/namespace.html</a> and
+ *       <a href="http://www.w3.org/TR/REC-xml">
+ *       http://www.w3.org/TR/REC-xml</a> for information
+ *       about this namespace.
+ *      </p>
+ *      <p>
+ *       Note that local names in this namespace are intended to be
+ *       defined only by the World Wide Web Consortium or its subgroups.
+ *       The names currently defined in this namespace are listed below.
+ *       They should not be used with conflicting semantics by any Working
+ *       Group, specification, or document instance.
+ *      </p>
+ *      <p>
+ *       See further below in this document for more information about <a href="#usage">how to refer to this schema document from your own
+ *       XSD schema documents</a> and about <a href="#nsversioning">the
+ *       namespace-versioning policy governing this schema document</a>.
+ *      </p>
+ *     </div>
+ *    </div>
+ * 
+ * 
+ *    <div xmlns="http://www.w3.org/1999/xhtml">
+ * 
+ *     <h3>Father (in any context at all)</h3>
+ * 
+ *     <div class="bodytext">
+ *      <p>
+ *       denotes Jon Bosak, the chair of
+ *       the original XML Working Group.  This name is reserved by
+ *       the following decision of the W3C XML Plenary and
+ *       XML Coordination groups:
+ *      </p>
+ *      <blockquote>
+ *        <p>
+ * 	In appreciation for his vision, leadership and
+ * 	dedication the W3C XML Plenary on this 10th day of
+ * 	February, 2000, reserves for Jon Bosak in perpetuity
+ * 	the XML name "xml:Father".
+ *        </p>
+ *      </blockquote>
+ *     </div>
+ *    </div>
+ * 
+ * 
+ *    <div id="usage" xml:id="usage" xmlns="http://www.w3.org/1999/xhtml">
+ *     <h2>
+ *       <a name="usage">About this schema document</a>
+ *     </h2>
+ * 
+ *     <div class="bodytext">
+ *      <p>
+ *       This schema defines attributes and an attribute group suitable
+ *       for use by schemas wishing to allow <code>xml:base</code>,
+ *       <code>xml:lang</code>, <code>xml:space</code> or
+ *       <code>xml:id</code> attributes on elements they define.
+ *      </p>
+ *      <p>
+ *       To enable this, such a schema must import this schema for
+ *       the XML namespace, e.g. as follows:
+ *      </p>
+ *      <pre>
+ *           &lt;schema . . .&gt;
+ *            . . .
+ *            &lt;import namespace="http://www.w3.org/XML/1998/namespace"
+ *                       schemaLocation="http://www.w3.org/2001/xml.xsd"/&gt;
+ *      </pre>
+ *      <p>
+ *       or
+ *      </p>
+ *      <pre>
+ *            &lt;import namespace="http://www.w3.org/XML/1998/namespace"
+ *                       schemaLocation="http://www.w3.org/2009/01/xml.xsd"/&gt;
+ *      </pre>
+ *      <p>
+ *       Subsequently, qualified reference to any of the attributes or the
+ *       group defined below will have the desired effect, e.g.
+ *      </p>
+ *      <pre>
+ *           &lt;type . . .&gt;
+ *            . . .
+ *            &lt;attributeGroup ref="xml:specialAttrs"/&gt;
+ *      </pre>
+ *      <p>
+ *       will define a type which will schema-validate an instance element
+ *       with any of those attributes.
+ *      </p>
+ *     </div>
+ *    </div>
+ * 
+ * 
+ *    <div id="nsversioning" xml:id="nsversioning" xmlns="http://www.w3.org/1999/xhtml">
+ *     <h2>
+ *       <a name="nsversioning">Versioning policy for this schema document</a>
+ *     </h2>
+ *     <div class="bodytext">
+ *      <p>
+ *       In keeping with the XML Schema WG's standard versioning
+ *       policy, this schema document will persist at
+ *       <a href="http://www.w3.org/2009/01/xml.xsd">
+ *        http://www.w3.org/2009/01/xml.xsd</a>.
+ *      </p>
+ *      <p>
+ *       At the date of issue it can also be found at
+ *       <a href="http://www.w3.org/2001/xml.xsd">
+ *        http://www.w3.org/2001/xml.xsd</a>.
+ *      </p>
+ *      <p>
+ *       The schema document at that URI may however change in the future,
+ *       in order to remain compatible with the latest version of XML
+ *       Schema itself, or with the XML namespace itself.  In other words,
+ *       if the XML Schema or XML namespaces change, the version of this
+ *       document at <a href="http://www.w3.org/2001/xml.xsd">
+ *        http://www.w3.org/2001/xml.xsd
+ *       </a>
+ *       will change accordingly; the version at
+ *       <a href="http://www.w3.org/2009/01/xml.xsd">
+ *        http://www.w3.org/2009/01/xml.xsd
+ *       </a>
+ *       will not change.
+ *      </p>
+ *      <p>
+ *       Previous dated (and unchanging) versions of this schema
+ *       document are at:
+ *      </p>
+ *      <ul>
+ *       <li>
+ *           <a href="http://www.w3.org/2009/01/xml.xsd">
+ * 	http://www.w3.org/2009/01/xml.xsd</a>
+ *         </li>
+ *       <li>
+ *           <a href="http://www.w3.org/2007/08/xml.xsd">
+ * 	http://www.w3.org/2007/08/xml.xsd</a>
+ *         </li>
+ *       <li>
+ *           <a href="http://www.w3.org/2004/10/xml.xsd">
+ * 	http://www.w3.org/2004/10/xml.xsd</a>
+ *         </li>
+ *       <li>
+ *           <a href="http://www.w3.org/2001/03/xml.xsd">
+ * 	http://www.w3.org/2001/03/xml.xsd</a>
+ *         </li>
+ *      </ul>
+ *     </div>
+ *    </div>
+ * 
+ * This schema document provides attribute declarations and
+ * attribute group, complex type and simple type definitions which can be used in
+ * the construction of user schemas to define the structure of particular linking
+ * constructs, e.g.
+ * 
+ * <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+ *            xmlns:xl="http://www.w3.org/1999/xlink">
+ * 
+ *  <xs:import namespace="http://www.w3.org/1999/xlink"
+ *             location="http://www.w3.org/1999/xlink.xsd">
+ * 
+ *  <xs:element name="mySimple">
+ *   <xs:complexType>
+ *    ...
+ *    <xs:attributeGroup ref="xl:simpleAttrs"/>
+ *    ...
+ *   </xs:complexType>
+ *  </xs:element>
+ *  ...
+ * </xs:schema>
+ * <!-- end-model-doc -->
+ * @see net.opengis.ows20.Ows20Factory
+ * @model kind="package"
+ *        annotation="http://www.w3.org/XML/1998/namespace lang='en'"
+ * @generated
+ */

@@ -32,7 +32,10 @@ public final class ExportRecords implements AutoCloseable {
         if(dependencies instanceof Collection<?> values)for(Object value:values)addValue(category+"-dependencies",value);
         add(category,Json.map("metadata",metadata,"start",(long)start,"end",(long)list(changeCategory).size(),"touchStart",(long)touchStart,"touchEnd",(long)list(category+"-touches").size(),"dependencyStart",(long)dependencyStart,"dependencyEnd",(long)list(category+"-dependencies").size()));
     }
-    public List<Map<String,Object>> revisions(String category){var envelopes=list(category);return new AbstractList<>(){
+    public List<Map<String,Object>> revisions(String category){return revisionsView(category,list(category));}
+    /** Fixed revision range: later epochs may append to the shared spool without changing this envelope. */
+    public List<Map<String,Object>> revisions(String category,int start,int end){return revisionsView(category,slice(category,start,end));}
+    private List<Map<String,Object>> revisionsView(String category,List<Map<String,Object>> envelopes){return new AbstractList<>(){
         public int size(){return envelopes.size();}
         public Map<String,Object> get(int item){var envelope=envelopes.get(item);var revision=new LinkedHashMap<>(ValueCodec.map(envelope.get("metadata")));revision.put("changes",slice(category+"-rows",((Number)envelope.get("start")).intValue(),((Number)envelope.get("end")).intValue()));
             var touches=slice(category+"-touches",((Number)envelope.get("touchStart")).intValue(),((Number)envelope.get("touchEnd")).intValue());

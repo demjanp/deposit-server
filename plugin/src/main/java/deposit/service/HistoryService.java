@@ -35,6 +35,7 @@ public final class HistoryService extends ActionService {
     /** Export one epoch through fixed record spools, retaining only the current image index. */
     private Map<String,Object> historyExportEpoch(ExportRecords records,Node epoch,boolean active){
         String epochId=CoreRepository.id(epoch);
+        int revisionStart=records.list("history-revisions").size();
         var state=new ExportState(records);Set<String> seen=Collections.newSetFromMap(records.<Boolean>index());String previous=null,first=null;long sequence=-1;
         try(var revisions=c.tx.execute("MATCH (r:Revision {namespaceId:$namespaceId,historyEpochId:$epochId}) RETURN r ORDER BY r.sequence,r.id",Map.of("namespaceId",c.namespaceId,"epochId",epochId))){
             while(revisions.hasNext()){
@@ -58,7 +59,7 @@ public final class HistoryService extends ActionService {
         if(first==null)c.fail("HISTORY_UNAVAILABLE","History baseline is unavailable");
         if(active&&!Objects.equals(previous,root().getProperty("headRevisionId",null)))c.fail("HISTORY_UNAVAILABLE","History head is unavailable");
         if(!active&&epoch.hasProperty("endedSequence")&&sequence>((Number)epoch.getProperty("endedSequence")).longValue())c.fail("HISTORY_UNAVAILABLE","Closed history epoch exceeds its end sequence");
-        var revisions=records.revisions("history-revisions");
+        var revisions=records.revisions("history-revisions",revisionStart,records.list("history-revisions").size());
         return Json.map("id",epochId,"mode",epoch.getProperty("mode"),"closed",epoch.getProperty("closed",false),"startedSequence",epoch.getProperty("startedSequence",0L),"endedSequence",epoch.getProperty("endedSequence",null),"baselineRevisionId",epoch.getProperty("baselineRevisionId"),"headRevisionId",previous,"baseline",revisions.getFirst(),"revisions",revisions);
     }
     private static final class ExportState extends AbstractMap<String,Map<String,Object>> implements HistoryCodec.DeclarationState {

@@ -3,7 +3,9 @@ package deposit.repository;
 import deposit.common.*;
 import java.util.*;
 import java.nio.file.*;
+import java.nio.file.Path;
 import java.io.*;
+import java.time.ZonedDateTime;
 import org.neo4j.graphdb.*;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
@@ -60,6 +62,56 @@ public final class ResourceRepository {
     }
     public Node linked(Node descriptor) {var e=descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING);return e==null?null:e.getEndNode();}
     public void changed(Node r){Node loc=location(CoreRepository.id(r));orphan(loc);}
+    /** Internal authority for resources created by one materialization, never a public access grant. */
+    public ImportedResources beginImport(String namespace,String actor) {
+        requireImportWriter(namespace,actor);return new ImportedResources(this,namespace,actor);
+    }
+    private void requireImportWriter(String namespace,String actor) {
+        ((InternalTransaction)tx).kernelTransaction().assertOpen();
+        String role=core.resourceWriteRole(actor,namespace);
+        if(core.namespace(namespace)==null||!("owner".equals(role)||"editor".equals(role)))throw ExceptionHandler.fail("FORBIDDEN","Import requires destination write authority");
+    }
+    public static final class ImportedResources implements AutoCloseable {
+        private final ResourceRepository owner;
+        private final String namespace,actor;
+        private final Map<String,ImportedResource> created=new HashMap<>();
+        private boolean closed;
+        private record ImportedResource(ResourceStorage.Content content,String filename,String mediaType) {}
+        private ImportedResources(ResourceRepository owner,String namespace,String actor){this.owner=owner;this.namespace=namespace;this.actor=actor;}
+        private void scope(ResourceRepository repository,String destination,String writer) {
+            if(closed||repository.tx!=owner.tx||!namespace.equals(destination)||!actor.equals(writer))throw ExceptionHandler.fail("FORBIDDEN","Imported resource authority is outside its scope");
+            repository.requireImportWriter(destination,writer);
+        }
+        /** Creates and registers a fresh identity; existing resources cannot be registered. */
+        public String create(Path staged,String filename,String mediaType,long bytes,String checksum,ZonedDateTime timestamp)throws IOException {
+            scope(owner,namespace,actor);
+            if(Files.size(staged)!=bytes||!checksum.equals(ResourceFiles.checksum(staged)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Package resource content changed");
+            String id=UUID.randomUUID().toString(),stored=ResourceFiles.filename(filename,checksum);
+            owner.lock(id);
+            if(owner.location(id)!=null||owner.resource(namespace,id)!=null)throw new IllegalStateException("Fresh resource identity already exists");
+            var content=new ResourceStorage.Content(id,stored,bytes,checksum);owner.storage.publish(content,staged);owner.storage.verify(content);
+            owner.record("DepositResourceLocation",id,Json.map("namespaceId",namespace,"storedFilename",stored,"bytes",bytes,"checksum",checksum,"leaseUntil",owner.now()+ResourceFiles.LEASE,"everAttached",false,"published",true));
+            owner.record("DResource",id,Json.map("namespaceId",namespace,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"state","ready","createdBy",actor,"updatedBy",actor,"createdAt",timestamp,"updatedAt",timestamp));
+            created.put(id,new ImportedResource(content,filename,mediaType));return id;
+        }
+        private Node resolve(ResourceRepository repository,Node descriptor,String id,String writer) {
+            scope(repository,(String)descriptor.getProperty("namespaceId"),writer);
+            ImportedResource imported=created.get(id);
+            if(imported==null)throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
+            repository.lock(id);Node resource=repository.resource(namespace,id),location=repository.location(id);
+            if(resource==null||location==null||!namespace.equals(location.getProperty("namespaceId",null))||location.hasProperty("deleting")||!"ready".equals(resource.getProperty("state",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource is unavailable");
+            var content=imported.content();
+            for(Node node:List.of(resource,location))if(!content.storedFilename().equals(node.getProperty("storedFilename",null))||!content.checksum().equals(node.getProperty("checksum",null))||!Long.valueOf(content.bytes()).equals(node.getProperty("bytes",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource metadata changed");
+            if(!actor.equals(resource.getProperty("createdBy",null))||!imported.filename().equals(resource.getProperty("filename",null))||!imported.mediaType().equals(resource.getProperty("mediaType",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource identity changed");
+            repository.verify(location);return resource;
+        }
+        @Override public void close(){closed=true;created.clear();}
+    }
+    boolean writeImported(Node descriptor,Object payload,String actor,ImportedResources imported) {
+        if(imported==null)throw ExceptionHandler.fail("FORBIDDEN","Imported resource authority required");
+        Node next=imported.resolve(this,descriptor,(String)ValueCodec.map(payload).get("resourceId"),actor);
+        return attach(descriptor,linked(descriptor),next);
+    }
     public boolean write(Node descriptor,Object payload,String actor,String role) {
         Node old=linked(descriptor),next=null;
         if(payload!=null) {
@@ -68,6 +120,9 @@ public final class ResourceRepository {
             if(!"ready".equals(next.getProperty("state")))throw ExceptionHandler.fail("RESOURCE_NOT_READY","Resource is not ready");
             if(!accessible(next,actor,role,false))throw ExceptionHandler.fail("FORBIDDEN","Resource access required");verify(location(id));
         }
+        return attach(descriptor,old,next);
+    }
+    private boolean attach(Node descriptor,Node old,Node next) {
         if(Objects.equals(old,next))return false;
         if(old!=null){lock(CoreRepository.id(old));descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING).delete();changed(old);}
         if(next!=null){descriptor.createRelationshipTo(next,RelationshipType.withName("HAS_RESOURCE"));Node loc=location(CoreRepository.id(next));loc.setProperty("everAttached",true);changed(next);}return true;

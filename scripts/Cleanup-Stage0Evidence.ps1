@@ -1,8 +1,8 @@
 [CmdletBinding()]
-param([string]$Root = 'C:\data_processed\Deposit_v2\stage0')
+param([string]$Root = 'D:\data_processed\Deposit_v2\stage0')
 
 $ErrorActionPreference = 'Stop'
-$approvedRoot = [IO.Path]::GetFullPath('C:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 if (![string]::Equals($rootPath, $approvedRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Cleanup is limited to the approved Stage 0 root: $approvedRoot"

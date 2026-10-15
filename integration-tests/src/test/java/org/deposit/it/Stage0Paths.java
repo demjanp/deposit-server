@@ -6,7 +6,7 @@ import java.util.Properties;
 
 /** Resolves Stage 0 paths from the active isolated installation configuration. */
 final class Stage0Paths {
-    private static final Path ROOT=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host");
+    private static final Path ROOT=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host");
     private Stage0Paths(){}
     static Path secretRoot(){
         Path config=ROOT.resolve("neo4j/conf/deposit.properties");

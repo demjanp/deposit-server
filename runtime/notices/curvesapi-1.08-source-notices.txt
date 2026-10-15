@@ -1,0 +1,97 @@
+
+Source entries: com/graphbuilder/curve/BSpline.java, com/graphbuilder/curve/BezierCurve.java, com/graphbuilder/curve/BinaryCurveApproximationAlgorithm.java, com/graphbuilder/curve/CardinalSpline.java, com/graphbuilder/curve/CatmullRomSpline.java, com/graphbuilder/curve/ControlPath.java, com/graphbuilder/curve/ControlStringParseException.java, com/graphbuilder/curve/CubicBSpline.java, com/graphbuilder/curve/Curve.java, com/graphbuilder/curve/GroupIterator.java, com/graphbuilder/curve/LagrangeCurve.java, com/graphbuilder/curve/MultiPath.java, com/graphbuilder/curve/NURBSpline.java, com/graphbuilder/curve/NaturalCubicSpline.java, com/graphbuilder/curve/ParametricCurve.java, com/graphbuilder/curve/Point.java, com/graphbuilder/curve/Polyline.java, com/graphbuilder/curve/ShapeMultiPath.java, com/graphbuilder/curve/ShapeMultiPathIterator.java, com/graphbuilder/curve/ValueVector.java, com/graphbuilder/curve/ValueVectorListener.java, com/graphbuilder/geom/Geom.java, com/graphbuilder/geom/Point2d.java, com/graphbuilder/geom/Point3d.java, com/graphbuilder/math/AddNode.java, com/graphbuilder/math/DivNode.java, com/graphbuilder/math/Expression.java, com/graphbuilder/math/ExpressionParseException.java, com/graphbuilder/math/ExpressionTree.java, com/graphbuilder/math/FuncMap.java, com/graphbuilder/math/FuncNode.java, com/graphbuilder/math/MultNode.java, com/graphbuilder/math/OpNode.java, com/graphbuilder/math/PascalsTriangle.java, com/graphbuilder/math/PowNode.java, com/graphbuilder/math/SubNode.java, com/graphbuilder/math/TermNode.java, com/graphbuilder/math/ValNode.java, com/graphbuilder/math/VarMap.java, com/graphbuilder/math/VarNode.java, com/graphbuilder/math/func/AbsFunction.java, com/graphbuilder/math/func/AcosFunction.java, com/graphbuilder/math/func/AcoshFunction.java, com/graphbuilder/math/func/AsinFunction.java, com/graphbuilder/math/func/AsinhFunction.java, com/graphbuilder/math/func/AtanFunction.java, com/graphbuilder/math/func/AtanhFunction.java, com/graphbuilder/math/func/AvgFunction.java, com/graphbuilder/math/func/CeilFunction.java, com/graphbuilder/math/func/CombinFunction.java, com/graphbuilder/math/func/CosFunction.java, com/graphbuilder/math/func/CoshFunction.java, com/graphbuilder/math/func/EFunction.java, com/graphbuilder/math/func/ExpFunction.java, com/graphbuilder/math/func/FactFunction.java, com/graphbuilder/math/func/FloorFunction.java, com/graphbuilder/math/func/Function.java, com/graphbuilder/math/func/LgFunction.java, com/graphbuilder/math/func/LnFunction.java, com/graphbuilder/math/func/LogFunction.java, com/graphbuilder/math/func/MaxFunction.java, com/graphbuilder/math/func/MinFunction.java, com/graphbuilder/math/func/ModFunction.java, com/graphbuilder/math/func/PiFunction.java, com/graphbuilder/math/func/PowFunction.java, com/graphbuilder/math/func/RandFunction.java, com/graphbuilder/math/func/RoundFunction.java, com/graphbuilder/math/func/SignFunction.java, com/graphbuilder/math/func/SinFunction.java, com/graphbuilder/math/func/SinhFunction.java, com/graphbuilder/math/func/SqrtFunction.java, com/graphbuilder/math/func/SumFunction.java, com/graphbuilder/math/func/TanFunction.java, com/graphbuilder/math/func/TanhFunction.java, com/graphbuilder/struc/Bag.java, com/graphbuilder/struc/LinkedList.java, com/graphbuilder/struc/Stack.java
+/*
+* Copyright (c) 2005, Graph Builder
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions
+* are met:
+*
+* * Redistributions of source code must retain the above copyright notice,
+* this list of conditions and the following disclaimer.
+*
+* * Redistributions in binary form must reproduce the above copyright notice,
+* this list of conditions and the following disclaimer in the documentation
+* and/or other materials provided with the distribution.
+*
+* * Neither the name of Graph Builder nor the names of its contributors may be
+* used to endorse or promote products derived from this software without
+* specific prior written permission.
+
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+* SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+Source entries: com/graphbuilder/geom/Geom.java
+/**
+	Computes the distance between a line (a, b) and a point (c) in n-dimensions.  Arrays a, b, and c must
+	have length greater or equal to n.  Array d must have length greater than n.  The location of the closest
+	point on the line is stored in d.  The parametric value is stored at index location n in d.
+	*/
+
+Source entries: com/graphbuilder/geom/Geom.java
+/**
+	Computes the distance between a line segment (a, b) and a point (c) in n-dimensions.  Arrays a, b, and c must
+	have length greater or equal to n.  Array d must have length greater than n.  The location of the closest
+	point on the line is stored in d.  The parametric value is stored at index location n in d, and its value is
+	in the range [0, 1].
+	*/
+
+Source entries: com/graphbuilder/geom/PointFactory.java
+/*
+* Copyright (c) 2005, Graph Builder
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions
+* are met:
+*
+* * Redistributions of source code must retain the above copyright notice,
+* this list of conditions and the following disclaimer.
+*
+* * Redistributions in binary form must reproduce the above copyright notice,
+* this list of conditions and the following disclaimer in the documentation
+* and/or other materials provided with the distribution.
+*
+* * Neither the name of Graph Builder nor the names of its contributors may be
+* used to endorse or promote products derived from this software without
+* specific prior written permission.
+
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+* SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+Source entries: com/graphbuilder/org/apache/harmony/awt/gl/Crossing.java
+/*
+ *  Licensed to the Apache Software Foundation (ASF) under one or more
+ *  contributor license agreements.  See the NOTICE file distributed with
+ *  this work for additional information regarding copyright ownership.
+ *  The ASF licenses this file to You under the Apache License, Version 2.0
+ *  (the "License"); you may not use this file except in compliance with
+ *  the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */

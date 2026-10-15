@@ -46,6 +46,11 @@ function Set-OwnerOnlyDirectory([string]$Path) {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
+function Set-DepositServiceState($State,[string]$ServiceAccount) {
+    $State.mode='service'
+    $State | Add-Member -MemberType NoteProperty -Name serviceAccount -Value $ServiceAccount -Force
+}
+
 if(-not('DepositServiceAccount' -as [type])){
 Add-Type -TypeDefinition @'
 using System;

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.*;
 /** Browser-session fixture split across an installed runtime restart. */
 @Timeout(120)
 class Stage10RestartIT {
-    static final Path SESSION=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host/secrets/stage10-browser-session.properties");
+    static final Path SESSION=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host/secrets/stage10-browser-session.properties");
     static URI base;
     static org.neo4j.driver.Driver driver;
     static HttpClient client(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(5)).build();}
@@ -41,5 +41,14 @@ class Stage10RestartIT {
         HttpResponse<String> response=client().send(HttpRequest.newBuilder(URI.create(properties.getProperty("url"))).header("Cookie","Deposit-Session="+properties.getProperty("session")).GET().build(),HttpResponse.BodyHandlers.ofString());
         assertEquals(303,response.statusCode());assertTrue(response.headers().firstValue("Location").orElseThrow().startsWith(base.getRawPath()+"/login?return="));
         assertTrue(response.headers().allValues("Set-Cookie").stream().anyMatch(value->value.startsWith("Deposit-Session=")&&value.contains("Max-Age=0")));
+        HttpClient renewed=client();URI login=uri("/login");
+        String loginCsrf=csrf(renewed.send(HttpRequest.newBuilder(login).GET().build(),HttpResponse.BodyHandlers.ofString()).body());
+        HttpResponse<String> signedIn=renewed.send(HttpRequest.newBuilder(login).header("Origin",origin()).header("Content-Type","application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(form(Map.of("username",Stage10CoreIT.USER,"password",Stage10CoreIT.PASSWORD,"csrf",loginCsrf,"return","/")))).build(),HttpResponse.BodyHandlers.ofString());
+        assertEquals(303,signedIn.statusCode());
+        HttpResponse<byte[]> recovered=renewed.send(HttpRequest.newBuilder(URI.create(properties.getProperty("url"))).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,recovered.statusCode());
+        assertArrayEquals("restart protected attachment".getBytes(StandardCharsets.UTF_8),recovered.body(),"A renewed session must download the original resource from its pre-restart URL");
+        assertTrue(recovered.headers().firstValue("Content-Disposition").orElseThrow().contains("filename=\"restart.txt\""));
     }
 }

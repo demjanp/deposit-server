@@ -14,7 +14,7 @@ import org.neo4j.driver.*;
 /** Coordinates a pending Deposit transaction and a live resource stream with the external service gate. */
 @Timeout(180)
 class Stage11ShutdownIT {
-    static final Path ROOT=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host");
+    static final Path ROOT=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host");
     static final Path READY=ROOT.resolve("secrets/stage11-drain-ready.txt");
     static final Path RELEASE=ROOT.resolve("secrets/stage11-drain-release.txt");
     static final Path FIXTURE=ROOT.resolve("secrets/stage11-drain-fixture.properties");

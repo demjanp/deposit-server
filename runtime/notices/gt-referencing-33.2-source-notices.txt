@@ -1,0 +1,1110 @@
+
+Source entries: org/geotools/geometry/AbstractBounds.java, org/geotools/geometry/GeneralBounds.java, org/geotools/geometry/Position1D.java, org/geotools/geometry/Position2D.java, org/geotools/geometry/Position3D.java, org/geotools/parameter/ParameterValueList.java, org/geotools/parameter/ParameterWriter.java, org/geotools/parameter/Parameters.java, org/geotools/referencing/Console.java, org/geotools/referencing/FactoryPrinter.java, org/geotools/referencing/ReferencingFactoryFinder.java, org/geotools/referencing/crs/UnprefixedMap.java, org/geotools/referencing/factory/PropertyAuthorityFactory.java, org/geotools/referencing/factory/ReferencingFactoryContainer.java, org/geotools/referencing/factory/epsg/AnsiDialectEpsgFactory.java, org/geotools/referencing/factory/epsg/FactoryUsingAnsiSQL.java, org/geotools/referencing/factory/wms/Auto42001.java, org/geotools/referencing/factory/wms/Auto42002.java, org/geotools/referencing/factory/wms/Auto42003.java, org/geotools/referencing/factory/wms/Auto42004.java, org/geotools/referencing/factory/wms/Auto42005.java, org/geotools/referencing/factory/wms/AutoCRSFactory.java, org/geotools/referencing/factory/wms/Code.java, org/geotools/referencing/factory/wms/Factlet.java, org/geotools/referencing/operation/MathTransformProvider.java, org/geotools/referencing/operation/transform/NADCONTransform.java, org/geotools/referencing/util/BoundingBoxes.java, org/geotools/referencing/util/Formattable.java, org/geotools/referencing/wkt/AbstractConsole.java, org/geotools/referencing/wkt/Adapter.java, org/geotools/referencing/wkt/Preprocessor.java, org/geotools/referencing/wkt/Symbols.java, org/geotools/referencing/wkt/UnformattableObjectException.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/geometry/AbstractPosition.java, org/geotools/geometry/GeneralPosition.java, org/geotools/geometry/PixelTranslation.java, org/geotools/geometry/util/InfiniteRectangle2D.java, org/geotools/geometry/util/ShapeUtilities.java, org/geotools/geometry/util/XDimension2D.java, org/geotools/geometry/util/XRectangle2D.java, org/geotools/parameter/MatrixParameterDescriptors.java, org/geotools/parameter/MatrixParameters.java, org/geotools/referencing/Command.java, org/geotools/referencing/factory/epsg/ThreadedEpsgFactory.java, org/geotools/referencing/operation/builder/GridToEnvelopeMapper.java, org/geotools/referencing/operation/matrix/XAffineTransform.java, org/geotools/referencing/operation/projection/PointOutsideEnvelopeException.java, org/geotools/referencing/operation/projection/ProjectionException.java, org/geotools/referencing/operation/transform/ConcatenatedTransform1D.java, org/geotools/referencing/operation/transform/ConcatenatedTransform2D.java, org/geotools/referencing/operation/transform/ConcatenatedTransformDirect.java, org/geotools/referencing/operation/transform/ConcatenatedTransformDirect1D.java, org/geotools/referencing/operation/transform/ConcatenatedTransformDirect2D.java, org/geotools/referencing/operation/transform/ConstantTransform1D.java, org/geotools/referencing/operation/transform/DimensionFilter.java, org/geotools/referencing/operation/transform/LinearTransform1D.java, org/geotools/referencing/operation/transform/PassThroughTransform.java, org/geotools/referencing/operation/transform/WarpAdapter.java, org/geotools/referencing/util/CRSUtilities.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/geometry/Envelope2DArchived.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004-2011, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/geometry/TransformedPosition.java, org/geotools/parameter/ImagingParameter.java, org/geotools/parameter/ImagingParameterDescription.java, org/geotools/parameter/ImagingParameters.java, org/geotools/referencing/CRS.java, org/geotools/referencing/cs/PredefinedCS.java, org/geotools/referencing/factory/AbstractEpsgMediator.java, org/geotools/referencing/factory/AllAuthoritiesFactory.java, org/geotools/referencing/factory/AuthorityFactoryAdapter.java, org/geotools/referencing/factory/BackingStoreException.java, org/geotools/referencing/factory/DatumAliases.java, org/geotools/referencing/factory/IdentifiedObjectSet.java, org/geotools/referencing/factory/ManyAuthoritiesFactory.java, org/geotools/referencing/factory/OrderedAxisAuthorityFactory.java, org/geotools/referencing/factory/TransformedAuthorityFactory.java, org/geotools/referencing/factory/epsg/AbstractEpsgFactory.java, org/geotools/referencing/factory/epsg/AccessDialectEpsgFactory.java, org/geotools/referencing/factory/epsg/AuthorityCodes.java, org/geotools/referencing/factory/epsg/BursaWolfInfo.java, org/geotools/referencing/factory/epsg/CartesianAuthorityFactory.java, org/geotools/referencing/factory/epsg/CoordinateOperationSet.java, org/geotools/referencing/factory/epsg/FactoryUsingSQL.java, org/geotools/referencing/factory/epsg/FactoryUsingWKT.java, org/geotools/referencing/factory/epsg/TableInfo.java, org/geotools/referencing/factory/wms/WebCRSFactory.java, org/geotools/referencing/operation/AuthorityBackedFactory.java, org/geotools/referencing/operation/TransformPathNotFoundException.java, org/geotools/referencing/operation/matrix/AffineTransform2D.java, org/geotools/referencing/operation/matrix/MatrixFactory.java, org/geotools/referencing/operation/projection/EquidistantCylindrical.java, org/geotools/referencing/operation/projection/LambertConformal1SP.java, org/geotools/referencing/operation/projection/LambertConformal2SP.java, org/geotools/referencing/operation/projection/LambertConformalBelgium.java, org/geotools/referencing/operation/projection/Mercator1SP.java, org/geotools/referencing/operation/projection/Mercator2SP.java, org/geotools/referencing/operation/projection/MercatorPseudoProvider.java, org/geotools/referencing/operation/projection/ModifiedParameterDescriptor.java, org/geotools/referencing/operation/projection/NewZealandMapGrid.java, org/geotools/referencing/operation/projection/PlateCarree.java, org/geotools/referencing/operation/transform/GeocentricTranslation.java, org/geotools/referencing/operation/transform/WarpBuilder.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/geometry/package-info.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/nature/Calendar.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2000-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    NOTE: permission has been given to the JScience project (http://www.jscience.org)
+ *          to distribute this file under BSD-like license.
+ */
+
+Source entries: org/geotools/nature/SeaWater.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1999-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    NOTE: permission has been given to the JScience project (http://www.jscience.org)
+ *          to distribute this file under BSD-like license.
+ */
+
+Source entries: org/geotools/nature/SunRelativePosition.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    NOTE: permission has been given to the JScience project (http://www.jscience.org)
+ *          to distribute this file under BSD-like license.
+ */
+
+Source entries: org/geotools/parameter/AbstractParameter.java, org/geotools/parameter/AbstractParameterDescriptor.java, org/geotools/parameter/DefaultParameterDescriptor.java, org/geotools/parameter/DefaultParameterDescriptorGroup.java, org/geotools/parameter/FloatParameter.java, org/geotools/parameter/Parameter.java, org/geotools/parameter/ParameterGroup.java, org/geotools/referencing/AbstractReferenceSystem.java, org/geotools/referencing/NamedIdentifier.java, org/geotools/referencing/Properties.java, org/geotools/referencing/crs/DefaultDerivedCRS.java, org/geotools/referencing/cs/AbstractCS.java, org/geotools/referencing/cs/DefaultAffineCS.java, org/geotools/referencing/cs/DefaultCartesianCS.java, org/geotools/referencing/cs/DefaultCompoundCS.java, org/geotools/referencing/cs/DefaultCylindricalCS.java, org/geotools/referencing/cs/DefaultEllipsoidalCS.java, org/geotools/referencing/cs/DefaultLinearCS.java, org/geotools/referencing/cs/DefaultPolarCS.java, org/geotools/referencing/cs/DefaultSphericalCS.java, org/geotools/referencing/cs/DefaultTimeCS.java, org/geotools/referencing/cs/DefaultUserDefinedCS.java, org/geotools/referencing/cs/DefaultVerticalCS.java, org/geotools/referencing/datum/DefaultImageDatum.java, org/geotools/referencing/factory/ReferencingFactory.java, org/geotools/referencing/factory/ReferencingObjectFactory.java, org/geotools/referencing/operation/DefaultConcatenatedOperation.java, org/geotools/referencing/operation/DefaultConicProjection.java, org/geotools/referencing/operation/DefaultConversion.java, org/geotools/referencing/operation/DefaultCylindricalProjection.java, org/geotools/referencing/operation/DefaultOperation.java, org/geotools/referencing/operation/DefaultPassThroughOperation.java, org/geotools/referencing/operation/DefaultPlanarProjection.java, org/geotools/referencing/operation/DefaultProjection.java, org/geotools/referencing/operation/DefaultSingleOperation.java, org/geotools/referencing/operation/DefaultTransformation.java, org/geotools/referencing/wkt/Formatter.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/parameter/ImagingParameterDescriptors.java, org/geotools/referencing/operation/matrix/Matrix1.java, org/geotools/referencing/operation/matrix/Matrix2.java, org/geotools/referencing/operation/matrix/Matrix3.java, org/geotools/referencing/operation/matrix/Matrix4.java, org/geotools/referencing/operation/matrix/XMatrix.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/AbstractIdentifiedObject.java, org/geotools/referencing/crs/AbstractCRS.java, org/geotools/referencing/crs/AbstractSingleCRS.java, org/geotools/referencing/crs/DefaultCompoundCRS.java, org/geotools/referencing/crs/DefaultEngineeringCRS.java, org/geotools/referencing/crs/DefaultGeocentricCRS.java, org/geotools/referencing/crs/DefaultGeographicCRS.java, org/geotools/referencing/crs/DefaultImageCRS.java, org/geotools/referencing/crs/DefaultProjectedCRS.java, org/geotools/referencing/crs/DefaultTemporalCRS.java, org/geotools/referencing/crs/DefaultVerticalCRS.java, org/geotools/referencing/cs/DefaultCoordinateSystemAxis.java, org/geotools/referencing/datum/AbstractDatum.java, org/geotools/referencing/datum/BursaWolfParameters.java, org/geotools/referencing/datum/DefaultEngineeringDatum.java, org/geotools/referencing/datum/DefaultGeodeticDatum.java, org/geotools/referencing/datum/DefaultPrimeMeridian.java, org/geotools/referencing/datum/DefaultTemporalDatum.java, org/geotools/referencing/datum/DefaultVerticalDatum.java, org/geotools/referencing/datum/Spheroid.java, org/geotools/referencing/operation/AbstractCoordinateOperation.java, org/geotools/referencing/operation/AbstractCoordinateOperationFactory.java, org/geotools/referencing/operation/DefaultMathTransformFactory.java, org/geotools/referencing/operation/DefaultOperationMethod.java, org/geotools/referencing/operation/LinearTransform.java, org/geotools/referencing/operation/ProjectionAnalyzer.java, org/geotools/referencing/operation/transform/GeocentricTransform.java, org/geotools/referencing/wkt/Formattable.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/referencing/CRS.java
+/**
+     * Get the list of the codes that are supported by the given authority. For example
+     * {@code getSupportedCodes("EPSG")} may returns {@code "EPSG:2000"}, {@code "EPSG:2001"}, {@code "EPSG:2002"},
+     * <cite>etc</cite>. It may also returns {@code "2000"}, {@code "2001"}, {@code "2002"}, <cite>etc.</cite> without
+     * the {@code "EPSG:"} prefix. Whatever the authority name is prefixed or not is factory implementation dependent.
+     *
+     * <p>If there is more than one factory for the given authority, then this method merges the code set of all of
+     * them. If a factory fails to provide a set of supported code, then this particular factory is ignored. Please be
+     * aware of the following potential issues:
+     *
+     * <p>
+     *
+     * <ul>
+     *   <li>If there is more than one EPSG databases (for example an
+     *       {@linkplain org.geotools.referencing.factory.epsg.AccessDataSource Access} and a
+     *       {@linkplain org.geotools.referencing.factory.epsg.PostgreDataSource PostgreSQL} ones), then this method
+     *       will connect to all of them even if their content are identical.
+     *   <li>If two factories format their codes differently (e.g. {@code "4326"} and {@code "EPSG:4326"}), then the
+     *       returned set will contain a lot of synonymous codes.
+     *   <li>For any code <var>c</var> in the returned set, there is no warranty that <code>
+     *       {@linkplain #decode decode}(c)</code> will use the same authority factory than the one that formatted
+     *       <var>c</var>.
+     *   <li>This method doesn't report connection problems since it doesn't throw any exception.
+     *       {@link FactoryException}s are logged as warnings and otherwise ignored.
+     * </ul>
+     *
+     * <p>If a more determinist behavior is wanted, consider the code below instead. The following code exploit only one
+     * factory, the "preferred" one.
+     *
+     * <blockquote>
+     *
+     * <code>
+     * {@linkplain CRSAuthorityFactory} factory = FactoryFinder.{@linkplain
+     * ReferencingFactoryFinder#getCRSAuthorityFactory getCRSAuthorityFactory}(authority, null);<br>
+     * Set&lt;String&gt; codes = factory.{@linkplain CRSAuthorityFactory#getAuthorityCodes
+     * getAuthorityCodes}(CoordinateReferenceSystem.class);<br>
+     * String code = <cite>...choose a code here...</cite><br>
+     * {@linkplain CoordinateReferenceSystem} crs = factory.createCoordinateReferenceSystem(code);
+     * </code>
+     *
+     * </blockquote>
+     *
+     * @param authority The authority name (for example {@code "EPSG"}).
+     * @return The set of supported codes. May be empty, but never null.
+     */
+
+Source entries: org/geotools/referencing/CoordinateFormat.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1998-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/DefaultAuthorityFactory.java, org/geotools/referencing/factory/FactoryNotFoundException.java, org/geotools/referencing/factory/FallbackAuthorityFactory.java, org/geotools/referencing/factory/epsg/AxisName.java, org/geotools/referencing/factory/epsg/LongitudeFirstEpsgDecorator.java, org/geotools/referencing/factory/epsg/LongitudeFirstFactory.java, org/geotools/referencing/factory/epsg/SingleConnectionDataSource.java, org/geotools/referencing/operation/builder/MappedPosition.java, org/geotools/referencing/operation/builder/MathTransformBuilder.java, org/geotools/referencing/operation/transform/VerticalTransform.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/EnvelopeReprojector.java, org/geotools/referencing/wkt/EpsgUnitFormat.java, org/geotools/referencing/wkt/EsriUnitFormat.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2021, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/GeodeticCalculator.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    Portions of this file is adapted from Fortran code provided by NOAA.
+ *    Programmed for CDC-6600 by LCDR L.Pfeifer NGS ROCKVILLE MD 18FEB75
+ *    Modified for IBM SYSTEM 360 by John G.Gergen NGS ROCKVILLE MD 7507
+ *    Source: ftp://ftp.ngs.noaa.gov/pub/pcsoft/for_inv.3d/source/
+ */
+
+Source entries: org/geotools/referencing/crs/AbstractDerivedCRS.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/referencing/cs/ComparableAxisWrapper.java, org/geotools/referencing/cs/DirectionAlongMeridian.java, org/geotools/referencing/factory/FactoryDependencies.java, org/geotools/referencing/factory/HTTP_AuthorityFactory.java, org/geotools/referencing/factory/OldReferencingObjectCache.java, org/geotools/referencing/operation/builder/AffineToGeometric.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2007-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/datum/DefaultEllipsoid.java, org/geotools/referencing/operation/matrix/GeneralMatrix.java, org/geotools/referencing/operation/transform/AffineTransform2D.java, org/geotools/referencing/operation/transform/ConcatenatedTransform.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/AbstractAuthorityFactory.java, org/geotools/referencing/factory/AbstractAuthorityMediator.java, org/geotools/referencing/factory/AbstractCachedAuthorityFactory.java, org/geotools/referencing/factory/BufferedAuthorityFactory.java, org/geotools/referencing/factory/CachedAuthorityDecorator.java, org/geotools/referencing/factory/CachedCRSAuthorityDecorator.java, org/geotools/referencing/factory/DeferredAuthorityFactory.java, org/geotools/referencing/factory/DirectAuthorityFactory.java, org/geotools/referencing/factory/ThreadedAuthorityFactory.java, org/geotools/referencing/operation/DefiningConversion.java, org/geotools/referencing/operation/transform/MathTransformProxy.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/referencing/factory/Abstract_URI_AuthorityFactory.java, org/geotools/referencing/factory/HTTP_URI_Parser.java, org/geotools/referencing/factory/URI_Parser.java, org/geotools/referencing/factory/URI_Type.java, org/geotools/referencing/factory/URN_AuthorityFactory.java, org/geotools/referencing/factory/URN_Parser.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2012, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/AuthorityFactoryProxy.java, org/geotools/referencing/factory/IdentifiedObjectFinder.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2007-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/referencing/factory/HTTP_URI_AuthorityFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2012, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/OrderedAxisCRSAuthorityFactory.java, org/geotools/referencing/factory/wms/OGCAPICRSFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2023, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/PropertyCoordinateOperationAuthorityFactory.java, org/geotools/referencing/factory/epsg/CoordinateOperationFactoryUsingWKT.java, org/geotools/referencing/factory/gridshift/ClasspathGridShiftLocator.java, org/geotools/referencing/factory/gridshift/GridShiftLocator.java, org/geotools/referencing/factory/gridshift/NADCONGridShiftFactory.java, org/geotools/referencing/factory/gridshift/NADConGridShift.java, org/geotools/referencing/factory/gridshift/NTv2GridShiftFactory.java, org/geotools/referencing/operation/transform/NTv2Transform.java, org/geotools/referencing/operation/transform/SimilarityTransformProvider.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2002-2012, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/epsg/DirectEpsgFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005 - 2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/epsg/EnsembleDefinition.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2025, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/wms/Auto97001.java, org/geotools/referencing/factory/wms/Auto97002.java, org/geotools/referencing/operation/matrix/SingularMatrixException.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/wms/Auto97003.java, org/geotools/referencing/operation/ForcedCRSOperation.java, org/geotools/referencing/operation/projection/WorldVanDerGrintenI.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2019, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/factory/wms/Auto97004.java, org/geotools/referencing/proj/PROJAliases.java, org/geotools/referencing/proj/PROJFormattable.java, org/geotools/referencing/proj/PROJFormatter.java, org/geotools/referencing/proj/PROJRefiner.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2024, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/BufferedCoordinateOperationFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/DefaultCoordinateOperationFactory.java, org/geotools/referencing/operation/transform/AbstractMathTransform.java, org/geotools/referencing/operation/transform/ProjectiveTransform.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/referencing/operation/builder/AdvancedAffineBuilder.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2007-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/builder/AffineTransformBuilder.java, org/geotools/referencing/operation/builder/BursaWolfTransformBuilder.java, org/geotools/referencing/operation/builder/ProjectiveTransformBuilder.java, org/geotools/referencing/operation/builder/RubberSheetBuilder.java, org/geotools/referencing/operation/builder/SimilarTransformBuilder.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2002-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/builder/Circle.java, org/geotools/referencing/operation/builder/ExtendedPosition.java, org/geotools/referencing/operation/builder/LocalizationGrid.java, org/geotools/referencing/operation/builder/LocalizationGridTransform2D.java, org/geotools/referencing/operation/builder/MapTriangulationFactory.java, org/geotools/referencing/operation/builder/MissingInfoException.java, org/geotools/referencing/operation/builder/Polygon.java, org/geotools/referencing/operation/builder/Quadrilateral.java, org/geotools/referencing/operation/builder/RubberSheetTransform.java, org/geotools/referencing/operation/builder/TINTriangle.java, org/geotools/referencing/operation/builder/TriangulationException.java, org/geotools/referencing/operation/builder/TriangulationFactory.java, org/geotools/referencing/operation/projection/Krovak.java, org/geotools/referencing/operation/transform/ExponentialTransform1D.java, org/geotools/referencing/operation/transform/IdentityTransform.java, org/geotools/referencing/operation/transform/IdentityTransform1D.java, org/geotools/referencing/operation/transform/LogarithmicTransform1D.java, org/geotools/referencing/operation/transform/ProjectiveTransform2D.java, org/geotools/referencing/wkt/AbstractParser.java, org/geotools/referencing/wkt/Element.java, org/geotools/referencing/wkt/MathTransformParser.java, org/geotools/referencing/wkt/Parser.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2002-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/AlbersEqualArea.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/AzimuthalEquidistant.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/CassiniSoldner.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2000-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation; either
+ *    version 2.1 of the License, or (at your option) any later version.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/CylindricalEqualArea.java, org/geotools/referencing/operation/projection/LambertConformalEsriProvider.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2017, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/EckertIV.java, org/geotools/referencing/operation/projection/EquatorialStereographic.java, org/geotools/referencing/operation/projection/LambertConformal.java, org/geotools/referencing/operation/projection/MapProjection.java, org/geotools/referencing/operation/projection/Mercator.java, org/geotools/referencing/operation/projection/Mollweide.java, org/geotools/referencing/operation/projection/ObliqueStereographic.java, org/geotools/referencing/operation/projection/PolarStereographic.java, org/geotools/referencing/operation/projection/Polyconic.java, org/geotools/referencing/operation/projection/Robinson.java, org/geotools/referencing/operation/projection/Stereographic.java, org/geotools/referencing/operation/projection/StereographicUSGS.java, org/geotools/referencing/operation/projection/TransverseMercator.java, org/geotools/referencing/operation/projection/WinkelTripel.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1999-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/EqualArea.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2018, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/EquatorialOrthographic.java, org/geotools/referencing/operation/projection/ObliqueOrthographic.java, org/geotools/referencing/operation/projection/Orthographic.java, org/geotools/referencing/operation/projection/PolarOrthographic.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2000-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/EquidistantConic.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2009, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/GeneralOblique.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1999-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/GeostationarySatellite.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/Gnomonic.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ */
+
+Source entries: org/geotools/referencing/operation/projection/Homolosine.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2020, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/HotineObliqueMercator.java, org/geotools/referencing/operation/projection/ObliqueMercator.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/LambertAzimuthalEqualArea.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/MeteosatSG.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/RotatedPole.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1999-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/projection/Sinusoidal.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2014, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains formulas from the PROJ package of USGS.
+ *    USGS's work is fully acknowledged here. This derived work has
+ *    been relicensed under LGPL with Frank Warmerdam's permission.
+ */
+
+Source entries: org/geotools/referencing/operation/transform/EarthGravitationalModel.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This file is derived from NGA/NASA software available for unlimited distribution.
+ *    See http://earth-info.nima.mil/GandG/wgs84/gravitymod/.
+ */
+
+Source entries: org/geotools/referencing/operation/transform/MolodenskiTransform.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/referencing/operation/transform/WarpTransform2D.java, org/geotools/referencing/operation/transform/WarpTransform2DProvider.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */

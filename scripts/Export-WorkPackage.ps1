@@ -13,7 +13,7 @@ $heading=if($Section -eq 'Review') {'Stage 0 read-only review work package'} els
 $text=Get-Content -LiteralPath $plan -Raw
 $match=[regex]::Match($text,'(?ms)^## '+[regex]::Escape($heading)+'\r?\n(?<body>.*?)(?=^## |\z)')
 if(!$match.Success) {throw "Implementation plan has no work-package section: $heading"}
-$directory=Join-Path 'C:\data_processed\Deposit_v2\stage0\runner\work-packages' $Name
+$directory=Join-Path 'D:\data_processed\Deposit_v2\stage0\runner\work-packages' $Name
 New-Item -ItemType Directory -Force $directory | Out-Null
 $path=Join-Path $directory ($Section+'.md')
 [IO.File]::WriteAllText($path,('# '+$heading+"`n`n"+$match.Groups['body'].Value.Trim()+"`n"),(New-Object Text.UTF8Encoding($false)))

@@ -14,7 +14,11 @@ class ShutdownControlTest {
     Path protectedDirectory()throws Exception{
         Path path=Files.createDirectory(temporary.resolve(UUID.randomUUID().toString()));
         AclFileAttributeView acl=Files.getFileAttributeView(path,AclFileAttributeView.class);
-        var owner=Files.getOwner(path);acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(owner).setPermissions(EnumSet.allOf(AclEntryPermission.class)).setFlags(AclEntryFlag.DIRECTORY_INHERIT,AclEntryFlag.FILE_INHERIT).build()));
+        var owner=Files.getOwner(path);
+        var runtime=FileSystems.getDefault().getUserPrincipalLookupService().lookupPrincipalByName(ProcessHandle.current().info().user().orElseThrow());
+        if(!owner.equals(runtime)){Files.setOwner(path,runtime);owner=runtime;}
+        var permissions=EnumSet.allOf(AclEntryPermission.class);
+        acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(owner).setPermissions(permissions).setFlags(AclEntryFlag.DIRECTORY_INHERIT,AclEntryFlag.FILE_INHERIT).build()));
         return path;
     }
     Map<String,Object> identity(Path secrets)throws Exception{
@@ -97,6 +101,19 @@ class ShutdownControlTest {
         assertNotEquals(defaultOwner,runtime,"fixture must model the elevated-token owner mismatch");
         assertSame(runtime,ShutdownControl.runtimePrincipal("fixture-runtime-user",lookup));
         assertThrows(java.io.IOException.class,()->ShutdownControl.runtimePrincipal("missing-user",lookup));
+    }
+
+    @Test void existingRuntimeOwnerDoesNotRequireWriteOwnerPermission()throws Exception{
+        Path directory=protectedDirectory(),file=Files.createFile(directory.resolve("owner-fixture.tmp"));
+        var runtime=FileSystems.getDefault().getUserPrincipalLookupService().lookupPrincipalByName(ProcessHandle.current().info().user().orElseThrow());
+        for(Path path:List.of(directory,file)){
+            if(!Files.getOwner(path).equals(runtime))Files.setOwner(path,runtime);
+            var acl=Files.getFileAttributeView(path,AclFileAttributeView.class);var permissions=EnumSet.allOf(AclEntryPermission.class);permissions.remove(AclEntryPermission.WRITE_OWNER);
+            acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(runtime).setPermissions(permissions).build()));
+            assertEquals(runtime,Files.getOwner(path));assertFalse(acl.getAcl().stream().anyMatch(entry->entry.permissions().contains(AclEntryPermission.WRITE_OWNER)));
+            assertDoesNotThrow(()->ShutdownControl.ensureOwner(path,runtime));
+            assertEquals(runtime,Files.getOwner(path));
+        }
     }
 
     @Test void retainedRequestsDoNotStarveLaterRequestsAfterSixtyFourEntries()throws Exception{

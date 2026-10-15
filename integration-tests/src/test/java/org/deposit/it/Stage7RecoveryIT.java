@@ -8,7 +8,7 @@ import org.junit.jupiter.api.*;
 
 /** Run verification after both graceful restart and forced process termination. */
 class Stage7RecoveryIT {
-    static final Path FILE=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host/stage7-recovery.properties");
+    static final Path FILE=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host/stage7-recovery.properties");
     @BeforeAll static void open()throws Exception{connect();}
     @AfterAll static void close(){disconnect();}
     @Test void seed()throws Exception{

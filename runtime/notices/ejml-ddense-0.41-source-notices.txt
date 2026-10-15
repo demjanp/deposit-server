@@ -1,0 +1,88 @@
+
+Source entries: org/ejml/dense/block/InnerMultiplication_DDRB.java, org/ejml/dense/block/InnerRankUpdate_DDRB.java, org/ejml/dense/block/InnerRankUpdate_MT_DDRB.java, org/ejml/dense/block/InnerTriangularSolver_DDRB.java, org/ejml/dense/block/MatrixMult_DDRB.java, org/ejml/dense/block/MatrixMult_MT_DDRB.java, org/ejml/dense/block/VectorOps_DDRB.java, org/ejml/dense/block/decomposition/bidiagonal/BidiagonalHelper_DDRB.java, org/ejml/dense/block/decomposition/chol/CholeskyOuterForm_DDRB.java, org/ejml/dense/block/decomposition/chol/CholeskyOuterForm_MT_DDRB.java, org/ejml/dense/block/decomposition/chol/InnerCholesky_DDRB.java, org/ejml/dense/block/decomposition/hessenberg/TridiagonalDecompositionHouseholder_DDRB.java, org/ejml/dense/block/decomposition/hessenberg/TridiagonalDecompositionHouseholder_MT_DDRB.java, org/ejml/dense/block/decomposition/hessenberg/TridiagonalHelper_DDRB.java, org/ejml/dense/block/linsol/qr/QrHouseHolderSolver_DDRB.java, org/ejml/dense/block/linsol/qr/QrHouseHolderSolver_MT_DDRB.java, org/ejml/dense/fixed/MatrixFeatures_DDF2.java, org/ejml/dense/fixed/MatrixFeatures_DDF3.java, org/ejml/dense/fixed/MatrixFeatures_DDF4.java, org/ejml/dense/fixed/MatrixFeatures_DDF5.java, org/ejml/dense/fixed/MatrixFeatures_DDF6.java, org/ejml/dense/fixed/NormOps_DDF2.java, org/ejml/dense/fixed/NormOps_DDF3.java, org/ejml/dense/fixed/NormOps_DDF4.java, org/ejml/dense/fixed/NormOps_DDF5.java, org/ejml/dense/fixed/NormOps_DDF6.java, org/ejml/dense/row/CovarianceOps_DDRM.java, org/ejml/dense/row/CovarianceRandomDraw_DDRM.java, org/ejml/dense/row/DMatrixComponent.java, org/ejml/dense/row/DMatrixVisualization.java, org/ejml/dense/row/MatrixFeatures_DDRM.java, org/ejml/dense/row/NormOps_DDRM.java, org/ejml/dense/row/SingularOps_DDRM.java, org/ejml/dense/row/SpecializedOps_DDRM.java, org/ejml/dense/row/decomposition/BaseDecomposition_DDRB_to_DDRM.java, org/ejml/dense/row/decomposition/TriangularSolver_DDRM.java, org/ejml/dense/row/decomposition/UtilDecompositons_DDRM.java, org/ejml/dense/row/decomposition/bidiagonal/BidiagonalDecompositionRow_DDRM.java, org/ejml/dense/row/decomposition/bidiagonal/BidiagonalDecompositionRow_MT_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyBlockHelper_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyDecompositionBlock_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyDecompositionBlock_MT_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyDecompositionCommon_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyDecompositionInner_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyDecomposition_DDRB_to_DDRM.java, org/ejml/dense/row/decomposition/eig/EigenvalueExtractor_DDRM.java, org/ejml/dense/row/decomposition/eig/EigenvalueSmall_F64.java, org/ejml/dense/row/decomposition/eig/SymmetricQRAlgorithmDecomposition_DDRM.java, org/ejml/dense/row/decomposition/eig/WatchedDoubleStepQRDecomposition_DDRM.java, org/ejml/dense/row/decomposition/eig/symm/SymmetricQREigenHelper_DDRM.java, org/ejml/dense/row/decomposition/eig/symm/SymmetricQrAlgorithm_DDRM.java, org/ejml/dense/row/decomposition/eig/watched/WatchedDoubleStepQREigen_MT_DDRM.java, org/ejml/dense/row/decomposition/eig/watched/WatchedDoubleStepQREigenvalue_DDRM.java, org/ejml/dense/row/decomposition/eig/watched/WatchedDoubleStepQREigenvector_DDRM.java, org/ejml/dense/row/decomposition/hessenberg/HessenbergSimilarDecomposition_DDRM.java, org/ejml/dense/row/decomposition/hessenberg/HessenbergSimilarDecomposition_MT_DDRM.java, org/ejml/dense/row/decomposition/hessenberg/TridiagonalDecompositionHouseholder_DDRM.java, org/ejml/dense/row/decomposition/hessenberg/TridiagonalDecompositionHouseholder_MT_DDRM.java, org/ejml/dense/row/decomposition/hessenberg/TridiagonalDecomposition_DDRB_to_DDRM.java, org/ejml/dense/row/decomposition/lu/LUDecompositionAlt_DDRM.java, org/ejml/dense/row/decomposition/qr/QRColPivDecompositionHouseholderColumn_DDRM.java, org/ejml/dense/row/decomposition/qr/QRDecompositionHouseholderColumn_DDRM.java, org/ejml/dense/row/decomposition/qr/QRDecompositionHouseholderColumn_MT_DDRM.java, org/ejml/dense/row/decomposition/qr/QRDecompositionHouseholderTran_DDRM.java, org/ejml/dense/row/decomposition/qr/QRDecomposition_DDRB_to_DDRM.java, org/ejml/dense/row/decomposition/qr/QrHelperFunctions_DDRM.java, org/ejml/dense/row/decomposition/qr/QrHelperFunctions_MT_DDRM.java, org/ejml/dense/row/decomposition/svd/SvdImplicitQrDecompose_MT_DDRM.java, org/ejml/dense/row/decomposition/svd/implicitqr/SvdImplicitQrAlgorithm_DDRM.java, org/ejml/dense/row/factory/DecompositionFactory_MT_DDRM.java, org/ejml/dense/row/factory/LinearSolverFactory_DDRM.java, org/ejml/dense/row/factory/LinearSolverFactory_MT_DDRM.java, org/ejml/dense/row/linsol/AdjustableLinearSolver_DDRM.java, org/ejml/dense/row/linsol/InvertUsingSolve_DDRM.java, org/ejml/dense/row/linsol/LinearSolverAbstract_DDRM.java, org/ejml/dense/row/linsol/LinearSolverUnrolled_DDRM.java, org/ejml/dense/row/linsol/LinearSolver_DDRB_to_DDRM.java, org/ejml/dense/row/linsol/lu/LinearSolverLuBase_DDRM.java, org/ejml/dense/row/linsol/qr/AdjLinearSolverQr_DDRM.java, org/ejml/dense/row/linsol/qr/BaseLinearSolverQrp_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQrBlock64_DDRM.java, org/ejml/dense/row/linsol/qr/SolveNullSpaceQRP_DDRM.java, org/ejml/dense/row/linsol/qr/SolveNullSpaceQR_DDRM.java, org/ejml/dense/row/linsol/qr/SolvePseudoInverseQrp_DDRM.java, org/ejml/dense/row/linsol/svd/SolveNullSpaceSvd_DDRM.java, org/ejml/dense/row/misc/DeterminantFromMinor_DDRM.java, org/ejml/dense/row/misc/ImplCommonOps_DDMA.java, org/ejml/dense/row/misc/RrefGaussJordanRowPivot_DDRM.java, org/ejml/dense/row/misc/TransposeAlgs_DDRM.java, org/ejml/dense/row/misc/TransposeAlgs_MT_DDRM.java, org/ejml/dense/row/misc/UnrolledCholesky_DDRM.java, org/ejml/dense/row/misc/UnrolledInverseFromMinor_DDRM.java, org/ejml/dense/row/mult/MatrixMultProduct_DDRM.java, org/ejml/dense/row/mult/MatrixVectorMult_DDRM.java, org/ejml/dense/row/mult/SubmatrixOps_DDRM.java, org/ejml/dense/row/mult/VectorVectorMult_DDRM.java, org/ejml/generic/GenericMatrixOps_F64.java
+/*
+ * Copyright (c) 2009-2020, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/dense/block/MatrixOps_DDRB.java, org/ejml/dense/block/MatrixOps_MT_DDRB.java, org/ejml/dense/block/TriangularSolver_DDRB.java, org/ejml/dense/block/TriangularSolver_MT_DDRB.java, org/ejml/dense/block/decomposition/qr/BlockHouseHolder_DDRB.java, org/ejml/dense/block/decomposition/qr/BlockHouseHolder_MT_DDRB.java, org/ejml/dense/block/decomposition/qr/QRDecompositionHouseholder_DDRB.java, org/ejml/dense/block/decomposition/qr/QRDecompositionHouseholder_MT_DDRB.java, org/ejml/dense/block/linsol/chol/CholeskyOuterSolver_DDRB.java, org/ejml/dense/block/linsol/chol/CholeskyOuterSolver_MT_DDRB.java, org/ejml/dense/fixed/CommonOps_DDF2.java, org/ejml/dense/fixed/CommonOps_DDF3.java, org/ejml/dense/fixed/CommonOps_DDF4.java, org/ejml/dense/fixed/CommonOps_DDF5.java, org/ejml/dense/fixed/CommonOps_DDF6.java, org/ejml/dense/row/CommonOps_MT_DDRM.java, org/ejml/dense/row/EigenOps_DDRM.java, org/ejml/dense/row/RandomMatrices_DDRM.java, org/ejml/dense/row/decomposition/bidiagonal/BidiagonalDecompositionTall_DDRM.java, org/ejml/dense/row/decomposition/bidiagonal/BidiagonalDecompositionTall_MT_DDRM.java, org/ejml/dense/row/decomposition/chol/CholeskyDecompositionLDL_DDRM.java, org/ejml/dense/row/decomposition/eig/EigenPowerMethod_DDRM.java, org/ejml/dense/row/decomposition/eig/SwitchingEigenDecomposition_DDRM.java, org/ejml/dense/row/decomposition/eig/watched/WatchedDoubleStepQREigen_DDRM.java, org/ejml/dense/row/decomposition/hessenberg/TridiagonalDecompositionHouseholderOrig_DDRM.java, org/ejml/dense/row/decomposition/lu/LUDecompositionBase_DDRM.java, org/ejml/dense/row/decomposition/qr/QRDecompositionHouseholder_DDRM.java, org/ejml/dense/row/decomposition/qr/QrUpdate_DDRM.java, org/ejml/dense/row/decomposition/svd/SafeSvd_DDRM.java, org/ejml/dense/row/decomposition/svd/SvdImplicitQrDecompose_DDRM.java, org/ejml/dense/row/factory/DecompositionFactory_DDRM.java, org/ejml/dense/row/linsol/chol/LinearSolverCholLDL_DDRM.java, org/ejml/dense/row/linsol/chol/LinearSolverChol_DDRB.java, org/ejml/dense/row/linsol/chol/LinearSolverChol_DDRM.java, org/ejml/dense/row/linsol/lu/LinearSolverLuKJI_DDRM.java, org/ejml/dense/row/linsol/lu/LinearSolverLu_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQrHouseCol_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQrHouseCol_MT_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQrHouseTran_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQrHouse_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQr_DDRM.java, org/ejml/dense/row/linsol/qr/LinearSolverQrpHouseCol_DDRM.java, org/ejml/dense/row/linsol/svd/SolvePseudoInverseSvd_DDRM.java, org/ejml/dense/row/misc/ImplCommonOps_DDRM.java, org/ejml/dense/row/mult/MatrixMatrixMult_DDRM.java, org/ejml/dense/row/mult/MatrixMatrixMult_MT_DDRM.java
+/*
+ * Copyright (c) 2020, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/dense/row/CommonOps_DDRM.java
+/*
+ * Copyright (c) 2021, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source entries: org/ejml/dense/row/CommonOps_DDRM.java
+/**
+     * Equivalent to multiplying a matrix B by the inverse of two diagonal matrices.
+     * B = inv(A)*B*inv(C), where A=diag(a) and C=diag(c).
+     *
+     * @param diagA Array of length offsteA + B.numRows
+     * @param offsetA First index in A
+     * @param B Rectangular matrix
+     * @param diagC Array of length indexC + B.numCols
+     * @param offsetC First index in C
+     */
+
+Source entries: org/ejml/dense/row/misc/UnrolledDeterminantFromMinor_DDRM.java
+/*
+ * Copyright (c) 2009-2017, Peter Abeles. All Rights Reserved.
+ *
+ * This file is part of Efficient Java Matrix Library (EJML).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

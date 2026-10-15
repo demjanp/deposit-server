@@ -3,7 +3,7 @@ param(
     [ValidateSet('0','1','2','3','4','5','5.5')][string]$Stage='0',
     [ValidateSet('Work','Resume','Review')][string]$Mode='Review',
     [Parameter(Mandatory=$true)][string]$WorkPackage,
-    [string]$Root='C:\data_processed\Deposit_v2\stage0',
+    [string]$Root='D:\data_processed\Deposit_v2\stage0',
     [string]$InputsFile,
     [ValidatePattern('^[a-fA-F0-9]{64}$')][string]$CapturedInputsHash,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$OwnerResultId,
@@ -14,7 +14,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot\Inputs.ps1"
 $repo=Split-Path $PSScriptRoot -Parent
-if ([IO.Path]::GetFullPath($Root).TrimEnd('\') -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
+if ([IO.Path]::GetFullPath($Root).TrimEnd('\') -ne 'D:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
 $directory=Join-Path $Root "runner\$Name"
 $cleanupBarrier=Enter-Stage0CleanupBarrier $Root
 New-Item -ItemType Directory -Path (Join-Path $Root 'runner') -Force | Out-Null

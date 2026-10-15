@@ -126,13 +126,23 @@ public final class CoreRepository {
         boolean changed=false;String encoding=switch(type){case "DGeometry"->"geometry";case "DResource"->"resource";case "List","DDict"->"json";default->"native";};
         if(type.equals("DGeometry"))changed=geometry().write(descriptor,value,actor);
         else if(type.equals("DResource")){
-            var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;var server=ServerContext.forDatabase(internal.getDatabaseId());
-            String ns=(String)descriptor.getProperty("namespaceId"),role=role(actor,ns);
-            if(server.state(internal.kernelTransaction()).administrative&&"administrator".equals(find("User","id",actor).getProperty("serverRole")))role="owner";
-            changed=resources().write(descriptor,value,actor,role);
+            changed=resources().write(descriptor,value,actor,resourceWriteRole(actor,(String)descriptor.getProperty("namespaceId")));
         }
         Object stored=Set.of("DGeometry","DResource").contains(type)?null:ValueCodec.storage(type,value);
         changed=update(descriptor,Json.map("encoding",encoding,"value",stored),actor)||changed;if(changed)audit(descriptor,actor);return changed;
+    }
+    String resourceWriteRole(String actor,String namespace) {
+        var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;var server=ServerContext.forDatabase(internal.getDatabaseId());
+        Node user=find("User","id",actor);String role=role(actor,namespace);
+        if(user!=null&&server.state(internal.kernelTransaction()).administrative&&"administrator".equals(user.getProperty("serverRole",null)))role="owner";
+        return role;
+    }
+    /** Materialization-only resource attachment; ordinary public value authorization is unchanged. */
+    public boolean writeImportedValue(Node descriptor,String type,Object value,String actor,ResourceRepository.ImportedResources imported) {
+        if(!"DResource".equals(type)||value==null)return writeValue(descriptor,type,value,actor);
+        boolean changed=resources().writeImported(descriptor,value,actor,imported);
+        changed=update(descriptor,Json.map("encoding","resource","value",null),actor)||changed;
+        if(changed)audit(descriptor,actor);return changed;
     }
     private void removeValue(Node descriptor,List<String> deleted) {
         var edge=descriptor.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.OUTGOING);

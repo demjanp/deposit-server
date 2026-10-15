@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'C:\data_processed\Deposit_v2\stage0',
+    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
     [string]$LogPath
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
-$approvedRoot = [IO.Path]::GetFullPath('C:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 if (![string]::Equals($rootPath,$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) { throw "Scenario runner is limited to $approvedRoot" }
 if (!$LogPath) {
@@ -222,9 +222,17 @@ try {
     if ($testChild) { try { $testChild.Process.Dispose() } catch {} }
     if ($stopChild) { try { $stopChild.Process.Dispose() } catch {} }
     if($identityPrepared){
-        $priorIdentity=Join-Path $stateBackup 'prior-deposit-process.json'
-        if(Test-Path -LiteralPath $priorIdentity){Copy-Item -LiteralPath $priorIdentity -Destination $launcherIdentity -Force}
-        elseif(Test-Path -LiteralPath $launcherIdentity){Remove-Item -LiteralPath $launcherIdentity}
+        $live=Get-OwnedServer
+        if($live){
+            $currentIdentity=$null
+            if(Test-Path -LiteralPath $launcherIdentity){try{$currentIdentity=Get-Content -LiteralPath $launcherIdentity -Raw|ConvertFrom-Json -ErrorAction Stop}catch{}}
+            $matchesLive=$currentIdentity -and [long]$currentIdentity.pid -eq [long]$live.ProcessId -and ([DateTimeOffset]$live.CreationDate.ToUniversalTime()).ToUnixTimeMilliseconds() -eq ([DateTimeOffset]([DateTime]$currentIdentity.created).ToUniversalTime()).ToUnixTimeMilliseconds()
+            if(!$matchesLive){
+                $stage0Identity=Get-Content -LiteralPath (Join-Path $run 'process.json') -Raw|ConvertFrom-Json
+                if([long]$stage0Identity.pid -ne [long]$live.ProcessId -or ([DateTimeOffset]$live.CreationDate.ToUniversalTime()).ToUnixTimeMilliseconds() -ne ([DateTimeOffset]([DateTime]$stage0Identity.created).ToUniversalTime()).ToUnixTimeMilliseconds()){throw 'Stage 0 runtime identity does not match the restarted launcher process'}
+                [IO.File]::WriteAllText($launcherIdentity,(@{pid=[long]$live.ProcessId;created=$live.CreationDate.ToUniversalTime().ToString('o');workerPid=[long]$stage0Identity.launcherPid;mode='local'}|ConvertTo-Json),$utf8)
+            }
+        }elseif(Test-Path -LiteralPath $launcherIdentity){Remove-Item -LiteralPath $launcherIdentity -Force}
     }
     foreach ($pair in @(@($fixture,'generated-stage11-drain-fixture.properties'),@($ready,'generated-stage11-drain-ready.txt'),@($release,'generated-stage11-drain-release.txt'))) {
         if ((Test-Path -LiteralPath $pair[0]) -and (Test-Path -LiteralPath $stateBackup)) {

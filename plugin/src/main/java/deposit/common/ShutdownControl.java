@@ -13,6 +13,7 @@ final class ShutdownControl implements AutoCloseable {
     private final Runnable awaitInitialization;
     private final Path directory,runDirectory;
     private final UserPrincipal runtimeIdentity;
+    private final Set<UserPrincipal> allowedIdentities;
     private final Map<String,Object> identity;
     private final Set<String> requests=new HashSet<>(),rejectedRequests=new HashSet<>();
     private final Map<String,Map<String,Object>> publishedAcknowledgements=new HashMap<>();
@@ -36,12 +37,12 @@ final class ShutdownControl implements AutoCloseable {
         validatePath(secrets);
         String processUser=ProcessHandle.current().info().user().orElseThrow(()->new IOException("Cannot establish Deposit runtime OS identity"));
         runtimeIdentity=runtimePrincipal(processUser,FileSystems.getDefault().getUserPrincipalLookupService());
-        Set<UserPrincipal> allowed=Set.copyOf(new HashSet<>(List.of(Files.getOwner(secrets,LinkOption.NOFOLLOW_LINKS),runtimeIdentity)));
-        validateAcl(secrets,allowed);
+        allowedIdentities=Set.copyOf(new HashSet<>(List.of(Files.getOwner(secrets,LinkOption.NOFOLLOW_LINKS),runtimeIdentity)));
+        validateAcl(secrets,allowedIdentities);
         directory=secrets.resolve("deposit-control");
-        if(!Files.exists(directory,LinkOption.NOFOLLOW_LINKS)){Files.createDirectory(directory);Files.setOwner(directory,runtimeIdentity);}
-        validatePath(directory);validateAcl(directory,allowed);
-        String incarnation=UUID.randomUUID().toString();runDirectory=directory.resolve(incarnation);Files.createDirectory(runDirectory);Files.setOwner(runDirectory,runtimeIdentity);validateAcl(runDirectory,allowed);
+        if(!Files.exists(directory,LinkOption.NOFOLLOW_LINKS)){Files.createDirectory(directory);ensureOwner(directory,runtimeIdentity);}
+        validatePath(directory);validateAcl(directory,allowedIdentities);
+        String incarnation=UUID.randomUUID().toString();runDirectory=directory.resolve(incarnation);Files.createDirectory(runDirectory);ensureOwner(runDirectory,runtimeIdentity);validateAcl(runDirectory,allowedIdentities);
         identity=Map.of("version",VERSION,"installation",installation.toRealPath().toString(),"databaseId",database.toString(),
             "pid",ProcessHandle.current().pid(),"startMillis",ProcessHandle.current().info().startInstant().orElseThrow().toEpochMilli(),"incarnation",incarnation);
         publishDescriptor();
@@ -64,6 +65,11 @@ final class ShutdownControl implements AutoCloseable {
         AclFileAttributeView view=Files.getFileAttributeView(path,AclFileAttributeView.class,LinkOption.NOFOLLOW_LINKS);
         if(view==null||!allowed.contains(view.getOwner()))throw new IOException("Shutdown control requires a protected Windows ACL");
         for(AclEntry entry:view.getAcl())if(entry.type()==AclEntryType.ALLOW&&!allowed.contains(entry.principal()))throw new IOException("Shutdown control ACL grants another identity access");
+    }
+    static void ensureOwner(Path path,UserPrincipal expected)throws IOException {
+        UserPrincipal current=Files.getOwner(path,LinkOption.NOFOLLOW_LINKS);
+        if(!current.equals(expected))Files.setOwner(path,expected);
+        if(!Files.getOwner(path,LinkOption.NOFOLLOW_LINKS).equals(expected))throw new IOException("Cannot establish Deposit runtime ownership");
     }
     private void watch(){
         while(!closed){
@@ -118,7 +124,7 @@ final class ShutdownControl implements AutoCloseable {
     private void publishDescriptor()throws IOException{var descriptor=new LinkedHashMap<>(identity);descriptor.putAll(server.shutdownCounts());if(!descriptor.equals(publishedDescriptor)){writeAtomic(directory.resolve("run.json"),descriptor);publishedDescriptor=descriptor;}}
     private void writeAtomic(Path target,Map<String,Object> value)throws IOException {
         Path temporary=target.resolveSibling(target.getFileName()+"."+UUID.randomUUID()+".partial");
-        try{Files.writeString(temporary,Json.write(value),StandardOpenOption.CREATE_NEW);Files.setOwner(temporary,runtimeIdentity);Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}finally{Files.deleteIfExists(temporary);}
+        try{Files.writeString(temporary,Json.write(value),StandardOpenOption.CREATE_NEW);ensureOwner(temporary,runtimeIdentity);validateAcl(temporary,allowedIdentities);Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}finally{Files.deleteIfExists(temporary);}
     }
     @Override public void close(){closed=true;if(watcher!=null)watcher.interrupt();}
 }

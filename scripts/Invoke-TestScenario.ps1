@@ -6,12 +6,13 @@ param(
     [ValidateSet('stage4','stage5')][string]$CrashSuite,
     [string]$CrashPoint,
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'C:\data_processed\Deposit_v2\stage0',
-    [string]$LogPath
+    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
+    [string]$LogPath,
+    [ValidateRange(30,3600)][int]$TestTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'
-$approvedRoot = [IO.Path]::GetFullPath('C:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 if (![string]::Equals($rootPath,$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) { throw "Scenario runner is limited to $approvedRoot" }
 if (!$LogPath) {
@@ -30,6 +31,25 @@ function Write-ScenarioLog([string]$Text) {
     [IO.File]::WriteAllLines($LogPath,$log,$utf8)
 }
 function Get-OwnedServer {
+    $identityPath=Join-Path $run 'process.json'
+    if(Test-Path -LiteralPath $identityPath) {
+        $identity=Get-Content -LiteralPath $identityPath -Raw|ConvertFrom-Json
+        if($identity.PSObject.Properties['mode'] -and $identity.mode -eq 'service') {
+            $service=Get-CimInstance Win32_Service -Filter "Name='$($identity.serviceName)'"
+            if(!$service -or [string]$service.State -eq 'Stopped'){return $null}
+            . (Join-Path $PSScriptRoot 'Request-DepositStop.ps1')
+            $state=Get-Content (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json
+            $authorizedHome=[IO.Path]::GetFullPath((Join-Path $run 'neo4j')).TrimEnd('\')
+            if($state.mode -ne 'service' -or $identity.serviceName -cne [string]$state.serviceName -or $identity.serviceAccount -cne [string]$state.serviceAccount -or ![string]::Equals([IO.Path]::GetFullPath([string]$identity.neo4jHome).TrimEnd('\'),$authorizedHome,[StringComparison]::OrdinalIgnoreCase)){throw 'Owned Deposit service record does not match the configured installation'}
+            $bound=Get-DepositServiceProcessIdentity $authorizedHome ([string]$state.serviceName) ([string]$state.serviceAccount)
+            if($bound.serviceAccount -ine [string]$identity.serviceAccount -or $bound.runtimeSid -cne [string]$identity.runtimeSid){throw 'Owned Deposit service identity changed'}
+            $process=Get-CimInstance Win32_Process -Filter "ProcessId=$($bound.pid)"
+            if([long]$identity.pid -ne [long]$bound.pid -or [long]$identity.startMillis -ne [long]$bound.startMillis){
+                [IO.File]::WriteAllText($identityPath,(@{pid=$bound.pid;created=$process.CreationDate.ToUniversalTime().ToString('o');startMillis=$bound.startMillis;runtimeSid=$bound.runtimeSid;serviceName=$bound.name;serviceAccount=$bound.serviceAccount;neo4jHome=$authorizedHome;mode='service';releaseMode=$true}|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
+            }
+            return $process
+        }
+    }
     Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {
         $_.CommandLine -and $_.CommandLine.Contains((Join-Path $run 'neo4j')) -and
         $_.CommandLine -match 'org\.neo4j\.server\.(Neo4jCommunity|CommunityEntryPoint)|Neo4jBoot'
@@ -65,12 +85,12 @@ function Complete-PowerShellChild($Child,[string]$OutputPath,[string]$ErrorPath,
     [IO.File]::WriteAllText($ErrorPath,$stderr,$utf8)
     return $process.ExitCode
 }
-function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[string]$Label) {
+function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[string]$Label,[int]$TimeoutMilliseconds=180000) {
     $childLog = [IO.Path]::ChangeExtension($LogPath,".$Label.log")
     $childErrorLog = [IO.Path]::ChangeExtension($LogPath,".$Label.err.log")
     $command = '& ' + (Quote-PowerShell $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments)
     $child = Start-PowerShellChild $command
-    $timeout = if ($Label -eq 'stage0-Stop') { 330000 } else { 180000 }
+    $timeout = if ($Label -eq 'stage0-Stop') { 330000 } else { $TimeoutMilliseconds }
     $code = Complete-PowerShellChild $child $childLog $childErrorLog $timeout
     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
     foreach ($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
@@ -83,7 +103,7 @@ function Invoke-SelectedTest([string]$Selection,[string]$Label) {
     $testLog = [IO.Path]::ChangeExtension($LogPath,".$Label.log")
     $childArguments = @('-Kind','Integration','-Test',$Selection,'-TestMode',$(if($Label -eq 'seed'){'seed'}else{'verify'}),'-Port',[string]$Port,'-Root',$rootPath,'-LogPath',$testLog)
     if ($CrashPoint) { $childArguments += @('-CrashPoint',$CrashPoint) }
-    Invoke-ChildScript "$PSScriptRoot\Invoke-Tests.ps1" $childArguments "$Label-runner"
+    Invoke-ChildScript "$PSScriptRoot\Invoke-Tests.ps1" $childArguments "$Label-runner" ($TestTimeoutSeconds*1000)
 }
 
 if ($Transition -in @('ProcessCrashRestart','StartupCrashRestart') -and (!$CrashSuite -or !$CrashPoint)) { throw 'Crash transitions require -CrashSuite and -CrashPoint.' }
@@ -93,6 +113,10 @@ $wasRunning = [bool](Get-OwnedServer)
 $failure = $null
 try {
     if (!$wasRunning) { Invoke-Stage0 'Start' }
+    $ownedRecord=if(Test-Path -LiteralPath (Join-Path $run 'process.json')){Get-Content (Join-Path $run 'process.json') -Raw|ConvertFrom-Json}else{$null}
+    if($Transition -eq 'ProcessCrashRestart' -and $ownedRecord -and $ownedRecord.PSObject.Properties['mode'] -and $ownedRecord.mode -eq 'service') {
+        Invoke-ChildScript "$PSScriptRoot\Test-KillTestOwnedJvm.ps1" @() 'crash-helper-refusal-checks'
+    }
     Invoke-SelectedTest $SeedTest 'seed'
     switch ($Transition) {
         Restart { Invoke-Stage0 'Stop'; Invoke-Stage0 'Start' }
@@ -113,9 +137,12 @@ try {
                     $deadline = [DateTime]::UtcNow.AddSeconds(60)
                     while (!(Test-Path -LiteralPath $marker) -and [DateTime]::UtcNow -lt $deadline -and !$starter.Process.HasExited) { Start-Sleep -Milliseconds 100 }
                     if (!(Test-Path -LiteralPath $marker) -or !(Get-Content -LiteralPath $marker -Raw).StartsWith($CrashPoint + '/')) { throw 'Expected startup recovery barrier was not reached.' }
+                    Invoke-SelectedTest 'Stage11StartupIT#incompleteInitializationExcludesReadinessAndDownloadListener' 'recovery-gating'
                     [IO.File]::WriteAllText((Join-Path $run 'stage5-startup-release.txt'),'continue')
                     Invoke-ChildScript "$PSScriptRoot\Kill-TestOwnedJvm.ps1" @() 'kill-startup-jvm'
-                    $startCode = Complete-PowerShellChild $starter $childLog $childErrorLog 60000
+                    # Stage0 retains its normal 90-second readiness deadline after
+                    # the controlled JVM crash; observe that failure to completion.
+                    $startCode = Complete-PowerShellChild $starter $childLog $childErrorLog 180000
                     if ($startCode -eq 0) { throw 'Startup attempt unexpectedly passed after its JVM was terminated.' }
                     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
                     foreach ($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }

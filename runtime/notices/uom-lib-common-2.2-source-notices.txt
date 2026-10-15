@@ -1,0 +1,31 @@
+
+Source entries: module-info.java, tech/uom/lib/common/function/Coded.java, tech/uom/lib/common/function/Converter.java, tech/uom/lib/common/function/DescriptionSupplier.java, tech/uom/lib/common/function/DoubleFactorSupplier.java, tech/uom/lib/common/function/FactorSupplier.java, tech/uom/lib/common/function/Identifiable.java, tech/uom/lib/common/function/IntBaseSupplier.java, tech/uom/lib/common/function/IntExponentSupplier.java, tech/uom/lib/common/function/IntIdentifiable.java, tech/uom/lib/common/function/IntMaximumSupplier.java, tech/uom/lib/common/function/IntMinimumSupplier.java, tech/uom/lib/common/function/IntPrioritySupplier.java, tech/uom/lib/common/function/LongIdentifiable.java, tech/uom/lib/common/function/MaximumSupplier.java, tech/uom/lib/common/function/MinimumSupplier.java, tech/uom/lib/common/function/Nameable.java, tech/uom/lib/common/function/Parser.java, tech/uom/lib/common/function/PrefixOperator.java, tech/uom/lib/common/function/QuantityConverter.java, tech/uom/lib/common/function/QuantityFunctions.java, tech/uom/lib/common/function/QuantitySupplier.java, tech/uom/lib/common/function/SymbolSupplier.java, tech/uom/lib/common/function/UnitConverterSupplier.java, tech/uom/lib/common/function/UnitSupplier.java, tech/uom/lib/common/function/ValueSupplier.java, tech/uom/lib/common/function/Versioned.java, tech/uom/lib/common/function/package-info.java, tech/uom/lib/common/util/DescriptiveEnum.java, tech/uom/lib/common/util/NaturalQuantityComparator.java, tech/uom/lib/common/util/NumberComparator.java, tech/uom/lib/common/util/SystemOfUnitsReporter.java, tech/uom/lib/common/util/UnitComparator.java, tech/uom/lib/common/util/package-info.java
+/*
+ * Units of Measurement Common Library for Java
+ * Copyright (c) 2005-2023, Werner Keil and others.
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+ *    and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of JSR-385, Indriya nor the names of their contributors may be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */

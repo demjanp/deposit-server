@@ -8,6 +8,21 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ExportRecordsTest {
     @TempDir Path temp;
+    @Test void fixedRevisionRangesKeepEpochBaselinesAndNestedRowsSeparateAfterLaterAppends()throws Exception {
+        try(var records=new ExportRecords(temp)){
+            records.addRevision("history-revisions",Json.map("revisionId","closed-baseline","changes",List.of(Json.map("entityId","first-object")),"touches",Json.map("Object\u0000first-object",List.of("*")),"dependencies",List.of("Class\u0000first-class")));
+            var closed=records.revisions("history-revisions",0,1);
+            records.addRevision("history-revisions",Json.map("revisionId","active-baseline","changes",List.of(Json.map("entityId","second-object")),"touches",Json.map("Object\u0000second-object",List.of("value")),"dependencies",List.of("Class\u0000second-class")));
+            var active=records.revisions("history-revisions",1,2);
+            records.addRevision("history-revisions",Json.map("revisionId","later-revision","changes",List.of(),"touches",Map.of(),"dependencies",List.of()));
+            assertEquals(1,closed.size());assertEquals("closed-baseline",closed.getFirst().get("revisionId"));
+            assertEquals(1,active.size());assertEquals("active-baseline",active.getFirst().get("revisionId"));
+            assertEquals("second-object",ValueCodec.map(((List<?>)active.getFirst().get("changes")).getFirst()).get("entityId"));
+            assertEquals(Json.map("Object\u0000second-object",List.of("value")),active.getFirst().get("touches"));
+            assertEquals(List.of("Class\u0000second-class"),active.getFirst().get("dependencies"));
+            assertEquals(3,records.revisions("history-revisions").size());
+        }
+    }
     @Test void stagedRowsSlicesAndIndexesPreserveOpaqueValuesAndCleanUp() throws Exception {
         try(var records=new ExportRecords(temp)) {
             String opaque="  not JSON\nλ\u0000";

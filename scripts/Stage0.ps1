@@ -5,7 +5,7 @@ param(
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$')]
     [string]$RunId = 'stage0-host',
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'C:\data_processed\Deposit_v2\stage0',
+    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
     [string]$ReleasePackage,
     [string]$BoltUri,
     [switch]$DiagnosticBuild,
@@ -18,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\ArtifactIntegrity.ps1"
 $repo = Split-Path $PSScriptRoot -Parent
 $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-if ($Root -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Stage 0 must use the user-approved root C:\data_processed\Deposit_v2\stage0'}
+if ($Root -ne 'D:\data_processed\Deposit_v2\stage0') {throw 'Stage 0 must use the user-approved root D:\data_processed\Deposit_v2\stage0'}
 $manifest = Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $spatialLock = Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock) -Raw | ConvertFrom-Json
 $ocflLock = Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json
@@ -183,6 +183,9 @@ function Invoke-Install {
         $launcher=Join-Path $distribution 'deposit.bat';$arguments=@('setup',$installation,$env:JAVA_HOME,(Join-Path $run 'resources'),(Join-Path $run 'exports'),[string]$Port)
         $ErrorActionPreference='Continue';& $launcher @arguments *> "$evidence\release-setup.log";$ErrorActionPreference='Stop'
         if($LASTEXITCODE -ne 0){throw 'Packaged deposit.bat setup failed; see release-setup.log'}
+        . "$PSScriptRoot\ReleaseManifest.ps1"
+        $expectedInstallation=@{neo4jHome=$installation;javaHome=$env:JAVA_HOME;dataRoot=(Join-Path $run 'resources');exportRoot=(Join-Path $run 'exports');mode='local'}
+        if(!(Test-DepositReleasePackage -Root $distribution -ConfiguredInstallation -ExpectedInstallation $expectedInstallation)){throw 'Configured release installation failed manifest verification'}
     } else {
     $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-stage65.jar"
     $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-stage65.jar"
@@ -248,6 +251,19 @@ function Get-OwnedProcess {
     Assert-Run
     if (!(Test-Path "$run\process.json")) { return $null }
     $identity = Get-Content "$run\process.json" -Raw | ConvertFrom-Json
+    if($identity.PSObject.Properties['mode'] -and $identity.mode -eq 'service') {
+        . (Join-Path $PSScriptRoot 'Request-DepositStop.ps1')
+        $installState=Get-Content (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json
+        if($installState.mode -ne 'service' -or $identity.serviceName -cne [string]$installState.serviceName -or $identity.serviceAccount -cne [string]$installState.serviceAccount) {throw 'Recorded service identity does not match the configured installation'}
+        if([string]$identity.neo4jHome -ine [string]$installState.neo4jHome){throw 'Recorded Deposit service installation changed'}
+        $service=Get-CimInstance Win32_Service -Filter "Name='$($installState.serviceName)'"
+        if(!$service -or [string]$service.State -eq 'Stopped'){return $null}
+        $serviceIdentity=Get-DepositServiceProcessIdentity $installation ([string]$installState.serviceName) ([string]$installState.serviceAccount)
+        if([string]$serviceIdentity.runtimeSid -cne [string]$identity.runtimeSid){throw 'Recorded Deposit service runtime SID changed'}
+        $process=Get-CimInstance Win32_Process -Filter "ProcessId=$($serviceIdentity.pid)"
+        if([long]$identity.pid -ne [long]$serviceIdentity.pid -or [long]$identity.startMillis -ne [long]$serviceIdentity.startMillis){Write-Json @{pid=$serviceIdentity.pid;created=$process.CreationDate.ToUniversalTime().ToString('o');startMillis=$serviceIdentity.startMillis;runtimeSid=$serviceIdentity.runtimeSid;serviceName=$serviceIdentity.name;serviceAccount=$serviceIdentity.serviceAccount;neo4jHome=$installation;mode='service';releaseMode=$true} (Join-Path $run 'process.json')}
+        return $process
+    }
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($identity.pid)"
     if (!$process -or !$process.CreationDate -or !$process.CommandLine) { return $null }
     if ($process.CreationDate.ToUniversalTime().ToString('o') -ne $identity.created -or !$process.CommandLine.Contains($installation)) {
@@ -277,6 +293,22 @@ function Invoke-Start {
     if($owner.releaseMode){
         $archive=Join-Path $run 'distribution\deposit.bat'
         $env:JAVA_HOME=Join-Path $Root $manifest.javaHome;$env:NEO4J_HOME=$installation;$env:NEO4J_CONF=Join-Path $installation 'conf';$env:PATH=(Join-Path $env:JAVA_HOME 'bin')+';'+$env:PATH
+        $installState=Get-Content (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json
+        if($installState.mode -eq 'service') {
+            $launcherProcess=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList ('/d /c ""'+$archive+'" start"') -PassThru -WindowStyle Hidden -RedirectStandardOutput "$evidence\release-start.out.log" -RedirectStandardError "$evidence\release-start.err.log"
+            try {if(!$launcherProcess.WaitForExit(150000)){$launcherProcess.Kill();throw 'Packaged service start timed out'};$launcherExitCode=$launcherProcess.ExitCode} finally {$launcherProcess.Dispose()}
+            . (Join-Path $PSScriptRoot 'Request-DepositStop.ps1')
+            $deadline=[DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds);$serviceIdentity=$null
+            while([DateTime]::UtcNow -lt $deadline -and !$serviceIdentity){try{$serviceIdentity=Get-DepositServiceProcessIdentity $installation ([string]$installState.serviceName) ([string]$installState.serviceAccount)}catch{Start-Sleep -Milliseconds 250}}
+            if(!$serviceIdentity){throw "Configured Deposit service did not start (launcher exit $launcherExitCode). Inspect release-start.out.log and release-start.err.log."}
+            $serviceProcess=Get-CimInstance Win32_Process -Filter "ProcessId=$($serviceIdentity.pid)"
+            $created=$serviceProcess.CreationDate.ToUniversalTime().ToString('o')
+            Write-Json @{pid=$serviceIdentity.pid;created=$created;startMillis=$serviceIdentity.startMillis;runtimeSid=$serviceIdentity.runtimeSid;serviceName=$serviceIdentity.name;serviceAccount=$serviceIdentity.serviceAccount;neo4jHome=$installation;mode='service';releaseMode=$true} "$run\process.json"
+            $readinessDeadline=[DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds);$ready=$false;$lastReadinessError=$null
+            while([DateTime]::UtcNow -lt $readinessDeadline -and !$ready){try{Invoke-Readiness $readinessDeadline;$ready=$true}catch{$lastReadinessError=$_.Exception.Message;Start-Sleep -Milliseconds 500}}
+            if(!$ready){throw "Deposit service startup readiness timed out: $lastReadinessError. Server retained for inspection."}
+            return
+        }
         $launcherArguments='/d /c ""'+$archive+'" start"'
         $launcherProcess=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList $launcherArguments -PassThru -WindowStyle Hidden -RedirectStandardOutput "$evidence\release-start.out.log" -RedirectStandardError "$evidence\release-start.err.log"
         try {if(!$launcherProcess.WaitForExit(150000)){$launcherProcess.Kill();throw 'Packaged deposit.bat start timed out'}} finally {$launcherProcess.Dispose()}
@@ -416,6 +448,8 @@ function Invoke-Package {
     Copy-Item -LiteralPath (Join-Path $Root "$($manifest.neo4jHome)\ThirdPartyLicenses.txt") -Destination "$destination\notices\Neo4j-ThirdPartyLicenses.txt"
     Copy-Item -Path "$Root\cache\licenses\*" -Destination "$destination\notices"
     Copy-Item -LiteralPath "$repo\LICENSE","$repo\runtime\artifacts.json","$repo\runtime\spatial-runtime-lock.json","$repo\runtime\ocfl-runtime-lock.json","$repo\runtime\format-runtime-lock.json" -Destination $destination
+    . (Join-Path $PSScriptRoot 'ReleaseNotices.ps1')
+    if(!(Write-DepositReleaseNotices $destination $repo)){throw 'Release component notice verification failed'}
     Copy-Item -Path "$repo\runtime\distribution\neo4j.conf","$repo\runtime\distribution\deposit.properties" -Destination "$destination\conf"
     Copy-Item -LiteralPath "$repo\runtime\distribution\deposit.bat","$repo\runtime\distribution\deposit.ps1" -Destination $destination
     New-Item -ItemType Directory -Force "$destination\helpers" | Out-Null
@@ -428,11 +462,24 @@ function Invoke-Package {
     if(!$operationsMatch.Success) {throw 'Windows operations section is missing from Deposit Hub server documentation'}
     $operationsText="# Deposit Server on Windows`r`n`r`n"+$operationsMatch.Groups[1].Value.Trim()+"`r`n"
     [IO.File]::WriteAllText((Join-Path $destination 'OPERATIONS.md'),$operationsText,(New-Object Text.UTF8Encoding($false)))
+    . (Join-Path $PSScriptRoot 'ReleaseManifest.ps1')
+    $expectedPluginPaths=New-Object 'System.Collections.Generic.List[string]'
+    $expectedPluginPaths.Add('plugins/'+[IO.Path]::GetFileName($plugin))
+    foreach($id in @('apoc','spatial','bcrypt-provider')){$artifact=$manifest.artifacts|Where-Object id -eq $id;$expectedPluginPaths.Add('plugins/'+$artifact.file)}
+    foreach($lock in @($spatialLock,$ocflLock,$formatLock)){foreach($artifact in @($lock.dependencies|Where-Object ship)){$expectedPluginPaths.Add('plugins/'+$artifact.file)}}
+    Get-ReleaseManifestData $destination $expectedPluginPaths.ToArray()
+    if(!(Test-DepositReleasePackage $destination)){throw 'Generated release package failed manifest verification'}
     $archivePath=Join-Path $Root 'build\deposit-server-0.0.0-stage65.zip'
     New-DeterministicZip $destination $archivePath
+    $archiveCheck=Join-Path $run ('tmp\release-verify-'+[Guid]::NewGuid().ToString('N'))
+    try {
+        [IO.Compression.ZipFile]::ExtractToDirectory($archivePath,$archiveCheck)
+        if(!(Test-DepositReleasePackage $archiveCheck)){throw 'Release archive failed manifest verification'}
+    } finally {if(Test-Path -LiteralPath $archiveCheck){Remove-Item -LiteralPath $archiveCheck -Recurse -Force}}
     $installedDistribution=Join-Path $run 'distribution'
     if(Test-Path -LiteralPath $installedDistribution) {throw 'Installed distribution already exists; reset before packaging'}
     Copy-Item -LiteralPath $destination -Destination $installedDistribution -Recurse
+    if(!(Test-DepositReleasePackage $installedDistribution)){throw 'Installed distribution copy failed manifest verification'}
 }
 
 $phaseLock=$null

@@ -19,16 +19,23 @@ function Drain-Installation($State) {
     return (Request-DepositStop -Neo4jHome $State.neo4jHome -TargetProcessId $owned[0].ProcessId)
 }
 function Get-DepositServiceIncarnation($State) {
-    $service=Get-CimInstance Win32_Service -Filter "Name='$($State.serviceName)'"
-    if(!$service -or $service.State -ne 'Running' -or [long]$service.ProcessId -le 0){Fail 'The Deposit service is not running as the expected service incarnation'}
-    $process=Get-CimInstance Win32_Process -Filter "ProcessId=$($service.ProcessId)"
-    if(!$process -or !$process.CreationDate){Fail 'Cannot establish the running Deposit service process incarnation'}
-    return [pscustomobject]@{name=[string]$service.Name;pid=[long]$service.ProcessId;startMillis=([DateTimeOffset]$process.CreationDate.ToUniversalTime()).ToUnixTimeMilliseconds()}
+    try{$identity=Get-DepositServiceProcessIdentity $State.neo4jHome $State.serviceName $State.serviceAccount}
+    catch{Fail "Cannot establish the running Deposit service incarnation: $($_.Exception.Message)"}
+    return [pscustomobject]@{name=[string]$identity.name;pid=[long]$identity.pid;startMillis=[long]$identity.startMillis;serviceAccount=[string]$identity.serviceAccount;runtimeSid=[string]$identity.runtimeSid}
 }
 function Assert-DepositServiceIncarnation($State,$Identity,$Drain) {
     $current=Get-DepositServiceIncarnation $State
-    if($current.name -ne $Identity.name -or $current.pid -ne $Identity.pid -or $current.startMillis -ne $Identity.startMillis){Fail 'Deposit service restarted during its drain; refusing to stop a replacement service'}
+    if($current.name -ine $Identity.name -or $current.pid -ne $Identity.pid -or $current.startMillis -ne $Identity.startMillis -or $current.serviceAccount -ine $Identity.serviceAccount -or $current.runtimeSid -ne $Identity.runtimeSid){Fail 'Deposit service restarted during its drain; refusing to stop a replacement service'}
     [void](Assert-DepositStopIdentity $Drain)
+}
+function Drain-ServiceInstallation($State,$Identity) {
+    $drain=Request-DepositStop -Neo4jHome $State.neo4jHome -TargetProcessId ([int]$Identity.pid) -ServiceName $State.serviceName -ServiceAccount $State.serviceAccount
+    if([long]$drain.pid -ne [long]$Identity.pid -or [long]$drain.startMillis -ne [long]$Identity.startMillis){Fail 'Deposit drain acknowledgement belongs to another service incarnation'}
+    return $drain
+}
+function Assert-NoInstalledDepositService($State) {
+    $existing=Get-CimInstance Win32_Service -Filter "Name='$($State.serviceName)'"
+    if($existing){Fail 'A Deposit service is already registered. Run deposit.bat remove-service from an elevated shell before retrying installation.'}
 }
 function Read-State {
     if(!(Test-Path -LiteralPath $script:StatePath -PathType Leaf)){Fail 'Deposit is not configured. Run deposit.bat setup <neo4j-home> <java-home> <data-root> <export-root>.'}
@@ -41,8 +48,11 @@ function Read-State {
 }
 function Save-State($State) {
     $tmp=$script:StatePath+'.'+[guid]::NewGuid().ToString('N')+'.partial'
-    [IO.File]::WriteAllText($tmp,($State|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
-    if(Test-Path -LiteralPath $script:StatePath){[IO.File]::Replace($tmp,$script:StatePath,$null)}else{[IO.File]::Move($tmp,$script:StatePath)}
+    $backup=$script:StatePath+'.'+[guid]::NewGuid().ToString('N')+'.backup'
+    try {
+        [IO.File]::WriteAllText($tmp,($State|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
+        if(Test-Path -LiteralPath $script:StatePath){[IO.File]::Replace($tmp,$script:StatePath,$backup);Remove-Item -LiteralPath $backup -Force}else{[IO.File]::Move($tmp,$script:StatePath)}
+    } finally {Remove-Item -LiteralPath $tmp,$backup -Force -ErrorAction SilentlyContinue}
 }
 function Set-Neo4jSetting([string]$Path,[string]$Name,[string]$Value) {
     $lines=if(Test-Path -LiteralPath $Path){[IO.File]::ReadAllLines($Path)}else{@()}
@@ -105,7 +115,7 @@ function Migrate-DepositSecrets($State,[string]$ServiceAccount) {
         else{$partial=$destination+'.'+[guid]::NewGuid().ToString('N')+'.partial';try{Copy-Item -LiteralPath $source.FullName -Destination $partial;if((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ne $sourceHash){Fail "Deposit secret copy verification failed: $($source.Name)"};Move-Item -LiteralPath $partial -Destination $destination}catch{Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue;throw}}
     }
     foreach($source in $sources){$destination=Join-Path $target $source.Name;if((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash){Fail "Deposit secret migration changed bytes: $($source.Name)"}}
-    if(!$matches.Count){$text=$configText.TrimEnd()+"`r`nsecretRoot="+$target.Replace('\','/')+"`r`n";$tmp=$config+'.'+[guid]::NewGuid().ToString('N')+'.partial';try{[IO.File]::WriteAllText($tmp,$text,(New-Object Text.UTF8Encoding($false)));[IO.File]::Replace($tmp,$config,$null)}finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}}
+    if(!$matches.Count){$text=$configText.TrimEnd()+"`r`nsecretRoot="+$target.Replace('\','/')+"`r`n";$tmp=$config+'.'+[guid]::NewGuid().ToString('N')+'.partial';$backup=$config+'.'+[guid]::NewGuid().ToString('N')+'.backup';try{[IO.File]::WriteAllText($tmp,$text,(New-Object Text.UTF8Encoding($false)));[IO.File]::Replace($tmp,$config,$backup);Remove-Item -LiteralPath $backup -Force}finally{Remove-Item -LiteralPath $tmp,$backup -Force -ErrorAction SilentlyContinue}}
     foreach($source in Get-ChildItem -LiteralPath (Join-Path $State.neo4jHome 'conf') -File -Force|Where-Object {$_.Name -eq 'deposit-bootstrap.secret' -or $_.Name -match '^deposit-.+-cursor\.key$'}){$destination=Join-Path $target $source.Name;if(!(Test-Path -LiteralPath $destination -PathType Leaf) -or (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash){Fail "Unadopted or conflicting legacy Deposit secret: $($source.Name)"};Remove-Item -LiteralPath $source.FullName -Force}
     $State.secretRoot=$target;return $target
 }
@@ -169,12 +179,19 @@ function Set-RuntimeEnvironment($State) {
     $env:JAVA_HOME=$State.javaHome;$env:NEO4J_HOME=$State.neo4jHome;$env:NEO4J_CONF=Join-Path $State.neo4jHome 'conf'
     $env:PATH=(Join-Path $State.javaHome 'bin')+';'+$env:PATH
 }
+function Get-IcaclsPath([string]$Path) {
+    if($Path.StartsWith('\\?\',[StringComparison]::OrdinalIgnoreCase)){return $Path}
+    $absolute=[IO.Path]::GetFullPath($Path)
+    if($absolute.StartsWith('\\')){return '\\?\UNC\'+$absolute.Substring(2)}
+    return '\\?\'+$absolute
+}
 function Service([string]$Operation,$State) {
     Set-RuntimeEnvironment $State
     $neo4j=Join-Path $State.neo4jHome 'bin\neo4j.bat'
     if($Operation -eq 'install'){
         . (Join-Path $script:PackageRoot 'helpers\Credentials.ps1')
         Test-NoConflictingRuntime $State.neo4jHome
+        Assert-NoInstalledDepositService $State
         if($Arguments.Count -gt 1){Fail 'Usage: deposit.bat install-service [dedicated-account]'}
         $account=if($Arguments.Count -eq 1){$Arguments[0]}else{"NT SERVICE\$($State.serviceName)"}
         if($account -match '[\r\n]'){Fail 'Invalid service account'}
@@ -185,19 +202,19 @@ function Service([string]$Operation,$State) {
             & $neo4j windows-service install
             if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service installation failed; check elevated permissions and pinned runtime logs'}
             $password=if($ptr -eq [IntPtr]::Zero){$null}else{[Runtime.InteropServices.Marshal]::PtrToStringUni($ptr)}
-            $result=DepositServiceAccount::Set($State.serviceName,$account,$password)
+            $result=[DepositServiceAccount]::Set($State.serviceName,$account,$password)
             if(!$result){Fail 'Could not assign the dedicated service identity. Remove the partial service, grant Log on as a service, and retry.'}
             $null=Migrate-DepositSecrets $State $account
-            foreach($path in @($State.neo4jHome,$State.javaHome)) {& icacls.exe $path '/grant' "$account`:(OI)(CI)RX" '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service read access to $path"}}
-            foreach($path in @((Join-Path $State.neo4jHome 'data'),(Join-Path $State.neo4jHome 'logs'),$State.dataRoot,$State.exportRoot)) {New-Item -ItemType Directory -Path $path -Force|Out-Null;& icacls.exe $path '/grant' "$account`:(OI)(CI)M" '/T' '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service access to $path"}}
-            $State.mode='service';$State.serviceAccount=$account;Save-State $State
+            foreach($path in @($State.neo4jHome,$State.javaHome)) {& icacls.exe (Get-IcaclsPath $path) '/grant' "$account`:(OI)(CI)RX" '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service read access to $path"}}
+            foreach($path in @((Join-Path $State.neo4jHome 'data'),(Join-Path $State.neo4jHome 'logs'),$State.dataRoot,$State.exportRoot)) {New-Item -ItemType Directory -Path $path -Force|Out-Null;& icacls.exe (Get-IcaclsPath $path) '/grant' "$account`:(OI)(CI)M" '/T' '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service access to $path"}}
+            Set-DepositServiceState $State $account;Save-State $State
         } finally {if($ptr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeGlobalAllocUnicode($ptr)};if($credential){$credential.Dispose()};$password=$null}
         Write-Output "Service $($State.serviceName) installed for $account. Start with: deposit.bat start"
         return
     }
     $service=Get-Service -Name $State.serviceName -ErrorAction SilentlyContinue
     if($Operation -eq 'remove'){
-        if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-Installation $State;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
+        if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-ServiceInstallation $State $serviceIdentity;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
         & $neo4j windows-service uninstall
         if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service removal failed'}
         $null=Migrate-DepositSecrets $State ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
@@ -209,7 +226,7 @@ function Service([string]$Operation,$State) {
         if(!$service){Fail 'Service is not installed. Run deposit.bat install-service <dedicated-account> from an elevated shell.'}
         Start-Service -Name $State.serviceName -ErrorAction Stop;return
     }
-    if($Operation -eq 'stop') {if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-Installation $State;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))};return}
+    if($Operation -eq 'stop') {if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-ServiceInstallation $State $serviceIdentity;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))};return}
     if($Operation -eq 'status') {if(!$service){Write-Output 'Service is not installed.';exit 3};Write-Output "Service status: $($service.Status)";if($service.Status -ne 'Running'){exit 3};return}
 }
 function Start-Local($State) {

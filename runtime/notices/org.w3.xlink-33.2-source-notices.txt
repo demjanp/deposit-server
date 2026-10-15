@@ -1,0 +1,8 @@
+
+Source entries: org/w3/xlink/ActuateType.java, org/w3/xlink/DocumentRoot.java, org/w3/xlink/ShowType.java, org/w3/xlink/XlinkFactory.java, org/w3/xlink/XlinkPackage.java, org/w3/xlink/impl/DocumentRootImpl.java, org/w3/xlink/impl/XlinkFactoryImpl.java, org/w3/xlink/impl/XlinkPackageImpl.java
+/**
+ * <copyright>
+ * </copyright>
+ *
+ * $Id$
+ */

@@ -1,0 +1,102 @@
+
+Source entries: dev/failsafe/AsyncExecution.java, dev/failsafe/CircuitBreakerConfig.java, dev/failsafe/DelayablePolicyBuilder.java, dev/failsafe/DelayablePolicyConfig.java, dev/failsafe/Execution.java, dev/failsafe/FailurePolicyBuilder.java, dev/failsafe/FailurePolicyConfig.java, dev/failsafe/FallbackConfig.java, dev/failsafe/Policy.java, dev/failsafe/PolicyBuilder.java, dev/failsafe/PolicyConfig.java, dev/failsafe/PolicyListeners.java, dev/failsafe/RetryPolicyConfig.java, dev/failsafe/Timeout.java, dev/failsafe/TimeoutBuilder.java, dev/failsafe/TimeoutConfig.java, dev/failsafe/event/CircuitBreakerStateChangedEvent.java, dev/failsafe/event/EventListener.java, dev/failsafe/event/ExecutionAttemptedEvent.java, dev/failsafe/event/ExecutionCompletedEvent.java, dev/failsafe/event/ExecutionEvent.java, dev/failsafe/event/ExecutionScheduledEvent.java, dev/failsafe/internal/CircuitBreakerExecutor.java, dev/failsafe/internal/CircuitStats.java, dev/failsafe/internal/CountingCircuitStats.java, dev/failsafe/internal/EventHandler.java, dev/failsafe/internal/FallbackExecutor.java, dev/failsafe/internal/RetryPolicyExecutor.java, dev/failsafe/internal/TimedCircuitStats.java, dev/failsafe/internal/TimeoutExecutor.java, dev/failsafe/internal/util/DelegatingScheduler.java, dev/failsafe/internal/util/RandomDelay.java, dev/failsafe/spi/AsyncExecutionInternal.java, dev/failsafe/spi/DelayablePolicy.java, dev/failsafe/spi/ExecutionInternal.java, dev/failsafe/spi/ExecutionResult.java, dev/failsafe/spi/FailurePolicy.java, dev/failsafe/spi/PolicyExecutor.java, dev/failsafe/spi/SyncExecutionInternal.java
+/*
+ * Copyright 2018 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+Source entries: dev/failsafe/AsyncExecutionImpl.java, dev/failsafe/CircuitBreaker.java, dev/failsafe/CircuitBreakerBuilder.java, dev/failsafe/CircuitBreakerOpenException.java, dev/failsafe/ExecutionContext.java, dev/failsafe/ExecutionImpl.java, dev/failsafe/Failsafe.java, dev/failsafe/FailsafeException.java, dev/failsafe/FailsafeExecutor.java, dev/failsafe/Fallback.java, dev/failsafe/FallbackBuilder.java, dev/failsafe/Functions.java, dev/failsafe/RetryPolicy.java, dev/failsafe/RetryPolicyBuilder.java, dev/failsafe/SyncExecutionImpl.java, dev/failsafe/function/AsyncRunnable.java, dev/failsafe/function/AsyncSupplier.java, dev/failsafe/function/CheckedBiPredicate.java, dev/failsafe/function/CheckedConsumer.java, dev/failsafe/function/CheckedFunction.java, dev/failsafe/function/CheckedPredicate.java, dev/failsafe/function/CheckedRunnable.java, dev/failsafe/function/CheckedSupplier.java, dev/failsafe/function/ContextualRunnable.java, dev/failsafe/function/ContextualSupplier.java, dev/failsafe/internal/CircuitBreakerImpl.java, dev/failsafe/internal/CircuitState.java, dev/failsafe/internal/ClosedState.java, dev/failsafe/internal/FallbackImpl.java, dev/failsafe/internal/HalfOpenState.java, dev/failsafe/internal/OpenState.java, dev/failsafe/internal/RetryPolicyImpl.java, dev/failsafe/internal/util/Assert.java, dev/failsafe/spi/DefaultScheduledFuture.java, dev/failsafe/spi/FailsafeFuture.java, dev/failsafe/spi/Scheduler.java
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+Source entries: dev/failsafe/Bulkhead.java, dev/failsafe/BulkheadBuilder.java, dev/failsafe/BulkheadConfig.java, dev/failsafe/BulkheadFullException.java, dev/failsafe/RateLimitExceededException.java, dev/failsafe/RateLimiter.java, dev/failsafe/RateLimiterBuilder.java, dev/failsafe/RateLimiterConfig.java, dev/failsafe/internal/BulkheadExecutor.java, dev/failsafe/internal/BulkheadImpl.java, dev/failsafe/internal/BurstyRateLimiterStats.java, dev/failsafe/internal/RateLimiterExecutor.java, dev/failsafe/internal/RateLimiterImpl.java, dev/failsafe/internal/RateLimiterStats.java, dev/failsafe/internal/SmoothRateLimiterStats.java
+/*
+ * Copyright 2021 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+Source entries: dev/failsafe/Call.java, dev/failsafe/CallImpl.java, dev/failsafe/internal/util/FutureLinkedList.java
+/*
+ * Copyright 2022 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+Source entries: dev/failsafe/TimeoutExceededException.java
+/*
+ * Copyright 2019 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+Source entries: dev/failsafe/internal/util/Durations.java, dev/failsafe/internal/util/Lists.java, dev/failsafe/internal/util/Maths.java
+/*
+ * Copyright 2011-2021 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */

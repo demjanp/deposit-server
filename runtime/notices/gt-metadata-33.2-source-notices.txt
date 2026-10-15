@@ -1,0 +1,527 @@
+
+Source entries: org/geotools/console/CommandLine.java, org/geotools/console/Option.java, org/geotools/console/package-info.java, org/geotools/metadata/iso/citation/package-info.java, org/geotools/metadata/iso/extent/package-info.java, org/geotools/text/Text.java, org/geotools/util/IntegerList.java, org/geotools/util/Range.java, org/geotools/util/factory/FactoryFinder.java, org/geotools/util/factory/StrictHints.java, org/geotools/util/package-info.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/measure/Angle.java, org/geotools/measure/AngleFormat.java, org/geotools/measure/BaseUnitFormatter.java, org/geotools/measure/Latitude.java, org/geotools/measure/Longitude.java, org/geotools/measure/Measure.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1999-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/measure/BaseUnitFormatter.java
+/*
+ * Units of Measurement Reference Implementation
+ * Copyright (c) 2005-2023, Jean-Marie Dautelle, Werner Keil, Otavio Santana.
+ *
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+ *    and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of JSR-385, Indriya nor the names of their contributors may be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source entries: org/geotools/measure/PrefixDefinition.java, org/geotools/measure/PrefixDefinitions.java, org/geotools/measure/UnitDefinition.java, org/geotools/measure/UnitDefinitions.java, org/geotools/measure/UnitFormat.java, org/geotools/measure/UnitFormatter.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2021, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/measure/SexagesimalConverter.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2000-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/measure/Units.java, org/geotools/util/ContentFormatException.java, org/geotools/util/JDBC.java, org/geotools/util/KeySortedList.java, org/geotools/util/factory/AbstractFactory.java, org/geotools/util/factory/FactoryCreator.java, org/geotools/util/factory/FactoryIteratorProvider.java, org/geotools/util/factory/FactoryNotFoundException.java, org/geotools/util/factory/FactoryRegistry.java, org/geotools/util/factory/FactoryRegistryException.java, org/geotools/util/factory/OptionalFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/measure/WktUnitFormat.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2021, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/metadata/AbstractMetadata.java, org/geotools/metadata/InvalidMetadataException.java, org/geotools/metadata/MetadataStandard.java, org/geotools/metadata/PropertyAccessor.java, org/geotools/metadata/PropertyMap.java, org/geotools/metadata/PropertyTree.java, org/geotools/metadata/UnmodifiableMetadataException.java, org/geotools/metadata/i18n/Locales.java, org/geotools/util/DateRange.java, org/geotools/util/DefaultObjectCache.java, org/geotools/util/FixedSizeObjectCache.java, org/geotools/util/IndentedLineWriter.java, org/geotools/util/MeasurementRange.java, org/geotools/util/NullObjectCache.java, org/geotools/util/ObjectCache.java, org/geotools/util/ObjectCaches.java, org/geotools/util/WeakObjectCache.java, org/geotools/util/X364.java, org/geotools/util/factory/BufferedFactory.java, org/geotools/util/factory/FactoryIteratorProviders.java, org/geotools/util/logging/CommonsLoggerFactory.java, org/geotools/util/logging/DefaultLoggerFactory.java, org/geotools/util/logging/Log4J2Logger.java, org/geotools/util/logging/Log4J2LoggerFactory.java, org/geotools/util/logging/Log4JLogger.java, org/geotools/util/logging/Log4JLoggerFactory.java, org/geotools/util/logging/LoggerAdapter.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2007-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/metadata/ModifiableMetadata.java, org/geotools/metadata/iso/MetadataEntity.java, org/geotools/util/DerivedMap.java, org/geotools/util/DerivedSet.java, org/geotools/util/GrowableInternationalString.java, org/geotools/util/LazySet.java, org/geotools/util/MapEntry.java, org/geotools/util/NameFactory.java, org/geotools/util/ResourceInternationalString.java, org/geotools/util/SimpleInternationalString.java, org/geotools/util/UnmodifiableArrayList.java, org/geotools/util/UnsupportedImplementationException.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/metadata/i18n/DescriptionKeys.java, org/geotools/metadata/i18n/ErrorKeys.java, org/geotools/metadata/i18n/LoggingKeys.java, org/geotools/metadata/i18n/VocabularyKeys.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    THIS IS AN AUTOMATICALLY GENERATED FILE. DO NOT EDIT!
+ *    Generated with: org.geotools.resources.IndexedResourceCompiler
+ */
+
+Source entries: org/geotools/metadata/i18n/Descriptions.java, org/geotools/metadata/i18n/Descriptions_en.java, org/geotools/metadata/i18n/Descriptions_fr.java, org/geotools/metadata/i18n/Loggings.java, org/geotools/metadata/i18n/Loggings_en.java, org/geotools/metadata/i18n/Loggings_es.java, org/geotools/metadata/i18n/Loggings_fr.java, org/geotools/metadata/i18n/Vocabulary.java, org/geotools/metadata/i18n/Vocabulary_de.java, org/geotools/metadata/i18n/Vocabulary_el.java, org/geotools/metadata/i18n/Vocabulary_en.java, org/geotools/metadata/i18n/Vocabulary_es.java, org/geotools/metadata/i18n/Vocabulary_fr.java, org/geotools/metadata/math/XMath.java, org/geotools/util/Arguments.java, org/geotools/util/BufferSoftReference.java, org/geotools/util/CanonicalSet.java, org/geotools/util/ClassChanger.java, org/geotools/util/Classes.java, org/geotools/util/DefaultFileFilter.java, org/geotools/util/DisjointSet.java, org/geotools/util/ExpandedTabWriter.java, org/geotools/util/IndexedResourceBundle.java, org/geotools/util/IndexedResourceCompiler.java, org/geotools/util/LineFormat.java, org/geotools/util/LineWriter.java, org/geotools/util/OptionalDependencies.java, org/geotools/util/RangeSet.java, org/geotools/util/SwingUtilities.java, org/geotools/util/TableWriter.java, org/geotools/util/Utilities.java, org/geotools/util/WeakCollectionCleaner.java, org/geotools/util/WeakHashSet.java, org/geotools/util/WeakValueHashMap.java, org/geotools/util/XArray.java, org/geotools/util/XMath.java, org/geotools/util/logging/MonolineFormatter.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/metadata/i18n/Vocabulary_pt.java, org/geotools/metadata/i18n/Vocabulary_pt_BR.java, org/geotools/util/NIOUtilities.java, org/geotools/util/NumberRange.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/metadata/iso/IdentifierImpl.java, org/geotools/metadata/iso/citation/AddressImpl.java, org/geotools/metadata/iso/citation/CitationImpl.java, org/geotools/metadata/iso/citation/ContactImpl.java, org/geotools/metadata/iso/citation/OnLineResourceImpl.java, org/geotools/metadata/iso/citation/ResponsiblePartyImpl.java, org/geotools/metadata/iso/citation/TelephoneImpl.java, org/geotools/metadata/iso/extent/ExtentImpl.java, org/geotools/metadata/iso/extent/GeographicBoundingBoxImpl.java, org/geotools/metadata/iso/extent/GeographicExtentImpl.java, org/geotools/metadata/iso/extent/TemporalExtentImpl.java, org/geotools/metadata/iso/quality/AbsoluteExternalPositionalAccuracyImpl.java, org/geotools/metadata/iso/quality/ConformanceResultImpl.java, org/geotools/metadata/iso/quality/ElementImpl.java, org/geotools/metadata/iso/quality/PositionalAccuracyImpl.java, org/geotools/metadata/iso/quality/QuantitativeResultImpl.java, org/geotools/metadata/iso/quality/ResultImpl.java, org/geotools/util/AbstractInternationalString.java, org/geotools/util/GenericName.java, org/geotools/util/LocalName.java, org/geotools/util/ScopedName.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2004-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/metadata/iso/citation/Citations.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ *
+ *    This package contains documentation from OpenGIS specifications.
+ *    OpenGIS consortium's work is fully acknowledged here.
+ */
+
+Source entries: org/geotools/metadata/math/Complex.java, org/geotools/util/Base64.java, org/geotools/util/CheckedArrayList.java, org/geotools/util/CheckedCollection.java, org/geotools/util/CheckedHashMap.java, org/geotools/util/CheckedHashSet.java, org/geotools/util/Converter.java, org/geotools/util/ConverterFactory.java, org/geotools/util/Converters.java, org/geotools/util/InternalWindowListener.java, org/geotools/util/SynchronizedIterator.java, org/geotools/util/factory/Factory.java, org/geotools/util/factory/FactoryComparator.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2002-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/metadata/math/Line.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 1998-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/metadata/math/Statistics.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2001-2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/Base64.java
+/*
+ *    This file was orginally copyright of Rob Harder in 2002 and was released
+ *    with the additional statement:
+ *
+ *    I am placing this code in the Public Domain. Do with it as you will.
+ *    This software comes with no guarantees or warranties but with
+ *    plenty of well-wishing instead!
+ *
+ *    Please visit <a href="http://iharder.net/base64">http://iharder.net/base64</a>
+ *    periodically to check for updates or to contribute improvements.
+ */
+
+Source entries: org/geotools/util/DateTimeParser.java, org/geotools/util/KVP.java, org/geotools/util/SoftObjectCache.java, org/geotools/util/factory/RecursionCheckingHelper.java, org/geotools/util/logging/LoggingImagingListener.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2019, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/IndexedResourceCompiler.java
+/*\n"
+                    + " *    GeoTools - The Open Source Java GIS Toolkit\n"
+                    + " *    http://geotools.org\n"
+                    + " *    \n"
+                    + " *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)\n"
+                    + " *    \n"
+                    + " *    This library is free software; you can redistribute it and/or\n"
+                    + " *    modify it under the terms of the GNU Lesser General Public\n"
+                    + " *    License as published by the Free Software Foundation;\n"
+                    + " *    version 2.1 of the License.\n"
+                    + " *    \n"
+                    + " *    This library is distributed in the hope that it will be useful,\n"
+                    + " *    but WITHOUT ANY WARRANTY; without even the implied warranty of\n"
+                    + " *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU\n"
+                    + " *    Lesser General Public License for more details.\n"
+                    + " *    \n"
+                    + " *    THIS IS AN AUTOMATICALLY GENERATED FILE. DO NOT EDIT!\n"
+                    + " *    Generated with: org.geotools.resources.IndexedResourceCompiler\n"
+                    + " */
+
+Source entries: org/geotools/util/NullEntityResolver.java, org/geotools/util/PartiallyOrderedSet.java, org/geotools/util/PreventLocalEntityResolver.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/SoftValueHashMap.java, org/geotools/util/SuppressFBWarnings.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/URLs.java, org/geotools/util/decorate/AbstractDecorator.java, org/geotools/util/decorate/Wrapper.java, org/geotools/util/factory/CategoryRegistry.java, org/geotools/util/factory/RegistrableFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2017, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/Version.java, org/geotools/util/factory/RecursiveSearchException.java, org/geotools/util/logging/CommonsLogger.java, org/geotools/util/logging/LoggerFactory.java, org/geotools/util/logging/Logging.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/factory/GeoTools.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2007-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/factory/Hints.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2016, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/logging/LogbackLogger.java, org/geotools/util/logging/LogbackLoggerFactory.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2022, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/util/logging/package-info.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2006, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */

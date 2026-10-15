@@ -15,7 +15,7 @@ import org.apache.poi.ss.usermodel.*;
 /** Independent format-output checks for tabular exports. */
 class Stage9FormatIT {
     static org.neo4j.driver.Driver driver;
-    static final Path ROOT=Path.of("C:/data_processed/Deposit_v2/stage0/runs/stage0-host");
+    static final Path ROOT=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host");
     String token,namespace;
     static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
     static org.neo4j.driver.Record call(String procedure,Object... args){var params=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){params.put("p"+i,args[i]);names.add("$p"+i);}try(var session=driver.session()){return session.run("CYPHER 25 CALL "+procedure+"("+String.join(",",names)+")",params).list().getFirst();}}

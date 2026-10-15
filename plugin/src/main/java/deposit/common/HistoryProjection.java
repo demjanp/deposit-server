@@ -13,12 +13,23 @@ public final class HistoryProjection {
     public static Projection project(Map<String,Object> source,Set<String> objects,Set<String> patterns,boolean wholeNamespace,ExportRecords records) {
         Set<String> selected=records==null?new TreeSet<>():Collections.newSetFromMap(records.<Boolean>index()),resources=records==null?new TreeSet<>():Collections.newSetFromMap(records.<Boolean>index());
         if(wholeNamespace&&source.get("epochs") instanceof List<?> epochs){
-            for(Object rawEpoch:epochs){Map<String,Map<String,Object>> epochState=records==null?new TreeMap<>():records.index();Map<String,String> memberships=records==null?new HashMap<>():records.index(),declarations=records==null?new HashMap<>():records.index();
-                for(Object rawRevision:(List<?>)ValueCodec.map(rawEpoch).get("revisions"))for(Object rawChange:(List<?>)ValueCodec.map(rawRevision).get("changes")){
-                    var change=ValueCodec.map(rawChange);String key=HistoryCodec.key((String)change.get("entityKind"),(String)change.get("entityId"));if(change.get("after")==null)epochState.remove(key);else epochState.put(key,ValueCodec.map(change.get("after")));
+            for(Object rawEpoch:epochs){
+                int mark=records==null?0:records.indexMark();
+                try {
+                    Map<String,Map<String,Object>> epochState=records==null?new TreeMap<>():records.index();
+                    Map<String,String> memberships=records==null?new HashMap<>():records.index(),declarations=records==null?new HashMap<>():records.index();
+                    for(Object rawRevision:(List<?>)ValueCodec.map(rawEpoch).get("revisions")){
+                        for(Object rawChange:(List<?>)ValueCodec.map(rawRevision).get("changes")){
+                            var change=ValueCodec.map(rawChange);String key=HistoryCodec.key((String)change.get("entityKind"),(String)change.get("entityId"));if(change.get("after")==null)epochState.remove(key);else epochState.put(key,ValueCodec.map(change.get("after")));
+                        }
+                        // Each retained revision must be reconstructable, including resources later cleared or retyped.
+                        memberships.clear();declarations.clear();
+                        for(var image:epochState.values())if("Membership".equals(image.get("kind")))memberships.put((String)image.get("objectId"),(String)image.get("classId"));else if("ClassDescriptor".equals(image.get("kind")))declarations.put(image.get("classId")+"\u0000"+image.get("name"),(String)image.get("type"));
+                        for(var image:epochState.values())if("Descriptor".equals(image.get("kind"))&&image.get("value")!=null&&"DResource".equals(declarations.get(memberships.get(image.get("objectId"))+"\u0000"+image.get("name"))))resources.add((String)ValueCodec.map(image.get("value")).get("resourceId"));
+                    }
+                } finally {
+                    if(records!=null)records.releaseIndexes(mark);
                 }
-                memberships.clear();declarations.clear();for(var image:epochState.values())if("Membership".equals(image.get("kind")))memberships.put((String)image.get("objectId"),(String)image.get("classId"));else if("ClassDescriptor".equals(image.get("kind")))declarations.put(image.get("classId")+"\u0000"+image.get("name"),(String)image.get("type"));
-                for(var image:epochState.values())if("Descriptor".equals(image.get("kind"))&&image.get("value")!=null&&"DResource".equals(declarations.get(memberships.get(image.get("objectId"))+"\u0000"+image.get("name"))))resources.add((String)ValueCodec.map(image.get("value")).get("resourceId"));
             }
             return new Projection(source,Collections.unmodifiableSet(resources));
         }

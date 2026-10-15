@@ -134,7 +134,8 @@ class Stage1CoreIT {
         call("deposit.utils.logout",Map.of(),ctx(viewer));error("AUTH_FAILED",()->call("deposit.get.user",Map.of(),ctx(viewer)));
         assertEquals(s1,id(get("deposit.get.object",m("id",s1))));
     }
-    @Test @Order(7) void fullStreamsPortablePagesAndStaleCursors() {
+    // Allow for 1,007 durable commits and full stream/page scans on the populated host.
+    @Test @Order(7) @Timeout(600) void fullStreamsPortablePagesAndStaleCursors() {
         String bulk=id(mutate("deposit.create.class",m("name","Bulk")));
         for(int i=0;i<1007;i++)mutate("deposit.create.object",m("classId",bulk));
         var nativeRows=query("CALL deposit.get.object($r,$c) YIELD node,data,meta RETURN node,data,meta",m("r",m("classId",bulk),"c",ctx(token)));

@@ -1,0 +1,348 @@
+
+Source entries: org/geotools/api/annotation/Obligation.java, org/geotools/api/annotation/Specification.java, org/geotools/api/annotation/UML.java, org/geotools/api/coverage/CannotEvaluateException.java, org/geotools/api/coverage/ColorInterpretation.java, org/geotools/api/filter/capability/GeometryOperand.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2003-2005 Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/annotation/package-info.java, org/geotools/api/coverage/Coverage.java, org/geotools/api/coverage/InterpolationMethod.java, org/geotools/api/coverage/PaletteInterpretation.java, org/geotools/api/coverage/PointOutsideCoverageException.java, org/geotools/api/coverage/SampleDimensionType.java, org/geotools/api/coverage/grid/Format.java, org/geotools/api/coverage/grid/GridCoordinates.java, org/geotools/api/coverage/grid/GridCoverage.java, org/geotools/api/coverage/grid/GridCoverageReader.java, org/geotools/api/coverage/grid/GridCoverageWriter.java, org/geotools/api/coverage/grid/GridEnvelope.java, org/geotools/api/coverage/grid/GridGeometry.java, org/geotools/api/coverage/grid/GridNotEditableException.java, org/geotools/api/coverage/grid/InvalidRangeException.java, org/geotools/api/coverage/grid/package-info.java, org/geotools/api/coverage/package-info.java, org/geotools/api/coverage/processing/GridCoverageProcessor.java, org/geotools/api/coverage/processing/Operation.java, org/geotools/api/coverage/processing/OperationNotFoundException.java, org/geotools/api/feature/BackingStoreException.java, org/geotools/api/feature/package-info.java, org/geotools/api/feature/simple/package-info.java, org/geotools/api/feature/type/package-info.java, org/geotools/api/filter/And.java, org/geotools/api/filter/BinaryComparisonOperator.java, org/geotools/api/filter/BinaryLogicOperator.java, org/geotools/api/filter/ExcludeFilter.java, org/geotools/api/filter/Filter.java, org/geotools/api/filter/FilterFactory.java, org/geotools/api/filter/FilterVisitor.java, org/geotools/api/filter/Id.java, org/geotools/api/filter/IncludeFilter.java, org/geotools/api/filter/MultiValuedFilter.java, org/geotools/api/filter/Not.java, org/geotools/api/filter/Or.java, org/geotools/api/filter/PropertyIsBetween.java, org/geotools/api/filter/PropertyIsEqualTo.java, org/geotools/api/filter/PropertyIsGreaterThan.java, org/geotools/api/filter/PropertyIsGreaterThanOrEqualTo.java, org/geotools/api/filter/PropertyIsLessThan.java, org/geotools/api/filter/PropertyIsLessThanOrEqualTo.java, org/geotools/api/filter/PropertyIsLike.java, org/geotools/api/filter/PropertyIsNil.java, org/geotools/api/filter/PropertyIsNotEqualTo.java, org/geotools/api/filter/PropertyIsNull.java, org/geotools/api/filter/capability/ArithmeticOperators.java, org/geotools/api/filter/capability/ComparisonOperators.java, org/geotools/api/filter/capability/Functions.java, org/geotools/api/filter/expression/Add.java, org/geotools/api/filter/expression/InternalFunction.java, org/geotools/api/filter/expression/NilExpression.java, org/geotools/api/filter/expression/PropertyName.java, org/geotools/api/filter/expression/Subtract.java, org/geotools/api/filter/expression/VolatileFunction.java, org/geotools/api/filter/expression/package-info.java, org/geotools/api/filter/package-info.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005 Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/coverage/SampleDimension.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011-2015, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005 Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/feature/Association.java, org/geotools/api/feature/Attribute.java, org/geotools/api/feature/ComplexAttribute.java, org/geotools/api/feature/Feature.java, org/geotools/api/feature/FeatureFactory.java, org/geotools/api/feature/FeatureVisitor.java, org/geotools/api/feature/GeometryAttribute.java, org/geotools/api/feature/Property.java, org/geotools/api/feature/simple/SimpleFeature.java, org/geotools/api/feature/type/AssociationDescriptor.java, org/geotools/api/feature/type/AssociationType.java, org/geotools/api/feature/type/AttributeDescriptor.java, org/geotools/api/feature/type/AttributeType.java, org/geotools/api/feature/type/ComplexType.java, org/geotools/api/feature/type/FeatureType.java, org/geotools/api/feature/type/FeatureTypeFactory.java, org/geotools/api/feature/type/GeometryDescriptor.java, org/geotools/api/feature/type/GeometryType.java, org/geotools/api/feature/type/Name.java, org/geotools/api/feature/type/Namespace.java, org/geotools/api/feature/type/Operation.java, org/geotools/api/feature/type/OperationType.java, org/geotools/api/feature/type/PropertyDescriptor.java, org/geotools/api/feature/type/PropertyType.java, org/geotools/api/feature/type/Schema.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2004-2007 Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/feature/IllegalAttributeException.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2008 Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/feature/simple/SimpleFeatureType.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2007 Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/filter/NativeFilter.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2018, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/filter/capability/FilterCapabilities.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005 Open Geospatial Consortium Inc.
+ *    (C) 2001 EXSE, Department of Geography, University of Bonn
+ *             lat/lon Fitzke/Fretter/Poth GbR
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation; either
+ *    version 2.1 of the License, or (at your option) any later version.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/filter/capability/FunctionName.java, org/geotools/api/filter/capability/IdCapabilities.java, org/geotools/api/filter/capability/Operator.java, org/geotools/api/filter/capability/ScalarCapabilities.java, org/geotools/api/filter/capability/SpatialCapabilities.java, org/geotools/api/filter/capability/SpatialOperator.java, org/geotools/api/filter/capability/TemporalCapabilities.java, org/geotools/api/filter/capability/TemporalOperator.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005 Open Geospatial Consortium Inc.
+ *    (C) 2001-2004 EXSE, Department of Geography, University of Bonn
+ *                  lat/lon Fitzke/Fretter/Poth GbR
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation; either
+ *    version 2.1 of the License, or (at your option) any later version.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/filter/capability/SpatialOperators.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005 Open Geospatial Consortium Inc.
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation; either
+ *    version 2.1 of the License, or (at your option) any later version.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/filter/capability/TemporalOperators.java, org/geotools/api/filter/identity/Version.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2019, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/filter/expression/BinaryExpression.java, org/geotools/api/filter/expression/Divide.java, org/geotools/api/filter/expression/Expression.java, org/geotools/api/filter/expression/ExpressionVisitor.java, org/geotools/api/filter/expression/Function.java, org/geotools/api/filter/expression/Literal.java, org/geotools/api/filter/expression/Multiply.java, org/geotools/api/filter/identity/FeatureId.java, org/geotools/api/filter/identity/GmlObjectId.java, org/geotools/api/filter/identity/Identifier.java, org/geotools/api/filter/identity/ObjectId.java, org/geotools/api/filter/identity/RecordId.java, org/geotools/api/filter/identity/ResourceId.java, org/geotools/api/filter/spatial/BBOX.java, org/geotools/api/filter/spatial/BBOX3D.java, org/geotools/api/filter/spatial/Beyond.java, org/geotools/api/filter/spatial/BinarySpatialOperator.java, org/geotools/api/filter/spatial/BoundedSpatialOperator.java, org/geotools/api/filter/spatial/Contains.java, org/geotools/api/filter/spatial/Crosses.java, org/geotools/api/filter/spatial/DWithin.java, org/geotools/api/filter/spatial/Disjoint.java, org/geotools/api/filter/spatial/DistanceBufferOperator.java, org/geotools/api/filter/spatial/Equals.java, org/geotools/api/filter/spatial/Intersects.java, org/geotools/api/filter/spatial/Overlaps.java, org/geotools/api/filter/spatial/SpatialOperator.java, org/geotools/api/filter/spatial/Touches.java, org/geotools/api/filter/spatial/Within.java, org/geotools/api/filter/spatial/package-info.java, org/geotools/api/filter/temporal/After.java, org/geotools/api/filter/temporal/Before.java, org/geotools/api/filter/temporal/Begins.java, org/geotools/api/filter/temporal/BegunBy.java, org/geotools/api/filter/temporal/BinaryTemporalOperator.java, org/geotools/api/filter/temporal/During.java, org/geotools/api/filter/temporal/EndedBy.java, org/geotools/api/filter/temporal/Ends.java, org/geotools/api/filter/temporal/Meets.java, org/geotools/api/filter/temporal/MetBy.java, org/geotools/api/filter/temporal/OverlappedBy.java, org/geotools/api/filter/temporal/TOverlaps.java, org/geotools/api/temporal/Calendar.java, org/geotools/api/temporal/CalendarDate.java, org/geotools/api/temporal/CalendarEra.java, org/geotools/api/temporal/Clock.java, org/geotools/api/temporal/ClockTime.java, org/geotools/api/temporal/DateAndTime.java, org/geotools/api/temporal/Duration.java, org/geotools/api/temporal/IndeterminateValue.java, org/geotools/api/temporal/Instant.java, org/geotools/api/temporal/IntervalLength.java, org/geotools/api/temporal/JulianDate.java, org/geotools/api/temporal/OrdinalEra.java, org/geotools/api/temporal/OrdinalPosition.java, org/geotools/api/temporal/OrdinalReferenceSystem.java, org/geotools/api/temporal/Period.java, org/geotools/api/temporal/PeriodDuration.java, org/geotools/api/temporal/Position.java, org/geotools/api/temporal/RelativePosition.java, org/geotools/api/temporal/Separation.java, org/geotools/api/temporal/TemporalComplex.java, org/geotools/api/temporal/TemporalCoordinate.java, org/geotools/api/temporal/TemporalCoordinateSystem.java, org/geotools/api/temporal/TemporalEdge.java, org/geotools/api/temporal/TemporalFactory.java, org/geotools/api/temporal/TemporalGeometricPrimitive.java, org/geotools/api/temporal/TemporalNode.java, org/geotools/api/temporal/TemporalObject.java, org/geotools/api/temporal/TemporalOrder.java, org/geotools/api/temporal/TemporalPosition.java, org/geotools/api/temporal/TemporalPrimitive.java, org/geotools/api/temporal/TemporalReferenceSystem.java, org/geotools/api/temporal/TemporalTopologicalComplex.java, org/geotools/api/temporal/TemporalTopologicalPrimitive.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005, Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/filter/expression/SimplifiableFunction.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2023, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/filter/sort/NullSortBy.java, org/geotools/api/filter/sort/SortBy.java, org/geotools/api/filter/sort/SortOrder.java, org/geotools/api/geometry/BoundingBox.java, org/geotools/api/geometry/BoundingBox3D.java, org/geotools/api/geometry/Bounds.java, org/geotools/api/geometry/MismatchedDimensionException.java, org/geotools/api/geometry/MismatchedReferenceSystemException.java, org/geotools/api/geometry/Position.java, org/geotools/api/parameter/GeneralParameterDescriptor.java, org/geotools/api/parameter/GeneralParameterValue.java, org/geotools/api/parameter/InvalidParameterCardinalityException.java, org/geotools/api/parameter/InvalidParameterNameException.java, org/geotools/api/parameter/InvalidParameterTypeException.java, org/geotools/api/parameter/InvalidParameterValueException.java, org/geotools/api/parameter/Parameter.java, org/geotools/api/parameter/ParameterDescriptor.java, org/geotools/api/parameter/ParameterDescriptorGroup.java, org/geotools/api/parameter/ParameterNotFoundException.java, org/geotools/api/parameter/ParameterValue.java, org/geotools/api/parameter/ParameterValueGroup.java, org/geotools/api/parameter/package-info.java, org/geotools/api/referencing/AuthorityFactory.java, org/geotools/api/referencing/Factory.java, org/geotools/api/referencing/FactoryException.java, org/geotools/api/referencing/IdentifiedObject.java, org/geotools/api/referencing/NoSuchAuthorityCodeException.java, org/geotools/api/referencing/NoSuchIdentifierException.java, org/geotools/api/referencing/ObjectFactory.java, org/geotools/api/referencing/ReferenceIdentifier.java, org/geotools/api/referencing/ReferenceSystem.java, org/geotools/api/referencing/SpatialReferenceSystemUsingGeographicIdentifier.java, org/geotools/api/referencing/crs/CRSAuthorityFactory.java, org/geotools/api/referencing/crs/CRSFactory.java, org/geotools/api/referencing/crs/CompoundCRS.java, org/geotools/api/referencing/crs/CoordinateReferenceSystem.java, org/geotools/api/referencing/crs/DerivedCRS.java, org/geotools/api/referencing/crs/EngineeringCRS.java, org/geotools/api/referencing/crs/GeneralDerivedCRS.java, org/geotools/api/referencing/crs/GeocentricCRS.java, org/geotools/api/referencing/crs/GeodeticCRS.java, org/geotools/api/referencing/crs/GeographicCRS.java, org/geotools/api/referencing/crs/ImageCRS.java, org/geotools/api/referencing/crs/ProjectedCRS.java, org/geotools/api/referencing/crs/SingleCRS.java, org/geotools/api/referencing/crs/TemporalCRS.java, org/geotools/api/referencing/crs/VerticalCRS.java, org/geotools/api/referencing/cs/AffineCS.java, org/geotools/api/referencing/cs/AxisDirection.java, org/geotools/api/referencing/cs/CSAuthorityFactory.java, org/geotools/api/referencing/cs/CSFactory.java, org/geotools/api/referencing/cs/CartesianCS.java, org/geotools/api/referencing/cs/CoordinateSystem.java, org/geotools/api/referencing/cs/CoordinateSystemAxis.java, org/geotools/api/referencing/cs/CylindricalCS.java, org/geotools/api/referencing/cs/EllipsoidalCS.java, org/geotools/api/referencing/cs/LinearCS.java, org/geotools/api/referencing/cs/PolarCS.java, org/geotools/api/referencing/cs/RangeMeaning.java, org/geotools/api/referencing/cs/SphericalCS.java, org/geotools/api/referencing/cs/TimeCS.java, org/geotools/api/referencing/cs/UserDefinedCS.java, org/geotools/api/referencing/cs/VerticalCS.java, org/geotools/api/referencing/datum/Datum.java, org/geotools/api/referencing/datum/DatumAuthorityFactory.java, org/geotools/api/referencing/datum/DatumFactory.java, org/geotools/api/referencing/datum/Ellipsoid.java, org/geotools/api/referencing/datum/EngineeringDatum.java, org/geotools/api/referencing/datum/GeodeticDatum.java, org/geotools/api/referencing/datum/ImageDatum.java, org/geotools/api/referencing/datum/PixelInCell.java, org/geotools/api/referencing/datum/PrimeMeridian.java, org/geotools/api/referencing/datum/TemporalDatum.java, org/geotools/api/referencing/datum/VerticalDatum.java, org/geotools/api/referencing/datum/VerticalDatumType.java, org/geotools/api/referencing/operation/ConcatenatedOperation.java, org/geotools/api/referencing/operation/ConicProjection.java, org/geotools/api/referencing/operation/Conversion.java, org/geotools/api/referencing/operation/CoordinateOperation.java, org/geotools/api/referencing/operation/CoordinateOperationAuthorityFactory.java, org/geotools/api/referencing/operation/CoordinateOperationFactory.java, org/geotools/api/referencing/operation/CylindricalProjection.java, org/geotools/api/referencing/operation/IncompatibleOperationException.java, org/geotools/api/referencing/operation/MathTransform.java, org/geotools/api/referencing/operation/MathTransform1D.java, org/geotools/api/referencing/operation/MathTransform2D.java, org/geotools/api/referencing/operation/MathTransformFactory.java, org/geotools/api/referencing/operation/NoninvertibleTransformException.java, org/geotools/api/referencing/operation/Operation.java, org/geotools/api/referencing/operation/OperationMethod.java, org/geotools/api/referencing/operation/OperationNotFoundException.java, org/geotools/api/referencing/operation/PassThroughOperation.java, org/geotools/api/referencing/operation/PlanarProjection.java, org/geotools/api/referencing/operation/Projection.java, org/geotools/api/referencing/operation/SingleOperation.java, org/geotools/api/referencing/operation/TransformException.java, org/geotools/api/referencing/operation/Transformation.java, org/geotools/api/util/Cloneable.java, org/geotools/api/util/CodeList.java, org/geotools/api/util/GenericName.java, org/geotools/api/util/InternationalString.java, org/geotools/api/util/LocalName.java, org/geotools/api/util/MemberName.java, org/geotools/api/util/NameFactory.java, org/geotools/api/util/NameSpace.java, org/geotools/api/util/ProgressListener.java, org/geotools/api/util/Record.java, org/geotools/api/util/RecordSchema.java, org/geotools/api/util/RecordType.java, org/geotools/api/util/ScopedName.java, org/geotools/api/util/TypeName.java, org/geotools/api/util/UnlimitedInteger.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2003-2005, Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/filter/temporal/AnyInteracts.java, org/geotools/api/filter/temporal/TContains.java, org/geotools/api/filter/temporal/TEquals.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2005, Open Geospatial Consortium Inc.
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/metadata/Datatype.java, org/geotools/api/metadata/Identifier.java, org/geotools/api/metadata/Obligation.java, org/geotools/api/metadata/citation/Address.java, org/geotools/api/metadata/citation/Citation.java, org/geotools/api/metadata/citation/CitationFactory.java, org/geotools/api/metadata/citation/Contact.java, org/geotools/api/metadata/citation/OnLineFunction.java, org/geotools/api/metadata/citation/OnLineResource.java, org/geotools/api/metadata/citation/PresentationForm.java, org/geotools/api/metadata/citation/ResponsibleParty.java, org/geotools/api/metadata/citation/Role.java, org/geotools/api/metadata/citation/Telephone.java, org/geotools/api/metadata/citation/package-info.java, org/geotools/api/metadata/extent/Extent.java, org/geotools/api/metadata/extent/GeographicBoundingBox.java, org/geotools/api/metadata/extent/GeographicExtent.java, org/geotools/api/metadata/extent/TemporalExtent.java, org/geotools/api/metadata/extent/VerticalExtent.java, org/geotools/api/metadata/extent/package-info.java, org/geotools/api/metadata/package-info.java, org/geotools/api/metadata/quality/AbsoluteExternalPositionalAccuracy.java, org/geotools/api/metadata/quality/ConformanceResult.java, org/geotools/api/metadata/quality/Element.java, org/geotools/api/metadata/quality/EvaluationMethodType.java, org/geotools/api/metadata/quality/PositionalAccuracy.java, org/geotools/api/metadata/quality/QuantitativeResult.java, org/geotools/api/metadata/quality/Result.java, org/geotools/api/metadata/quality/package-info.java, org/geotools/api/metadata/spatial/PixelOrientation.java, org/geotools/api/referencing/crs/package-info.java, org/geotools/api/referencing/cs/package-info.java, org/geotools/api/referencing/datum/package-info.java, org/geotools/api/referencing/operation/package-info.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2004-2005, Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/referencing/operation/Matrix.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011-2015, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2003-2005, Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/referencing/package-info.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2003-2004, Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/style/AnchorPoint.java, org/geotools/api/style/ChannelSelection.java, org/geotools/api/style/ColorMap.java, org/geotools/api/style/ColorReplacement.java, org/geotools/api/style/ContrastEnhancement.java, org/geotools/api/style/ContrastMethod.java, org/geotools/api/style/Description.java, org/geotools/api/style/Displacement.java, org/geotools/api/style/ExtensionSymbolizer.java, org/geotools/api/style/ExternalGraphic.java, org/geotools/api/style/ExternalMark.java, org/geotools/api/style/FeatureTypeStyle.java, org/geotools/api/style/Fill.java, org/geotools/api/style/Font.java, org/geotools/api/style/Graphic.java, org/geotools/api/style/GraphicFill.java, org/geotools/api/style/GraphicLegend.java, org/geotools/api/style/GraphicStroke.java, org/geotools/api/style/GraphicalSymbol.java, org/geotools/api/style/Halo.java, org/geotools/api/style/LabelPlacement.java, org/geotools/api/style/LinePlacement.java, org/geotools/api/style/LineSymbolizer.java, org/geotools/api/style/Mark.java, org/geotools/api/style/OverlapBehaviorEnum.java, org/geotools/api/style/PointPlacement.java, org/geotools/api/style/PointSymbolizer.java, org/geotools/api/style/PolygonSymbolizer.java, org/geotools/api/style/RasterSymbolizer.java, org/geotools/api/style/Rule.java, org/geotools/api/style/SelectedChannelType.java, org/geotools/api/style/SemanticType.java, org/geotools/api/style/ShadedRelief.java, org/geotools/api/style/Stroke.java, org/geotools/api/style/Style.java, org/geotools/api/style/StyleFactory.java, org/geotools/api/style/Symbolizer.java, org/geotools/api/style/TextSymbolizer.java, org/geotools/api/style/TraversingStyleVisitor.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    (C) 2008, Open Geospatial Consortium Inc.
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */
+
+Source entries: org/geotools/api/style/ColorMapEntry.java, org/geotools/api/style/Extent.java, org/geotools/api/style/FeatureTypeConstraint.java, org/geotools/api/style/ImageOutline.java, org/geotools/api/style/LayerFeatureConstraints.java, org/geotools/api/style/NamedLayer.java, org/geotools/api/style/ResourceLocator.java, org/geotools/api/style/StyleVisitor.java, org/geotools/api/style/StyledLayer.java, org/geotools/api/style/StyledLayerDescriptor.java, org/geotools/api/style/Symbol.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2002-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/style/ContrastMethodStrategy.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2015, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/style/NamedStyle.java, org/geotools/api/style/RemoteOWS.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2003-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/style/OtherText.java, org/geotools/api/style/UserLayer.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2005-2008, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
+
+Source entries: org/geotools/api/style/OverlapBehavior.java
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2023, Open Source Geospatial Foundation (OSGeo)
+ *
+ *    All Rights Reserved. http://www.opengis.org/legal/
+ */

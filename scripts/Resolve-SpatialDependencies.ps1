@@ -1,9 +1,9 @@
 # Deliberate lock regeneration only. Normal provisioning downloads the resulting exact URLs/hashes.
 [CmdletBinding()]
-param([string]$Root='C:\data_processed\Deposit_v2\stage0')
+param([string]$Root='D:\data_processed\Deposit_v2\stage0')
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
-if([IO.Path]::GetFullPath($Root).TrimEnd('\') -ne 'C:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
+if([IO.Path]::GetFullPath($Root).TrimEnd('\') -ne 'D:\data_processed\Deposit_v2\stage0') {throw 'Use the approved Stage 0 root'}
 $manifest=Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $work=Join-Path $Root 'dependency-resolution'
 New-Item -ItemType Directory -Force $work,"$Root\cache\spatial-dependencies" | Out-Null
