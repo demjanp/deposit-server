@@ -19,7 +19,7 @@ The full suite runs the documented integration workflows, including seed/restart
 
 ## Windows integration suite
 
-Integration test sources and execution remain in this repository. The runner derives the sibling harness path as `..\test_harness`; generated tools, caches, database state, temporary files, secrets, logs and results stay there. The harness is not checked into the repository. If it is empty, setup downloads and verifies pinned dependencies, extracts the Java/Neo4j/Maven/Python/Firefox tools, builds and packages the server, and prepares a fresh local test runtime.
+Integration test sources and execution remain in this repository. The runner derives the sibling harness path as `..\test_harness`; generated tools, caches, database state, temporary files, secrets, logs and results stay there. The harness is not checked into the repository. If it is empty, setup downloads and verifies pinned dependencies, extracts the Java/Neo4j/Maven/Python/Firefox tools, builds and packages the server, and prepares a fresh local test runtime. Packaging also requires the adjacent `deposit-hub` checkout because setup reads `deposit-hub/deposit-server.md` to generate the release `OPERATIONS.md`.
 
 ### Requirements
 
@@ -45,7 +45,7 @@ Run the complete suite from an elevated PowerShell window:
 
 The default run prepares the harness if needed, rebuilds the test runtime from the pinned manifests, runs the workflows in order and cleans up the test-owned service in a `finally` block. During the suite the service is set to manual start with automatic recovery disabled, then removed before the runner reports success. The runner starts a separate watchdog before any service can be registered. If the runner process exits unexpectedly, the watchdog uses the protected ownership journal to stop the exact test runtime and remove the exact test service. During service registration, Neo4j briefly creates the service before the package hook changes it to manual start and disables SCM recovery; a power loss in that interval can leave the service at its installer default. A failed cleanup keeps the journal and diagnostics for recovery. Use `-ListOnly` to print the selected workflows without setting up or running the suite.
 
-If both the runner and watchdog are terminated, or Windows loses power/restarts during service registration, a stopped service registration can remain because this harness does not install a boot-time cleanup task. From the repository root in an elevated PowerShell window, run the watchdog's explicit recovery command after confirming the runner is no longer active:
+If both the runner and watchdog are terminated, or Windows loses power/restarts during service registration, the runtime or service registration can remain because this harness does not install a boot-time cleanup task. From the repository root in an elevated PowerShell window, run the watchdog's explicit recovery command after confirming the runner is no longer active:
 
 ```powershell
 $harness = [IO.Path]::GetFullPath((Join-Path $PWD '..\test_harness'))
@@ -68,7 +68,7 @@ The runner uses the harness root itself; there is no nested `stage0` directory.
 | `results` | Per-invocation logs and generated verification packages |
 | `preserved` | Previous runtime and package trees retained when a clean runtime is prepared |
 
-The setup phase reuses checksum-verified downloads and Maven dependencies, but prepares a new database/runtime tree for the suite. Results and preserved evidence remain in `test_harness`; remove the harness directory manually only after no runner, watchdog, service or runtime process is using it. The harness password is protected with Windows DPAPI for the current user and stored in an owner-only file; the suite does not create temporary Windows Credential Manager entries.
+The setup phase reuses checksum-verified downloads and Maven dependencies, but prepares a new database/runtime tree for the suite. Results and preserved evidence remain in `test_harness`; remove the harness directory manually only after no runner, watchdog, service or runtime process is using it. The harness password is protected with Windows DPAPI for the current Windows user and machine, stored in an owner-only file, and replaced when a new database runtime is prepared; the suite does not create temporary Windows Credential Manager entries. The implementation and selection list received static review, but setup, the full suite, and watchdog/service cleanup have not been exercised for this harness change.
 
 ### Legacy Stage0 service
 
