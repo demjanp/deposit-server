@@ -39,7 +39,7 @@ public static class DepositHarnessSecretStore {
             if ((File.Exists(p) || Directory.Exists(p)) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Secret path contains a reparse point");
     }
-    static string FileName(string target) {
+    static void ValidateRoot() {
         if (String.IsNullOrWhiteSpace(Root)) throw new InvalidOperationException("Harness secret root is unset");
         Plain(Root);
         if (!Directory.Exists(Root)) throw new IOException("Harness secret directory is missing");
@@ -48,6 +48,10 @@ public static class DepositHarnessSecretStore {
         if (!acl.AreAccessRulesProtected || !sid.Equals(acl.GetOwner(typeof(SecurityIdentifier)))) throw new IOException("Unsafe harness secret directory owner or inheritance");
         foreach (FileSystemAccessRule rule in acl.GetAccessRules(true,true,typeof(SecurityIdentifier)))
             if (rule.AccessControlType == AccessControlType.Allow && !sid.Equals(rule.IdentityReference)) throw new IOException("Harness secret directory grants another identity access");
+    }
+    static string FileName(string target) {
+        ValidateRoot();
+        var sid = WindowsIdentity.GetCurrent().User;
         using (var sha = SHA256.Create()) {
             var path = Path.Combine(Root,BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(target))).Replace("-","").ToLowerInvariant()+".dpapi");
             Plain(path);
@@ -60,6 +64,79 @@ public static class DepositHarnessSecretStore {
             return path;
         }
     }
+    static FileSecurity OwnerOnlyFileSecurity() {
+        var sid = WindowsIdentity.GetCurrent().User;
+        var acl = new FileSecurity();
+        acl.SetOwner(sid);
+        acl.SetAccessRuleProtection(true,false);
+        acl.AddAccessRule(new FileSystemAccessRule(sid,FileSystemRights.FullControl,AccessControlType.Allow));
+        return acl;
+    }
+    static void ValidateNewFile(string path) {
+        Plain(path);
+        var sid = WindowsIdentity.GetCurrent().User;
+        var acl = File.GetAccessControl(path);
+        if (!acl.AreAccessRulesProtected || !sid.Equals(acl.GetOwner(typeof(SecurityIdentifier)))) throw new IOException("Unsafe new secret file owner or inheritance");
+        var rules = acl.GetAccessRules(true,true,typeof(SecurityIdentifier));
+        if (rules.Count != 1) throw new IOException("Unexpected new secret file access rules");
+        var rule = (FileSystemAccessRule)rules[0];
+        if (!sid.Equals(rule.IdentityReference) || rule.AccessControlType != AccessControlType.Allow || rule.FileSystemRights != FileSystemRights.FullControl)
+            throw new IOException("Unsafe new secret file access");
+    }
+    static void WriteOwnerOnlyFile(string path, byte[] bytes) {
+        using (var stream = new FileStream(path,FileMode.CreateNew,FileSystemRights.FullControl,FileShare.None,4096,FileOptions.None,OwnerOnlyFileSecurity())) {
+            ValidateNewFile(path);
+            stream.Write(bytes,0,bytes.Length);
+            stream.Flush(true);
+        }
+        ValidateNewFile(path);
+    }
+    // This rotation is only for a fresh Stage0 setup after the suite has rejected
+    // active runtimes and preserved the old generated installation. Never decrypt
+    // or adopt the old blob: a same-volume move retains its owner and ACL.
+    public static string QuarantineStage0ForFreshSetup(string invocation) {
+        Guid id;
+        if (invocation == null || invocation.Length != 32 || !Guid.TryParseExact(invocation,"N",out id)) throw new IOException("Invalid quarantine invocation");
+        const string target = "Deposit/Stage0/stage0-host";
+        // Validate the root through the ordinary path, without validating or
+        // changing this one legacy file's owner.
+        ValidateRoot();
+        string path;
+        using (var sha = SHA256.Create())
+            path = Path.Combine(Root,BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(target))).Replace("-","").ToLowerInvariant()+".dpapi");
+        Plain(path);
+        if (Directory.Exists(path)) throw new IOException("Secret target is not a file");
+        if (!File.Exists(path)) return null;
+        var sid = WindowsIdentity.GetCurrent().User;
+        var acl = File.GetAccessControl(path);
+        var owner = (SecurityIdentifier)acl.GetOwner(typeof(SecurityIdentifier));
+        if (!sid.Equals(owner) && !new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null).Equals(owner)) throw new IOException("Unexpected quarantined secret owner");
+        var rules = acl.GetAccessRules(true,true,typeof(SecurityIdentifier));
+        if (rules.Count == 0) throw new IOException("Quarantined secret grants no user access");
+        foreach (FileSystemAccessRule rule in rules)
+            if (!sid.Equals(rule.IdentityReference) || rule.AccessControlType != AccessControlType.Allow || rule.FileSystemRights != FileSystemRights.FullControl)
+                throw new IOException("Unexpected quarantined secret access rules");
+        string originalSecurity = acl.GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Group|AccessControlSections.Access);
+        string directory = Path.Combine(Root,"quarantine-"+invocation);
+        Plain(directory);
+        if (File.Exists(directory) || Directory.Exists(directory)) throw new IOException("Secret quarantine destination already exists");
+        var directoryAcl = new DirectorySecurity();
+        directoryAcl.SetOwner(sid);
+        directoryAcl.SetAccessRuleProtection(true,false);
+        directoryAcl.AddAccessRule(new FileSystemAccessRule(sid,FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
+        Directory.CreateDirectory(directory,directoryAcl);
+        var actualDirectoryAcl = Directory.GetAccessControl(directory);
+        if (actualDirectoryAcl.GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Access) != directoryAcl.GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Access)) throw new IOException("Unsafe secret quarantine directory");
+        string destination = Path.Combine(directory,Path.GetFileName(path));
+        WriteOwnerOnlyFile(destination+".acl.txt",Encoding.UTF8.GetBytes("Target: "+target+"\r\nOriginal security descriptor: "+originalSecurity+"\r\n"));
+        Plain(path);
+        Plain(destination);
+        if (File.GetAccessControl(path).GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Group|AccessControlSections.Access) != originalSecurity) throw new IOException("Secret security changed before quarantine");
+        File.Move(path,destination);
+        Plain(destination);
+        if (File.GetAccessControl(destination).GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Group|AccessControlSections.Access) != originalSecurity) throw new IOException("Quarantined secret security was not preserved");
+        return destination;
+    }
     public static string Read(string target) {
         string path = FileName(target);
         if (!File.Exists(path)) throw new IOException("Harness secret is missing for " + target);
@@ -71,8 +148,12 @@ public static class DepositHarnessSecretStore {
         byte[] clear = Encoding.UTF8.GetBytes(value);
         try {
             byte[] encrypted = ProtectedData.Protect(clear,Encoding.UTF8.GetBytes(target),DataProtectionScope.CurrentUser);
-            using (var stream = new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None)) { stream.Write(encrypted,0,encrypted.Length); stream.Flush(true); }
+            WriteOwnerOnlyFile(temporary,encrypted);
             if (File.Exists(path)) File.Replace(temporary,path,null); else File.Move(temporary,path);
+            // ReplaceFile retains the previous destination DACL. The destination
+            // has already passed FileName's strict owner/access validation.
+            File.SetAccessControl(path,OwnerOnlyFileSecurity());
+            ValidateNewFile(path);
         } finally { Array.Clear(clear,0,clear.Length); if (File.Exists(temporary)) File.Delete(temporary); }
     }
     public static void Delete(string target) { string path=FileName(target); if(File.Exists(path)) File.Delete(path); }

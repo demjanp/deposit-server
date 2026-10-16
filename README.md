@@ -19,14 +19,14 @@ The full suite runs the documented integration workflows, including seed/restart
 
 ## Windows integration suite
 
-Integration test sources and execution remain in this repository. The runner derives the sibling harness path as `..\test_harness`; generated tools, caches, database state, temporary files, secrets, logs and results stay there. The harness is not checked into the repository. If it is empty, setup downloads and verifies pinned dependencies, extracts the Java/Neo4j/Maven/Python/Firefox tools, builds and packages the server, and prepares a fresh local test runtime. Packaging also requires the adjacent `deposit-hub` checkout because setup reads `deposit-hub/deposit-server.md` to generate the release `OPERATIONS.md`.
+Integration test sources and execution remain in this repository. The runner derives the sibling harness path as `..\test_harness`; generated tools, caches, database state, temporary files, secrets, logs and results stay there. The harness is not checked into the repository. If it is empty, setup downloads and verifies pinned dependencies, extracts the Java/Neo4j/Maven/Python/Firefox/geckodriver tools, builds and packages the server, and prepares a fresh local test runtime. Packaging also requires the adjacent `deposit-hub` checkout because setup reads `deposit-hub/deposit-server.md` to generate the release `OPERATIONS.md`.
 
 ### Requirements
 
 - Windows x64 with Windows PowerShell 5.1, .NET Framework and an NTFS volume for the repository and sibling harness.
-- Network access to the pinned Maven, Neo4j, Temurin, Python and Mozilla artifact sources, Maven repositories, and Selenium Manager's geckodriver source. A corporate proxy or firewall must allow those downloads.
+- Network access to the pinned Maven, Neo4j, Temurin, Python, Firefox and geckodriver artifact sources, plus Maven repositories. A corporate proxy or firewall must allow those downloads when the corresponding archives are not already in the harness cache. The pinned geckodriver archive is downloaded from Mozilla's GitHub releases and checked against the SHA-256 value in `runtime/integration-tools.json`.
 - Run the full suite from an elevated PowerShell window. The suite temporarily registers a dedicated Neo4j Windows service for service lifecycle scenarios. `-SetupOnly` prepares the environment without registering or starting a service and does not require elevation.
-- Firefox is extracted into the harness and launched headlessly by the browser integration workflows; no existing browser installation is required. A first run needs network access for Selenium Manager to populate the harness-local driver cache.
+- Firefox and geckodriver are provisioned into the harness at pinned versions and launched headlessly by the browser integration workflows; no existing browser installation is required. The test runner passes the pinned driver path to Selenium, so browser tests do not depend on Selenium Manager downloading a driver at runtime.
 - Allow localhost TCP ports 17770 (Bolt) and the test-selected download listener port; the listener scenarios also exercise local TLS fixtures.
 
 ### Setup and run
@@ -58,8 +58,8 @@ The runner uses the harness root itself; there is no nested `stage0` directory.
 
 | Path | Contents |
 | --- | --- |
-| `cache` | Pinned archives, Maven dependencies and Selenium Manager driver cache |
-| `tools` | Extracted JDK, Neo4j, Maven, Python and Firefox |
+| `cache` | Pinned archives, Maven dependencies and Selenium Manager binary cache |
+| `tools` | Extracted JDK, Neo4j, Maven, Python, Firefox and geckodriver |
 | `maven-user`, `maven-repository` | Maven wrapper distribution and local artifact repository |
 | `build` | Maven build outputs and release package |
 | `runs\stage0-host` | Test database, runtime configuration, fixtures and service installation |

@@ -93,9 +93,33 @@ public static class DepositSuiteJobs {
 '@
 }
 
+function Test-SuiteSharingViolation([Exception]$Exception) {
+    while ($Exception) {
+        if (($Exception.HResult -band 0xffff) -in @(32,33)) { return $true }
+        $Exception = $Exception.InnerException
+    }
+    return $false
+}
 function Read-SuiteJournal([string]$Path) {
     Assert-HarnessPlainPath $Path
-    Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    $stream = $null
+    do {
+        try {
+            $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+            $stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,$share)
+            break
+        } catch {
+            if (!(Test-SuiteSharingViolation $_.Exception) -or [DateTime]::UtcNow -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 50
+        }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (!$stream) { throw 'Could not open the integration suite journal for reading' }
+    try {
+        $reader = New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true)
+        try { $json = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } finally { if ($stream) { $stream.Dispose() } }
+    return $json | ConvertFrom-Json
 }
 function Update-SuiteJournal([string]$Path,[scriptblock]$Change) {
     Assert-HarnessPlainPath $Path
@@ -110,7 +134,16 @@ function Update-SuiteJournal([string]$Path,[scriptblock]$Change) {
         & $Change $journal
         $temporary = $Path+'.'+[Guid]::NewGuid().ToString('N')+'.partial'
         [IO.File]::WriteAllText($temporary,($journal | ConvertTo-Json -Depth 12),(New-Object Text.UTF8Encoding($false)))
-        [IO.File]::Replace($temporary,$Path,$null)
+        $replaceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        do {
+            try {
+                [IO.File]::Replace($temporary,$Path,[System.Management.Automation.Language.NullString]::Value)
+                break
+            } catch {
+                if (!(Test-SuiteSharingViolation $_.Exception) -or [DateTime]::UtcNow -ge $replaceDeadline) { throw }
+                Start-Sleep -Milliseconds 50
+            }
+        } while ([DateTime]::UtcNow -lt $replaceDeadline)
     } finally { $journalLock.Dispose() }
 }
 function Get-SuiteProcess([long]$Id,[long]$StartTicks) {
@@ -131,8 +164,8 @@ function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime) {
                     $created=$process.StartTime.ToUniversalTime().Ticks
                     if($PreserveRuntime){
                         $record=Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
-                        $home=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
-                        if($record -and $record.CommandLine -and $record.CommandLine.Contains($home) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
+                        $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
+                        if($record -and $record.CommandLine -and $record.CommandLine.Contains($runtimeHome) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
                     }
                     if([DepositSuiteJobs]::Contains([string]$Identity.jobName,$process) -and $process.StartTime.ToUniversalTime().Ticks -eq $created){
                         $remaining++;$process.Kill();if(!$process.WaitForExit(5000)){throw 'Contained scenario process did not exit'}
@@ -162,8 +195,8 @@ function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime) {
         $process = Get-SuiteProcess $tree[$index].pid $tree[$index].startTicks
         if($process -and $PreserveRuntime){
             $record=Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
-            $home=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
-            if($record.CommandLine -and $record.CommandLine.Contains($home) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
+            $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
+            if($record.CommandLine -and $record.CommandLine.Contains($runtimeHome) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
         }
         if ($process) { $process.Kill(); if (!$process.WaitForExit(30000)) { throw "Owned suite child $($process.Id) did not exit" } }
     }
@@ -185,15 +218,17 @@ function Hold-SuiteJobs([string]$Path,[string]$Invocation){
 function Request-SuiteScStop($Journal,[string]$Name){
     $child=Start-Process -FilePath "$env:SystemRoot\System32\sc.exe" -ArgumentList @('stop',$Name) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Journal.logs 'cleanup-scm-stop.stdout.log') -RedirectStandardError (Join-Path $Journal.logs 'cleanup-scm-stop.stderr.log')
     try{
+        # Retain this instance's handle so Windows PowerShell 5.1 preserves ExitCode.
+        $null=$child.Handle
         if(!$child.WaitForExit(10000)){Stop-SuiteChildTree ([pscustomobject]@{pid=$child.Id;startTicks=$child.StartTime.ToUniversalTime().Ticks}) -PreserveRuntime;throw 'SCM stop request timed out'}
         $child.Refresh();if($child.ExitCode -ne 0){throw "SCM stop request failed ($($child.ExitCode))"}
     }finally{$child.Dispose()}
 }
 function Assert-SuiteService($Journal,$Service) {
-    $home = [IO.Path]::GetFullPath([string]$Journal.neo4jHome).TrimEnd('\')
+    $runtimeHome = [IO.Path]::GetFullPath([string]$Journal.neo4jHome).TrimEnd('\')
     $expected = [IO.Path]::GetFullPath((Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j')).TrimEnd('\')
-    Assert-HarnessPlainPath $home
-    if ($home -ine $expected -or $Journal.ownerSid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Suite ownership identity mismatch' }
+    Assert-HarnessPlainPath $runtimeHome
+    if ($runtimeHome -ine $expected -or $Journal.ownerSid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Suite ownership identity mismatch' }
     if($Journal.serviceName -notmatch '^DepositNeo4j-[a-f0-9]{8}$'){throw 'Unexpected service name in suite journal'}
     $partial=$Journal.installationPhase -eq 'installing' -and $Service.State -eq 'Stopped' -and $Service.StartName -in @('LocalSystem','NT AUTHORITY\SYSTEM') -and $Journal.allowedInitialServiceAccount -eq 'LocalSystem'
     if ($Service.Name -cne $Journal.serviceName -or (!$partial -and $Service.StartName -ine $Journal.serviceAccount) -or $Journal.serviceAccount -ine ('NT SERVICE\'+$Journal.serviceName)) { throw 'Service account or name differs from the owned suite journal' }
@@ -201,7 +236,7 @@ function Assert-SuiteService($Journal,$Service) {
     $match = [regex]::Match($binary,'^\s*(?:"([^"]+)"|(\S+))\s+(.+?)\s*$')
     $executable = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
     $executable = [IO.Path]::GetFullPath($executable)
-    if ($executable -ine (Join-Path $home 'bin\tools\prunsrv-amd64.exe') -or $match.Groups[3].Value -cne ('//RS//'+$Journal.serviceName)) { throw 'Service command differs from the pinned owned test installation' }
+    if ($executable -ine (Join-Path $runtimeHome 'bin\tools\prunsrv-amd64.exe') -or $match.Groups[3].Value -cne ('//RS//'+$Journal.serviceName)) { throw 'Service command differs from the pinned owned test installation' }
     Assert-HarnessPlainPath $executable
 }
 function Write-SuiteCleanupDiagnostic([string]$Path,[string]$Message){
@@ -214,7 +249,7 @@ function Invoke-SuiteCleanupLauncher($Journal,[string]$Operation){
     $command='& '''+$launcher.Replace("'","''")+''' '+$Operation+'; exit $LASTEXITCODE'
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Journal.logs ('cleanup-'+$Operation+'.stdout.log')) -RedirectStandardError (Join-Path $Journal.logs ('cleanup-'+$Operation+'.stderr.log'))
-    try{if(!$child.WaitForExit(330000)){Stop-SuiteChildTree ([pscustomobject]@{pid=$child.Id;startTicks=$child.StartTime.ToUniversalTime().Ticks});throw "Graceful $Operation timed out"};$child.Refresh();if($child.ExitCode -ne 0){throw "Graceful $Operation failed ($($child.ExitCode))"}}finally{$child.Dispose()}
+    try{$null=$child.Handle;if(!$child.WaitForExit(330000)){Stop-SuiteChildTree ([pscustomobject]@{pid=$child.Id;startTicks=$child.StartTime.ToUniversalTime().Ticks});throw "Graceful $Operation timed out"};$child.Refresh();if($child.ExitCode -ne 0){throw "Graceful $Operation failed ($($child.ExitCode))"}}finally{$child.Dispose()}
 }
 function Invoke-SuiteCleanup([string]$Path,[string]$ExpectedInvocation) {
     Assert-HarnessPlainPath ($Path+'.cleanup.lock')

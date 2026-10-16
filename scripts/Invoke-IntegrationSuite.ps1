@@ -65,6 +65,9 @@ function Invoke-SuiteChild([string]$Script,[object[]]$Arguments,[string]$Label,[
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logs ($Label+'.stdout.log')) -RedirectStandardError (Join-Path $logs ($Label+'.stderr.log'))
     try {
+        # Windows PowerShell 5.1 needs this Process instance to retain a handle
+        # before exit; otherwise a redirected Start-Process can lose ExitCode.
+        $null=$child.Handle
         $jobName='Local\DepositIT-'+$invocation+'-'+$identity
         [DepositSuiteJobs]::Create($jobName,$child.Id)
         $entry=[pscustomobject]@{pid=$child.Id;startTicks=$child.StartTime.ToUniversalTime().Ticks;label=$Label;jobName=$jobName;jobAcknowledged=$false}
@@ -103,6 +106,16 @@ function Preserve-GeneratedTree([string]$Path,[string]$Label) {
     New-Item -ItemType Directory -Force (Split-Path $destination -Parent) | Out-Null
     Move-Item -LiteralPath $Path -Destination $destination
 }
+function Preserve-GeneratedFile([string]$Path,[string]$Label) {
+    if (!(Test-Path -LiteralPath $Path)) { return }
+    Assert-HarnessPlainPath $Path
+    if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Generated file path is not a file: $Path" }
+    $destination=Join-Path $root ('preserved\'+$invocation+'\'+$Label)
+    Assert-HarnessPlainPath $destination
+    if (Test-Path -LiteralPath $destination) { throw "Generated file preservation destination already exists: $destination" }
+    New-Item -ItemType Directory -Force (Split-Path $destination -Parent) | Out-Null
+    [IO.File]::Move($Path,$destination)
+}
 function Invoke-SuiteNative([string]$File,[string[]]$Arguments,[string]$Label) {
     # Run through a tracked PowerShell child; encoded arguments preserve spaces.
     Invoke-SuiteChild $File $Arguments $Label 900
@@ -110,16 +123,27 @@ function Invoke-SuiteNative([string]$File,[string[]]$Arguments,[string]$Label) {
 try {
     if (Test-Path -LiteralPath $journalPath) {
         $prior=Read-SuiteJournal $journalPath
-        if (Get-SuiteProcess ([long]$prior.runnerPid) ([long]$prior.runnerStartTicks)) { throw 'A previous suite owner is still running' }
-        if ($prior.state -ne 'cleaned') {
+        $currentSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        if ($prior.schemaVersion -ne 1 -or $prior.ownerSid -cne $currentSid -or [string]$prior.invocationId -cnotmatch '^[a-f0-9]{32}$') { throw 'Previous suite journal identity or schema is invalid' }
+        if ($prior.state -ceq 'cleaned') {
+            $completedAt=[DateTimeOffset]::MinValue
+            $validTimestamp=[DateTimeOffset]::TryParse([string]$prior.cleanedUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$completedAt)
+            if ($prior.terminalCleanup -isnot [bool] -or !$prior.terminalCleanup -or $null -ne $prior.cleanupError -or !$validTimestamp) { throw 'Previous suite journal has an inconsistent completed state' }
+        } elseif ($prior.state -cin @('preparing','running','cleaning','cleanup-failed')) {
+            if (Get-SuiteProcess ([long]$prior.runnerPid) ([long]$prior.runnerStartTicks)) { throw 'A previous suite owner is still running' }
             Write-Warning "Previous invocation cleanup state: $($prior.state). Retrying owned cleanup."
             Invoke-SuiteCleanup $journalPath ([string]$prior.invocationId)
+        } else {
+            throw "Previous suite journal has an unknown state: $($prior.state)"
         }
-        Move-Item -LiteralPath $journalPath -Destination (Join-Path $private ('journal-'+$prior.invocationId+'.json'))
+        $archivedJournal=Join-Path $private ('journal-'+$prior.invocationId+'.json')
+        Assert-HarnessPlainPath $archivedJournal
+        if (Test-Path -LiteralPath $archivedJournal) { throw 'Previous suite journal archive already exists' }
+        Move-Item -LiteralPath $journalPath -Destination $archivedJournal
     }
     New-Item -ItemType Directory -Force $logs,(Join-Path $root 'tmp'),(Join-Path $root 'cache\selenium') | Out-Null
     Set-OwnerOnlyDirectory $logs
-    foreach($key in @('TEMP','TMP','STAGE0_ROOT','DEPOSIT_SUITE_JOURNAL','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','STAGE7_PACKAGE_OUTPUT','PYTHONPYCACHEPREFIX','PYTHONUSERBASE','MAVEN_USER_HOME','MAVEN_OPTS')) { $saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process') }
+    foreach($key in @('TEMP','TMP','STAGE0_ROOT','DEPOSIT_SUITE_JOURNAL','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER','STAGE7_PACKAGE_OUTPUT','PYTHONPYCACHEPREFIX','PYTHONUSERBASE','MAVEN_USER_HOME','MAVEN_OPTS')) { $saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process') }
     $env:TEMP=Join-Path $root 'tmp';$env:TMP=$env:TEMP
     $env:STAGE0_ROOT=$root;$env:DEPOSIT_SUITE_JOURNAL=$journalPath
     $env:SE_CACHE_PATH=Join-Path $root 'cache\selenium';$env:SE_AVOID_STATS='true'
@@ -148,17 +172,22 @@ try {
     Preserve-GeneratedTree (Join-Path $root 'build\distribution') 'distribution'
     Invoke-SuiteStage 'Provision'
     Invoke-SuiteStage 'Build'
+    $archive=Join-Path $root 'build\deposit-server-0.0.0-stage65.zip'
+    Preserve-GeneratedFile $archive 'deposit-server-0.0.0-stage65.zip'
     Invoke-SuiteStage 'Package'
     # Package also creates a verified distribution copy. Install extracts the
     # archive with CreateNew, so retain that copy away from its extraction target.
     Preserve-GeneratedTree (Join-Path $run 'distribution') 'packaged-copy'
-    $archive=Join-Path $root 'build\deposit-server-0.0.0-stage65.zip'
+    $quarantinedSecret=[DepositHarnessSecretStore]::QuarantineStage0ForFreshSetup($invocation)
+    if ($quarantinedSecret) { Write-Host "Preserved prior Stage0 secret without decrypting: $quarantinedSecret" }
     Invoke-SuiteStage 'Install' @('-ReleasePackage',$archive)
     $toolManifest=Get-Content -LiteralPath (Join-Path $repo 'runtime\integration-tools.json') -Raw | ConvertFrom-Json
     $python=Join-Path $root $toolManifest.pythonExe
     $firefox=Join-Path $root $toolManifest.firefoxExe
-    if (!(Test-Path -LiteralPath $python -PathType Leaf) -or !(Test-Path -LiteralPath $firefox -PathType Leaf)) { throw 'Provision did not prepare the pinned Python/Firefox tools' }
+    $geckodriver=Join-Path $root $toolManifest.geckodriverExe
+    if (!(Test-Path -LiteralPath $python -PathType Leaf) -or !(Test-Path -LiteralPath $firefox -PathType Leaf) -or !(Test-Path -LiteralPath $geckodriver -PathType Leaf)) { throw 'Provision did not prepare the pinned Python/Firefox/geckodriver tools' }
     $env:SE_BROWSER_PATH=$firefox
+    $env:SE_GECKODRIVER=$geckodriver
     $tls=Join-Path $root 'private\tls'
     Set-OwnerOnlyDirectory $tls
     $tlsPasswordPath=Join-Path $tls 'stage11-download-test.password'

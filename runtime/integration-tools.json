@@ -11,6 +11,12 @@
   "firefoxArchive": "Firefox-Setup-157.0.1.msi",
   "firefoxSha512": "ac630cbb2d0d726c827464b38df1bb030161cb97449820ac40e0f443bb05cbba5eb942149d561b0b6dfdae142c7b7c29cf3d09a8c1b55f713c391e4ff386a7dd",
   "firefoxDirectory": "tools/firefox-157.0.1",
-  "firefoxExe": "tools/firefox-157.0.1/firefox.exe",
-  "firefoxExtractionMethod": "Mozilla MSI EXTRACT_DIR"
+  "firefoxExe": "tools/firefox-157.0.1/core/firefox.exe",
+  "firefoxExtractionMethod": "Mozilla MSI EXTRACT_DIR",
+  "geckodriverVersion": "0.37.1",
+  "geckodriverUrl": "https://github.com/mozilla/geckodriver/releases/download/v0.37.1/geckodriver-v0.37.1-win64.zip",
+  "geckodriverArchive": "geckodriver-v0.37.1-win64.zip",
+  "geckodriverSha256": "DFED9315ABE8D2FBC1B6161A2EE8002452E79CF05EE92FDC653A4E26BC35EDD8",
+  "geckodriverDirectory": "tools/geckodriver-0.37.1",
+  "geckodriverExe": "tools/geckodriver-0.37.1/geckodriver.exe"
 }

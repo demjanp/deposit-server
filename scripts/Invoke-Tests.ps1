@@ -44,7 +44,7 @@ if ($Kind -eq 'Integration') {
     . "$PSScriptRoot\IntegrationHarnessSecrets.ps1"
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
     $savedEnvironment = @{}
-    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','STAGE0_ROOT','STAGE0_URI','STAGE0_PASSWORD','STAGE0_HTTP_BASE','STAGE0_NEO4J_VERSION','STAGE0_BASELINE_MAP','STAGE0_TEST_MODE','STAGE0_EXPECTED_FAILURE','STAGE4_CRASH_POINT','STAGE5_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS')) {
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','STAGE0_ROOT','STAGE0_URI','STAGE0_PASSWORD','STAGE0_HTTP_BASE','STAGE0_NEO4J_VERSION','STAGE0_BASELINE_MAP','STAGE0_TEST_MODE','STAGE0_EXPECTED_FAILURE','STAGE4_CRASH_POINT','STAGE5_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
     }
     $run = Join-Path $Root 'runs\stage0-host'
@@ -60,6 +60,10 @@ if ($Kind -eq 'Integration') {
     $env:STAGE0_NEO4J_VERSION = $manifest.neo4jVersion
     $env:STAGE0_BASELINE_MAP = Join-Path $run 'fixture-uuid-baseline.tsv'
     $env:STAGE0_TEST_MODE = $TestMode
+    $toolManifest = Get-Content (Join-Path $repo 'runtime\integration-tools.json') -Raw | ConvertFrom-Json
+    $env:SE_BROWSER_PATH = Join-Path $Root $toolManifest.firefoxExe
+    $env:SE_GECKODRIVER = Join-Path $Root $toolManifest.geckodriverExe
+    if (!(Test-Path -LiteralPath $env:SE_BROWSER_PATH -PathType Leaf) -or !(Test-Path -LiteralPath $env:SE_GECKODRIVER -PathType Leaf)) { throw 'Pinned Firefox/geckodriver tools are missing; run Invoke-IntegrationSuite.ps1 -SetupOnly first.' }
     if ($FailureMode) { $env:STAGE0_EXPECTED_FAILURE = $FailureMode } else { Remove-Item Env:\STAGE0_EXPECTED_FAILURE -ErrorAction SilentlyContinue }
     if ($CrashPoint) { $env:STAGE4_CRASH_POINT = $CrashPoint; $env:STAGE5_CRASH_POINT = $CrashPoint }
     else { Remove-Item Env:\STAGE4_CRASH_POINT,Env:\STAGE5_CRASH_POINT -ErrorAction SilentlyContinue }

@@ -162,6 +162,21 @@ function Invoke-ProvisionIntegrationTools {
         if($process.ExitCode -ne 0){throw "Mozilla Firefox extraction failed with exit code $($process.ExitCode)"}
     }
     if(!(Test-Path -LiteralPath $firefoxExe -PathType Leaf)){throw 'Pinned Firefox MSI did not yield firefox.exe'}
+
+    $geckodriverArchive=Join-Path $Root ('cache\'+$toolManifest.geckodriverArchive)
+    if(!(Test-Path -LiteralPath $geckodriverArchive -PathType Leaf)){
+        Invoke-WebRequest -UseBasicParsing -Uri $toolManifest.geckodriverUrl -OutFile ($geckodriverArchive+'.partial')
+        if((Get-FileHash -LiteralPath ($geckodriverArchive+'.partial') -Algorithm SHA256).Hash -ine $toolManifest.geckodriverSha256){throw 'Pinned geckodriver archive checksum mismatch'}
+        Move-Item -LiteralPath ($geckodriverArchive+'.partial') -Destination $geckodriverArchive
+    }
+    if((Get-FileHash -LiteralPath $geckodriverArchive -Algorithm SHA256).Hash -ine $toolManifest.geckodriverSha256){throw 'Cached geckodriver archive checksum mismatch'}
+    $geckodriverExe=Join-Path $Root $toolManifest.geckodriverExe
+    if(!(Test-Path -LiteralPath $geckodriverExe -PathType Leaf)){
+        $geckodriverDirectory=Join-Path $Root $toolManifest.geckodriverDirectory
+        New-Item -ItemType Directory -Force -Path $geckodriverDirectory | Out-Null
+        Expand-Archive -LiteralPath $geckodriverArchive -DestinationPath $geckodriverDirectory -Force
+    }
+    if(!(Test-Path -LiteralPath $geckodriverExe -PathType Leaf)){throw 'Pinned geckodriver archive did not yield geckodriver.exe'}
 }
 function Invoke-ProvisionLicenses {
     $licenses=Get-Content "$repo\runtime\license-overrides.json" -Raw | ConvertFrom-Json
