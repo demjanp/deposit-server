@@ -8,8 +8,15 @@ function Assert-HarnessPlainPath([string]$Path) {
     if ($full -ine $root -and !$full.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)) { throw "Path is outside the harness: $full" }
     $current = $full
     while ($current) {
-        if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Reparse point refused: $current" }
-        $current = Split-Path $current -Parent
+        # Probe once: a journal can be replaced between an existence check and
+        # a provider lookup. Missing components are permitted, but their existing
+        # ancestors still require validation and all other probe errors propagate.
+        $attributes = $null
+        try { $attributes = [IO.File]::GetAttributes($current) }
+        catch [IO.FileNotFoundException] {}
+        catch [IO.DirectoryNotFoundException] {}
+        if ($null -ne $attributes -and ($attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Reparse point refused: $current" }
+        $current = [IO.Path]::GetDirectoryName($current)
     }
 }
 function Set-OwnerOnlyDirectory([string]$Path) {

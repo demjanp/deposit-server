@@ -210,6 +210,7 @@ try {
         Remove-Item Env:\STAGE7_PACKAGE_OUTPUT -ErrorAction SilentlyContinue
         foreach($transition in @('Restart','KillRestart')) { Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-TestScenario.ps1') @('-SeedTest',$seed,'-VerifyTest',$verify,'-Transition',$transition,'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs ('recovery-'+$transition+'.log')),'-TestTimeoutSeconds','900') ('recovery-'+$transition) 2400 }
         Invoke-SuiteStage 'Stop'
+        Invoke-SuiteLocalRetirement $journalPath $invocation
         $state=Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
         $name=[string]$state.serviceName;$account='NT SERVICE\'+$name
         if ($name -notmatch '^DepositNeo4j-[a-f0-9]{8}$') { throw 'Unexpected generated test service name' }
@@ -230,7 +231,14 @@ try {
         $listenerLogs=Join-Path $logs 'listener';New-Item -ItemType Directory -Path $listenerLogs | Out-Null
         Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11ListenerScenario.ps1') @('-LogDirectory',$listenerLogs,'-TlsMaterialDirectory',$tls) 'listener' 2400
     }
-} catch { $failure=$_.Exception.Message } finally {
+} catch {
+    $failure=$_.Exception.Message
+    # Preserve the original call site before cleanup changes the journal state.
+    try {
+        $detail=@("Message: $failure","ErrorId: $($_.FullyQualifiedErrorId)","Position: $($_.InvocationInfo.PositionMessage)","Stack: $($_.ScriptStackTrace)","Exception: $($_.Exception.ToString())")
+        if([IO.Directory]::Exists($logs)){[IO.File]::WriteAllLines((Join-Path $logs 'suite-failure.log'),$detail,(New-Object Text.UTF8Encoding($false)))}
+    } catch { Write-Warning "Could not save suite failure details: $($_.Exception.Message)" }
+} finally {
     if ($journalCreated) { try { Invoke-SuiteCleanup $journalPath $invocation } catch { $failure=($failure+' Cleanup failed: '+$_.Exception.Message).Trim() } }
     if ($watchdog) { if (!$watchdog.WaitForExit(10000)) { Write-Warning 'Watchdog remains active until the runner exits; retained journal records cleanup status.' }; $watchdog.Dispose() }
     foreach($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key,$saved[$key],'Process') }

@@ -149,17 +149,25 @@ function Test-SuiteSharingViolation([Exception]$Exception) {
     }
     return $false
 }
+function Test-SuiteJournalOpenRace([Exception]$Exception) {
+    while ($Exception) {
+        if ($Exception -is [IO.FileNotFoundException]) { return $true }
+        if (($Exception.HResult -band 0xffff) -in @(32,33)) { return $true }
+        $Exception = $Exception.InnerException
+    }
+    return $false
+}
 function Read-SuiteJournal([string]$Path) {
-    Assert-HarnessPlainPath $Path
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     $stream = $null
     do {
         try {
+            Assert-HarnessPlainPath $Path
             $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
             $stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,$share)
             break
         } catch {
-            if (!(Test-SuiteSharingViolation $_.Exception) -or [DateTime]::UtcNow -ge $deadline) { throw }
+            if (!(Test-SuiteJournalOpenRace $_.Exception) -or [DateTime]::UtcNow -ge $deadline) { throw }
             Start-Sleep -Milliseconds 50
         }
     } while ([DateTime]::UtcNow -lt $deadline)
@@ -207,26 +215,42 @@ function Get-SuiteProcess([long]$Id,[long]$StartTicks) {
     } catch {}
     return $null
 }
-function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime) {
+function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime,[DateTime]$Deadline=[DateTime]::MinValue,[switch]$RejectRuntime) {
     if($Identity.PSObject.Properties['jobName'] -and $Identity.jobName){
-        $deadline=[DateTime]::UtcNow.AddSeconds(30)
+        if($Deadline -eq [DateTime]::MinValue){$Deadline=[DateTime]::UtcNow.AddSeconds(30)}
         do{
             $members=@([DepositSuiteJobs]::Members([string]$Identity.jobName))
             $remaining=0
+            try{
             foreach($process in $members){
                 try{
+                    if($process.HasExited){continue}
                     $created=$process.StartTime.ToUniversalTime().Ticks
+                    if($RejectRuntime){
+                        if($process.ProcessName -in @('java','prunsrv-amd64')){throw 'Local retirement refuses a contained runtime process'}
+                        $metadata=Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)" -ErrorAction Stop
+                        if((!$metadata -or !$metadata.CommandLine -or !$metadata.CreationDate) -and !$process.HasExited){throw 'Local retirement cannot verify a contained process'}
+                    }
                     if($PreserveRuntime){
                         $record=Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
                         $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
                         if($record -and $record.CommandLine -and $record.CommandLine.Contains($runtimeHome) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
                     }
                     if([DepositSuiteJobs]::Contains([string]$Identity.jobName,$process) -and $process.StartTime.ToUniversalTime().Ticks -eq $created){
-                        $remaining++;$process.Kill();if(!$process.WaitForExit(5000)){throw 'Contained scenario process did not exit'}
+                        $wait=[Math]::Min(5000,[int]($Deadline-[DateTime]::UtcNow).TotalMilliseconds)
+                        if($wait -le 0){throw 'Contained scenario cleanup deadline expired'}
+                        $remaining++;$process.Kill();if(!$process.WaitForExit($wait)){throw 'Contained scenario process did not exit'}
                     }
-                }finally{$process.Dispose()}
+                }catch [InvalidOperationException]{
+                    # A held incarnation can exit while its metadata is read.
+                    # Only proven exit is benign; unknown live state still fails.
+                    if(!$process.HasExited){throw}
+                }catch [ComponentModel.Win32Exception]{
+                    if(!$process.HasExited){throw}
+                }
             }
-        }while($remaining -and [DateTime]::UtcNow -lt $deadline)
+            }finally{foreach($process in $members){$process.Dispose()}}
+        }while($remaining -and [DateTime]::UtcNow -lt $Deadline)
         if($remaining){throw 'Contained scenario processes remain after bounded cleanup'}
         return
     }
@@ -254,6 +278,91 @@ function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime) {
         }
         if ($process) { $process.Kill(); if (!$process.WaitForExit(30000)) { throw "Owned suite child $($process.Id) did not exit" } }
     }
+}
+function Invoke-SuiteLocalRetirement([string]$Path,[string]$ExpectedInvocation) {
+    # The local JVM has stopped, but exited scenario roots may leave launchers
+    # holding diagnostic files. Retire their exact jobs before any service work.
+    Assert-HarnessPlainPath $Path
+    [DepositSuiteJournalFiles]::Validate($Path)
+    $journal=Read-SuiteJournal $Path
+    $runtimeHome=[IO.Path]::GetFullPath((Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j')).TrimEnd('\')
+    $runner=Get-Process -Id $PID -ErrorAction Stop
+    try {
+        if($ExpectedInvocation -cnotmatch '^[a-f0-9]{32}$' -or $journal.invocationId -cne $ExpectedInvocation -or
+            $journal.schemaVersion -ne 1 -or $journal.ownerSid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -or
+            [long]$journal.runnerPid -ne $PID -or [long]$journal.runnerStartTicks -ne $runner.StartTime.ToUniversalTime().Ticks -or
+            [IO.Path]::GetFullPath([string]$journal.neo4jHome).TrimEnd('\') -ine $runtimeHome -or
+            $journal.state -cne 'running' -or $journal.terminalCleanup -isnot [bool] -or $journal.terminalCleanup -or
+            $journal.runtimeOwned -isnot [bool] -or !$journal.runtimeOwned -or !$journal.watchdogAcknowledged -or
+            $journal.installationPhase -cne 'none' -or $journal.serviceName -or $journal.serviceAccount) {
+            throw 'Local retirement requires the active nonterminal invocation owned by this runner'
+        }
+    } finally {$runner.Dispose()}
+    Assert-HarnessPlainPath $runtimeHome
+    $installationPath=Join-Path (Split-Path $runtimeHome -Parent) 'distribution\deposit.install.json'
+    Assert-HarnessPlainPath $installationPath
+    $installation=Get-Content -LiteralPath $installationPath -Raw | ConvertFrom-Json
+    if($installation.mode -cne 'local' -or [IO.Path]::GetFullPath([string]$installation.neo4jHome).TrimEnd('\') -ine $runtimeHome -or
+        $installation.serviceName -cnotmatch '^DepositNeo4j-[a-f0-9]{8}$') {throw 'Local retirement installation identity is invalid'}
+    if(Get-CimInstance Win32_Service -Filter "Name='$($installation.serviceName)'" -ErrorAction Stop){throw 'Local retirement refuses a registered service'}
+
+    $children=@($journal.children)
+    if(!$children.Count){throw 'Local retirement has no completed scenario jobs'}
+    $names=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    # Validate the entire set before terminating any process. A reused root PID
+    # is harmless; only a still-live root of the recorded incarnation blocks us.
+    foreach($child in $children){
+        if(!$child.PSObject.Properties['jobName'] -or !$child.PSObject.Properties['jobAcknowledged'] -or
+            $child.jobName -cnotmatch ('^Local\\DepositIT-'+[regex]::Escape($ExpectedInvocation)+'-[a-f0-9]{32}$') -or
+            $child.jobAcknowledged -isnot [bool] -or !$child.jobAcknowledged -or !$names.Add([string]$child.jobName) -or
+            [long]$child.pid -le 0 -or [long]$child.startTicks -lt [long]$journal.runnerStartTicks){throw 'Local retirement found an invalid scenario job identity'}
+        [DepositSuiteJobs]::Hold([string]$child.jobName)
+        $rootProcess=$null
+        try {
+            try {$rootProcess=[Diagnostics.Process]::GetProcessById([int]$child.pid)} catch [ArgumentException] {}
+            if($rootProcess -and !$rootProcess.HasExited -and $rootProcess.StartTime.ToUniversalTime().Ticks -eq [long]$child.startTicks){throw 'Local retirement refuses a live scenario root'}
+        } catch [InvalidOperationException] {
+            if(!$rootProcess -or !$rootProcess.HasExited){throw}
+        } finally {if($rootProcess){$rootProcess.Dispose()}}
+    }
+    foreach($recordPath in @((Join-Path (Split-Path $runtimeHome -Parent) 'process.json'),(Join-Path $runtimeHome 'deposit-process.json'))){
+        Assert-HarnessPlainPath $recordPath
+        if(Test-Path -LiteralPath $recordPath){
+            $record=Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
+            if([long]$record.pid -le 0){throw 'Local runtime record has an invalid PID'}
+            $recordStart=if($record.PSObject.Properties['startMillis']){[DateTimeOffset]::FromUnixTimeMilliseconds([long]$record.startMillis).UtcDateTime.Ticks}else{[DateTimeOffset]::Parse([string]$record.created,[Globalization.CultureInfo]::InvariantCulture).UtcDateTime.Ticks}
+            $recordProcess=$null
+            try {
+                try {$recordProcess=[Diagnostics.Process]::GetProcessById([int]$record.pid)} catch [ArgumentException] {}
+                if($recordProcess -and !$recordProcess.HasExited -and [Math]::Abs($recordProcess.StartTime.ToUniversalTime().Ticks-$recordStart) -lt [TimeSpan]::TicksPerMillisecond){throw 'Local retirement refuses a live recorded runtime'}
+            } catch [InvalidOperationException] {
+                if(!$recordProcess -or !$recordProcess.HasExited){throw}
+            } finally {if($recordProcess){$recordProcess.Dispose()}}
+        }
+    }
+    $runtimeProcesses=@(Get-CimInstance Win32_Process -Filter "Name='java.exe' OR Name='prunsrv-amd64.exe'" -ErrorAction Stop | Where-Object {$_.CommandLine -and $_.CommandLine.IndexOf($runtimeHome,[StringComparison]::OrdinalIgnoreCase) -ge 0})
+    if($runtimeProcesses.Count){throw 'Local retirement requires the local runtime to be stopped'}
+    foreach($child in $children){
+        $members=@([DepositSuiteJobs]::Members([string]$child.jobName))
+        try {
+            foreach($member in $members){
+                try {
+                if($member.HasExited){continue}
+                if($member.ProcessName -in @('java','prunsrv-amd64')){throw 'Local retirement refuses a contained runtime process'}
+                $metadata=Get-CimInstance Win32_Process -Filter "ProcessId=$($member.Id)" -ErrorAction Stop
+                if((!$metadata -or !$metadata.CommandLine -or !$metadata.CreationDate) -and !$member.HasExited){throw 'Local retirement cannot verify a contained process'}
+                } catch [InvalidOperationException] {if(!$member.HasExited){throw}}
+            }
+        } finally {foreach($member in $members){$member.Dispose()}}
+    }
+    $deadline=[DateTime]::UtcNow.AddSeconds(30)
+    Start-Sleep -Milliseconds 1000
+    foreach($child in $children){Stop-SuiteChildTree $child -PreserveRuntime -Deadline $deadline -RejectRuntime}
+    foreach($child in $children){
+        $members=@([DepositSuiteJobs]::Members([string]$child.jobName))
+        try {if($members.Count){throw 'Local retirement left contained processes; service installation is forbidden'}}finally{foreach($member in $members){$member.Dispose()}}
+    }
+    # Keep journal entries and both runner/watchdog job handles for recovery.
 }
 function Hold-SuiteJobs([string]$Path,[string]$Invocation){
     $journal=Read-SuiteJournal $Path

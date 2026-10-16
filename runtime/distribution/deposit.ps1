@@ -71,7 +71,7 @@ function Set-ActiveSuiteInstallationPhase([string]$JournalPath,[string]$Phase) {
     $harness=[IO.Path]::GetFullPath((Join-Path $script:PackageRoot '..\..\..'))
     $watchdog=Join-Path $harness '..\deposit-server\scripts\IntegrationSuiteWatchdog.ps1'
     if(!(Test-Path -LiteralPath $watchdog -PathType Leaf)){Fail 'The integration suite journal writer is missing'}
-    . $watchdog -LibraryOnly
+    . $watchdog -JournalPath $JournalPath -LibraryOnly
     Update-SuiteJournal $JournalPath {param($j) $j.installationPhase=$Phase}
 }
 function Read-State {
@@ -246,7 +246,7 @@ function Service([string]$Operation,$State) {
                 # interval remains while the watchdog supervises installation.
                 $serviceConfig=& sc.exe config $State.serviceName start= demand 2>&1
                 if($LASTEXITCODE -ne 0){Fail "Could not set the integration service to manual start: $($serviceConfig -join ' ')"}
-                $serviceRecovery=& sc.exe failure $State.serviceName reset= 0 actions= "" 2>&1
+                $serviceRecovery=& sc.exe failure $State.serviceName reset= 0 actions= '""' 2>&1
                 if($LASTEXITCODE -ne 0){Fail "Could not disable integration service recovery: $($serviceRecovery -join ' ')"}
             }
             $password=if($ptr -eq [IntPtr]::Zero){$null}else{[Runtime.InteropServices.Marshal]::PtrToStringUni($ptr)}

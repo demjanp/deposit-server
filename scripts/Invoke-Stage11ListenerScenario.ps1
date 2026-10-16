@@ -32,7 +32,7 @@ function Stop-OwnedService {
     if($service.Status -ne 'Stopped'){Stop-Service -Name $state.serviceName;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(90))}
 }
 function Start-NormalFixture([string]$Label){
-    & (Join-Path $PSHOME 'powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PSScriptRoot\Stage0.ps1" -Phase Start
+    & (Join-Path $PSHOME 'powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PSScriptRoot\Stage0.ps1" -Phase Start -Root $rootPath
     if($LASTEXITCODE -ne 0){throw "Normal fixture did not start: $Label"}
 }
 function Start-FailedFixture([string]$Label){
