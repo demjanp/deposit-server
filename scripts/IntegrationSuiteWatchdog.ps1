@@ -93,6 +93,55 @@ public static class DepositSuiteJobs {
 '@
 }
 
+if (-not ('DepositSuiteJournalFiles' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
+public static class DepositSuiteJournalFiles {
+    static SecurityIdentifier CurrentSid() { return WindowsIdentity.GetCurrent().User; }
+    static FileSecurity OwnerOnlySecurity() {
+        var sid=CurrentSid();
+        var security=new FileSecurity();
+        security.SetOwner(sid);
+        security.SetAccessRuleProtection(true,false);
+        security.AddAccessRule(new FileSystemAccessRule(sid,FileSystemRights.FullControl,AccessControlType.Allow));
+        return security;
+    }
+    public static void WriteNew(string path,byte[] contents) {
+        using(var stream=new FileStream(path,FileMode.CreateNew,FileSystemRights.FullControl,FileShare.None,4096,FileOptions.None,OwnerOnlySecurity())) {
+            Validate(path);
+            stream.Write(contents,0,contents.Length);
+            stream.Flush(true);
+        }
+        Validate(path);
+    }
+    public static void SetOwnerOnly(string path) {
+        File.SetAccessControl(path,OwnerOnlySecurity());
+        Validate(path);
+    }
+    public static void Validate(string path) {
+        var sid=CurrentSid();
+        var security=File.GetAccessControl(path);
+        if(!security.AreAccessRulesProtected || !sid.Equals(security.GetOwner(typeof(SecurityIdentifier))))
+            throw new IOException("Integration journal must have a protected ACL owned by the invoking user");
+        var rules=security.GetAccessRules(true,true,typeof(SecurityIdentifier));
+        if(rules.Count!=1) throw new IOException("Integration journal ACL must contain only the invoking user's FullControl rule");
+        var rule=(FileSystemAccessRule)rules[0];
+        if(!sid.Equals(rule.IdentityReference) || rule.AccessControlType!=AccessControlType.Allow || rule.FileSystemRights!=FileSystemRights.FullControl || rule.IsInherited)
+            throw new IOException("Integration journal ACL must contain only the invoking user's FullControl rule");
+    }
+}
+'@
+}
+
+function Write-SuiteJournal([string]$Path,[string]$Content) {
+    Assert-HarnessPlainPath $Path
+    $encoding=New-Object Text.UTF8Encoding($false)
+    [DepositSuiteJournalFiles]::WriteNew($Path,$encoding.GetBytes($Content))
+}
+
 function Test-SuiteSharingViolation([Exception]$Exception) {
     while ($Exception) {
         if (($Exception.HResult -band 0xffff) -in @(32,33)) { return $true }
@@ -133,17 +182,22 @@ function Update-SuiteJournal([string]$Path,[scriptblock]$Change) {
         $journal = Read-SuiteJournal $Path
         & $Change $journal
         $temporary = $Path+'.'+[Guid]::NewGuid().ToString('N')+'.partial'
-        [IO.File]::WriteAllText($temporary,($journal | ConvertTo-Json -Depth 12),(New-Object Text.UTF8Encoding($false)))
-        $replaceDeadline = [DateTime]::UtcNow.AddSeconds(5)
-        do {
-            try {
-                [IO.File]::Replace($temporary,$Path,[System.Management.Automation.Language.NullString]::Value)
-                break
-            } catch {
-                if (!(Test-SuiteSharingViolation $_.Exception) -or [DateTime]::UtcNow -ge $replaceDeadline) { throw }
-                Start-Sleep -Milliseconds 50
-            }
-        } while ([DateTime]::UtcNow -lt $replaceDeadline)
+        try {
+            Write-SuiteJournal $temporary ($journal | ConvertTo-Json -Depth 12)
+            $replaceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+            do {
+                try {
+                    [IO.File]::Replace($temporary,$Path,[System.Management.Automation.Language.NullString]::Value)
+                    break
+                } catch {
+                    if (!(Test-SuiteSharingViolation $_.Exception) -or [DateTime]::UtcNow -ge $replaceDeadline) { throw }
+                    Start-Sleep -Milliseconds 50
+                }
+            } while ([DateTime]::UtcNow -lt $replaceDeadline)
+            [DepositSuiteJournalFiles]::SetOwnerOnly($Path)
+        } finally {
+            if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+        }
     } finally { $journalLock.Dispose() }
 }
 function Get-SuiteProcess([long]$Id,[long]$StartTicks) {

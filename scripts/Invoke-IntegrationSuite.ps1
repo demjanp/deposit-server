@@ -151,7 +151,7 @@ try {
     $env:MAVEN_USER_HOME=Join-Path $root 'maven-user'
     $env:MAVEN_OPTS=($env:MAVEN_OPTS+' -Djava.io.tmpdir="'+$env:TEMP+'"').Trim()
     $journal=[ordered]@{schemaVersion=1;invocationId=$invocation;ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;runnerPid=$PID;runnerStartTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks;neo4jHome=(Join-Path $run 'neo4j');runtimeOwned=$false;serviceName=$null;serviceAccount=$null;installationPhase='none';allowedInitialServiceAccount='LocalSystem';children=@();state='preparing';terminalCleanup=$false;watchdogAcknowledged=$false;watchdogPid=$null;watchdogStartTicks=$null;cleanupError=$null;cleanupDiagnostics=@();cleanedUtc=$null;logs=$logs}
-    [IO.File]::WriteAllText($journalPath,($journal | ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)))
+    Write-SuiteJournal $journalPath ($journal | ConvertTo-Json -Depth 10)
     $journalCreated=$true
     $watchdogCommand='& '+(Quote-Suite (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1'))+' -JournalPath '+(Quote-Suite $journalPath)
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($watchdogCommand))
