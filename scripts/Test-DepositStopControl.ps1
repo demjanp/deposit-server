@@ -1,7 +1,11 @@
 [CmdletBinding()]
-param([string]$LogPath=(Join-Path $env:TEMP ('DepositTests\'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')+'-stop-control.log')))
+param([string]$LogPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+$harnessRoot=Get-HarnessRoot;$env:TEMP=Join-Path $harnessRoot 'tmp';$env:TMP=$env:TEMP
+if(!$LogPath){$LogPath=Join-Path (Join-Path $harnessRoot 'logs') ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')+'-stop-control.log')}
+$null=New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent),$env:TEMP
 $repo=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'Credentials.ps1')
 . (Join-Path $PSScriptRoot 'Request-DepositStop.ps1')

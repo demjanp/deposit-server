@@ -2,7 +2,8 @@
 param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$run='D:\data_processed\Deposit_v2\stage0\runs\stage0-host'
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+$run=Get-HarnessRunRoot
 $recordPath=Join-Path $run 'process.json'
 $helper=Join-Path $PSScriptRoot 'Kill-TestOwnedJvm.ps1'
 $state=Get-Content (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json

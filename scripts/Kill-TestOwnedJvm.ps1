@@ -1,7 +1,8 @@
 # Independent crash harness helper; accepts no arbitrary target process or path.
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$run='D:\data_processed\Deposit_v2\stage0\runs\stage0-host'
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+$run=Get-HarnessRunRoot
 $repo=Split-Path $PSScriptRoot -Parent
 $statePath=Join-Path $run 'distribution\deposit.install.json'
 $recordPath=Join-Path $run 'process.json'
@@ -11,7 +12,7 @@ foreach($path in @($run,(Join-Path $run 'distribution'),$statePath,$recordPath))
 }
 $state=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json -ErrorAction Stop
 $record=Get-Content -LiteralPath $recordPath -Raw|ConvertFrom-Json -ErrorAction Stop
-$neo4jHome=[IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0\runs\stage0-host\neo4j').TrimEnd('\')
+$neo4jHome=[IO.Path]::GetFullPath((Join-Path $run 'neo4j')).TrimEnd('\')
 $stateFields=@('mode','serviceName','serviceAccount','neo4jHome')
 $recordFields=@('mode','serviceName','serviceAccount','neo4jHome','pid','startMillis','runtimeSid')
 foreach($field in $stateFields){if(!$state.PSObject.Properties[$field]){throw 'Refuse termination: installation state is missing required service identity fields'}}

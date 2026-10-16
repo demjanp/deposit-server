@@ -12,6 +12,6 @@
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
   </dependencies>
   <profiles><profile><id>integration</id><build><plugins>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><disableXmlReport>true</disableXmlReport><useFile>false</useFile><includes><include>**/*IT.java</include></includes><failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests></configuration></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><disableXmlReport>true</disableXmlReport><useFile>false</useFile><includes><include>**/*IT.java</include></includes><failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests><systemPropertyVariables><stage0.root>${stage0.root}</stage0.root><deposit.server.root>${deposit.server.root}</deposit.server.root><java.io.tmpdir>${stage0.root}/tmp</java.io.tmpdir></systemPropertyVariables></configuration></plugin>
   </plugins></build></profile></profiles>
 </project>

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "pythonVersion": "3.14.8",
+  "pythonUrl": "https://www.python.org/ftp/python/3.14.8/python-3.14.8-embed-amd64.zip",
+  "pythonArchive": "python-3.14.8-embed-amd64.zip",
+  "pythonSha256": "a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310",
+  "pythonDirectory": "tools/python-3.14.8",
+  "pythonExe": "tools/python-3.14.8/python.exe",
+  "firefoxVersion": "157.0.1",
+  "firefoxUrl": "https://archive.mozilla.org/pub/firefox/releases/157.0.1/win64/en-US/Firefox%20Setup%20157.0.1.msi",
+  "firefoxArchive": "Firefox-Setup-157.0.1.msi",
+  "firefoxSha512": "ac630cbb2d0d726c827464b38df1bb030161cb97449820ac40e0f443bb05cbba5eb942149d561b0b6dfdae142c7b7c29cf3d09a8c1b55f713c391e4ff386a7dd",
+  "firefoxDirectory": "tools/firefox-157.0.1",
+  "firefoxExe": "tools/firefox-157.0.1/firefox.exe",
+  "firefoxExtractionMethod": "Mozilla MSI EXTRACT_DIR"
+}

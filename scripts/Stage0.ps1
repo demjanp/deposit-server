@@ -5,7 +5,7 @@ param(
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$')]
     [string]$RunId = 'stage0-host',
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
+    [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$ReleasePackage,
     [string]$BoltUri,
     [switch]$DiagnosticBuild,
@@ -15,10 +15,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Credentials.ps1"
+. "$PSScriptRoot\IntegrationHarnessSecrets.ps1"
 . "$PSScriptRoot\ArtifactIntegrity.ps1"
+. "$PSScriptRoot\HarnessPaths.ps1"
 $repo = Split-Path $PSScriptRoot -Parent
 $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-if ($Root -ne 'D:\data_processed\Deposit_v2\stage0') {throw 'Stage 0 must use the user-approved root D:\data_processed\Deposit_v2\stage0'}
+Assert-HarnessRoot $Root
 $manifest = Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $spatialLock = Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock) -Raw | ConvertFrom-Json
 $ocflLock = Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json
@@ -28,7 +30,7 @@ $evidence = Join-Path $run ('logs\'+$Phase+'-'+[DateTime]::UtcNow.ToString('yyyy
 if($Phase -in @('Install','Start','Stop','Kill','Reset') -and $RunId -ne 'stage0-host') {throw 'Only the single stage0-host Neo4j installation is authorized'}
 $installation = Join-Path $run 'neo4j'
 $savedEnvironment=@{}
-foreach($key in @('JAVA_HOME','MAVEN_USER_HOME','MAVEN_OPTS','NEO4J_HOME','NEO4J_CONF','TEMP','TMP')) {$savedEnvironment[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
+foreach($key in @('JAVA_HOME','MAVEN_USER_HOME','MAVEN_OPTS','NEO4J_HOME','NEO4J_CONF','TEMP','TMP','STAGE0_ROOT')) {$savedEnvironment[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
 $credentialTarget = "Deposit/Stage0/$RunId"
 $utf8 = New-Object Text.UTF8Encoding($false)
 
@@ -114,6 +116,7 @@ function Invoke-Provision {
             Move-Item -LiteralPath "$file.partial" -Destination $file
         }
     }
+    Invoke-ProvisionIntegrationTools
     Test-Artifacts -VerifyChecksums -SkipProvided
     Invoke-ProvisionLicenses
     foreach ($id in @('temurin','neo4j','maven')) {
@@ -129,6 +132,36 @@ function Invoke-Provision {
         $null=Get-ToolDirectory $manifest $id $Root
     }
     Test-Artifacts -VerifyChecksums
+}
+function Invoke-ProvisionIntegrationTools {
+    $toolManifest=Get-Content -LiteralPath (Join-Path $repo 'runtime\integration-tools.json') -Raw | ConvertFrom-Json
+    $pythonArchive=Join-Path $Root ('cache\'+$toolManifest.pythonArchive)
+    $firefoxArchive=Join-Path $Root ('cache\'+$toolManifest.firefoxArchive)
+    New-Item -ItemType Directory -Force (Join-Path $Root 'cache'),(Join-Path $Root $toolManifest.pythonDirectory),(Join-Path $Root $toolManifest.firefoxDirectory) | Out-Null
+    if(!(Test-Path -LiteralPath $pythonArchive -PathType Leaf)){
+        Invoke-WebRequest -UseBasicParsing -Uri $toolManifest.pythonUrl -OutFile ($pythonArchive+'.partial')
+        if((Get-FileHash -LiteralPath ($pythonArchive+'.partial') -Algorithm SHA256).Hash -ine $toolManifest.pythonSha256){throw 'Pinned Python embed package checksum mismatch'}
+        Move-Item -LiteralPath ($pythonArchive+'.partial') -Destination $pythonArchive
+    }
+    if((Get-FileHash -LiteralPath $pythonArchive -Algorithm SHA256).Hash -ine $toolManifest.pythonSha256){throw 'Cached Python embed package checksum mismatch'}
+    $pythonExe=Join-Path $Root $toolManifest.pythonExe
+    if(!(Test-Path -LiteralPath $pythonExe -PathType Leaf)){Expand-Archive -LiteralPath $pythonArchive -DestinationPath (Join-Path $Root $toolManifest.pythonDirectory) -Force}
+    if(!(Test-Path -LiteralPath $pythonExe -PathType Leaf)){throw 'Pinned Python package did not yield python.exe'}
+
+    if(!(Test-Path -LiteralPath $firefoxArchive -PathType Leaf)){
+        Invoke-WebRequest -UseBasicParsing -Uri $toolManifest.firefoxUrl -OutFile ($firefoxArchive+'.partial')
+        if((Get-FileHash -LiteralPath ($firefoxArchive+'.partial') -Algorithm SHA512).Hash -ine $toolManifest.firefoxSha512){throw 'Pinned Firefox MSI checksum mismatch'}
+        Move-Item -LiteralPath ($firefoxArchive+'.partial') -Destination $firefoxArchive
+    }
+    if((Get-FileHash -LiteralPath $firefoxArchive -Algorithm SHA512).Hash -ine $toolManifest.firefoxSha512){throw 'Cached Firefox MSI checksum mismatch'}
+    $firefoxExe=Join-Path $Root $toolManifest.firefoxExe
+    if(!(Test-Path -LiteralPath $firefoxExe -PathType Leaf)){
+        $firefoxDirectory=Join-Path $Root $toolManifest.firefoxDirectory
+        $arguments=@('/i',('"'+$firefoxArchive+'"'),('EXTRACT_DIR="'+$firefoxDirectory+'"'),'/quiet','/norestart')
+        $process=Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+        if($process.ExitCode -ne 0){throw "Mozilla Firefox extraction failed with exit code $($process.ExitCode)"}
+    }
+    if(!(Test-Path -LiteralPath $firefoxExe -PathType Leaf)){throw 'Pinned Firefox MSI did not yield firefox.exe'}
 }
 function Invoke-ProvisionLicenses {
     $licenses=Get-Content "$repo\runtime\license-overrides.json" -Raw | ConvertFrom-Json
@@ -233,7 +266,7 @@ server.jvm.additional=-Djava.io.tmpdir=$($env:TEMP.Replace('\','/'))
     $random = [Security.Cryptography.RandomNumberGenerator]::Create()
     try {$random.GetBytes($bytes)} finally {$random.Dispose()}
     $password = [Convert]::ToBase64String($bytes)
-    [DepositCredentialStore]::Save($credentialTarget, $password)
+    [DepositHarnessSecretStore]::Write($credentialTarget, $password)
     # Picocli argument files keep the generated secret out of the process command line.
     $argFile = "$run\secrets\initial-password.args"
     [IO.File]::WriteAllText($argFile, "dbms`nset-initial-password`n$password`n", $utf8)
@@ -359,7 +392,7 @@ function Invoke-Start {
     throw 'Neo4j readiness timeout'
 }
 function Invoke-Readiness([DateTime]$Deadline) {
-    $env:STAGE0_PASSWORD=[DepositCredentialStore]::Read($credentialTarget)
+    $env:STAGE0_PASSWORD=[DepositHarnessSecretStore]::Read($credentialTarget)
     try {
         $remaining=[int]($Deadline-[DateTime]::UtcNow).TotalMilliseconds
         if($remaining -le 0) {throw 'Readiness deadline exhausted'}
@@ -492,6 +525,7 @@ try {
 try {
     $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
+    $env:STAGE0_ROOT = $Root
     $env:TEMP="$run\tmp"; $env:TMP=$env:TEMP
     $env:MAVEN_OPTS=($env:MAVEN_OPTS+' -Djava.io.tmpdir='+$env:TEMP).Trim()
     switch ($Phase) {

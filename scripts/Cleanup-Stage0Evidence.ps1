@@ -1,12 +1,10 @@
 [CmdletBinding()]
-param([string]$Root = 'D:\data_processed\Deposit_v2\stage0')
+param([string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'))
 
 $ErrorActionPreference = 'Stop'
-$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-if (![string]::Equals($rootPath, $approvedRoot, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Cleanup is limited to the approved Stage 0 root: $approvedRoot"
-}
 if (!(Test-Path -LiteralPath $rootPath -PathType Container)) {
     throw "Stage 0 root does not exist: $rootPath"
 }
@@ -124,7 +122,7 @@ if (Test-Path -LiteralPath $runs -PathType Container) {
     }
 }
 
-$testLogs = Join-Path $env:TEMP 'DepositTests'
+$testLogs = Join-Path $rootPath 'logs'
 if (Test-Path -LiteralPath $testLogs -PathType Container) {
     Assert-NoReparsePoint $testLogs
     foreach ($log in Get-ChildItem -LiteralPath $testLogs -File -Filter '*.log' -Force) {

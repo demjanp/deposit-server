@@ -54,7 +54,7 @@ class Stage11BrowserIT {
         var range=browser.send(HttpRequest.newBuilder(url).header("Range","bytes=0-31").GET().build(),HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(206,range.statusCode());assertArrayEquals(Arrays.copyOf(bytes,32),range.body());
         String key=hash(resource.getBytes(StandardCharsets.UTF_8));
-        Path inventory=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host/resources/ocfl",key.substring(0,3),key.substring(3,6),key.substring(6,9),key,"inventory.json");
+        Path inventory=Stage0Paths.runRoot().resolve(Path.of("resources/ocfl",key.substring(0,3),key.substring(3,6),key.substring(6,9),key,"inventory.json"));
         byte[] original=Files.readAllBytes(inventory);
         try{Files.writeString(inventory,"corrupt inventory");assertEquals(503,get(browser,url).statusCode());}
         finally{Files.write(inventory,original);}

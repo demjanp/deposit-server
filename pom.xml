@@ -8,7 +8,8 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.build.outputTimestamp>2026-10-08T00:00:00Z</project.build.outputTimestamp>
     <neo4j.version>2026.05.0</neo4j.version>
-    <stage0.root>D:/data_processed/Deposit_v2/stage0</stage0.root>
+    <stage0.root>${maven.multiModuleProjectDirectory}/../test_harness</stage0.root>
+    <deposit.server.root>${maven.multiModuleProjectDirectory}</deposit.server.root>
     <spatial.jar>${stage0.root}/cache/neo4j-spatial-server-plugin-2025.10.0.jar</spatial.jar>
   </properties>
   <repositories><repository><id>osgeo</id><url>https://repo.osgeo.org/repository/release/</url></repository></repositories>

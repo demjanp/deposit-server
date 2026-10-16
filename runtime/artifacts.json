@@ -3,7 +3,6 @@
     "ocflDependencyLock": "ocfl-runtime-lock.json",
     "formatDependencyLock": "format-runtime-lock.json",
     "dependencyLock":  "spatial-runtime-lock.json",
-    "root":  "D:\\data_processed\\Deposit_v2\\stage0",
     "javaHome":  "tools/jdk-21.0.12.1+1",
     "neo4jHome":  "tools/neo4j-community-2026.05.0",
     "artifacts":  [

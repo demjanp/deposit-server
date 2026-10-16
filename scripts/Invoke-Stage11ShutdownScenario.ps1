@@ -1,17 +1,18 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
+    [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$LogPath
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
-$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-if (![string]::Equals($rootPath,$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) { throw "Scenario runner is limited to $approvedRoot" }
+Assert-HarnessRoot $rootPath
 if (!$LogPath) {
-    $directory = Join-Path $env:TEMP 'DepositTests'
+    $directory = Join-Path (Join-Path $PSScriptRoot '..\..\test_harness') 'logs'
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     $LogPath = Join-Path $directory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') + '-stage11-shutdown.log')
 }
@@ -240,9 +241,10 @@ try {
         }
     }
     $isRunning = [bool](Get-OwnedServer)
-    if ($wasRunning -and !$isRunning) {
+    $terminalCleanup = Test-HarnessTerminalCleanup
+    if (!$terminalCleanup -and $wasRunning -and !$isRunning) {
         try { Start-Stage0 } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
-    } elseif (!$wasRunning -and $isRunning -and !$stopChild) {
+    } elseif (!$terminalCleanup -and !$wasRunning -and $isRunning -and !$stopChild) {
         try { Invoke-ChildScript (Join-Path $PSScriptRoot 'Stage0.ps1') @('-Phase','Stop','-Root',$rootPath,'-Port',[string]$Port) 'restore-stop' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
     }
 }

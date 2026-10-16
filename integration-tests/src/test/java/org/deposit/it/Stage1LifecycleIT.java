@@ -16,7 +16,7 @@ class Stage1LifecycleIT {
     static String token,otherToken,userId,ns,otherNs;
     static long serverRevision;
     static final String ACCOUNT="stage1-admin", PASSWORD="stage1-account-password";
-    static final Path ROOT=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host");
+    static final Path ROOT=Stage0Paths.runRoot();
     @BeforeAll static void connect() {driver=CorpusTransport.wrap(GraphDatabase.driver(System.getenv("STAGE0_URI"),AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")),Config.builder().withFetchSize(17).build()));driver.verifyConnectivity();}
     @AfterAll static void close() {if(driver!=null)driver.close();}
     static Map<String,Object> m(Object... kv) {var m=new LinkedHashMap<String,Object>();for(int i=0;i<kv.length;i+=2)m.put((String)kv[i],kv[i+1]);return m;}

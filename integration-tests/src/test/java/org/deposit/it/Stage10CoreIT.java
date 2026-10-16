@@ -185,7 +185,7 @@ class Stage10CoreIT {
 
         Path downloadDirectory=Files.createTempDirectory("stage10-browser-");WebDriver browser=null;
         try{
-            FirefoxOptions options=new FirefoxOptions();options.addArguments("-headless");
+            FirefoxOptions options=new FirefoxOptions();String browserPath=System.getenv("SE_BROWSER_PATH");if(browserPath!=null&&!browserPath.isBlank())options.setBinary(browserPath);options.addArguments("-headless");
             options.addPreference("browser.download.folderList",2);options.addPreference("browser.download.dir",downloadDirectory.toAbsolutePath().toString());options.addPreference("browser.download.useDownloadDir",true);
             options.addPreference("browser.download.manager.showWhenStarting",false);options.addPreference("browser.helperApps.neverAsk.saveToDisk","application/octet-stream,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/geopackage+sqlite3");options.addPreference("pdfjs.disabled",true);
             browser=new FirefoxDriver(options);browser.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(45));

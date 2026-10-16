@@ -8,7 +8,7 @@ import org.junit.jupiter.api.*;
 
 /** Verifies that durable tabular staging and its row index survive a server restart. */
 class Stage9RecoveryIT {
-    static final Path FILE=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host/stage9-recovery.properties");
+    static final Path FILE=Stage0Paths.runRoot().resolve("stage9-recovery.properties");
     @BeforeAll static void open()throws Exception{Stage9CoreIT.connect();}
     @AfterAll static void close(){Stage9CoreIT.close();}
 

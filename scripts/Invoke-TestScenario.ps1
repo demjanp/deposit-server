@@ -6,17 +6,18 @@ param(
     [ValidateSet('stage4','stage5')][string]$CrashSuite,
     [string]$CrashPoint,
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
+    [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$LogPath,
     [ValidateRange(30,3600)][int]$TestTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'
-$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-if (![string]::Equals($rootPath,$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) { throw "Scenario runner is limited to $approvedRoot" }
+Assert-HarnessRoot $rootPath
 if (!$LogPath) {
-    $directory = Join-Path $env:TEMP 'DepositTests'
+    $directory = Join-Path (Join-Path $PSScriptRoot '..\..\test_harness') 'logs'
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     $LogPath = Join-Path $directory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') + '-scenario.log')
 }
@@ -156,10 +157,11 @@ try {
     $failure = $_.Exception.Message
     Write-ScenarioLog "FAIL: $failure"
 } finally {
+    $terminalCleanup = Test-HarnessTerminalCleanup
     $isRunning = [bool](Get-OwnedServer)
-    if ($wasRunning -and !$isRunning) {
+    if (!$terminalCleanup -and $wasRunning -and !$isRunning) {
         try { Invoke-Stage0 'Start' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
-    } elseif (!$wasRunning -and $isRunning) {
+    } elseif (!$terminalCleanup -and !$wasRunning -and $isRunning) {
         try { Invoke-Stage0 'Stop' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
     }
 }

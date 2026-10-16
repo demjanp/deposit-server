@@ -1,4 +1,7 @@
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+$harnessRoot=Get-HarnessRoot
+$env:TEMP=Join-Path $harnessRoot 'tmp';$env:TMP=$env:TEMP
 $launcher=Join-Path (Split-Path $PSScriptRoot -Parent) 'runtime\distribution\deposit.ps1'
 $ast=[Management.Automation.Language.Parser]::ParseFile($launcher,[ref]$null,[ref]$null)
 $definition=$ast.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-IcaclsPath'},$true)
@@ -6,7 +9,7 @@ Invoke-Expression $definition.Extent.Text
 if((Get-IcaclsPath 'D:\test\data') -cne '\\?\D:\test\data'){throw 'Drive path conversion failed'}
 if((Get-IcaclsPath '\\server\share\data') -cne '\\?\UNC\server\share\data'){throw 'UNC path conversion failed'}
 if((Get-IcaclsPath '\\?\D:\test\data') -cne '\\?\D:\test\data'){throw 'Extended path was changed'}
-$testRoot=[IO.Path]::GetFullPath((Join-Path $env:TEMP 'DepositTests'))
+$testRoot=[IO.Path]::GetFullPath((Join-Path $harnessRoot 'logs'))
 $fixture=Join-Path $testRoot ('service-acl-'+[guid]::NewGuid().ToString('N'))
 $directory=Join-Path (Join-Path $fixture ('a'*90)) ('b'*90)
 $file=Join-Path $directory (('x'*120)+'-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')

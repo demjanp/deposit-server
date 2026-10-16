@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
+    [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$LogPath,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]*$')][string]$ProbeTest='Stage9CoreIT',
     [ValidateSet('chunk-flushed','publication-before','publication-after','ready-before-commit','staging-cleanup-before','staging-cleanup-after','collection-before','collection-after','collection-partial')][string]$CrashPoint='collection-before',
@@ -11,10 +11,11 @@ param(
 
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
-$approvedRoot=[IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+Assert-HarnessRoot $Root
 $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
-if(![string]::Equals($rootPath,$approvedRoot,[StringComparison]::OrdinalIgnoreCase)){throw "Scenario runner is limited to $approvedRoot"}
-if(!$LogPath){$directory=Join-Path $env:TEMP 'DepositTests';New-Item -ItemType Directory -Force -Path $directory|Out-Null;$LogPath=Join-Path $directory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')+'-stage11-service-crash.log')}
+Assert-HarnessRoot $rootPath
+if(!$LogPath){$directory=Join-Path (Join-Path $PSScriptRoot '..\..\test_harness') 'logs';New-Item -ItemType Directory -Force -Path $directory|Out-Null;$LogPath=Join-Path $directory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')+'-stage11-service-crash.log')}
 $LogPath=[IO.Path]::GetFullPath($LogPath)
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent)|Out-Null
 $run=Join-Path $rootPath 'runs\stage0-host'
@@ -89,16 +90,19 @@ try{
     }
 }catch{$failure=$_.Exception.Message;Write-ScenarioLog "FAIL: $failure"}
 finally{
+    $terminalCleanup=Test-HarnessTerminalCleanup
     try{
         if($serviceName){$service=Get-Service -Name $serviceName -ErrorAction SilentlyContinue;if($service -and $service.Status -ne 'Stopped'){Wait-Bolt 90;& $launcher stop;if($LASTEXITCODE -ne 0){throw "Could not drain the service before restoring the normal package ($LASTEXITCODE)"};Wait-ServiceStatus $serviceName 'Stopped' 90}}
         if($configChanged -and (Test-Path -LiteralPath $configBackup)){Copy-Item -LiteralPath $configBackup -Destination $config -Force;$configChanged=$false}
         if($probeAdded -and (Test-Path -LiteralPath $probeTarget)){Remove-Item -LiteralPath $probeTarget -Force;$probeAdded=$false}
         elseif($hadProbe -and (Test-Path -LiteralPath (Join-Path $evidence 'prior-probe.jar'))){Copy-Item -LiteralPath (Join-Path $evidence 'prior-probe.jar') -Destination $probeTarget -Force}
-        if($serviceName){$service=Get-Service -Name $serviceName -ErrorAction SilentlyContinue;if($service -and $service.Status -eq 'Stopped'){& $launcher start;if($LASTEXITCODE -ne 0){throw "Normal service restart after probe restoration failed ($LASTEXITCODE)"};Wait-ServiceStatus $serviceName 'Running' 90;Wait-Bolt 90}}
-        $verify=Join-Path $PSScriptRoot 'Invoke-Tests.ps1'
-        Invoke-Child $verify @('-Kind','Integration','-Test','Stage4CrashIT#verify','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-crash-recovery-verify.log')) 'normal-package-crash-recovery-verify' 300
-        Write-ScenarioLog 'The crash-recovery fixture verifier passed after restoring the normal package.'
-        Invoke-Child $verify @('-Kind','Integration','-Test','Stage11ShutdownIT#verifyCommittedTransactionSurvivedServiceShutdown','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-verify.log')) 'normal-package-post-restore-verify' 300
+        if(!$terminalCleanup){
+            if($serviceName){$service=Get-Service -Name $serviceName -ErrorAction SilentlyContinue;if($service -and $service.Status -eq 'Stopped'){& $launcher start;if($LASTEXITCODE -ne 0){throw "Normal service restart after probe restoration failed ($LASTEXITCODE)"};Wait-ServiceStatus $serviceName 'Running' 90;Wait-Bolt 90}}
+            $verify=Join-Path $PSScriptRoot 'Invoke-Tests.ps1'
+            Invoke-Child $verify @('-Kind','Integration','-Test','Stage4CrashIT#verify','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-crash-recovery-verify.log')) 'normal-package-crash-recovery-verify' 300
+            Write-ScenarioLog 'The crash-recovery fixture verifier passed after restoring the normal package.'
+            Invoke-Child $verify @('-Kind','Integration','-Test','Stage11ShutdownIT#verifyCommittedTransactionSurvivedServiceShutdown','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-verify.log')) 'normal-package-post-restore-verify' 300
+        }
     }catch{Write-ScenarioLog "RESTORE FAILURE: $($_.Exception.Message)";if(!$failure){$failure=$_.Exception.Message}}
 }
 

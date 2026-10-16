@@ -6,7 +6,9 @@ foreach($name in @('Write-ScenarioLog','Invoke-Logged')){
 }
 $lines=New-Object 'System.Collections.Generic.List[string]'
 $utf8=New-Object Text.UTF8Encoding($false)
-$LogPath=Join-Path $env:TEMP ('DepositTests\stage11-child-exit-'+[Guid]::NewGuid().ToString('N')+'.log')
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+$harnessRoot=Get-HarnessRoot;$env:TEMP=Join-Path $harnessRoot 'tmp';$env:TMP=$env:TEMP
+$LogPath=Join-Path (Join-Path $harnessRoot 'logs') ('stage11-child-exit-'+[Guid]::NewGuid().ToString('N')+'.log')
 New-Item -ItemType Directory -Force (Split-Path $LogPath -Parent)|Out-Null
 Invoke-Logged (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-NonInteractive','-Command','exit 0') 'success-child'
 $rejected=$false

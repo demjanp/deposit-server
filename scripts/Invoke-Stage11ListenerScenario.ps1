@@ -2,7 +2,10 @@
 param([Parameter(Mandatory=$true)][string]$LogDirectory,
       [Parameter(Mandatory=$true)][string]$TlsMaterialDirectory)
 $ErrorActionPreference='Stop'
-$run='D:\data_processed\Deposit_v2\stage0\runs\stage0-host'
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+$rootPath=Get-HarnessRoot
+$run=Get-HarnessRunRoot
+$env:STAGE0_ROOT=$rootPath
 $config=Join-Path $run 'neo4j\conf\deposit.properties'
 $state=Get-Content (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json
 if($state.mode -ne 'service'){throw 'Selected listener scenarios require the test-owned service installation'}

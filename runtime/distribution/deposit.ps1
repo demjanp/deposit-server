@@ -37,6 +37,43 @@ function Assert-NoInstalledDepositService($State) {
     $existing=Get-CimInstance Win32_Service -Filter "Name='$($State.serviceName)'"
     if($existing){Fail 'A Deposit service is already registered. Run deposit.bat remove-service from an elevated shell before retrying installation.'}
 }
+function Assert-ActiveSuiteInstallation($State) {
+    $journalPath=[Environment]::GetEnvironmentVariable('DEPOSIT_SUITE_JOURNAL','Process')
+    if(!$journalPath){return $null}
+    $expected=[IO.Path]::GetFullPath((Join-Path $script:PackageRoot '..\..\..\private\suite\active.json'))
+    if([IO.Path]::GetFullPath($journalPath) -ine $expected){Fail 'Integration service installation requires the active harness journal'}
+    $harness=[IO.Path]::GetFullPath((Join-Path $script:PackageRoot '..\..\..'))
+    $current=$expected
+    while($current){if((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){Fail 'Integration journal path cannot traverse reparse points'};if($current.TrimEnd('\') -ieq $harness.TrimEnd('\')){break};$current=Split-Path $current -Parent}
+    $journalFile=Get-Item -LiteralPath $expected -Force -ErrorAction Stop
+    $journalAcl=Get-Acl -LiteralPath $expected
+    $ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+    if(!$journalAcl.AreAccessRulesProtected -or !$ownerSid.Equals($journalAcl.GetOwner([Security.Principal.SecurityIdentifier]))){Fail 'Integration journal must have a protected ACL owned by the invoking user'}
+    foreach($rule in $journalAcl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+        if($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and !$ownerSid.Equals($rule.IdentityReference)){Fail 'Integration journal grants another identity access'}
+    }
+    $journal=Get-Content -LiteralPath $expected -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+    $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $runner=$null;$watchdogProcess=$null
+    try {$runner=Get-Process -Id ([int]$journal.runnerPid) -ErrorAction Stop;$watchdogProcess=Get-Process -Id ([int]$journal.watchdogPid) -ErrorAction Stop} catch {Fail 'Integration runner or cleanup watchdog is no longer active'}
+    if($runner.StartTime.ToUniversalTime().Ticks -ne [long]$journal.runnerStartTicks -or !$journal.watchdogStartTicks -or $watchdogProcess.StartTime.ToUniversalTime().Ticks -ne [long]$journal.watchdogStartTicks){Fail 'Integration runner or watchdog process identity changed'}
+    $expectedHome=[IO.Path]::GetFullPath((Join-Path $harness 'runs\stage0-host\neo4j')).TrimEnd('\')
+    if(!$journal.watchdogAcknowledged -or $journal.terminalCleanup -or $journal.ownerSid -cne $sid -or
+       [IO.Path]::GetFullPath([string]$journal.neo4jHome).TrimEnd('\') -ine $expectedHome -or
+       [IO.Path]::GetFullPath($State.neo4jHome).TrimEnd('\') -ine $expectedHome -or
+       [string]$journal.serviceName -cne [string]$State.serviceName -or
+       [string]$journal.serviceAccount -ine ('NT SERVICE\'+[string]$State.serviceName) -or
+       [string]$journal.installationPhase -notin @('installing','configured','running')) { Fail 'Active suite journal does not authorize this exact service installation' }
+    return $expected
+}
+function Set-ActiveSuiteInstallationPhase([string]$JournalPath,[string]$Phase) {
+    if(!$JournalPath){return}
+    $harness=[IO.Path]::GetFullPath((Join-Path $script:PackageRoot '..\..\..'))
+    $watchdog=Join-Path $harness '..\deposit-server\scripts\IntegrationSuiteWatchdog.ps1'
+    if(!(Test-Path -LiteralPath $watchdog -PathType Leaf)){Fail 'The integration suite journal writer is missing'}
+    . $watchdog -LibraryOnly
+    Update-SuiteJournal $JournalPath {param($j) $j.installationPhase=$Phase}
+}
 function Read-State {
     if(!(Test-Path -LiteralPath $script:StatePath -PathType Leaf)){Fail 'Deposit is not configured. Run deposit.bat setup <neo4j-home> <java-home> <data-root> <export-root>.'}
     $state=Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json -ErrorAction Stop
@@ -192,6 +229,7 @@ function Service([string]$Operation,$State) {
         . (Join-Path $script:PackageRoot 'helpers\Credentials.ps1')
         Test-NoConflictingRuntime $State.neo4jHome
         Assert-NoInstalledDepositService $State
+        $suiteJournal=Assert-ActiveSuiteInstallation $State
         if($Arguments.Count -gt 1){Fail 'Usage: deposit.bat install-service [dedicated-account]'}
         $account=if($Arguments.Count -eq 1){$Arguments[0]}else{"NT SERVICE\$($State.serviceName)"}
         if($account -match '[\r\n]'){Fail 'Invalid service account'}
@@ -199,11 +237,22 @@ function Service([string]$Operation,$State) {
         $credential=$null;$ptr=[IntPtr]::Zero
         if(!$virtualAccount){$credential=Read-Host "Password for $account (not echoed or logged)" -AsSecureString;$ptr=[Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($credential)}
         try {
+            Set-ActiveSuiteInstallationPhase $suiteJournal 'installing'
             & $neo4j windows-service install
             if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service installation failed; check elevated permissions and pinned runtime logs'}
+            if($suiteJournal){
+                # Set manual start and disable SCM recovery immediately after
+                # registration. Neo4j registers first, so a short default-start
+                # interval remains while the watchdog supervises installation.
+                $serviceConfig=& sc.exe config $State.serviceName start= demand 2>&1
+                if($LASTEXITCODE -ne 0){Fail "Could not set the integration service to manual start: $($serviceConfig -join ' ')"}
+                $serviceRecovery=& sc.exe failure $State.serviceName reset= 0 actions= "" 2>&1
+                if($LASTEXITCODE -ne 0){Fail "Could not disable integration service recovery: $($serviceRecovery -join ' ')"}
+            }
             $password=if($ptr -eq [IntPtr]::Zero){$null}else{[Runtime.InteropServices.Marshal]::PtrToStringUni($ptr)}
             $result=[DepositServiceAccount]::Set($State.serviceName,$account,$password)
             if(!$result){Fail 'Could not assign the dedicated service identity. Remove the partial service, grant Log on as a service, and retry.'}
+            Set-ActiveSuiteInstallationPhase $suiteJournal 'configured'
             $null=Migrate-DepositSecrets $State $account
             foreach($path in @($State.neo4jHome,$State.javaHome)) {& icacls.exe (Get-IcaclsPath $path) '/grant' "$account`:(OI)(CI)RX" '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service read access to $path"}}
             foreach($path in @((Join-Path $State.neo4jHome 'data'),(Join-Path $State.neo4jHome 'logs'),$State.dataRoot,$State.exportRoot)) {New-Item -ItemType Directory -Path $path -Force|Out-Null;& icacls.exe (Get-IcaclsPath $path) '/grant' "$account`:(OI)(CI)M" '/T' '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service access to $path"}}

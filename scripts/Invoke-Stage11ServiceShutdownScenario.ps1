@@ -1,17 +1,18 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1024,65535)][int]$Port = 17770,
-    [string]$Root = 'D:\data_processed\Deposit_v2\stage0',
+    [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$LogPath
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
-$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-if (![string]::Equals($rootPath,$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) { throw "Scenario runner is limited to $approvedRoot" }
+Assert-HarnessRoot $rootPath
 if (!$LogPath) {
-    $directory = Join-Path $env:TEMP 'DepositTests'
+    $directory = Join-Path (Join-Path $PSScriptRoot '..\..\test_harness') 'logs'
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     $LogPath = Join-Path $directory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') + '-stage11-service-shutdown.log')
 }
@@ -213,7 +214,7 @@ try {
     if($stopChild){try{if($stopChild.Process.WaitForExit(330000)){$code=Complete-PowerShellChild $stopChild 'service-stop-cleanup' 1000;$stopChild=$null;if($code -ne 0 -and !$failure){$failure='Service stop failed during cleanup.'}}else{Write-ScenarioLog 'Packaged service stop remains active after cleanup wait.'}}catch{Write-ScenarioLog "Service-stop cleanup issue: $($_.Exception.Message)"}}
     if($testChild){try{$testChild.Process.Dispose()}catch{}}
     if($stopChild){try{$stopChild.Process.Dispose()}catch{}}
-    if($state -and $wasRunning){$serviceNow=Get-Service -Name $serviceName -ErrorAction SilentlyContinue;if($serviceNow -and $serviceNow.Status -eq 'Stopped'){try{Invoke-Launcher 'start' 'restore-service-start';Wait-ServiceStatus $serviceName 'Running' 90}catch{Write-ScenarioLog "Service restoration failed: $($_.Exception.Message)";if(!$failure){$failure=$_.Exception.Message}}}}
+    if(!(Test-HarnessTerminalCleanup) -and $state -and $wasRunning){$serviceNow=Get-Service -Name $serviceName -ErrorAction SilentlyContinue;if($serviceNow -and $serviceNow.Status -eq 'Stopped'){try{Invoke-Launcher 'start' 'restore-service-start';Wait-ServiceStatus $serviceName 'Running' 90}catch{Write-ScenarioLog "Service restoration failed: $($_.Exception.Message)";if(!$failure){$failure=$_.Exception.Message}}}}
     foreach($pair in @(@($fixture,'generated-stage11-drain-fixture.properties'),@($ready,'generated-stage11-drain-ready.txt'),@($release,'generated-stage11-drain-release.txt'))){if((Test-Path -LiteralPath $pair[0]) -and (Test-Path -LiteralPath $backup)){Copy-Item -LiteralPath $pair[0] -Destination (Join-Path $backup $pair[1]) -Force}}
 }
 

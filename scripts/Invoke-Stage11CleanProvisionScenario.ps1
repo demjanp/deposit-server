@@ -2,14 +2,19 @@
 param(
     [Parameter(Mandatory=$true)][string]$ReleasePackage,
     [ValidateRange(1024,65535)][int]$Port=17770,
+    [string]$Root=(Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$LogPath,
     [switch]$FreshAccountProbe
 )
 $ErrorActionPreference='Stop'
-$rootPath='D:\data_processed\Deposit_v2\stage0'
+. (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'IntegrationHarnessSecrets.ps1')
+Assert-HarnessRoot $Root
+$rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
+$env:STAGE0_ROOT=$rootPath
 $run=Join-Path $rootPath 'runs\stage0-host'
 $repo=Split-Path $PSScriptRoot -Parent
-if(!$LogPath){$LogPath=Join-Path $env:TEMP ('DepositTests\stage11-clean-provision-'+(Get-Date -Format 'yyyyMMddTHHmmss')+'.log')}
+if(!$LogPath){$LogPath=Join-Path (Join-Path $rootPath 'logs') ('stage11-clean-provision-'+(Get-Date -Format 'yyyyMMddTHHmmss')+'.log')}
 $LogPath=[IO.Path]::GetFullPath($LogPath)
 $archive=[IO.Path]::GetFullPath($ReleasePackage)
 $preserved=Join-Path $rootPath ('preserved\stage11-clean-'+[Guid]::NewGuid().ToString('N'))
@@ -90,7 +95,7 @@ try{
     $settings=Get-ScmSettings $serviceName
     $settings|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $preserved 'service-settings.json') -Encoding UTF8
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $preserved 'deposit.install.before.json')
-    [DepositCredentialStore]::Save($backupCredential,[DepositCredentialStore]::Read($credentialTarget));$credentialSaved=$true
+    [DepositHarnessSecretStore]::Write($backupCredential,[DepositHarnessSecretStore]::Read($credentialTarget));$credentialSaved=$true
     @{originalRun=$run;preservedRun=$original;freshRun=$fresh;credentialBackup=$backupCredential;serviceName=$serviceName;startMode=$startMode;wasRunning=$wasRunning;releasePackage=$archive;releaseSha256=(Get-FileHash $archive -Algorithm SHA256).Hash}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $preserved 'restore-state.json') -Encoding UTF8
     Write-ScenarioLog "Preservation state: $preserved; candidate SHA256=$((Get-FileHash $archive -Algorithm SHA256).Hash)"
     $launcher=Join-Path $run 'distribution\deposit.bat'
@@ -131,6 +136,7 @@ try{
 }catch{$failure=$_.Exception.Message;Write-ScenarioLog "FAIL: $failure"}
 finally{
     try{
+        $terminalCleanup=Test-HarnessTerminalCleanup
         if($moved){
             if(Test-Path -LiteralPath $run){
                 if(Test-Path -LiteralPath (Join-Path $run 'owner.json')){Invoke-Phase 'Stop'}
@@ -141,8 +147,8 @@ finally{
             if((ConvertTo-Json -InputObject $before -Depth 4 -Compress) -cne (ConvertTo-Json -InputObject $after -Depth 4 -Compress)){throw 'Restored original tree differs from preserved file hashes'}
             Write-ScenarioLog "Restored all $($after.Count) original files with identical SHA256 and lengths."
         }
-        if($credentialSaved){[DepositCredentialStore]::Save($credentialTarget,[DepositCredentialStore]::Read($backupCredential))}
-        if($registrationRemoved){
+        if($credentialSaved){[DepositHarnessSecretStore]::Write($credentialTarget,[DepositHarnessSecretStore]::Read($backupCredential))}
+        if($registrationRemoved -and !$terminalCleanup){
             Invoke-Logged (Join-Path $run 'distribution\deposit.bat') @('install-service') 'original-service-reinstall'
             $startup=switch($startMode){'Auto'{'Automatic'};'Manual'{'Manual'};'Disabled'{'Disabled'};default{throw "Unsupported prior startup mode: $startMode"}}
             Set-Service -Name $serviceName -StartupType $startup
@@ -150,9 +156,9 @@ finally{
             foreach($key in $settings.Keys){if($settings[$key] -cne $actual[$key]){throw "Original SCM configuration differs after restoration: $key; inspect preserved service-settings.json"}}
             Write-ScenarioLog 'Original service registration, account, startup mode, failure actions, privileges, triggers and security descriptor restored.'
         }
-        if($registrationRemoved -and $wasRunning){Invoke-Phase 'Start';Invoke-Selection 'DistributionIT' 'restored-original-release'}
+        if($registrationRemoved -and $wasRunning -and !$terminalCleanup){Invoke-Phase 'Start';Invoke-Selection 'DistributionIT' 'restored-original-release'}
         $restored=$true
-        if($credentialSaved){& cmdkey.exe ('/delete:'+$backupCredential)|Out-Null}
+        if($credentialSaved){[DepositHarnessSecretStore]::Delete($backupCredential)}
     }catch{Write-ScenarioLog "RESTORE FAILURE: $($_.Exception.Message)";if(!$failure){$failure=$_.Exception.Message}}
 }
 if($failure){Write-Output "FAIL: Stage 11 clean provisioning ($failure)";Write-Output "Restored=$restored; log=$LogPath; state=$preserved";exit 1}

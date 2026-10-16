@@ -127,6 +127,8 @@ class Stage11ScientificWorkflowIT {
         WebDriver browser = null;
         try {
             var options = new FirefoxOptions();
+            var browserPath = System.getenv("SE_BROWSER_PATH");
+            if (browserPath != null && !browserPath.isBlank()) options.setBinary(browserPath);
             options.addArguments("-headless");
             options.addPreference("browser.download.folderList", 2);
             options.addPreference("browser.download.dir", downloads.toAbsolutePath().toString());

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.*;
 /** Browser-session fixture split across an installed runtime restart. */
 @Timeout(120)
 class Stage10RestartIT {
-    static final Path SESSION=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host/secrets/stage10-browser-session.properties");
+    static final Path SESSION=Stage0Paths.runRoot().resolve("secrets/stage10-browser-session.properties");
     static URI base;
     static org.neo4j.driver.Driver driver;
     static HttpClient client(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(5)).build();}

@@ -7,17 +7,16 @@ param(
     [ValidateSet('seed','verify')][string]$TestMode = 'seed',
     [ValidateSet('incompatible-spatial','missing-spatial','invalid-deposit-config')][string]$FailureMode,
     [string]$CrashPoint,
-    [string]$Root = 'D:\data_processed\Deposit_v2\stage0'
+    [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness')
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
-$approvedRoot = [IO.Path]::GetFullPath('D:\data_processed\Deposit_v2\stage0').TrimEnd('\')
-if ($Kind -eq 'Integration' -and ![string]::Equals([IO.Path]::GetFullPath($Root).TrimEnd('\'),$approvedRoot,[StringComparison]::OrdinalIgnoreCase)) {
-    throw "Integration tests must use the installed Stage 0 inputs at $approvedRoot"
-}
+. "$PSScriptRoot\HarnessPaths.ps1"
+$Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+Assert-HarnessRoot $Root
 if (!$LogPath) {
-    $logDirectory = Join-Path $env:TEMP 'DepositTests'
+    $logDirectory = Join-Path $Root 'logs'
     New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
     $LogPath = Join-Path $logDirectory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') + '-' + $Kind.ToLowerInvariant() + '.log')
 }
@@ -25,7 +24,7 @@ $LogPath = [IO.Path]::GetFullPath($LogPath)
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
 
 $spatialJar = Join-Path $Root 'cache\neo4j-spatial-server-plugin-2025.10.0.jar'
-$arguments = @('--batch-mode','--no-transfer-progress',"-Dmaven.repo.local=$Root\maven-repository","-Dstage0.root=$Root","-Dspatial.jar=$spatialJar")
+$arguments = @('--batch-mode','--no-transfer-progress',"-Dmaven.repo.local=$Root\maven-repository","-Dstage0.root=$Root","-Ddeposit.server.root=$repo","-Dspatial.jar=$spatialJar")
 if ($Kind -eq 'Unit') {
     $arguments += @('-pl','plugin',"-Dtest=$Test",'test')
 } else {
@@ -36,15 +35,16 @@ $savedEnvironment = @{}
 try {
 if ($Kind -eq 'Unit') {
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
-    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME')) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','STAGE0_ROOT')) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
     $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
+    $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:STAGE0_ROOT=$Root
 }
 if ($Kind -eq 'Integration') {
-    . "$PSScriptRoot\Credentials.ps1"
+    . "$PSScriptRoot\IntegrationHarnessSecrets.ps1"
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
     $savedEnvironment = @{}
-    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','STAGE0_URI','STAGE0_PASSWORD','STAGE0_HTTP_BASE','STAGE0_NEO4J_VERSION','STAGE0_BASELINE_MAP','STAGE0_TEST_MODE','STAGE0_EXPECTED_FAILURE','STAGE4_CRASH_POINT','STAGE5_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS')) {
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','STAGE0_ROOT','STAGE0_URI','STAGE0_PASSWORD','STAGE0_HTTP_BASE','STAGE0_NEO4J_VERSION','STAGE0_BASELINE_MAP','STAGE0_TEST_MODE','STAGE0_EXPECTED_FAILURE','STAGE4_CRASH_POINT','STAGE5_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
     }
     $run = Join-Path $Root 'runs\stage0-host'
@@ -53,8 +53,9 @@ if ($Kind -eq 'Integration') {
     if (!$downloadBase) { throw 'Installed download base URL is missing; start the test server first.' }
     $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
+    $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:STAGE0_ROOT=$Root
     $env:STAGE0_URI = "bolt://127.0.0.1:$Port"
-    $env:STAGE0_PASSWORD = [DepositCredentialStore]::Read('Deposit/Stage0/stage0-host')
+    $env:STAGE0_PASSWORD = [DepositHarnessSecretStore]::Read('Deposit/Stage0/stage0-host')
     $env:STAGE0_HTTP_BASE = $downloadBase
     $env:STAGE0_NEO4J_VERSION = $manifest.neo4jVersion
     $env:STAGE0_BASELINE_MAP = Join-Path $run 'fixture-uuid-baseline.tsv'

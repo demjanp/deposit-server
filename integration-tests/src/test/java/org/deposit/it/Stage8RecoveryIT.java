@@ -7,7 +7,7 @@ import org.junit.jupiter.api.*;
 
 /** Persists an immutable analyzed plan across restart and applies it after recovery. */
 class Stage8RecoveryIT {
-    static final Path FILE=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host/stage8-recovery.properties");
+    static final Path FILE=Stage0Paths.runRoot().resolve("stage8-recovery.properties");
     @BeforeAll static void open()throws Exception{Stage8CoreIT.connect();}
     @AfterAll static void close(){Stage8CoreIT.disconnect();}
     @Test void seed()throws Exception{String token=login();String source=id(call("deposit.create.namespace","Stage8Recovery-source-"+key(),m("historyMode","persistent"),token));call("deposit.set.activeNamespace",m("id",source),token);call("deposit.create.class","Recovered",m(),token);call("deposit.create.object","Recovered",m(),token);String packageId=call("deposit.save.data",m(),m("includeHistory",true),token).get("data").get("resourceId").asString();String target=id(call("deposit.create.namespace","Stage8Recovery-target-"+key(),m("historyMode","disabled"),token));call("deposit.set.activeNamespace",m("id",target),token);String plan=call("deposit.import.analyze",m("packageResourceId",packageId),m(),token).get("data").get("planId").asString();Properties p=new Properties();p.setProperty("source",source);p.setProperty("target",target);p.setProperty("package",packageId);p.setProperty("plan",plan);try(var out=Files.newOutputStream(FILE)){p.store(out,"Stage 8 recovery identities; no credentials");}}

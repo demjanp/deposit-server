@@ -12,7 +12,7 @@ import org.neo4j.driver.*;
 @Timeout(90)
 class Stage65CoreIT {
     static Driver driver;
-    static final Path ROOT=Path.of("D:/data_processed/Deposit_v2/stage0/runs/stage0-host");
+    static final Path ROOT=Stage0Paths.runRoot();
     static final String USER="stage1-admin",PASSWORD="stage1-account-password";
     String token,other,ns,name;
     static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
