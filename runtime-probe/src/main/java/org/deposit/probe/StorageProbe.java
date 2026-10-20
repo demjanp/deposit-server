@@ -20,7 +20,7 @@ public class StorageProbe {
     private static volatile CountDownLatch pause=new CountDownLatch(0);
     public static class Row{public final Map<String,Object> data;Row(Map<String,Object> data){this.data=data;}}
     private ServerContext server(){return ServerContext.forDatabase(db.databaseId().databaseId().uuid());}
-    @Procedure(name="stage0.storage.failNextPublication",mode=Mode.READ)
+    @Procedure(name="testprobe.storage.failNextPublication",mode=Mode.READ)
     public Stream<Row> failNextPublication()throws Exception {
         var manager=server().storage;ResourceStorage delegate=manager.content;var once=new AtomicBoolean();
         var field=StorageManager.class.getDeclaredField("content");field.setAccessible(true);
@@ -32,7 +32,7 @@ public class StorageProbe {
             try{return method.invoke(delegate,args);}catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}
         });field.set(manager,proxy);return Stream.of(new Row(Map.of("armed",true)));
     }
-    @Procedure(name="stage0.storage.partialPurge",mode=Mode.READ)
+    @Procedure(name="testprobe.storage.partialPurge",mode=Mode.READ)
     public Stream<Row> partialPurge()throws Exception {
         var manager=server().storage;ResourceStorage delegate=manager.content;var once=new AtomicBoolean();
         var field=StorageManager.class.getDeclaredField("content");field.setAccessible(true);
@@ -48,18 +48,18 @@ public class StorageProbe {
             try{return method.invoke(delegate,args);}catch(java.lang.reflect.InvocationTargetException e){throw e.getCause();}
         });field.set(manager,proxy);return Stream.of(new Row(Map.of("armed",true)));
     }
-    @Procedure(name="stage0.storage.arm",mode=Mode.READ)
+    @Procedure(name="testprobe.storage.arm",mode=Mode.READ)
     public Stream<Row> arm(@Name("point")String point,@Name("mode")String mode)throws Exception {
         if(!Set.of("fail","pause","clear").contains(mode))throw new IllegalArgumentException();
         pause.countDown();pause=new CountDownLatch(1);var latch=pause;var once=new AtomicBoolean();var server=server();
-        var marker=server.storage.files.root.getParent().resolve("stage4-pause.json");Files.deleteIfExists(marker);
+        var marker=server.storage.files.root.getParent().resolve("resource-pause.json");Files.deleteIfExists(marker);
         var field=ServerContext.class.getDeclaredField("storageObserver");field.setAccessible(true);
         field.set(server,(java.util.function.Consumer<String>)p->{if(!mode.equals("clear")&&p.equals(point)&&once.compareAndSet(false,true)) {
-            if(mode.equals("fail"))throw new IllegalStateException("STAGE4_INJECTED_"+point);
+            if(mode.equals("fail"))throw new IllegalStateException("RESOURCE_FAILURE_INJECTED_"+point);
             try {Files.writeString(marker,Json.write(Json.map("point",point,"state","paused")));if(!latch.await(120,TimeUnit.SECONDS))throw new IllegalStateException("Storage pause timed out");}catch(Exception e){throw new IllegalStateException(e);}
         }});return Stream.of(new Row(Map.of("armed",point)));
     }
-    @Procedure(name="stage0.storage.inspect",mode=Mode.READ)
+    @Procedure(name="testprobe.storage.inspect",mode=Mode.READ)
     public Stream<Row> inspect(@Name("namespace")String namespace) {
         var internal=(InternalTransaction)tx;var spatial=new SpatialDatabaseService(new IndexManager(db,internal.securityContext()));var layers=new ArrayList<Object>();
         for(String name:spatial.getLayerNames(tx))if(name.startsWith("deposit_geometry_"+namespace+"_")) {
@@ -67,9 +67,9 @@ public class StorageProbe {
             layers.add(Json.map("name",name,"count",layer.getIndex().count(tx),"entries",entries,"crs",layer.getCoordinateReferenceSystem(tx)==null?null:layer.getCoordinateReferenceSystem(tx).toWKT()));
         }return Stream.of(new Row(Json.map("layers",layers)));
     }
-    @Procedure(name="stage0.storage.rebuild",mode=Mode.WRITE)
+    @Procedure(name="testprobe.storage.rebuild",mode=Mode.WRITE)
     public Stream<Row> rebuild(@Name("namespace")String namespace){var core=new CoreRepository(tx,ZonedDateTime.now());new GeometryRepository(tx,core).rebuild(namespace);return Stream.of(new Row(Map.of("rebuilt",true)));}
-    @Procedure(name="stage0.storage.grant",mode=Mode.WRITE)
+    @Procedure(name="testprobe.storage.grant",mode=Mode.WRITE)
     public Stream<Row> grant(@Name("namespace")String namespace,@Name("resource")String id,@Name("actor")String actor,@Name("history")boolean history) {
         var core=new CoreRepository(tx,ZonedDateTime.now());core.lockNamespace(namespace);var r=new ResourceRepository(tx,core);r.lock(id);
         r.record("DepositExportGrant",UUID.randomUUID().toString(),Json.map("resourceId",id,"namespaceId",namespace,"actorId",actor,"history",history,"expires",r.now()+ResourceFiles.LEASE));return Stream.of(new Row(Map.of("granted",true)));
@@ -79,7 +79,7 @@ public class StorageProbe {
         catch(RuntimeException failure){if(!failure.getMessage().contains(code))throw failure;}
     }
     /** Runs only inside a caller-rolled-back transaction in the test probe distribution. */
-    @Procedure(name="stage0.storage.importAuthority",mode=Mode.WRITE)
+    @Procedure(name="testprobe.storage.importAuthority",mode=Mode.WRITE)
     public Stream<Row> importAuthority(@Name("namespace")String namespace,@Name("otherNamespace")String otherNamespace,@Name("actor")String actor,@Name("object")String objectId)throws Exception {
         var core=new CoreRepository(tx,ZonedDateTime.now());var resources=new ResourceRepository(tx,core);
         var object=core.entity("Object",namespace,objectId);

@@ -233,7 +233,7 @@ function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime,[DateTime]$Deadl
                     }
                     if($PreserveRuntime){
                         $record=Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
-                        $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
+                        $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\test-host\neo4j'
                         if($record -and $record.CommandLine -and $record.CommandLine.Contains($runtimeHome) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
                     }
                     if([DepositSuiteJobs]::Contains([string]$Identity.jobName,$process) -and $process.StartTime.ToUniversalTime().Ticks -eq $created){
@@ -273,7 +273,7 @@ function Stop-SuiteChildTree($Identity,[switch]$PreserveRuntime,[DateTime]$Deadl
         $process = Get-SuiteProcess $tree[$index].pid $tree[$index].startTicks
         if($process -and $PreserveRuntime){
             $record=Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
-            $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j'
+            $runtimeHome=Join-Path (Get-HarnessRoot) 'runs\test-host\neo4j'
             if($record.CommandLine -and $record.CommandLine.Contains($runtimeHome) -and $record.Name -in @('java.exe','prunsrv-amd64.exe')){continue}
         }
         if ($process) { $process.Kill(); if (!$process.WaitForExit(30000)) { throw "Owned suite child $($process.Id) did not exit" } }
@@ -285,7 +285,7 @@ function Invoke-SuiteLocalRetirement([string]$Path,[string]$ExpectedInvocation) 
     Assert-HarnessPlainPath $Path
     [DepositSuiteJournalFiles]::Validate($Path)
     $journal=Read-SuiteJournal $Path
-    $runtimeHome=[IO.Path]::GetFullPath((Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j')).TrimEnd('\')
+    $runtimeHome=[IO.Path]::GetFullPath((Join-Path (Get-HarnessRoot) 'runs\test-host\neo4j')).TrimEnd('\')
     $runner=Get-Process -Id $PID -ErrorAction Stop
     try {
         if($ExpectedInvocation -cnotmatch '^[a-f0-9]{32}$' -or $journal.invocationId -cne $ExpectedInvocation -or
@@ -389,7 +389,7 @@ function Request-SuiteScStop($Journal,[string]$Name){
 }
 function Assert-SuiteService($Journal,$Service) {
     $runtimeHome = [IO.Path]::GetFullPath([string]$Journal.neo4jHome).TrimEnd('\')
-    $expected = [IO.Path]::GetFullPath((Join-Path (Get-HarnessRoot) 'runs\stage0-host\neo4j')).TrimEnd('\')
+    $expected = [IO.Path]::GetFullPath((Join-Path (Get-HarnessRoot) 'runs\test-host\neo4j')).TrimEnd('\')
     Assert-HarnessPlainPath $runtimeHome
     if ($runtimeHome -ine $expected -or $Journal.ownerSid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Suite ownership identity mismatch' }
     if($Journal.serviceName -notmatch '^DepositNeo4j-[a-f0-9]{8}$'){throw 'Unexpected service name in suite journal'}

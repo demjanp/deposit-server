@@ -4,7 +4,7 @@ Deposit Server is the Neo4j plugin implementation for Deposit 2.0. The Deposit H
 
 ## Current state
 
-The build label is `0.0.0-stage65`. Stages 0-10 are accepted for their recorded source snapshots. Stage 11 Windows release and recovery is complete in its approved server scope, with evidence qualifications recorded in the [implementation status](../deposit-hub/implementation_status.md#current-status). Python wrapper and GUI implementation remain pending.
+The build label is `0.0.0-dev`. The accepted source snapshots cover typed data, authorization, batch updates, resource storage, revision history, query, patterns, clone and import/export workflows, and browser sessions. Windows release and recovery behavior is complete in its approved server scope, with evidence qualifications recorded in the [implementation status](../deposit-hub/implementation_status.md#current-status). Python wrapper and GUI implementation remain pending.
 
 ## Project documentation
 
@@ -15,7 +15,7 @@ The build label is `0.0.0-stage65`. Stages 0-10 are accepted for their recorded 
 - [Selected test runner](scripts/Invoke-Tests.ps1)
 - [Seed, transition and verification scenarios](scripts/Invoke-TestScenario.ps1)
 
-The full suite runs the documented integration workflows, including seed/restart/verification transitions, browser workflows, crash recovery and Windows service/listener scenarios. The selected-test and scenario scripts remain available for focused work. Cumulative stage gates and the legacy Codex/work-package runner have been retired and removed. The inactive historical source formerly under the root `src` tree is preserved at [immutable commit `988e21b524befcd419dd6f1a950c1f170f44c60e`](https://github.com/demjanp/deposit-server/tree/988e21b524befcd419dd6f1a950c1f170f44c60e/src); the active Maven reactor is `plugin`, `runtime-probe` and `integration-tests`.
+The full suite runs the documented integration workflows, including seed/restart/verification transitions, browser workflows, crash recovery and Windows service/listener scenarios. The selected-test and scenario scripts remain available for focused work. Retired cumulative test gates and the legacy Codex/work-package runner have been removed. The inactive historical source formerly under the root `src` tree is preserved at [immutable commit `988e21b524befcd419dd6f1a950c1f170f44c60e`](https://github.com/demjanp/deposit-server/tree/988e21b524befcd419dd6f1a950c1f170f44c60e/src); the active Maven reactor is `plugin`, `runtime-probe` and `integration-tests`.
 
 ## Windows integration suite
 
@@ -54,7 +54,7 @@ $harness = [IO.Path]::GetFullPath((Join-Path $PWD '..\test_harness'))
 
 ### Harness contents and retention
 
-The runner uses the harness root itself; there is no nested `stage0` directory.
+The runner uses the harness root itself; there is no nested `test-harness` directory.
 
 | Path | Contents |
 | --- | --- |
@@ -62,14 +62,14 @@ The runner uses the harness root itself; there is no nested `stage0` directory.
 | `tools` | Extracted JDK, Neo4j, Maven, Python, Firefox and geckodriver |
 | `maven-user`, `maven-repository` | Maven wrapper distribution and local artifact repository |
 | `build` | Maven build outputs and release package |
-| `runs\stage0-host` | Test database, runtime configuration, fixtures and service installation |
+| `runs\test-host` | Test database, runtime configuration, fixtures and service installation |
 | `private` | Owner-only DPAPI credential blob, watchdog journal and generated TLS material |
-| `tmp` and `runs\\stage0-host\\tmp` | Windows, Java and test-process temporary files |
+| `tmp` and `runs\\test-host\\tmp` | Windows, Java and test-process temporary files |
 | `results` | Per-invocation logs and generated verification packages |
 | `preserved` | Previous runtime and package trees retained when a clean runtime is prepared |
 
 The setup phase reuses checksum-verified downloads and Maven dependencies, but prepares a new database/runtime tree for the suite. Results and preserved evidence remain in `test_harness`; remove the harness directory manually only after no runner, watchdog, service or runtime process is using it. The harness password is protected with Windows DPAPI for the current Windows user and machine, stored in an owner-only file, and replaced when a new database runtime is prepared; the suite does not create temporary Windows Credential Manager entries. The implementation and selection list received static review, but setup, the full suite, and watchdog/service cleanup have not been exercised for this harness change.
 
-### Legacy Stage0 service
+### Earlier machine-level test service
 
-Before the harness change, the machine had an automatically started service named `DepositNeo4j-754b3d4f`, running as `NT SERVICE\DepositNeo4j-754b3d4f` from `D:\data_processed\Deposit_v2\stage0`. It was stopped and unregistered on 2026-10-15 using its own `deposit.bat remove-service` command. The legacy Stage0 files and existing Credential Manager data were left in place; the new runner does not inspect or manage that legacy root or credential entry.
+The earlier harness used a machine-level Neo4j service and separate local data. That installation and its credentials are outside the current `test_harness`; the current runner does not inspect or manage that separate root or credential entry.

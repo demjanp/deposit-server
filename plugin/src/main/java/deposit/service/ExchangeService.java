@@ -10,7 +10,7 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Direction;
 
-/** Stage 7 exchange entry points. Export collection is read-only with respect to the scientific revision. */
+/** Pattern and portable-package exchange entry points. Export collection is read-only with respect to the scientific revision. */
 public final class ExchangeService extends BaseService {
     private final ResourceRepository resources;
     private ExportRecords records;

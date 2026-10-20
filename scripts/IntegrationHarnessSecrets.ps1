@@ -98,13 +98,13 @@ public static class DepositHarnessSecretStore {
         }
         ValidateNewFile(path);
     }
-    // This rotation is only for a fresh Stage0 setup after the suite has rejected
+    // This rotation is only for a fresh TestHarness setup after the suite has rejected
     // active runtimes and preserved the old generated installation. Never decrypt
     // or adopt the old blob: a same-volume move retains its owner and ACL.
-    public static string QuarantineStage0ForFreshSetup(string invocation) {
+    public static string QuarantineIntegrationHarnessCredential(string invocation) {
         Guid id;
         if (invocation == null || invocation.Length != 32 || !Guid.TryParseExact(invocation,"N",out id)) throw new IOException("Invalid quarantine invocation");
-        const string target = "Deposit/Stage0/stage0-host";
+        const string target = "Deposit/IntegrationHarness/test-host";
         // Validate the root through the ordinary path, without validating or
         // changing this one legacy file's owner.
         ValidateRoot();

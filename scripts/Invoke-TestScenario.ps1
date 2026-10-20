@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$SeedTest,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$VerifyTest,
     [Parameter(Mandatory=$true)][ValidateSet('Restart','KillRestart','ProcessCrashRestart','StartupCrashRestart')][string]$Transition,
-    [ValidateSet('stage4','stage5')][string]$CrashSuite,
+    [ValidateSet('resource','history')][string]$CrashSuite,
     [string]$CrashPoint,
     [ValidateRange(1024,65535)][int]$Port = 17770,
     [string]$Root = (Join-Path $PSScriptRoot '..\..\test_harness'),
@@ -25,7 +25,7 @@ $LogPath = [IO.Path]::GetFullPath($LogPath)
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
 $utf8 = New-Object Text.UTF8Encoding($false)
 $log = New-Object System.Collections.Generic.List[string]
-$run = Join-Path $rootPath 'runs\stage0-host'
+$run = Join-Path $rootPath 'runs\test-host'
 
 function Write-ScenarioLog([string]$Text) {
     $log.Add($Text)
@@ -91,14 +91,14 @@ function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[stri
     $childErrorLog = [IO.Path]::ChangeExtension($LogPath,".$Label.err.log")
     $command = '& ' + (Quote-PowerShell $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments)
     $child = Start-PowerShellChild $command
-    $timeout = if ($Label -eq 'stage0-Stop') { 330000 } else { $TimeoutMilliseconds }
+    $timeout = if ($Label -eq 'harness-stop') { 330000 } else { $TimeoutMilliseconds }
     $code = Complete-PowerShellChild $child $childLog $childErrorLog $timeout
     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
     foreach ($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
     if ($code -ne 0) { throw "$Label failed; see $childLog" }
 }
-function Invoke-Stage0([string]$Phase) {
-    Invoke-ChildScript "$PSScriptRoot\Stage0.ps1" @('-Phase',$Phase,'-Root',$rootPath,'-Port',[string]$Port) "stage0-$Phase"
+function Invoke-HarnessPhase([string]$Phase) {
+    Invoke-ChildScript "$PSScriptRoot\Invoke-TestHarnessPhase.ps1" @('-Phase',$Phase,'-Root',$rootPath,'-Port',[string]$Port) "harness-phase-$Phase"
 }
 function Invoke-SelectedTest([string]$Selection,[string]$Label) {
     $testLog = [IO.Path]::ChangeExtension($LogPath,".$Label.log")
@@ -113,43 +113,43 @@ if ($Transition -eq 'Restart' -and ($CrashSuite -or $CrashPoint)) { throw 'Crash
 $wasRunning = [bool](Get-OwnedServer)
 $failure = $null
 try {
-    if (!$wasRunning) { Invoke-Stage0 'Start' }
+    if (!$wasRunning) { Invoke-HarnessPhase 'Start' }
     $ownedRecord=if(Test-Path -LiteralPath (Join-Path $run 'process.json')){Get-Content (Join-Path $run 'process.json') -Raw|ConvertFrom-Json}else{$null}
     if($Transition -eq 'ProcessCrashRestart' -and $ownedRecord -and $ownedRecord.PSObject.Properties['mode'] -and $ownedRecord.mode -eq 'service') {
         Invoke-ChildScript "$PSScriptRoot\Test-KillTestOwnedJvm.ps1" @() 'crash-helper-refusal-checks'
     }
     Invoke-SelectedTest $SeedTest 'seed'
     switch ($Transition) {
-        Restart { Invoke-Stage0 'Stop'; Invoke-Stage0 'Start' }
-        KillRestart { Invoke-Stage0 'Kill'; Invoke-Stage0 'Start' }
+        Restart { Invoke-HarnessPhase 'Stop'; Invoke-HarnessPhase 'Start' }
+        KillRestart { Invoke-HarnessPhase 'Kill'; Invoke-HarnessPhase 'Start' }
         ProcessCrashRestart {
             if (Get-OwnedServer) { throw 'The selected crash test returned while its owned server is still running.' }
-            Invoke-Stage0 'Start'
+            Invoke-HarnessPhase 'Start'
         }
         StartupCrashRestart {
-            Invoke-Stage0 'Stop'
-            if ($CrashSuite -eq 'stage5') {
-                $marker = Join-Path $run 'stage5-startup-paused.txt'
+            Invoke-HarnessPhase 'Stop'
+            if ($CrashSuite -eq 'history') {
+                $marker = Join-Path $run 'history-startup-paused.txt'
                 $childLog = [IO.Path]::ChangeExtension($LogPath,'.startup.log')
                 $childErrorLog = [IO.Path]::ChangeExtension($LogPath,'.startup.err.log')
-                $command = '& ' + (Quote-PowerShell "$PSScriptRoot\Stage0.ps1") + ' ' + (Format-PowerShellArguments @('-Phase','Start','-Root',$rootPath,'-Port',[string]$Port))
+                $command = '& ' + (Quote-PowerShell "$PSScriptRoot\Invoke-TestHarnessPhase.ps1") + ' ' + (Format-PowerShellArguments @('-Phase','Start','-Root',$rootPath,'-Port',[string]$Port))
                 $starter = Start-PowerShellChild $command
                 try {
                     $deadline = [DateTime]::UtcNow.AddSeconds(60)
                     while (!(Test-Path -LiteralPath $marker) -and [DateTime]::UtcNow -lt $deadline -and !$starter.Process.HasExited) { Start-Sleep -Milliseconds 100 }
                     if (!(Test-Path -LiteralPath $marker) -or !(Get-Content -LiteralPath $marker -Raw).StartsWith($CrashPoint + '/')) { throw 'Expected startup recovery barrier was not reached.' }
-                    Invoke-SelectedTest 'Stage11StartupIT#incompleteInitializationExcludesReadinessAndDownloadListener' 'recovery-gating'
-                    [IO.File]::WriteAllText((Join-Path $run 'stage5-startup-release.txt'),'continue')
+                    Invoke-SelectedTest 'StartupReadinessIT#incompleteInitializationExcludesReadinessAndDownloadListener' 'recovery-gating'
+                    [IO.File]::WriteAllText((Join-Path $run 'history-startup-release.txt'),'continue')
                     Invoke-ChildScript "$PSScriptRoot\Kill-TestOwnedJvm.ps1" @() 'kill-startup-jvm'
-                    # Stage0 retains its normal 90-second readiness deadline after
+                    # TestHarness retains its normal 90-second readiness deadline after
                     # the controlled JVM crash; observe that failure to completion.
                     $startCode = Complete-PowerShellChild $starter $childLog $childErrorLog 180000
                     if ($startCode -eq 0) { throw 'Startup attempt unexpectedly passed after its JVM was terminated.' }
                     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
                     foreach ($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
                 } finally { if (!$starter.Process.HasExited) { $starter.Process.Kill(); $null = $starter.Process.WaitForExit(15000) } }
-                Invoke-Stage0 'Start'
-            } else { throw 'StartupCrashRestart currently supports Stage 5 history startup scenarios.' }
+                Invoke-HarnessPhase 'Start'
+            } else { throw 'StartupCrashRestart currently supports history startup scenarios.' }
         }
     }
     Invoke-SelectedTest $VerifyTest 'verify'
@@ -160,9 +160,9 @@ try {
     $terminalCleanup = Test-HarnessTerminalCleanup
     $isRunning = [bool](Get-OwnedServer)
     if (!$terminalCleanup -and $wasRunning -and !$isRunning) {
-        try { Invoke-Stage0 'Start' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
+        try { Invoke-HarnessPhase 'Start' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
     } elseif (!$terminalCleanup -and !$wasRunning -and $isRunning) {
-        try { Invoke-Stage0 'Stop' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
+        try { Invoke-HarnessPhase 'Stop' } catch { Write-ScenarioLog "Restore failure: $($_.Exception.Message)"; if (!$failure) { $failure = $_.Exception.Message } }
     }
 }
 

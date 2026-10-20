@@ -4,14 +4,14 @@ $ErrorActionPreference='Stop'
 $principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this selective service-transition check from Administrator PowerShell.'}
 . (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1') -LibraryOnly
-$root=Get-HarnessRoot;$repo=Get-DepositServerRoot;$port=17770;$run=Join-Path $root 'runs\stage0-host';$private=Join-Path $root 'private\suite'
+$root=Get-HarnessRoot;$repo=Get-DepositServerRoot;$port=17770;$run=Join-Path $root 'runs\test-host';$private=Join-Path $root 'private\suite'
 Set-OwnerOnlyDirectory $private
 $journalPath=Join-Path $private 'active.json';$lockPath=Join-Path $private 'suite.lock';Assert-HarnessPlainPath $lockPath
 $suiteLock=$null
 $invocation=[Guid]::NewGuid().ToString('N');$logs=Join-Path $root ('results\focused-boundary-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')+'-'+$invocation.Substring(0,8))
 $watchdog=$null;$journalCreated=$false;$failure=$null;$saved=@{}
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1'),[ref]$null,[ref]$null)
-foreach($name in @('Quote-Suite','Invoke-SuiteChild','Invoke-SuiteStage','Invoke-SuiteNative')){
+foreach($name in @('Quote-Suite','Invoke-SuiteChild','Invoke-SuitePhase','Invoke-SuiteNative')){
     $definition=$ast.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if(!$definition){throw "Missing suite helper: $name"}
     Invoke-Expression ($definition.Extent.Text.Replace('$PSScriptRoot',("'"+$PSScriptRoot.Replace("'","''")+"'")))
@@ -52,8 +52,8 @@ try{
     if(Get-Service -Name $state.serviceName -ErrorAction SilentlyContinue){throw 'Service exists'}
     if(Get-CimInstance Win32_Process|Where-Object {$_.Name -in @('java.exe','prunsrv-amd64.exe') -and $_.CommandLine -and $_.CommandLine.Contains([string]$state.neo4jHome)}){throw 'Runtime active'}
     New-Item -ItemType Directory -Path $logs -Force|Out-Null;Set-OwnerOnlyDirectory $logs
-    foreach($key in @('TEMP','TMP','STAGE0_ROOT','DEPOSIT_SUITE_JOURNAL')){$saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
-    $env:TEMP=Join-Path $root 'tmp';$env:TMP=$env:TEMP;$env:STAGE0_ROOT=$root;$env:DEPOSIT_SUITE_JOURNAL=$journalPath
+    foreach($key in @('TEMP','TMP','DEPOSIT_TEST_ROOT','DEPOSIT_SUITE_JOURNAL')){$saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
+    $env:TEMP=Join-Path $root 'tmp';$env:TMP=$env:TEMP;$env:DEPOSIT_TEST_ROOT=$root;$env:DEPOSIT_SUITE_JOURNAL=$journalPath
     $journal=[ordered]@{schemaVersion=1;invocationId=$invocation;ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;runnerPid=$PID;runnerStartTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks;neo4jHome=(Join-Path $run 'neo4j');runtimeOwned=$true;serviceName=$null;serviceAccount=$null;installationPhase='none';allowedInitialServiceAccount='LocalSystem';children=@();state='running';terminalCleanup=$false;watchdogAcknowledged=$false;watchdogPid=$null;watchdogStartTicks=$null;cleanupError=$null;cleanupDiagnostics=@();cleanedUtc=$null;logs=$logs}
     Write-SuiteJournal $journalPath ($journal|ConvertTo-Json -Depth 10);$journalCreated=$true
     $command='& '+(Quote-Suite (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1'))+' -JournalPath '+(Quote-Suite $journalPath);$encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
@@ -76,15 +76,15 @@ try{
             [IO.File]::Move($recordPath,(Join-Path $logs 'prior-service-process.json'))
         }
     }
-    Invoke-SuiteStage 'Start';Invoke-SuiteStage 'Stop';Capture-LocalResidue 'graceful'
-    Invoke-SuiteStage 'Start';Invoke-SuiteStage 'Kill';Invoke-SuiteStage 'Start';Invoke-SuiteStage 'Stop';Capture-LocalResidue 'recovery'
+    Invoke-SuitePhase 'Start';Invoke-SuitePhase 'Stop';Capture-LocalResidue 'graceful'
+    Invoke-SuitePhase 'Start';Invoke-SuitePhase 'Kill';Invoke-SuitePhase 'Start';Invoke-SuitePhase 'Stop';Capture-LocalResidue 'recovery'
     Invoke-SuiteLocalRetirement $journalPath $invocation
     Capture-LocalResidue 'retired'
     Update-SuiteJournal $journalPath {param($j)$j.serviceName=[string]$state.serviceName;$j.serviceAccount='NT SERVICE\'+$state.serviceName;$j.installationPhase='installing'}
     Invoke-SuiteNative (Join-Path $run 'distribution\deposit.bat') @('install-service') 'install-temporary-service'
     Update-SuiteJournal $journalPath {param($j)$j.installationPhase='configured'}
-    Invoke-SuiteStage 'Start'
-    Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11CleanProvisionScenario.ps1') @('-ReleasePackage',(Join-Path $root 'build\deposit-server-0.0.0-stage65.zip'),'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'clean-provision.log')) 'clean-provision' 3600
+    Invoke-SuitePhase 'Start'
+    Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-CleanProvisioningScenario.ps1') @('-ReleasePackage',(Join-Path $root 'build\deposit-server-0.0.0-dev.zip'),'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'clean-provision.log')) 'clean-provision' 3600
 }catch{$failure=$_.Exception.Message}finally{
     if($journalCreated){try{Invoke-SuiteCleanup $journalPath $invocation}catch{$failure=($failure+' Cleanup failed: '+$_.Exception.Message).Trim()}}
     if($watchdog){$null=$watchdog.WaitForExit(10000);$watchdog.Dispose()}

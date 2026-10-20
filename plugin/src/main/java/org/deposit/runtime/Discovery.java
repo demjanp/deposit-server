@@ -10,7 +10,7 @@ import org.neo4j.procedure.Description;
 import org.neo4j.procedure.Mode;
 import org.neo4j.procedure.Procedure;
 
-/** The only public API supplied by the Stage 0 development artifact. */
+/** Core runtime discovery procedure; public metadata is server managed. */
 public class Discovery {
     @org.neo4j.procedure.Context public org.neo4j.graphdb.GraphDatabaseService db;
     @Procedure(name = "deposit.get.info", mode = Mode.READ)

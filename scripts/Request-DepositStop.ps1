@@ -1,4 +1,4 @@
-# Shared by Stage 0 and the packaged launcher. No process signal is sent here.
+# Shared by test harness and the packaged launcher. No process signal is sent here.
 function Assert-DepositControlPath([string]$Path,[string[]]$AllowedSids,[switch]$File) {
     $item=Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     # Windows can return attributes=-1 when an atomic replacement removes this FileInfo between calls.

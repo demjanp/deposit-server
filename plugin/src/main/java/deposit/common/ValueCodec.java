@@ -6,7 +6,7 @@ import java.time.temporal.*;
 import org.neo4j.graphdb.spatial.Point;
 import org.neo4j.values.storable.*;
 
-/** Declaration-directed, lossless values. Geometry/resources follow in Stage 4. */
+/** Encodes declaration-directed typed values, including geometry and resources. */
 public final class ValueCodec {
     public static final Set<String> TYPES=Set.of("String","Integer","Float","Boolean","Date","Time","LocalTime","DateTime","LocalDateTime","Duration","Point","List","DDict","DGeometry","DResource");
     private ValueCodec() {}

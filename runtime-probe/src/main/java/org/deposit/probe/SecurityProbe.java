@@ -12,14 +12,14 @@ import org.neo4j.procedure.*;
 public class SecurityProbe {
     @Context public GraphDatabaseAPI db;
     public static class Value {public final long value;Value(long value){this.value=value;}}
-    @Procedure(name="stage0.security.clock",mode=Mode.READ)
+    @Procedure(name="testprobe.security.clock",mode=Mode.READ)
     public Stream<Value> clock(@Name("offsetMillis") long offset) throws Exception {
         var server=ServerContext.forDatabase(db.databaseId().databaseId().uuid());
         var field=ServerContext.class.getDeclaredField("sessionClock");field.setAccessible(true);
         field.set(server,(java.util.function.LongSupplier)()->System.currentTimeMillis()+offset);
         return Stream.of(new Value(offset));
     }
-    @Procedure(name="stage0.security.failCommit",mode=Mode.READ)
+    @Procedure(name="testprobe.security.failCommit",mode=Mode.READ)
     public Stream<Value> failCommit(@Name("recoveryKey") String operation) {
         UUID.fromString(operation);
         var management=db.getDependencyResolver().resolveDependency(org.neo4j.dbms.api.DatabaseManagementService.class);
@@ -31,7 +31,7 @@ public class SecurityProbe {
                     if(preparations.hasNext())identity=(String)preparations.next().getProperty("operationId");
                 }
                 if(armed)for(Node node:data.createdNodes())if(node.hasLabel(Label.label("DepositReceipt"))&&identity.equals(node.getProperty("operationId",null))) {
-                    armed=false;throw new IllegalStateException("STAGE2_INJECTED_COMMIT");
+                    armed=false;throw new IllegalStateException("AUTH_FAILURE_INJECTED_COMMIT");
                 }
                 return null;
             }

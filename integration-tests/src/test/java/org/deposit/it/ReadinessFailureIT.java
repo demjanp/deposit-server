@@ -9,8 +9,8 @@ import org.neo4j.driver.exceptions.ClientException;
 /** Negative gate for the pinned, experimentally incompatible Spatial candidate. */
 class ReadinessFailureIT {
     @Test void rejectsIncompatibleSpatialBeforeReportingReady() {
-        try(var driver=GraphDatabase.driver(System.getenv("STAGE0_URI"),
-            AuthTokens.basic("neo4j",System.getenv("STAGE0_PASSWORD")),
+        try(var driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),
+            AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")),
             Config.builder().withConnectionTimeout(5,TimeUnit.SECONDS).build());var session=driver.session()) {
             assertEquals(1,session.run("RETURN 1 AS value").single().get("value").asInt());
             var failure=assertThrows(ClientException.class,()->session.run("CALL deposit.get.info()").consume());

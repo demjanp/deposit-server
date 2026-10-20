@@ -24,7 +24,7 @@ $LogPath = [IO.Path]::GetFullPath($LogPath)
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
 
 $spatialJar = Join-Path $Root 'cache\neo4j-spatial-server-plugin-2025.10.0.jar'
-$arguments = @('--batch-mode','--no-transfer-progress',"-Dmaven.repo.local=$Root\maven-repository","-Dstage0.root=$Root","-Ddeposit.server.root=$repo","-Dspatial.jar=$spatialJar")
+$arguments = @('--batch-mode','--no-transfer-progress',"-Dmaven.repo.local=$Root\maven-repository","-Ddeposit.test.root=$Root","-Ddeposit.server.root=$repo","-Dspatial.jar=$spatialJar")
 if ($Kind -eq 'Unit') {
     $arguments += @('-pl','plugin',"-Dtest=$Test",'test')
 } else {
@@ -35,38 +35,38 @@ $savedEnvironment = @{}
 try {
 if ($Kind -eq 'Unit') {
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
-    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','STAGE0_ROOT')) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','DEPOSIT_TEST_ROOT')) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
     $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
-    $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:STAGE0_ROOT=$Root
+    $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:DEPOSIT_TEST_ROOT=$Root
 }
 if ($Kind -eq 'Integration') {
     . "$PSScriptRoot\IntegrationHarnessSecrets.ps1"
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
     $savedEnvironment = @{}
-    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','STAGE0_ROOT','STAGE0_URI','STAGE0_PASSWORD','STAGE0_HTTP_BASE','STAGE0_NEO4J_VERSION','STAGE0_BASELINE_MAP','STAGE0_TEST_MODE','STAGE0_EXPECTED_FAILURE','STAGE4_CRASH_POINT','STAGE5_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER')) {
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','DEPOSIT_TEST_ROOT','DEPOSIT_TEST_URI','DEPOSIT_TEST_PASSWORD','DEPOSIT_TEST_HTTP_BASE','DEPOSIT_TEST_NEO4J_VERSION','DEPOSIT_TEST_BASELINE_MAP','DEPOSIT_TEST_MODE','DEPOSIT_TEST_EXPECTED_FAILURE','DEPOSIT_TEST_RESOURCE_CRASH_POINT','DEPOSIT_TEST_HISTORY_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
     }
-    $run = Join-Path $Root 'runs\stage0-host'
+    $run = Join-Path $Root 'runs\test-host'
     $downloadConfig = Get-Content (Join-Path $run 'neo4j\conf\deposit.properties') -Raw
     $downloadBase = ([regex]::Match($downloadConfig,'(?m)^download\.publicBaseUrl=(.+)$')).Groups[1].Value.Trim()
     if (!$downloadBase) { throw 'Installed download base URL is missing; start the test server first.' }
     $env:JAVA_HOME = Join-Path $Root $manifest.javaHome
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
-    $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:STAGE0_ROOT=$Root
-    $env:STAGE0_URI = "bolt://127.0.0.1:$Port"
-    $env:STAGE0_PASSWORD = [DepositHarnessSecretStore]::Read('Deposit/Stage0/stage0-host')
-    $env:STAGE0_HTTP_BASE = $downloadBase
-    $env:STAGE0_NEO4J_VERSION = $manifest.neo4jVersion
-    $env:STAGE0_BASELINE_MAP = Join-Path $run 'fixture-uuid-baseline.tsv'
-    $env:STAGE0_TEST_MODE = $TestMode
+    $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:DEPOSIT_TEST_ROOT=$Root
+    $env:DEPOSIT_TEST_URI = "bolt://127.0.0.1:$Port"
+    $env:DEPOSIT_TEST_PASSWORD = [DepositHarnessSecretStore]::Read('Deposit/IntegrationHarness/test-host')
+    $env:DEPOSIT_TEST_HTTP_BASE = $downloadBase
+    $env:DEPOSIT_TEST_NEO4J_VERSION = $manifest.neo4jVersion
+    $env:DEPOSIT_TEST_BASELINE_MAP = Join-Path $run 'fixture-uuid-baseline.tsv'
+    $env:DEPOSIT_TEST_MODE = $TestMode
     $toolManifest = Get-Content (Join-Path $repo 'runtime\integration-tools.json') -Raw | ConvertFrom-Json
     $env:SE_BROWSER_PATH = Join-Path $Root $toolManifest.firefoxExe
     $env:SE_GECKODRIVER = Join-Path $Root $toolManifest.geckodriverExe
     if (!(Test-Path -LiteralPath $env:SE_BROWSER_PATH -PathType Leaf) -or !(Test-Path -LiteralPath $env:SE_GECKODRIVER -PathType Leaf)) { throw 'Pinned Firefox/geckodriver tools are missing; run Invoke-IntegrationSuite.ps1 -SetupOnly first.' }
-    if ($FailureMode) { $env:STAGE0_EXPECTED_FAILURE = $FailureMode } else { Remove-Item Env:\STAGE0_EXPECTED_FAILURE -ErrorAction SilentlyContinue }
-    if ($CrashPoint) { $env:STAGE4_CRASH_POINT = $CrashPoint; $env:STAGE5_CRASH_POINT = $CrashPoint }
-    else { Remove-Item Env:\STAGE4_CRASH_POINT,Env:\STAGE5_CRASH_POINT -ErrorAction SilentlyContinue }
+    if ($FailureMode) { $env:DEPOSIT_TEST_EXPECTED_FAILURE = $FailureMode } else { Remove-Item Env:\DEPOSIT_TEST_EXPECTED_FAILURE -ErrorAction SilentlyContinue }
+    if ($CrashPoint) { $env:DEPOSIT_TEST_RESOURCE_CRASH_POINT = $CrashPoint; $env:DEPOSIT_TEST_HISTORY_CRASH_POINT = $CrashPoint }
+    else { Remove-Item Env:\DEPOSIT_TEST_RESOURCE_CRASH_POINT,Env:\DEPOSIT_TEST_HISTORY_CRASH_POINT -ErrorAction SilentlyContinue }
     $env:SE_CACHE_PATH = Join-Path $Root 'cache\selenium'
     $env:SE_AVOID_STATS = 'true'
 }

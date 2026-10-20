@@ -2,7 +2,7 @@ package deposit.common;
 
 import java.net.*;
 
-/** Stage 9 fixture surface for Stage 10's authenticated resource URL convention. */
+/** Encodes authenticated resource URLs used by browser downloads. */
 public final class ResourceLinkEncoder {
     private ResourceLinkEncoder() {}
     public static String url(String publicBaseUrl,String namespaceId,String resourceId){

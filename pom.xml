@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage65</version><packaging>pom</packaging>
+  <groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-dev</version><packaging>pom</packaging>
   <modules><module>plugin</module><module>runtime-probe</module><module>integration-tests</module></modules>
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.build.outputTimestamp>2026-10-08T00:00:00Z</project.build.outputTimestamp>
     <neo4j.version>2026.05.0</neo4j.version>
-    <stage0.root>${maven.multiModuleProjectDirectory}/../test_harness</stage0.root>
+    <deposit.test.root>${maven.multiModuleProjectDirectory}/../test_harness</deposit.test.root>
     <deposit.server.root>${maven.multiModuleProjectDirectory}</deposit.server.root>
-    <spatial.jar>${stage0.root}/cache/neo4j-spatial-server-plugin-2025.10.0.jar</spatial.jar>
+    <spatial.jar>${deposit.test.root}/cache/neo4j-spatial-server-plugin-2025.10.0.jar</spatial.jar>
   </properties>
   <repositories><repository><id>osgeo</id><url>https://repo.osgeo.org/repository/release/</url></repository></repositories>
   <dependencyManagement><dependencies>
@@ -19,7 +19,7 @@
     <dependency><groupId>org.neo4j</groupId><artifactId>neo4j</artifactId><version>${neo4j.version}</version><scope>provided</scope></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.11.4</version><scope>test</scope></dependency>
   </dependencies></dependencyManagement>
-  <build><directory>${stage0.root}/build/${project.artifactId}/target</directory><plugins>
+  <build><directory>${deposit.test.root}/build/${project.artifactId}/target</directory><plugins>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><version>3.5.0</version><executions><execution><id>toolchain</id><goals><goal>enforce</goal></goals><configuration><rules><requireJavaVersion><version>[21,22)</version></requireJavaVersion><requireMavenVersion><version>[3.9.9,4)</version></requireMavenVersion></rules></configuration></execution></executions></plugin>
   </plugins><pluginManagement><plugins>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-clean-plugin</artifactId><version>3.4.0</version></plugin>

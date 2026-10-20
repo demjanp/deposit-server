@@ -56,27 +56,27 @@ public class SpatialProbe {
     }
 
     private static void fail(String requested, String point) {
-        if (requested.equals(point)) throw new IllegalStateException("STAGE0_INJECTED_" + point);
+        if (requested.equals(point)) throw new IllegalStateException("TEST_PROBE_INJECTED_" + point);
     }
 
-    @Procedure(name = "stage0.geometry.write", mode = Mode.WRITE)
+    @Procedure(name = "testprobe.geometry.write", mode = Mode.WRITE)
     public Stream<Row> write(@Name("namespace") String namespace, @Name("id") String id,
             @Name("wkt") String wkt, @Name("srid") Long srid, @Name("failAt") String failAt) throws Exception {
         new WKTReader().read(wkt);
         String name = layerName(namespace, srid);
         // Serialize probe layer-registry operations using a test-owned lock node.
-        Node lock = tx.findNode(Label.label("Stage0Lock"), "id", "registry");
-        if (lock == null) throw new IllegalStateException("Seed Stage0Lock before probing");
+        Node lock = tx.findNode(Label.label("TestProbeLock"), "id", "registry");
+        if (lock == null) throw new IllegalStateException("Seed TestProbeLock before probing");
         tx.acquireWriteLock(lock);
         EditableLayer destination = layer(name, srid);
         fail(failAt, "layer");
         Node geometry;
-        try(var matches=tx.findNodes(Label.label("Stage0Geometry"),Map.of("id",id,"namespace",namespace))) {
+        try(var matches=tx.findNodes(Label.label("TestProbeGeometry"),Map.of("id",id,"namespace",namespace))) {
             geometry=matches.hasNext()?matches.next():null;
             if(matches.hasNext()) throw new IllegalStateException("Duplicate probe geometry identity");
         }
         if (geometry == null) {
-            geometry = tx.createNode(Label.label("Stage0Geometry"));
+            geometry = tx.createNode(Label.label("TestProbeGeometry"));
             geometry.setProperty("id", id);
         } else if (geometry.hasProperty("layer")) {
             String previous=(String)geometry.getProperty("layer");
@@ -100,7 +100,7 @@ public class SpatialProbe {
         return inspect(namespace, srid);
     }
 
-    @Procedure(name = "stage0.geometry.inspect", mode = Mode.READ)
+    @Procedure(name = "testprobe.geometry.inspect", mode = Mode.READ)
     public Stream<Row> inspect(@Name("namespace") String namespace, @Name("srid") Long srid) {
         var layer = spatial().getLayer(tx, layerName(namespace, srid), true);
         if (layer == null) return Stream.of(new Row(Map.of("exists", false)));

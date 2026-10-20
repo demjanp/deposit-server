@@ -187,9 +187,9 @@
       ]
     },
     {
-      "file": "deposit-plugin-0.0.0-stage65.jar",
-      "id": "org.deposit:deposit-plugin:0.0.0-stage65",
-      "version": "0.0.0-stage65",
+      "file": "deposit-plugin-0.0.0-dev.jar",
+      "id": "org.deposit:deposit-plugin:0.0.0-dev",
+      "version": "0.0.0-dev",
       "sha256": null,
       "embedded": [],
       "supplemental": [

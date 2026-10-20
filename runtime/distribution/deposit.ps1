@@ -57,7 +57,7 @@ function Assert-ActiveSuiteInstallation($State) {
     $runner=$null;$watchdogProcess=$null
     try {$runner=Get-Process -Id ([int]$journal.runnerPid) -ErrorAction Stop;$watchdogProcess=Get-Process -Id ([int]$journal.watchdogPid) -ErrorAction Stop} catch {Fail 'Integration runner or cleanup watchdog is no longer active'}
     if($runner.StartTime.ToUniversalTime().Ticks -ne [long]$journal.runnerStartTicks -or !$journal.watchdogStartTicks -or $watchdogProcess.StartTime.ToUniversalTime().Ticks -ne [long]$journal.watchdogStartTicks){Fail 'Integration runner or watchdog process identity changed'}
-    $expectedHome=[IO.Path]::GetFullPath((Join-Path $harness 'runs\stage0-host\neo4j')).TrimEnd('\')
+    $expectedHome=[IO.Path]::GetFullPath((Join-Path $harness 'runs\test-host\neo4j')).TrimEnd('\')
     if(!$journal.watchdogAcknowledged -or $journal.terminalCleanup -or $journal.ownerSid -cne $sid -or
        [IO.Path]::GetFullPath([string]$journal.neo4jHome).TrimEnd('\') -ine $expectedHome -or
        [IO.Path]::GetFullPath($State.neo4jHome).TrimEnd('\') -ine $expectedHome -or

@@ -16,7 +16,7 @@ foreach($statement in $watchdogAst.EndBlock.Statements){
     if($statement -is [Management.Automation.Language.FunctionDefinitionAst]){Invoke-Expression $statement.Extent.Text}
 }
 function Get-HarnessRoot {return $fixture}
-$run=Join-Path $fixture 'runs\stage0-host'
+$run=Join-Path $fixture 'runs\test-host'
 $runtimeHome=Join-Path $run 'neo4j'
 $journalPath=Join-Path $fixture 'active.json'
 $invocation=[Guid]::NewGuid().ToString('N')

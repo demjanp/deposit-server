@@ -10,19 +10,19 @@ $ErrorActionPreference='Stop'
 $root=Get-HarnessRoot
 $repo=Get-DepositServerRoot
 $port=17770
-$run=Join-Path $root 'runs\stage0-host'
-$normal=@('Stage1CoreIT','Stage2CoreIT','Stage3CoreIT','Stage4CoreIT','Stage5CoreIT','Stage55CoreIT','Stage6CoreIT','Stage65CoreIT','Stage7CoreIT','Stage8CoreIT','Stage9FormatIT','Stage10CoreIT','Stage11ScientificWorkflowIT',
-    'Stage11ImportIT#persistentCloneSharesFreshResourcesAndRestoresHistoryOnlyContent+cloneRetainsResourcesReferencedOnlyByAClosedEpoch+analyzedImportAndPatternFormAttachResourcesInReceivingNamespace+successfulCloneCallerRollbackLeavesNoReceivingGraphOrResourceRecords',
-    'Stage11BrowserIT#invalidLoginAndPasswordResetRejectOldBrowserSession+corruptContentReturnsUnavailableAndClientCancellationDoesNotBlockLaterReads','DistributionIT')
-$seed='Stage1CoreIT,Stage2CoreIT#namespaceDeletionPreconditionsRollbackAndReplay,Stage3CoreIT#persistBatchForGracefulAndForcedRecovery,Stage4CoreIT#persistRecoveryFixture,Stage5CoreIT#persistRecoveryFixture,Stage55RecoveryIT#seed,Stage6RecoveryIT#seed,Stage65RecoveryIT#seed,Stage7RecoveryIT#seed,Stage8RecoveryIT#seed,Stage9RecoveryIT#seed,Stage10RestartIT#seed'
-$verify='Stage1RecoveryIT,Stage2RecoveryIT,Stage3RecoveryIT,Stage4RecoveryIT,Stage5RecoveryIT,Stage55RecoveryIT#verify,Stage6RecoveryIT#verify,Stage65RecoveryIT#verify,Stage7RecoveryIT#verify,Stage8RecoveryIT#verify,Stage9RecoveryIT#verify,Stage10RestartIT#verify'
+$run=Join-Path $root 'runs\test-host'
+$normal=@('TypedDataModelIT','AccountAuthorizationIT','BatchMutationIT','ResourceAndGeometryIT','RevisionHistoryIT','ImmutableResourceStorageIT','QueryLanguageIT','PreparedActionReplayIT','PatternMatchingIT','NamespaceCloneAnalysisIT','TabularAndSpatialFormatsIT','BrowserSessionIT','ScientificWorkflowIT',
+    'CloneAndImportProbeIT#persistentCloneSharesFreshResourcesAndRestoresHistoryOnlyContent+cloneRetainsResourcesReferencedOnlyByAClosedEpoch+analyzedImportAndPatternFormAttachResourcesInReceivingNamespace+successfulCloneCallerRollbackLeavesNoReceivingGraphOrResourceRecords',
+    'BrowserFailureIT#invalidLoginAndPasswordResetRejectOldBrowserSession+corruptContentReturnsUnavailableAndClientCancellationDoesNotBlockLaterReads','DistributionIT')
+$seed='TypedDataModelIT,AccountAuthorizationIT#namespaceDeletionPreconditionsRollbackAndReplay,BatchMutationIT#persistBatchForGracefulAndForcedRecovery,ResourceAndGeometryIT#persistRecoveryFixture,RevisionHistoryIT#persistRecoveryFixture,StorageRecoveryIT#seed,QueryRecoveryIT#seed,ActionReplayRecoveryIT#seed,PatternRecoveryIT#seed,CloneRecoveryIT#seed,ImportExportRecoveryIT#seed,BrowserSessionRecoveryIT#seed'
+$verify='TypedDataRecoveryIT,AuthorizationRecoveryIT,BatchRecoveryIT,ResourceRecoveryIT,HistoryRecoveryIT,StorageRecoveryIT#verify,QueryRecoveryIT#verify,ActionReplayRecoveryIT#verify,PatternRecoveryIT#verify,CloneRecoveryIT#verify,ImportExportRecoveryIT#verify,BrowserSessionRecoveryIT#verify'
 $resourcePoints=@('collection-before','chunk-flushed','publication-before','publication-after','ready-before-commit','staging-cleanup-before','staging-cleanup-after','collection-after','collection-partial')
 # Include unchanged-domain probes as well as the seven host-sensitive regressions.
-$probes='RuntimeIT#rejectsInvalidAuthentication,EnvironmentIT#nativeRuntimeAndApoc+independentClientSessions,Stage4ProbeIT,Stage5ProbeIT,Stage55ProbeIT,Stage9CoreIT,Stage11ImportIT#probeRejectsCapabilityMisuseWithoutPersistingGraph+probePublicationFailureRollsBackEntireCloneThenRetrySucceeds,Stage11BrowserIT#probeExpiredBrowserSessionRequiresNewAuthentication'
+$probes='RuntimeIT#rejectsInvalidAuthentication,EnvironmentIT#nativeRuntimeAndApoc+independentClientSessions,ResourceFailureProbeIT,HistoryFailureProbeIT,StorageCapacityProbeIT,DataImportExportIT,CloneAndImportProbeIT#probeRejectsCapabilityMisuseWithoutPersistingGraph+probePublicationFailureRollsBackEntireCloneThenRetrySucceeds,BrowserFailureIT#probeExpiredBrowserSessionRequiresNewAuthentication'
 if ($ListOnly) {
     Write-Output "Harness: $root"
     Write-Output 'Setup: Provision, build (-DskipTests), package, fresh local Install, TLS fixtures'
-    Write-Output 'Local lifecycle: Stage1LifecycleIT'
+    Write-Output 'Local lifecycle: AuthenticationNamespaceLifecycleIT'
     $normal | ForEach-Object { Write-Output "Normal selection: $_" }
     Write-Output 'Independent Python decoding: generated-whole.zip and generated-subgraph.zip'
     foreach($transition in @('Restart','KillRestart')) { Write-Output "$transition seed: $seed"; Write-Output "$transition verify: $verify" }
@@ -92,7 +92,7 @@ function Invoke-SuiteChild([string]$Script,[object[]]$Arguments,[string]$Label,[
         $child.Dispose()
     }
 }
-function Invoke-SuiteStage([string]$Name,[object[]]$Extra=@()) { Invoke-SuiteChild (Join-Path $PSScriptRoot 'Stage0.ps1') (@('-Phase',$Name,'-Root',$root,'-Port',[string]$port)+$Extra) ('stage0-'+$Name+'-'+[Guid]::NewGuid().ToString('N').Substring(0,6)) 3600 }
+function Invoke-SuitePhase([string]$Name,[object[]]$Extra=@()) { Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-TestHarnessPhase.ps1') (@('-Phase',$Name,'-Root',$root,'-Port',[string]$port)+$Extra) ('harness-phase-'+$Name+'-'+[Guid]::NewGuid().ToString('N').Substring(0,6)) 3600 }
 function Invoke-SuiteSelection([string]$Selection,[string]$Label) { Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Tests.ps1') @('-Kind','Integration','-Test',$Selection,'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs ($Label+'.log'))) $Label 1800 }
 function Assert-OwnedTree([string]$Path) {
     Assert-HarnessPlainPath $Path
@@ -143,9 +143,9 @@ try {
     }
     New-Item -ItemType Directory -Force $logs,(Join-Path $root 'tmp'),(Join-Path $root 'cache\selenium') | Out-Null
     Set-OwnerOnlyDirectory $logs
-    foreach($key in @('TEMP','TMP','STAGE0_ROOT','DEPOSIT_SUITE_JOURNAL','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER','STAGE7_PACKAGE_OUTPUT','PYTHONPYCACHEPREFIX','PYTHONUSERBASE','MAVEN_USER_HOME','MAVEN_OPTS')) { $saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process') }
+    foreach($key in @('TEMP','TMP','DEPOSIT_TEST_ROOT','DEPOSIT_SUITE_JOURNAL','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER','DEPOSIT_TEST_PACKAGE_OUTPUT','PYTHONPYCACHEPREFIX','PYTHONUSERBASE','MAVEN_USER_HOME','MAVEN_OPTS')) { $saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process') }
     $env:TEMP=Join-Path $root 'tmp';$env:TMP=$env:TEMP
-    $env:STAGE0_ROOT=$root;$env:DEPOSIT_SUITE_JOURNAL=$journalPath
+    $env:DEPOSIT_TEST_ROOT=$root;$env:DEPOSIT_SUITE_JOURNAL=$journalPath
     $env:SE_CACHE_PATH=Join-Path $root 'cache\selenium';$env:SE_AVOID_STATS='true'
     $env:PYTHONPYCACHEPREFIX=Join-Path $root 'cache\python';$env:PYTHONUSERBASE=Join-Path $root 'tools\python-user'
     $env:MAVEN_USER_HOME=Join-Path $root 'maven-user'
@@ -167,20 +167,20 @@ try {
     }
     $active=@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains((Join-Path $run 'neo4j')) })
     if ($active.Count) { throw 'The previous harness runtime is still in use; stop it before rebuilding' }
-    Preserve-GeneratedTree $run 'stage0-host'
+    Preserve-GeneratedTree $run 'test-host'
     Update-SuiteJournal $journalPath {param($j) $j.runtimeOwned=$true}
     Preserve-GeneratedTree (Join-Path $root 'build\distribution') 'distribution'
-    Invoke-SuiteStage 'Provision'
-    Invoke-SuiteStage 'Build'
-    $archive=Join-Path $root 'build\deposit-server-0.0.0-stage65.zip'
-    Preserve-GeneratedFile $archive 'deposit-server-0.0.0-stage65.zip'
-    Invoke-SuiteStage 'Package'
+    Invoke-SuitePhase 'Provision'
+    Invoke-SuitePhase 'Build'
+    $archive=Join-Path $root 'build\deposit-server-0.0.0-dev.zip'
+    Preserve-GeneratedFile $archive 'deposit-server-0.0.0-dev.zip'
+    Invoke-SuitePhase 'Package'
     # Package also creates a verified distribution copy. Install extracts the
     # archive with CreateNew, so retain that copy away from its extraction target.
     Preserve-GeneratedTree (Join-Path $run 'distribution') 'packaged-copy'
-    $quarantinedSecret=[DepositHarnessSecretStore]::QuarantineStage0ForFreshSetup($invocation)
-    if ($quarantinedSecret) { Write-Host "Preserved prior Stage0 secret without decrypting: $quarantinedSecret" }
-    Invoke-SuiteStage 'Install' @('-ReleasePackage',$archive)
+    $quarantinedSecret=[DepositHarnessSecretStore]::QuarantineIntegrationHarnessCredential($invocation)
+    if ($quarantinedSecret) { Write-Host "Preserved prior TestHarness secret without decrypting: $quarantinedSecret" }
+    Invoke-SuitePhase 'Install' @('-ReleasePackage',$archive)
     $toolManifest=Get-Content -LiteralPath (Join-Path $repo 'runtime\integration-tools.json') -Raw | ConvertFrom-Json
     $python=Join-Path $root $toolManifest.pythonExe
     $firefox=Join-Path $root $toolManifest.firefoxExe
@@ -190,26 +190,26 @@ try {
     $env:SE_GECKODRIVER=$geckodriver
     $tls=Join-Path $root 'private\tls'
     Set-OwnerOnlyDirectory $tls
-    $tlsPasswordPath=Join-Path $tls 'stage11-download-test.password'
-    $tlsStore=Join-Path $tls 'stage11-download-test.p12'
+    $tlsPasswordPath=Join-Path $tls 'operations-download-test.password'
+    $tlsStore=Join-Path $tls 'operations-download-test.p12'
     if (!(Test-Path -LiteralPath $tlsStore)) {
         $bytes=New-Object byte[] 32;$random=[Security.Cryptography.RandomNumberGenerator]::Create();try{$random.GetBytes($bytes)}finally{$random.Dispose()}
         [IO.File]::WriteAllText($tlsPasswordPath,[Convert]::ToBase64String($bytes),(New-Object Text.UTF8Encoding($false)))
         $manifest=Get-Content -LiteralPath (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
         $keytool=Join-Path (Join-Path $root $manifest.javaHome) 'bin\keytool.exe'
-        Invoke-SuiteNative $keytool @('-genkeypair','-alias','stage11','-keyalg','RSA','-keysize','2048','-validity','3650','-storetype','PKCS12','-keystore',$tlsStore,'-storepass:file',$tlsPasswordPath,'-dname','CN=localhost','-ext','SAN=dns:localhost,ip:127.0.0.1','-noprompt') 'tls-fixture'
+        Invoke-SuiteNative $keytool @('-genkeypair','-alias','operations','-keyalg','RSA','-keysize','2048','-validity','3650','-storetype','PKCS12','-keystore',$tlsStore,'-storepass:file',$tlsPasswordPath,'-dname','CN=localhost','-ext','SAN=dns:localhost,ip:127.0.0.1','-noprompt') 'tls-fixture'
     }
     if ($Phase -eq 'Run') {
         Update-SuiteJournal $journalPath { param($j) $j.state='running' }
-        Invoke-SuiteStage 'Start'
-        Invoke-SuiteSelection 'Stage1LifecycleIT' 'local-lifecycle'
-        $env:STAGE7_PACKAGE_OUTPUT=Join-Path $logs 'generated-whole.zip'
+        Invoke-SuitePhase 'Start'
+        Invoke-SuiteSelection 'AuthenticationNamespaceLifecycleIT' 'local-lifecycle'
+        $env:DEPOSIT_TEST_PACKAGE_OUTPUT=Join-Path $logs 'generated-whole.zip'
         $index=0
         foreach($selection in $normal) { $index++; Invoke-SuiteSelection $selection ('normal-'+$index+'-'+($selection.Split('#')[0])) }
-        foreach($package in @('generated-whole.zip','generated-subgraph.zip')) { Invoke-SuiteNative $python @((Join-Path $PSScriptRoot 'Test-Stage7Package.py'),(Join-Path $logs $package)) ('decode-'+$package) }
-        Remove-Item Env:\STAGE7_PACKAGE_OUTPUT -ErrorAction SilentlyContinue
+        foreach($package in @('generated-whole.zip','generated-subgraph.zip')) { Invoke-SuiteNative $python @((Join-Path $PSScriptRoot 'Test-PortablePackage.py'),(Join-Path $logs $package)) ('decode-'+$package) }
+        Remove-Item Env:\DEPOSIT_TEST_PACKAGE_OUTPUT -ErrorAction SilentlyContinue
         foreach($transition in @('Restart','KillRestart')) { Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-TestScenario.ps1') @('-SeedTest',$seed,'-VerifyTest',$verify,'-Transition',$transition,'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs ('recovery-'+$transition+'.log')),'-TestTimeoutSeconds','900') ('recovery-'+$transition) 2400 }
-        Invoke-SuiteStage 'Stop'
+        Invoke-SuitePhase 'Stop'
         Invoke-SuiteLocalRetirement $journalPath $invocation
         $state=Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
         $name=[string]$state.serviceName;$account='NT SERVICE\'+$name
@@ -221,15 +221,15 @@ try {
         Set-Service -Name $name -StartupType Manual
         & "$env:SystemRoot\System32\sc.exe" failure $name reset= 0 actions= '""' | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Could not disable test-service recovery' }
-        Invoke-SuiteStage 'Start'
-        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11CleanProvisionScenario.ps1') @('-ReleasePackage',$archive,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'clean-provision.log')) 'clean-provision' 3600
-        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11CleanProvisionScenario.ps1') @('-ReleasePackage',$archive,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'fresh-account.log'),'-FreshAccountProbe') 'fresh-account' 3600
-        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11ServiceShutdownScenario.ps1') @('-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'service-shutdown.log')) 'service-shutdown' 1800
+        Invoke-SuitePhase 'Start'
+        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-CleanProvisioningScenario.ps1') @('-ReleasePackage',$archive,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'clean-provision.log')) 'clean-provision' 3600
+        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-CleanProvisioningScenario.ps1') @('-ReleasePackage',$archive,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'fresh-account.log'),'-FreshAccountProbe') 'fresh-account' 3600
+        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-ServiceShutdownScenario.ps1') @('-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'service-shutdown.log')) 'service-shutdown' 1800
         $crashArguments=@('-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'service-crash.log'),'-ProbeTest',$probes,'-HistoryRecoveryChecks','-CrashPoint',$resourcePoints[0],'-AdditionalCrashPoints')
         $crashArguments+=,([string[]]$resourcePoints[1..8])
-        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11ServiceCrashScenario.ps1') $crashArguments 'service-crash' 10800
+        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-ServiceCrashRecoveryScenario.ps1') $crashArguments 'service-crash' 10800
         $listenerLogs=Join-Path $logs 'listener';New-Item -ItemType Directory -Path $listenerLogs | Out-Null
-        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Stage11ListenerScenario.ps1') @('-LogDirectory',$listenerLogs,'-TlsMaterialDirectory',$tls) 'listener' 2400
+        Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-DownloadListenerScenario.ps1') @('-LogDirectory',$listenerLogs,'-TlsMaterialDirectory',$tls) 'listener' 2400
     }
 } catch {
     $failure=$_.Exception.Message

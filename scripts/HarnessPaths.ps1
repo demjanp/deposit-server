@@ -6,9 +6,8 @@ $script:TestHarnessRoot = [IO.Path]::GetFullPath((Join-Path $script:DepositServe
 function Get-DepositServerRoot { return $script:DepositServerRoot }
 function Get-TestHarnessRoot { return $script:TestHarnessRoot }
 function Get-HarnessRoot { return $script:TestHarnessRoot }
-function Get-Stage0Root { return $script:TestHarnessRoot }
 
-function Get-HarnessRunRoot([string]$RunId = 'stage0-host') {
+function Get-HarnessRunRoot([string]$RunId = 'test-host') {
     if ($RunId -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$') { throw 'Invalid harness run identifier' }
     return Join-Path (Join-Path $script:TestHarnessRoot 'runs') $RunId
 }
@@ -20,7 +19,7 @@ function Assert-HarnessRoot([string]$Root) {
     }
 }
 
-function Assert-Stage0Root([string]$Root) { Assert-HarnessRoot $Root }
+function Assert-TestHarnessRoot([string]$Root) { Assert-HarnessRoot $Root }
 
 function Test-HarnessTerminalCleanup {
     $journalPath = [Environment]::GetEnvironmentVariable('DEPOSIT_SUITE_JOURNAL','Process')

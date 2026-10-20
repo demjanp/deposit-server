@@ -195,7 +195,7 @@ try {
     $ast=[System.Management.Automation.Language.Parser]::ParseFile($depositScript,[ref]$null,[ref]$null)
     $setter=$ast.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-ActiveSuiteInstallationPhase'},$true)
     if(!$setter){throw 'Could not locate the production suite phase updater'}
-    $script:PackageRoot=Join-Path (Get-HarnessRoot) 'runs\stage0-host\distribution'
+    $script:PackageRoot=Join-Path (Get-HarnessRoot) 'runs\test-host\distribution'
     Invoke-Expression $setter.Extent.Text
     $phasePath=Join-Path $fixture 'phase.json'
     Write-SuiteJournal $phasePath '{"installationPhase":"none"}'

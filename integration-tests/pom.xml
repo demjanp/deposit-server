@@ -1,6 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-stage65</version></parent>
+  <parent><groupId>org.deposit</groupId><artifactId>deposit-server</artifactId><version>0.0.0-dev</version></parent>
   <artifactId>deposit-integration-tests</artifactId>
   <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><executions><execution><id>client-runtime</id><phase>package</phase><goals><goal>copy-dependencies</goal></goals><configuration><includeScope>runtime</includeScope></configuration></execution></executions></plugin></plugins></build>
   <dependencies>
@@ -12,6 +12,6 @@
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
   </dependencies>
   <profiles><profile><id>integration</id><build><plugins>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><disableXmlReport>true</disableXmlReport><useFile>false</useFile><includes><include>**/*IT.java</include></includes><failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests><systemPropertyVariables><stage0.root>${stage0.root}</stage0.root><deposit.server.root>${deposit.server.root}</deposit.server.root><java.io.tmpdir>${stage0.root}/tmp</java.io.tmpdir></systemPropertyVariables></configuration></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><disableXmlReport>true</disableXmlReport><useFile>false</useFile><includes><include>**/*IT.java</include></includes><failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests><systemPropertyVariables><deposit.test.root>${deposit.test.root}</deposit.test.root><deposit.server.root>${deposit.server.root}</deposit.server.root><java.io.tmpdir>${deposit.test.root}/tmp</java.io.tmpdir></systemPropertyVariables></configuration></plugin>
   </plugins></build></profile></profiles>
 </project>

@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.stream.Stream;
 import org.neo4j.procedure.*;
 
-/** Stage 6.5 public catalog. Operational metadata is server managed. */
+/** Public catalog for prepared actions. Operational metadata is server managed. */
 public final class DepositAPI extends BaseAPI {
  @Procedure(name="deposit.create.class",mode=Mode.WRITE)
  public Stream<PublicResults.NodeRow> p0(@Name("name") String a0,@Name("properties") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.create.class",Arrays.asList(a0,a1)).map(PublicResults::node); }

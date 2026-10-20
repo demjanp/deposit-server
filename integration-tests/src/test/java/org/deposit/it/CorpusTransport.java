@@ -10,9 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Migration transport for the cumulative scientific corpus. Fixture maps are test data,
- * never public envelopes: every wire call uses Stage 6.5 positional arguments and prepared
+ * never public envelopes: every wire call uses prepared-action positional arguments and prepared
  * actions. Rich assertion rows are explicitly assembled from portable conversion/receipts.
- * Stage65CoreIT independently checks the actual public columns without this adapter.
+ * PreparedActionReplayIT independently checks the actual public columns without this adapter.
  */
 final class CorpusTransport {
     static final ObjectMapper JSON=new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_LONG_FOR_INTS);
@@ -51,7 +51,7 @@ final class CorpusTransport {
     String resolveOperation(String key){
         String cached=OPERATIONS.get(key);if(cached!=null)return cached;
         try(var session=raw.session()){
-            var rows=session.run("MATCH (a:DepositPreparedAction {recoveryKey:$key}) RETURN a.operationId AS id",Stage1LifecycleIT.m("key",key)).list();
+            var rows=session.run("MATCH (a:DepositPreparedAction {recoveryKey:$key}) RETURN a.operationId AS id",AuthenticationNamespaceLifecycleIT.m("key",key)).list();
             if(rows.isEmpty())return key;String operation=rows.getFirst().get("id").asString();OPERATIONS.put(key,operation);return operation;
         }
     }
@@ -61,13 +61,13 @@ final class CorpusTransport {
     @SuppressWarnings("unchecked") static List<Object> arguments(String procedure,Map<String,Object> input){
         String p=renamed(procedure);var request=new LinkedHashMap<>(input);var result=new ArrayList<Object>();
         if(p.equals("deposit.apply.batch")){
-            var commands=new ArrayList<Object>();for(Object item:(List<?>)request.getOrDefault("commands",List.of())){var command=(Map<String,Object>)item;String name=(String)command.get("procedure");commands.add(Stage1LifecycleIT.m("key",command.get("key"),"procedure",renamed(name),"arguments",arguments(name,(Map<String,Object>)command.get("request"))));}return List.of(commands);
+            var commands=new ArrayList<Object>();for(Object item:(List<?>)request.getOrDefault("commands",List.of())){var command=(Map<String,Object>)item;String name=(String)command.get("procedure");commands.add(AuthenticationNamespaceLifecycleIT.m("key",command.get("key"),"procedure",renamed(name),"arguments",arguments(name,(Map<String,Object>)command.get("request"))));}return List.of(commands);
         }
         for(String binding:BINDINGS.get(p)){
             if(binding.equals("+")){result.add(new LinkedHashMap<>(request));request.clear();}
             else if(binding.startsWith("@")){
                 String[] parts=binding.substring(1).split(":");String field=parts[1];Object id=request.remove(field);
-                if(id!=null)result.add(id instanceof Map<?,?>?id:Stage1LifecycleIT.m("id",id));
+                if(id!=null)result.add(id instanceof Map<?,?>?id:AuthenticationNamespaceLifecycleIT.m("id",id));
                 else if(field.equals("classId"))result.add(request.remove("className"));
                 else result.add(null);
             }else if(binding.startsWith("?")){
@@ -93,27 +93,27 @@ final class CorpusTransport {
             String target=REQUEST_TOKENS.get((String)request.get("requestId"));
             if(target!=null&&target.equals(token))request=Map.of();
             else if(target!=null){
-                try{var active=direct("deposit.get.requests",target);request=Stage1LifecycleIT.m("requestId",active.get("data").get("requestId").asString());procedure="deposit.utils.cancelRequest";}catch(org.neo4j.driver.exceptions.NoSuchRecordException ignored){request=Map.of();}
+                try{var active=direct("deposit.get.requests",target);request=AuthenticationNamespaceLifecycleIT.m("requestId",active.get("data").get("requestId").asString());procedure="deposit.utils.cancelRequest";}catch(org.neo4j.driver.exceptions.NoSuchRecordException ignored){request=Map.of();}
             }else request=Map.of();
         }
         var args=arguments(procedure,request);String output=OUTPUTS.get(procedure);boolean action=ACTIONS.contains(procedure)&&(!procedure.equals("deposit.admin.pruneResources")||Boolean.FALSE.equals(request.get("dryRun")));
         Map<String,Object> session=Map.of();
-        if(!unauth&&!Set.of("deposit.utils.cancel","deposit.utils.cancelRequest").contains(procedure))session=run(runner,"CYPHER 25 CALL deposit.get.session($t) YIELD data RETURN data",Stage1LifecycleIT.m("t",token)).single().get("data").asMap();
+        if(!unauth&&!Set.of("deposit.utils.cancel","deposit.utils.cancelRequest").contains(procedure))session=run(runner,"CYPHER 25 CALL deposit.get.session($t) YIELD data RETURN data",AuthenticationNamespaceLifecycleIT.m("t",token)).single().get("data").asMap();
         String operation=null;boolean replay=false;
         if(action&&!frame.mutation&&ctx.get("operationId") instanceof String key){
             direct("deposit.action.release",token);
             String scope=CorpusCatalog.SERVER.contains(procedure)?"server":(String)session.get("namespaceId");
             if(procedure.equals("deposit.admin.pruneResources"))scope="all".equals(request.get("scope"))?"server":(String)session.get("namespaceId");
             if(ctx.get("expectedRevision") instanceof Number expected&&scope!=null){
-                long current=scope.equals("server")?((Number)session.get("serverRevision")).longValue():run(runner,"MATCH (n:Namespace {id:$id}) RETURN n.sequence AS revision",Stage1LifecycleIT.m("id",scope)).single().get("revision").asLong();
+                long current=scope.equals("server")?((Number)session.get("serverRevision")).longValue():run(runner,"MATCH (n:Namespace {id:$id}) RETURN n.sequence AS revision",AuthenticationNamespaceLifecycleIT.m("id",scope)).single().get("revision").asLong();
                 if(expected.longValue()==current)direct("deposit.utils.refresh",scope.equals("server")?"server":"namespace",token);
             }
-            if(procedure.equals("deposit.delete.namespace")&&request.get("expectedNamespaceRevision") instanceof Number expected){String ns=(String)session.get("namespaceId");if(ns!=null&&run(runner,"MATCH (n:Namespace {id:$id}) RETURN n.sequence AS revision",Stage1LifecycleIT.m("id",ns)).single().get("revision").asLong()==expected.longValue())direct("deposit.utils.refresh","namespace",token);}
+            if(procedure.equals("deposit.delete.namespace")&&request.get("expectedNamespaceRevision") instanceof Number expected){String ns=(String)session.get("namespaceId");if(ns!=null&&run(runner,"MATCH (n:Namespace {id:$id}) RETURN n.sequence AS revision",AuthenticationNamespaceLifecycleIT.m("id",ns)).single().get("revision").asLong()==expected.longValue())direct("deposit.utils.refresh","namespace",token);}
             var preparation=direct("deposit.action.prepare",key,procedure,args,token).get("data");operation=preparation.get("operationId").asString();replay="committed".equals(preparation.get("state").asString());OPERATIONS.put(key,operation);
         }
         if(action&&frame.transaction)frame.mutation=true;
         if(procedure.equals("deposit.get.operation")&&request.get("operationId") instanceof String key){
-            String actual=OPERATIONS.get(key);if(actual==null){try(var s=raw.session()){var rows=s.run("MATCH (a:DepositPreparedAction {recoveryKey:$key}) RETURN a.operationId AS id",Stage1LifecycleIT.m("key",key)).list();if(!rows.isEmpty())actual=rows.getFirst().get("id").asString();}}
+            String actual=OPERATIONS.get(key);if(actual==null){try(var s=raw.session()){var rows=s.run("MATCH (a:DepositPreparedAction {recoveryKey:$key}) RETURN a.operationId AS id",AuthenticationNamespaceLifecycleIT.m("key",key)).list();if(!rows.isEmpty())actual=rows.getFirst().get("id").asString();}}
             if(actual!=null)args.set(0,actual);
         }
         var params=new LinkedHashMap<>(input);var placeholders=new ArrayList<String>();for(int i=0;i<args.size();i++){String key="__s65a"+i;params.put(key,args.get(i));placeholders.add("$"+key);}if(!unauth){params.put("__s65token",token);placeholders.add("$__s65token");}
@@ -142,12 +142,12 @@ final class CorpusTransport {
     org.neo4j.driver.Record enrich(org.neo4j.driver.Record row,Translation tr){
         var values=new LinkedHashMap<>(row.asMap());Object data=values.get("data");if(data instanceof String text&&text.startsWith("{")){try{values.put("data",JSON.readValue(text,Map.class));}catch(Exception e){throw new AssertionError(e);}}
         if(tr.implicit&&tr.procedure.equals("deposit.utils.login")&&values.containsKey("value")){
-            var info=direct("deposit.get.session",values.get("value")).get("data").asMap();values.put("data",Stage1LifecycleIT.m("user",info.get("user"),"expiresAt",info.get("expiresAt")));values.put("meta",Stage1LifecycleIT.m("namespaceId",null,"revision",info.get("serverRevision"),"operationId",null,"requestId",null,"nextCursor",null));
+            var info=direct("deposit.get.session",values.get("value")).get("data").asMap();values.put("data",AuthenticationNamespaceLifecycleIT.m("user",info.get("user"),"expiresAt",info.get("expiresAt")));values.put("meta",AuthenticationNamespaceLifecycleIT.m("namespaceId",null,"revision",info.get("serverRevision"),"operationId",null,"requestId",null,"nextCursor",null));
         }
         if(tr.implicit&&tr.procedure.equals("deposit.utils.bootstrap")){
             String token=direct("deposit.utils.login",tr.request.get("username"),tr.request.get("password")).get("value").asString();
             long revision=direct("deposit.get.session",token).get("data").get("serverRevision").asLong();direct("deposit.utils.logout",token);
-            values.put("meta",Stage1LifecycleIT.m("namespaceId",null,"revision",revision,"operationId",null,"requestId",null,"nextCursor",null));
+            values.put("meta",AuthenticationNamespaceLifecycleIT.m("namespaceId",null,"revision",revision,"operationId",null,"requestId",null,"nextCursor",null));
         }
         return new InternalRecord(new ArrayList<>(values.keySet()),values.values().stream().map(Values::value).toList());
     }
