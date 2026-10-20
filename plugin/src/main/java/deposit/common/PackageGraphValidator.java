@@ -1,0 +1,72 @@
+package deposit.common;
+
+import java.io.*;
+import java.util.*;
+
+/** Validates category identities, references, scientific values and Pattern compatibility. */
+final class PackageGraphValidator {
+    private PackageGraphValidator() {}
+    static void validate(Map<String,Object> graph,Set<String> paths,Map<String,Object> manifest,PackageValidationContext context)throws IOException {
+        PackageWorkspace workspace=context.workspace;
+        if(!graph.keySet().equals(Set.of("classes","objects","descriptors","geometries","memberships","relationships","classRelationships","patterns","userTools","resources")))throw new IOException("Unknown or missing graph categories");
+        for(String kind:List.of("classes","objects","descriptors","geometries","memberships","relationships","classRelationships","patterns","userTools","resources"))if(!(graph.get(kind) instanceof List<?>))throw new IOException("Missing graph list: "+kind);
+        if("subgraph".equals(manifest.get("scope"))&&!((List<?>)graph.get("userTools")).isEmpty())throw new IOException("Subgraph packages cannot contain User Tools");
+        var ids=new HashMap<String,Map<String,Map<String,Object>>>();var expected=Map.of("classes","Class","objects","Object","descriptors","Descriptor","geometries","DGeometry","memberships","Membership","relationships","Relationship","classRelationships","ClassRelationship","patterns","Pattern","userTools","UserTool","resources","DResource");
+        for(var list:expected.entrySet()){Map<String,Map<String,Object>> category=workspace==null?new HashMap<>():workspace.map();for(Object raw:(List<?>)graph.get(list.getKey())){if(!(raw instanceof Map<?,?> m)||!list.getValue().equals(m.get("kind"))||!(m.get("id") instanceof String id))throw new IOException("Invalid category record: "+list.getKey());validateRecordFields(list.getValue(),m);validatePortableShape(list.getValue(),m);try{if(!PackageIdentity.canonical(id).equalsIgnoreCase(id))throw new IllegalArgumentException();}catch(IllegalArgumentException e){throw new IOException("Invalid package UUID");}if(category.put(id,(Map<String,Object>)m)!=null)throw new IOException("Duplicate identity within category");}ids.put(list.getValue(),category);}
+        Map<String,Map<String,Object>> classes=ids.get("Class"),objects=ids.get("Object"),descriptors=ids.get("Descriptor"),geometries=ids.get("DGeometry"),resources=ids.get("DResource");
+        for(var category:ids.values())for(var row:category.values())if(row.containsKey("namespaceId")&&!Objects.equals(row.get("namespaceId"),manifest.get("sourceNamespaceId")))throw new IOException("Entity escaped source Namespace");
+        if("subgraph".equals(manifest.get("scope"))){if(((List<?>)manifest.get("rootIds")).isEmpty())throw new IOException("Subgraph package has no roots");for(Object root:(List<?>)manifest.get("rootIds"))if(!objects.containsKey(root))throw new IOException("Subgraph root is absent");}
+        Map<String,String> memberships=workspace==null?new HashMap<>():workspace.map();for(Object raw:(List<?>)graph.get("memberships")){var m=(Map<String,Object>)raw;String oid=(String)m.get("objectId"),cid=(String)m.get("classId");if(!objects.containsKey(oid)||!classes.containsKey(cid)||memberships.put(oid,cid)!=null)throw new IOException("Invalid membership reference");}
+        for(var object:objects.values())if(!memberships.containsKey(object.get("id"))||!Objects.equals(object.get("classId"),memberships.get(object.get("id"))))throw new IOException("Object and membership Class differ");
+        Map<String,String> declaredTypes=workspace==null?new HashMap<>():workspace.map();
+        Set<String> declarationIds=workspace==null?new HashSet<>():workspace.set();Set<String> declarationNames=workspace==null?new HashSet<>():workspace.set();for(var clazz:classes.values()){declarationNames.clear();if(!(clazz.get("name") instanceof String)||!(clazz.get("descriptors") instanceof List<?> declarations))throw new IOException("Class declaration list is missing");Set<String> names=declarationNames;for(Object raw:declarations){var declaration=ValueCodec.map(raw);validateRecordFields("ClassDescriptor",declaration);validatePortableShape("ClassDescriptor",declaration);if(!"ClassDescriptor".equals(declaration.get("kind"))||!Objects.equals(declaration.get("classId"),clazz.get("id"))||!Objects.equals(declaration.get("namespaceId"),manifest.get("sourceNamespaceId")))throw new IOException("Invalid Class declaration identity/owner");try{String id=(String)declaration.get("id");if(!PackageIdentity.canonical(id).equalsIgnoreCase(id)||!declarationIds.add(id))throw new IllegalArgumentException();}catch(RuntimeException e){throw new IOException("Invalid or duplicate declaration UUID",e);}if(!(declaration.get("name") instanceof String name)||!names.add(name))throw new IOException("Duplicate or invalid Class declaration");ValueCodec.type(declaration.get("type"));declaredTypes.put(clazz.get("id")+"\u0000"+name,(String)declaration.get("type"));}}
+        Set<String> descriptorNames=workspace==null?new HashSet<>():workspace.set();
+        Set<String> descriptorGeometry=workspace==null?new HashSet<>():workspace.set();for(var d:descriptors.values()){if(!d.containsKey("value"))throw new IOException("Descriptor value is absent");if(!objects.containsKey(d.get("objectId")))throw new IOException("Descriptor owner is missing");Object value=d.get("value");if(!descriptorNames.add(d.get("objectId")+"\u0000"+d.get("name")))throw new IOException("Duplicate Descriptor field");String classId=memberships.get(d.get("objectId"));String declaredType=declaredTypes.get(classId+"\u0000"+d.get("name"));if("DResource".equals(declaredType)&&value!=null&&!resources.containsKey(ValueCodec.map(value).get("resourceId")))throw new IOException("Descriptor resource is missing");if(declaredType==null)throw new IOException("Descriptor declaration is missing");PackageValueCodec.validateValue(declaredType,value,workspace!=null,0);if("DGeometry".equals(declaredType)&&value!=null&&!(d.get("geometryId") instanceof String))throw new IOException("Geometry identity is missing");if((!"DGeometry".equals(declaredType)||value==null)&&d.get("geometryId")!=null)throw new IOException("Unexpected geometry identity");if(d.get("geometryId") instanceof String geometryId){Map<String,Object> g=geometries.get(geometryId);if(g==null||!Objects.equals(g.get("descriptorId"),d.get("id"))||!descriptorGeometry.add(geometryId))throw new IOException("Invalid geometry reference");if(!Objects.equals(value,Json.map("wkt",g.get("wkt"),"srid",g.get("srid"),"verticalSrid",g.get("verticalSrid"),"axisOrder",g.get("axisOrder"),"dimensions",g.get("dimensions"))))throw new IOException("Geometry descriptor value differs from its record");}}
+        for(var g:geometries.values()){if(!Objects.equals(g.get("geometryType"),GeometryCodec.fromWkt(g.get("wkt"),g.get("srid"),g.get("verticalSrid")).get("geometryType")))throw new IOException("Geometry type differs from WKT");if(!descriptors.containsKey(g.get("descriptorId"))||!Objects.equals(descriptors.get(g.get("descriptorId")).get("geometryId"),g.get("id")))throw new IOException("Orphan geometry record");}
+        Set<String> edgeKeys=workspace==null?new HashSet<>():workspace.set();
+        for(String edgeList:List.of("relationships","classRelationships")){boolean objectEdge=edgeList.equals("relationships");Map<String,Map<String,Object>> endpoints=objectEdge?objects:classes;for(Object raw:(List<?>)graph.get(edgeList)){var edge=(Map<String,Object>)raw;if(!edgeKeys.add(edgeList+"\u0000"+edge.get("sourceId")+"\u0000"+edge.get("targetId")+"\u0000"+edge.get("label")))throw new IOException("Duplicate domain relationship");if(!endpoints.containsKey(edge.get("sourceId"))||!endpoints.containsKey(edge.get("targetId"))||!(edge.get("label") instanceof String))throw new IOException("Invalid relationship endpoint");}}
+        Set<String> classEdgeKeys=workspace==null?new HashSet<>():workspace.set();for(Object raw:(List<?>)graph.get("classRelationships")){var edge=(Map<String,Object>)raw;classEdgeKeys.add(edge.get("sourceId")+"\u0000"+edge.get("targetId")+"\u0000"+edge.get("label"));}
+        for(Object raw:(List<?>)graph.get("relationships")){var edge=(Map<String,Object>)raw;String sourceClass=memberships.get(edge.get("sourceId")),targetClass=memberships.get(edge.get("targetId"));if(!classEdgeKeys.contains(sourceClass+"\u0000"+targetClass+"\u0000"+edge.get("label")))throw new IOException("Object relationship has no Class relationship");}
+        for(Object raw:(List<?>)graph.get("resources")) {
+            if(!(raw instanceof Map<?,?> row)||!(row.get("sha256") instanceof String hash)||!(row.get("entry") instanceof String entry))throw new IOException("Invalid resource record");
+            if(!entry.equals("resources/"+hash)||!paths.contains(entry)||!hash.equals(entry.substring(10)))throw new IOException("Missing referenced resource");
+            Map<String,Object> files=ValueCodec.map(manifest.get("files"));Map<String,Object> info=ValueCodec.map(files.get(entry));if(!Objects.equals(row.get("bytes"),info.get("bytes")))throw new IOException("Resource length differs from its content entry");
+        }
+        Set<String> entityNames=workspace==null?new HashSet<>():workspace.set();for(String kind:List.of("Pattern","UserTool"))for(var row:ids.get(kind).values())if(!entityNames.add(kind+"\u0000"+row.get("name")))throw new IOException("Duplicate named entity");
+        validatePatternRows((List<?>)graph.get("patterns"),classes,workspace);
+    }
+    private static void validatePortableShape(String kind,Map<?,?> row)throws IOException{
+        if(!kind.equals("DResource")&&!(row.get("namespaceId") instanceof String))throw new IOException("Missing source Namespace");
+        for(String field:List.of("name","label")){
+            boolean required=field.equals("name")?Set.of("Class","ClassDescriptor","Descriptor","Pattern","UserTool").contains(kind):Set.of("Relationship","ClassRelationship").contains(kind);
+            if(required||row.containsKey(field)){Object raw=row.get(field);if(!(raw instanceof String name)||name.isBlank()||name.codePointCount(0,name.length())>255||name.codePoints().anyMatch(Character::isISOControl)||!java.text.Normalizer.isNormalized(name,java.text.Normalizer.Form.NFC))throw new IOException("Invalid portable name/label");}
+        }
+        if(kind.equals("UserTool")&&!(row.get("data") instanceof String))throw new IOException("Missing opaque User Tool data");
+        if(row.containsKey("weight"))try{ValueCodec.normalize("Float",row.get("weight"));}catch(RuntimeException e){throw new IOException("Invalid relationship weight",e);}
+    }
+    private static void validateRecordFields(String kind,Map<?,?> row)throws IOException{
+        Set<String> allowed=switch(kind){case "Class"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","position","order","comment","descriptors");case "ClassDescriptor"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","classId","name","type","order","comment");case "Object"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","classId","position");case "Descriptor"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","objectId","value","geometryId");case "DGeometry"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","descriptorId","geometryType","wkt","srid","verticalSrid","axisOrder","dimensions");case "Membership"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","objectId","classId");case "Relationship"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","sourceId","targetId","label","weight");case "ClassRelationship"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","sourceId","targetId","label","comment");case "Pattern"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","comment","definition");case "UserTool"->Set.of("kind","id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","comment","data");case "DResource"->Set.of("kind","id","filename","bytes","mediaType","sha256","entry");default->Set.of();};if(!allowed.containsAll(row.keySet()))throw new IOException("Nonportable fields in "+kind+" record");
+    }
+    private static void validatePatternRows(List<?> patterns,Map<String,Map<String,Object>> classes,PackageWorkspace workspace)throws IOException{
+        try{
+            Map<String,String> classNames=workspace==null?new HashMap<>():workspace.map(),declarations=workspace==null?new HashMap<>():workspace.map();
+            for(var clazz:classes.values()){
+                if(classNames.put((String)clazz.get("name"),(String)clazz.get("id"))!=null)throw new IOException("Duplicate Class name");
+                for(Object raw:(List<?>)clazz.getOrDefault("descriptors",List.of())){var declaration=ValueCodec.map(raw);declarations.put(clazz.get("id")+"\u0000"+declaration.get("name"),ValueCodec.type(declaration.get("type")));}
+            }
+            Map<String,Map<String,String>> schema=new AbstractMap<>(){
+                public Map<String,String> get(Object name){String id=classNames.get(name);if(id==null)return null;return new AbstractMap<>(){
+                    public String get(Object field){return declarations.get(id+"\u0000"+field);}
+                    public boolean containsKey(Object field){return get(field)!=null;}
+                    public Set<Entry<String,String>> entrySet(){throw new UnsupportedOperationException("Lookup-only declaration view");}
+                };}
+                public Set<Entry<String,Map<String,String>>> entrySet(){throw new UnsupportedOperationException("Lookup-only schema view");}
+            };
+            Collection<Map<String,Object>> definitions=new AbstractCollection<>(){
+                public int size(){return patterns.size();}
+                public Iterator<Map<String,Object>> iterator(){return patterns.stream().map(raw->ValueCodec.map(ValueCodec.map(raw).get("definition"))).iterator();}
+            };
+            PatternCodec.validate(definitions,schema,workspace);
+        }catch(IOException failure){throw failure;}catch(RuntimeException failure){throw new IOException("Invalid Pattern definition or compatibility",failure);}
+    }
+}

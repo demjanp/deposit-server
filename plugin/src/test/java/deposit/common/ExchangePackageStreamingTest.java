@@ -30,6 +30,49 @@ class ExchangePackageStreamingTest {
         var ns=manifest();Path graph=temp.resolve("callback-graph.json");Json.write(Files.newOutputStream(graph),Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"resources",List.of(),"userTools",List.of()));Path zip=archive(graph,ns);var expected=new IllegalStateException("caller failure");
         var actual=assertThrows(IllegalStateException.class,()->ExchangePackageCodec.withValidatedPackage(zip,()->{},pkg->{throw expected;}));assertSame(expected,actual);
     }
+    @Test void checkpointSignalsKeepTheirIdentityAndRemoveWorkspaceAtEveryValidationPhase()throws Exception{
+        var manifest=manifest();String ns=(String)manifest.get("sourceNamespaceId"),clazz=UUID.randomUUID().toString(),object=UUID.randomUUID().toString();
+        var tools=new ArrayList<Object>();for(int i=0;i<400;i++)tools.add(Json.map("kind","UserTool","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","Tool "+i,"data","opaque "+i));
+        var graph=Json.map("classes",List.of(Json.map("kind","Class","id",clazz,"namespaceId",ns,"name","Specimen","descriptors",List.of(Json.map("kind","ClassDescriptor","id",UUID.randomUUID().toString(),"namespaceId",ns,"classId",clazz,"name","Payload","type","List")))),
+            "objects",List.of(Json.map("kind","Object","id",object,"namespaceId",ns,"classId",clazz)),
+            "memberships",List.of(Json.map("kind","Membership","id",UUID.randomUUID().toString(),"namespaceId",ns,"objectId",object,"classId",clazz)),
+            "descriptors",List.of(Json.map("kind","Descriptor","id",UUID.randomUUID().toString(),"namespaceId",ns,"objectId",object,"name","Payload","value",Json.map("itemType","String","items",Collections.nCopies(1500,"scientific value")))),
+            "geometries",List.of(),"relationships",List.of(),"classRelationships",List.of(),"resources",List.of(),"userTools",tools,
+            "patterns",List.of(Json.map("kind","Pattern","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","Specimen pattern","definition",Json.map("objects",Json.map("specimen",Json.map("className","Specimen","root",true))))));
+        Path zip=temp.resolve("checkpoint-phases.zip");ExchangePackageCodec.write(zip,manifest,graph,null,Map.of());
+        assertEquals(400L,ExchangePackageCodec.validateSummary(zip).counts().get("userTools"));
+        for(boolean interrupt:List.of(false,true))for(String phase:List.of("archive","parse","index","value","pattern","callback")){
+            var before=validationDirectories();var expected=new IllegalStateException("cancel "+phase);boolean[] callback={false};
+            Runnable checkpoint=()->{
+                boolean reached=callback[0]&&phase.equals("callback")||StackWalker.getInstance().walk(frames->frames.anyMatch(frame->switch(phase){
+                    case "archive"->frame.getClassName().equals(PackageArchiveIO.class.getName())&&frame.getMethodName().equals("read");
+                    case "parse"->frame.getClassName().endsWith("PackageWorkspace$Parser");
+                    case "index"->frame.getClassName().equals(PackageGraphValidator.class.getName())&&frame.getMethodName().equals("validate");
+                    case "value"->frame.getClassName().equals(PackageValueCodec.class.getName())&&frame.getMethodName().equals("validateValue");
+                    case "pattern"->frame.getClassName().equals(PackageGraphValidator.class.getName())&&frame.getMethodName().equals("validatePatternRows");
+                    default->false;
+                }));
+                if(reached){if(interrupt)Thread.currentThread().interrupt();else throw expected;}
+            };
+            java.util.function.Function<ExchangePackageCodec.PackageData,Object> traverse=pkg->{
+                callback[0]=true;
+                for(Object raw:(List<?>)pkg.graph().get("userTools")){var row=ValueCodec.map(raw);for(String key:List.of("id","namespaceId","name","data"))assertNotNull(row.get(key));}
+                return null;
+            };
+            if(interrupt){try{assertThrows(InterruptedIOException.class,()->ExchangePackageCodec.withValidatedPackage(zip,checkpoint,traverse),phase);}finally{Thread.interrupted();}}
+            else assertSame(expected,assertThrows(IllegalStateException.class,()->ExchangePackageCodec.withValidatedPackage(zip,checkpoint,traverse),phase),phase);
+            assertEquals(before,validationDirectories(),"Workspace leaked after "+phase);
+        }
+    }
+    @Test void callbackUncheckedIoFailureRetainsIdentityAndRemovesWorkspace()throws Exception{
+        var manifest=manifest();Path graph=temp.resolve("callback-io.json");Files.writeString(graph,Json.write(Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"resources",List.of(),"userTools",List.of())));
+        Path zip=archive(graph,manifest);var expected=new UncheckedIOException(new IOException("callback IO"));var before=validationDirectories();
+        assertSame(expected,assertThrows(UncheckedIOException.class,()->ExchangePackageCodec.withValidatedPackage(zip,()->{},pkg->{throw expected;})));
+        assertEquals(before,validationDirectories());
+    }
+    private Set<Path> validationDirectories()throws IOException{
+        try(var paths=Files.list(Path.of(System.getProperty("java.io.tmpdir")))){return paths.filter(path->path.getFileName().toString().startsWith("deposit-package-validation-")).collect(java.util.stream.Collectors.toSet());}
+    }
     @Test void validatedCallbackPreservesOriginalTextDictionaryKeysAndPatternComments()throws Exception{
         var manifest=manifest();String ns=(String)manifest.get("sourceNamespaceId"),classId=UUID.randomUUID().toString(),objectId=UUID.randomUUID().toString();
         String longText="original α 😀\n".repeat(4000),longKey="scientific-key-".repeat(3000),scientificId=UUID.randomUUID().toString().toUpperCase(Locale.ROOT);
