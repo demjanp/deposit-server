@@ -2,12 +2,13 @@ package deposit.service;
 
 import deposit.common.*;
 import deposit.common.Results.Outcome;
-import deposit.repository.CoreRepository;
 import java.util.*;
 import org.neo4j.graphdb.*;
 
 public final class DomainService extends ActionService {
-    public DomainService(RequestContext c) {super(c);}
+    private final DomainRelationshipCommands relationships;
+    private final DomainSchemaCommands schema;
+    public DomainService(RequestContext c) {super(c);relationships=new DomainRelationshipCommands(c);schema=new DomainSchemaCommands(this,c);}
     private Node required(String label,Object id) {
         Node n=repo.entity(label,c.namespaceId,RequestContext.uuid(id));if(n==null)c.fail("NOT_FOUND",label+" not found");return n;
     }
@@ -93,7 +94,7 @@ public final class DomainService extends ActionService {
             return new Change(outcome(n),true);
     }
     public Outcome set(String kind,Map<String,Object> request) {return action("deposit.set."+lower(kind),request,false,"editor",()->setCommand(kind,request));}
-    private Change setCommand(String kind,Map<String,Object> request) {
+    Change setCommand(String kind,Map<String,Object> request) {
         switch(kind) {
             case "Class" -> fields(request,"id","name","position","order","comment");
             case "Object" -> fields(request,"id","position","descriptors","clearDescriptors");
@@ -131,28 +132,9 @@ public final class DomainService extends ActionService {
             var deleted=new ArrayList<String>();repo.remove(n,deleted);return new Change(new Outcome(null,null,Json.map("deletedIds",deleted)),true);
     }
     public Outcome membership(Map<String,Object> request) {return action("deposit.set.membership",request,false,"editor",()->membershipCommand(request));}
-    private Change membershipCommand(Map<String,Object> request) {
-        fields(request,"objectId","classId","className");
-            Node object=required("Object",request.get("objectId")),destination=clazz(request,false),source=repo.objectClass(object);
-            boolean changed=!source.equals(destination);
-            if(changed) {
-                for(Node descriptor:repo.children(object,"Descriptor")) {
-                    String name=(String)descriptor.getProperty("name");Node sourceDecl=repo.declaration(source,name),destDecl=repo.declaration(destination,name);
-                    if(destDecl==null)newDeclaration(destination,Json.map("name",name,"type",sourceDecl.getProperty("type"),"order",sourceDecl.getProperty("order"),"comment",sourceDecl.getProperty("comment")));
-                    else if(!sourceDecl.getProperty("type").equals(destDecl.getProperty("type")))c.fail("TYPE_CONFLICT","Destination declaration differs");
-                }
-            }
-            Relationship rel=repo.assign(object,destination,c.actorId);
-            if(changed) {
-                repo.audit(object,c.actorId);
-                try(var edges=object.getRelationships(RelationshipType.withName("RELATED_TO"))) {
-                    for(var edge:edges) {c.state.kernel.assertOpen();ensureClassRelationship(edge);}
-                }
-            }
-            return new Change(new Outcome(null,rel,repo.data(rel)),changed);
-    }
+    private Change membershipCommand(Map<String,Object> request) {return relationships.membership(request);}
     public Outcome convert(Map<String,Object> request) {return action("deposit.set.classDescriptorType",request,false,"editor",()->convertCommand(request));}
-    private Change convertCommand(Map<String,Object> request) {
+    Change convertCommand(Map<String,Object> request) {
         fields(request,"id","type","conversion");
             Node declaration=required("ClassDescriptor",request.get("id"));String old=(String)declaration.getProperty("type"),type=ValueCodec.type(request.get("type")),conversion=string(request.get("conversion"));
             if(!Set.of("identity","integerToFloat","floatToIntegerExact").contains(conversion))c.fail("VALIDATION_FAILED","Invalid conversion");
@@ -194,7 +176,7 @@ public final class DomainService extends ActionService {
     Change command(String procedure,Map<String,Object> request) {
         c.state.kernel.assertOpen();requireRole(c.namespaceId,commandRole(procedure));
         return switch(procedure) {
-            case "deposit.set.classDescriptor" -> declarationPatch(request);
+            case "deposit.set.classDescriptor" -> schema.declarationPatch(request);
             case "deposit.set.membership" -> membershipCommand(request);
             case "deposit.set.classDescriptorType" -> convertCommand(request);
             case "deposit.set.classDescriptorOrder","deposit.set.classDescriptorComment" -> {
@@ -202,72 +184,14 @@ public final class DomainService extends ActionService {
                 if(!request.containsKey(field))c.fail("VALIDATION_FAILED",field+" required");
                 yield setCommand("ClassDescriptor",request);
             }
-            case "deposit.set.namespace" -> namespaceCommand(request);
-            case "deposit.delete.all" -> clearCommand(request);
+            case "deposit.set.namespace" -> schema.namespace(request);
+            case "deposit.delete.all" -> schema.clear(request);
             default -> {
                 if(!COMMANDS.contains(procedure))c.fail("VALIDATION_FAILED","Unsupported domain command");
                 String[] parts=procedure.split("\\.");String kind=Character.toUpperCase(parts[2].charAt(0))+parts[2].substring(1);
-                if(kind.equals("Relationship")||kind.equals("ClassRelationship"))yield relationshipCommand(parts[1],kind,request);
+                if(kind.equals("Relationship")||kind.equals("ClassRelationship"))yield relationships.relationship(parts[1],kind,request);
                 yield switch(parts[1]) {case "create"->createCommand(kind,request);case "set"->setCommand(kind,request);case "delete"->removeCommand(kind,request);default->throw new IllegalArgumentException();};
             }
         };
-    }
-    private Change declarationPatch(Map<String,Object> request) {
-        fields(request,"id","type","conversion","order","comment");
-        if(request.containsKey("conversion")&&!request.containsKey("type"))c.fail("VALIDATION_FAILED","conversion requires type");
-        boolean changed=false;
-        if(request.containsKey("type")) {
-            if(!request.containsKey("conversion"))c.fail("VALIDATION_FAILED","Type changes require an explicit conversion");
-            changed=convertCommand(Json.map("id",request.get("id"),"type",request.get("type"),"conversion",request.get("conversion"))).changed();
-        }
-        var properties=new LinkedHashMap<>(request);properties.remove("type");properties.remove("conversion");
-        Change patch=setCommand("ClassDescriptor",properties);
-        return new Change(patch.outcome(),changed||patch.changed());
-    }
-    private Change namespaceCommand(Map<String,Object> request) {
-        fields(request,"name","description");Node ns=repo.namespace(c.namespaceId);var updates=new LinkedHashMap<String,Object>();
-        if(request.containsKey("name")) {
-            String value=name(request.get("name"));Node other=repo.find("Namespace","name",value);
-            if(other!=null&&!other.equals(ns))c.fail("DUPLICATE","Namespace name exists");updates.put("name",value);
-        }
-        if(request.containsKey("description"))updates.put("description",string(request.get("description")));
-        boolean changed=repo.update(ns,updates,c.actorId);var result=outcome(ns);result.data().put("role",effectiveRole(c.namespaceId));
-        if(changed)result.data().put("sequence",repo.sequence(c.namespaceId)+1);
-        return new Change(result,changed);
-    }
-    private Change clearCommand(Map<String,Object> request) {
-        fields(request,"confirmNamespaceName");
-        if(!string(request.get("confirmNamespaceName")).equals(repo.namespace(c.namespaceId).getProperty("name")))c.fail("VALIDATION_FAILED","Namespace name confirmation changed");
-        var deleted=new ArrayList<String>();
-        for(String kind:List.of("Object","Class","Pattern","UserTool"))for(Node n:repo.nodes(kind,Map.of("namespaceId",c.namespaceId))) {c.state.kernel.assertOpen();repo.remove(n,deleted);}
-        deleted.sort(String::compareTo);return new Change(new Outcome(null,null,Json.map("deletedIds",deleted)),!deleted.isEmpty());
-    }
-    private void ensureClassRelationship(Relationship edge) {
-        if(!CoreRepository.kind(edge).equals("Relationship"))throw new IllegalStateException("Invalid Object relationship");
-        Node source=repo.objectClass(edge.getStartNode()),target=repo.objectClass(edge.getEndNode());String label=(String)edge.getProperty("label");
-        if(repo.relationship(source,target,label)==null)repo.createRelationship(source,target,label,Map.of("comment",""),c.actorId);
-    }
-    private Change relationshipCommand(String verb,String kind,Map<String,Object> request) {
-        boolean object=kind.equals("Relationship");String field=object?"weight":"comment";
-        if(verb.equals("create")) {
-            fields(request,"sourceId","targetId","label",field);
-            Node source=required(object?"Object":"Class",request.get("sourceId")),target=required(object?"Object":"Class",request.get("targetId"));String label=name(request.get("label"));
-            if(repo.relationship(source,target,label)!=null)c.fail("DUPLICATE","Relationship exists");
-            Object value=object?ValueCodec.normalize("Float",request.get("weight")):string(request.getOrDefault("comment",""));
-            Relationship rel=repo.createRelationship(source,target,label,Json.map(field,value),c.actorId);
-            if(object)ensureClassRelationship(rel);
-            return new Change(new Outcome(null,rel,repo.data(rel)),true);
-        }
-        if(verb.equals("set"))fields(request,"id",field);else fields(request,"id");
-        Relationship rel=repo.relationship(c.namespaceId,kind,RequestContext.uuid(request.get("id")));if(rel==null)c.fail("NOT_FOUND","Relationship not found");
-        if(verb.equals("set")) {
-            var updates=new LinkedHashMap<String,Object>();if(request.containsKey(field))updates.put(field,object?ValueCodec.normalize("Float",request.get(field)):string(request.get(field)));
-            boolean changed=repo.update(rel,updates,c.actorId);return new Change(new Outcome(null,rel,repo.data(rel)),changed);
-        }
-        if(!object)for(Relationship instance:repo.relationships(c.namespaceId,"Relationship")) {
-            c.state.kernel.assertOpen();
-            if(repo.objectClass(instance.getStartNode()).equals(rel.getStartNode())&&repo.objectClass(instance.getEndNode()).equals(rel.getEndNode())&&instance.getProperty("label").equals(rel.getProperty("label")))c.fail("VALIDATION_FAILED","Class Relationship is used");
-        }
-        var deleted=new ArrayList<String>();repo.remove(rel,deleted);return new Change(new Outcome(null,null,Json.map("deletedIds",deleted)),true);
     }
 }
