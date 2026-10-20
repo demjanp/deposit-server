@@ -15,10 +15,10 @@ class ImportServiceTest {
     @TempDir Path temp;
     private record Link(String source,String target,String label) {}
     private Set<Map<String,Object>> solve(Map<String,List<String>> candidates,List<Link> links,Set<Link> receiving)throws Exception{
-        try(var indexes=new ImportService.ImportScratch(temp,()->{});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
+        try(var indexes=new ImportScratch(temp,()->{});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
             for(var entry:candidates.entrySet()){indexes.update("INSERT INTO sources(id,className) VALUES(?,?)",entry.getKey(),"Thing");for(String target:entry.getValue())indexes.update("INSERT INTO candidates(source,target) VALUES(?,?)",entry.getKey(),target);}
             for(var link:links)indexes.update("INSERT INTO edges(source,target,label) VALUES(?,?,?)",link.source,link.target,link.label);
-            var solver=new ImportService.MappingSolver(indexes,solutions,(source,target,label)->receiving.contains(new Link(source,target,label)));solver.solve();
+            var solver=new MappingSolver(indexes,solutions,(source,target,label)->receiving.contains(new Link(source,target,label)));solver.solve();
             var result=new LinkedHashSet<Map<String,Object>>();for(Object solution:solutions)assertTrue(result.add(ValueCodec.map(solution)),"Duplicate optimal mapping");
             for(var mapping:result)assertEquals(solver.best,mapping.values().stream().filter(Objects::isNull).count());return result;
         }
@@ -47,19 +47,19 @@ class ImportServiceTest {
         assertEquals(new ArrayList<>(solve(first,List.of(),Set.of())),new ArrayList<>(solve(second,List.of(),Set.of())));
     }
     @Test void candidateHeavyAmbiguityStopsAfterTwoMinimumMappingsAndCleansScratch()throws Exception{
-        try(var indexes=new ImportService.ImportScratch(temp,()->{});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
+        try(var indexes=new ImportScratch(temp,()->{});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
             for(int source=0;source<8;source++){String id="s"+source;indexes.update("INSERT INTO sources(id,className) VALUES(?,?)",id,"Thing");for(int target=0;target<30;target++)indexes.update("INSERT INTO candidates(source,target) VALUES(?,?)",id,"t"+target);}
-            long started=System.nanoTime();var solver=new ImportService.MappingSolver(indexes,solutions,(source,target,label)->true);solver.solve();
+            long started=System.nanoTime();var solver=new MappingSolver(indexes,solutions,(source,target,label)->true);solver.solve();
             assertEquals(0,solver.best);assertEquals(2,solutions.size());assertTrue(System.nanoTime()-started<TimeUnit.SECONDS.toNanos(3),"Ambiguous search did not stop after proving non-uniqueness");
         }
         try(var files=Files.list(temp)){assertEquals(0,files.count());}
     }
     @Test void expiredSharedDeadlineIsHonoredAndScratchIsCleaned()throws Exception{
         var expected=new IllegalStateException("deadline");var expired=new AtomicBoolean();
-        try(var indexes=new ImportService.ImportScratch(temp,()->{if(expired.get())throw expected;});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
+        try(var indexes=new ImportScratch(temp,()->{if(expired.get())throw expected;});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
             indexes.update("INSERT INTO sources(id,className) VALUES(?,?)","s","Thing");indexes.update("INSERT INTO candidates(source,target) VALUES(?,?)","s","t");
             expired.set(true);
-            assertSame(expected,assertThrows(IllegalStateException.class,()->new ImportService.MappingSolver(indexes,solutions,(source,target,label)->true).solve()));
+            assertSame(expected,assertThrows(IllegalStateException.class,()->new MappingSolver(indexes,solutions,(source,target,label)->true).solve()));
         }
         try(var files=Files.list(temp)){assertEquals(0,files.count());}
     }
@@ -71,7 +71,7 @@ class ImportServiceTest {
         }
         var advertised=List.of(Json.map("a","x","b","y"),Json.map("a","z","b","y"),Json.map("a",null,"b","y"));
         try(var candidates=new DiskJsonList(temp,"candidates-");var conflicts=new DiskJsonList(temp,"conflicts-")){
-            var summary=ImportService.applicationSummary(Json.write(Json.map("classMap",Map.of("A","B"),"objectMappings",Map.of(),"candidateMappings",advertised,"rowMappings",Map.of("r1/a","x"),"conflicts",List.of(Json.map("kind","mappingAmbiguity","conflictId","mapping","candidateMappings",advertised),Json.map("kind","value","conflictId","field:a:Mass","incoming",20L,"receiving",10L)))),candidates,conflicts,()->{});
+            var summary=ImportPlanSummary.applicationSummary(Json.write(Json.map("classMap",Map.of("A","B"),"objectMappings",Map.of(),"candidateMappings",advertised,"rowMappings",Map.of("r1/a","x"),"conflicts",List.of(Json.map("kind","mappingAmbiguity","conflictId","mapping","candidateMappings",advertised),Json.map("kind","value","conflictId","field:a:Mass","incoming",20L,"receiving",10L)))),candidates,conflicts,()->{});
             assertEquals(advertised,candidates);assertEquals(Map.of("A","B"),summary.get("classMap"));assertFalse(summary.containsKey("rowMappings"));
             assertEquals(Json.map("kind","mappingAmbiguity","conflictId","mapping"),conflicts.getFirst());assertEquals(Json.map("kind","value","conflictId","field:a:Mass"),conflicts.getLast());
         }
@@ -79,11 +79,11 @@ class ImportServiceTest {
     }
     @Test void coalescedRowsRejectContradictoryWritesBeforeApply()throws Exception{
         var mappings=Json.map("a","target","b","target","new",null);var rules=Json.map("_tabularIds",Json.map("a","r1/specimen","b","r2/specimen"));
-        try(var indexes=new ImportService.ImportScratch(temp,()->{})){
+        try(var indexes=new ImportScratch(temp,()->{})){
             var consistent=Json.map("descriptors",List.of(Json.map("objectId","a","name","Value","value","same"),Json.map("objectId","b","name","Value","value","same")));
-            assertTrue(ImportService.coalescedDescriptorConflicts(consistent,mappings,rules,indexes).isEmpty());
+            assertTrue(ImportCoalescedConflicts.coalescedDescriptorConflicts(consistent,mappings,rules,indexes).isEmpty());
             var conflicting=Json.map("descriptors",List.of(Json.map("objectId","a","name","Value","value","first"),Json.map("objectId","b","name","Value","value","second"),Json.map("objectId","new","name","Value","value","independent")));
-            assertEquals(List.of(Json.map("kind","coalescedValue","sourceIds",List.of("r1/specimen","r2/specimen"),"descriptor","Value")),ImportService.coalescedDescriptorConflicts(conflicting,mappings,rules,indexes));
+            assertEquals(List.of(Json.map("kind","coalescedValue","sourceIds",List.of("r1/specimen","r2/specimen"),"descriptor","Value")),ImportCoalescedConflicts.coalescedDescriptorConflicts(conflicting,mappings,rules,indexes));
         }
         try(var files=Files.list(temp)){assertEquals(0,files.count());}
     }
@@ -97,13 +97,13 @@ class ImportServiceTest {
     public static class Probe {
         public static void main(String[] args)throws Exception{
             Path parent=Path.of(args[0]);long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(60);
-            try(var indexes=new ImportService.ImportScratch(parent,()->{if(System.nanoTime()-deadline>=0)throw new IllegalStateException("deadline");});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
+            try(var indexes=new ImportScratch(parent,()->{if(System.nanoTime()-deadline>=0)throw new IllegalStateException("deadline");});var solutions=new DiskJsonList(indexes.directory,"solutions-")){
                 for(int i=0;i<12_000;i++){String id=String.format("s%05d",i);indexes.update("INSERT INTO sources(id,className) VALUES(?,?)",id,"Thing");if(i>0)indexes.update("INSERT INTO edges(source,target,label) VALUES(?,?,?)",String.format("s%05d",i-1),id,"next");}
-                var solver=new ImportService.MappingSolver(indexes,solutions,(source,target,label)->true);solver.solve();assertEquals(12_000,solver.best);assertEquals(1,solutions.size());assertEquals(12_000,ValueCodec.map(solutions.getFirst()).size());
+                var solver=new MappingSolver(indexes,solutions,(source,target,label)->true);solver.solve();assertEquals(12_000,solver.best);assertEquals(1,solutions.size());assertEquals(12_000,ValueCodec.map(solutions.getFirst()).size());
             }
             Path summaryFile=parent.resolve("summary.json");var mapping=new LinkedHashMap<String,Object>();for(int i=0;i<12;i++)mapping.put("source-"+i,"target-"+i);String record=Json.write(mapping);
             try(var writer=Files.newBufferedWriter(summaryFile)){writer.write("{\"classMap\":{},\"objectMappings\":{},\"candidateMappings\":[");for(int i=0;i<15_000;i++){if(i>0)writer.write(',');writer.write(record);}writer.write("],\"conflicts\":[{\"kind\":\"mappingAmbiguity\",\"conflictId\":\"mapping\",\"candidateMappings\":[");for(int i=0;i<15_000;i++){if(i>0)writer.write(',');writer.write(record);}writer.write("]}]}");}
-            try(var candidates=new DiskJsonList(parent,"candidates-");var conflicts=new DiskJsonList(parent,"conflicts-")){ImportService.applicationSummary(Files.readString(summaryFile),candidates,conflicts,()->{});assertEquals(15_000,candidates.size());assertEquals(mapping,candidates.getLast());assertEquals(1,conflicts.size());assertEquals(2,ValueCodec.map(conflicts.getFirst()).size());}finally{Files.deleteIfExists(summaryFile);}
+            try(var candidates=new DiskJsonList(parent,"candidates-");var conflicts=new DiskJsonList(parent,"conflicts-")){ImportPlanSummary.applicationSummary(Files.readString(summaryFile),candidates,conflicts,()->{});assertEquals(15_000,candidates.size());assertEquals(mapping,candidates.getLast());assertEquals(1,conflicts.size());assertEquals(2,ValueCodec.map(conflicts.getFirst()).size());}finally{Files.deleteIfExists(summaryFile);}
         }
     }
     private static Set<Map<String,Object>> oracle(Map<String,List<String>> candidates,List<Link> links,Set<Link> receiving){
