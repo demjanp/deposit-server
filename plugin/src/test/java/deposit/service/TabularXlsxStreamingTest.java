@@ -25,27 +25,27 @@ class TabularXlsxStreamingTest {
     }
 
     @Test void date1904FormulaCachesRichStringsAndSparsePresenceArePreserved()throws Exception {
-        Path source=temp.resolve("edge-cells.xlsx"),output=temp.resolve("edge-cells.json");writeEdgeWorkbook(source);var result=TabularService.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of("date","Date","formula","Integer"),Map.of(),".",()->{});
+        Path source=temp.resolve("edge-cells.xlsx"),output=temp.resolve("edge-cells.json");writeEdgeWorkbook(source);var result=XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of("date","Date","formula","Integer"),Map.of(),".",()->{});
         assertEquals(2L,result.get("rowCount"));assertFalse((Boolean)result.get("valid"));List<Map<String,Object>> rows=new ArrayList<>();try(Json.ArrayReader reader=new Json.ArrayReader(output,"rows")){Map<String,Object> row;while((row=reader.next())!=null)rows.add(row);}
         Map<String,Object> first=rows.getFirst(),values=ValueCodec.map(first.get("values"));Map<String,Object> presence=ValueCodec.map(first.get("presence"));assertEquals("1904-01-01",values.get("date"));assertEquals(2L,values.get("formula"));assertEquals("#VALUE!",values.get("error"));assertEquals("",values.get("cacheless"));assertEquals("rich text",values.get("rich"));assertEquals("inline rich",values.get("inline"));assertTrue(Boolean.TRUE.equals(presence.get("rich")));assertTrue(((List<?>)result.get("diagnostics")).stream().anyMatch(d->"FORMULA_CACHED".equals(ValueCodec.map(d).get("code"))));
         Map<String,Object> last=ValueCodec.map(rows.getLast().get("presence"));assertTrue(last.values().stream().allMatch(value->Boolean.FALSE.equals(value)),"Dimension-only trailing row must retain absent-cell presence");try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")));}
-        Path emptySource=temp.resolve("empty.xlsx"),emptyOutput=temp.resolve("empty.json");writeWorkbook(emptySource,0);var empty=TabularService.parseXlsx(emptySource,emptyOutput,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{});assertEquals(0L,empty.get("rowCount"));
+        Path emptySource=temp.resolve("empty.xlsx"),emptyOutput=temp.resolve("empty.json");writeWorkbook(emptySource,0);var empty=XlsxTableReader.parseXlsx(emptySource,emptyOutput,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{});assertEquals(0L,empty.get("rowCount"));
     }
 
     @Test void cancellationWhileReadingSharedStringsRemovesTemporaryWorkspace()throws Exception {
         Path source=temp.resolve("cancel.xlsx"),output=temp.resolve("cancel.json");writeWorkbook(source,1000);int preflightReads=zipChunkReads(source);java.util.concurrent.atomic.AtomicInteger checks=new java.util.concurrent.atomic.AtomicInteger();
-        assertThrows(Exception.class,()->TabularService.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{if(checks.incrementAndGet()==preflightReads+2)throw new IllegalStateException("cancelled");}));assertTrue(checks.get()>preflightReads);try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")),"Cancellation must remove the shared-string workspace");}
+        assertThrows(Exception.class,()->XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{if(checks.incrementAndGet()==preflightReads+2)throw new IllegalStateException("cancelled");}));assertTrue(checks.get()>preflightReads);try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")),"Cancellation must remove the shared-string workspace");}
     }
 
     @Test void preflightRejectsZipEntryAndExpandedContentLimits()throws Exception {
         Path source=temp.resolve("bounded.xlsx");writeWorkbook(source,0);
-        RuntimeException entries=assertThrows(RuntimeException.class,()->TabularService.preflightXlsx(source,()->{},4,Long.MAX_VALUE));assertTrue(entries.getMessage().contains("LIMIT_EXCEEDED"),entries.getMessage());assertTrue(entries.getMessage().contains("entry limit"),entries.getMessage());
-        RuntimeException expanded=assertThrows(RuntimeException.class,()->TabularService.preflightXlsx(source,()->{},100,32));assertTrue(expanded.getMessage().contains("LIMIT_EXCEEDED"),expanded.getMessage());assertTrue(expanded.getMessage().contains("expanded size limit"),expanded.getMessage());
+        RuntimeException entries=assertThrows(RuntimeException.class,()->XlsxTableReader.preflightXlsx(source,()->{},4,Long.MAX_VALUE));assertTrue(entries.getMessage().contains("LIMIT_EXCEEDED"),entries.getMessage());assertTrue(entries.getMessage().contains("entry limit"),entries.getMessage());
+        RuntimeException expanded=assertThrows(RuntimeException.class,()->XlsxTableReader.preflightXlsx(source,()->{},100,32));assertTrue(expanded.getMessage().contains("LIMIT_EXCEEDED"),expanded.getMessage());assertTrue(expanded.getMessage().contains("expanded size limit"),expanded.getMessage());
     }
 
     public static class Probe {
         public static void main(String[] args)throws Exception {
-            Path input=Path.of(args[0]),output=Path.of(args[1]);int rows=Integer.parseInt(args[2]);Map<String,Object> result=TabularService.parseXlsx(input,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{});
+            Path input=Path.of(args[0]),output=Path.of(args[1]);int rows=Integer.parseInt(args[2]);Map<String,Object> result=XlsxTableReader.parseXlsx(input,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{});
             if(((Number)result.get("rowCount")).longValue()!=rows)throw new AssertionError("Wrong staged row count: "+result);if(!Boolean.TRUE.equals(result.get("valid")))throw new AssertionError("Valid XLSX was marked invalid: "+result);System.out.println("streamed-rows="+rows+" max-heap="+Runtime.getRuntime().maxMemory());
         }
     }
