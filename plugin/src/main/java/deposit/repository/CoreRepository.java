@@ -7,10 +7,12 @@ import java.util.*;
 import org.neo4j.graphdb.*;
 
 /** Graph storage only. Authorization and action boundaries belong to services. */
-public final class CoreRepository {
+public final class CoreRepository implements CoreProjectionRepository.Access, OperationReceiptRepository.Access {
     private final Transaction tx;
     private final ZonedDateTime timestamp;
-    public CoreRepository(Transaction tx,ZonedDateTime timestamp) {this.tx=tx;this.timestamp=timestamp;}
+    private final CoreProjectionRepository projections;
+    private final OperationReceiptRepository receipts;
+    public CoreRepository(Transaction tx,ZonedDateTime timestamp) {this.tx=tx;this.timestamp=timestamp;projections=new CoreProjectionRepository(this);receipts=new OperationReceiptRepository(tx,this);}
     public Node find(String label,String property,Object value) {return tx.findNode(Label.label(label),property,value);}
     public Node find(String label,Map<String,Object> properties) {
         try(var nodes=tx.findNodes(Label.label(label),properties)) {return nodes.hasNext()?nodes.next():null;}
@@ -115,6 +117,7 @@ public final class CoreRepository {
     public Node owner(Node descriptor) {return descriptor.getSingleRelationship(RelationshipType.withName("HAS_DESCRIPTOR"),Direction.INCOMING).getStartNode();}
     public String descriptorType(Node descriptor) {return (String)declaration(objectClass(owner(descriptor)),(String)descriptor.getProperty("name")).getProperty("type");}
     private GeometryRepository geometry(){return new GeometryRepository(tx,this);}
+    @Override public Node geometry(Node descriptor) {return geometry().geometry(descriptor);}
     private ResourceRepository resources(){return new ResourceRepository(tx,this);}
     public Object descriptorValue(Node descriptor) {
         String type=descriptorType(descriptor);
@@ -150,26 +153,8 @@ public final class CoreRepository {
         var resourceEdge=descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING);
         if(resourceEdge!=null){var r=resources();Node resource=resourceEdge.getEndNode();r.lock(id(resource));resourceEdge.delete();r.changed(resource);}
     }
-    public Map<String,Object> data(Node node) {return data(node,true);}
-    public Map<String,Object> data(Node node,boolean includeOwnedValues) {
-        String kind=kind(node);var result=new LinkedHashMap<String,Object>();
-        if(!kind.equals("User")) result.put("kind",kind);
-        for(String key:List.of("id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","username","enabled","serverRole","description","depositVersion","historyMode","historyEpochId","sequence","order","comment","type")) {
-            if(node.hasProperty(key)) {Object v=node.getProperty(key);result.put(key,v instanceof java.time.temporal.TemporalAccessor?v.toString():v);}
-        }
-        if(!kind.equals("User") && !result.containsKey("namespaceId"))result.put("namespaceId",kind.equals("Namespace")?id(node):null);
-        if(node.hasProperty("position"))result.put("position",Arrays.stream((double[])node.getProperty("position")).boxed().toList());
-        if(kind.equals("Object")) {result.put("classId",id(objectClass(node)));var descriptors=new LinkedHashMap<String,Object>();if(includeOwnedValues)for(Node d:children(node,"Descriptor")) descriptors.put((String)d.getProperty("name"),descriptorValue(d));result.put("descriptors",descriptors);}
-        if(kind.equals("Class")&&includeOwnedValues)result.put("descriptors",children(node,"ClassDescriptor").stream().map(this::data).toList());
-        if(kind.equals("Descriptor")) {result.put("objectId",node.getProperty("ownerId"));result.put("value",descriptorValue(node));}
-        if(kind.equals("Descriptor")&&descriptorType(node).equals("DGeometry")){Node g=geometry().geometry(node);result.put("geometryId",g==null?null:id(g));}
-        if(kind.equals("ClassDescriptor"))result.put("classId",node.getProperty("ownerId"));
-        if(kind.equals("Pattern"))result.put("definition",Json.read((String)node.getProperty("definition")));
-        if(kind.equals("UserTool"))result.put("data",node.getProperty("data"));
-        if(kind.equals("DGeometry")){for(String key:List.of("geometryType","wkt","srid","verticalSrid","axisOrder","dimensions"))if(node.hasProperty(key))result.put(key,node.getProperty(key));var edge=node.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.INCOMING);if(edge!=null)result.put("descriptorId",id(edge.getStartNode()));}
-        if(kind.equals("DResource"))for(String key:List.of("filename","bytes","mediaType","checksum","state"))if(node.hasProperty(key))result.put(key,node.getProperty(key));
-        return result;
-    }
+    public Map<String,Object> data(Node node) {return projections.data(node);}
+    public Map<String,Object> data(Node node,boolean includeOwnedValues) {return projections.data(node,includeOwnedValues);}
     public static String kind(Relationship rel) {
         String source=kind(rel.getStartNode()),target=kind(rel.getEndNode());
         if(rel.isType(RelationshipType.withName("MEMBER_OF"))&&source.equals("Object")&&target.equals("Class"))return "Membership";
@@ -179,13 +164,7 @@ public final class CoreRepository {
         }
         throw new IllegalStateException("Invalid domain edge endpoints");
     }
-    public Map<String,Object> data(Relationship rel) {
-        String kind=kind(rel);var result=new LinkedHashMap<String,Object>();result.put("kind",kind);
-        rel.getAllProperties().forEach((k,v)->result.put(k,v instanceof java.time.temporal.TemporalAccessor?v.toString():v));
-        if(kind.equals("Membership")) {result.put("objectId",id(rel.getStartNode()));result.put("classId",id(rel.getEndNode()));}
-        else {result.put("sourceId",id(rel.getStartNode()));result.put("targetId",id(rel.getEndNode()));if(kind.equals("Relationship"))result.putIfAbsent("weight",null);}
-        return result;
-    }
+    public Map<String,Object> data(Relationship rel) {return projections.data(rel);}
     private String edgeKey(Relationship rel) {
         String kind=kind(rel),ns=(String)rel.getProperty("namespaceId");
         return kind.equals("Membership")?ns+"/Membership/"+id(rel.getStartNode()):relationshipKey(ns,kind,id(rel.getStartNode()),id(rel.getEndNode()),(String)rel.getProperty("label"));
@@ -241,27 +220,10 @@ public final class CoreRepository {
         try(var edges=node.getRelationships()) {for(var rel:edges) {if(rel.hasProperty("id"))remove(rel,deleted);else rel.delete();}}
         node.delete();
     }
-    public Node receipt(String scope,String operation) {return find("DepositReceipt",Map.of("scope",scope,"operationId",operation));}
-    public Node binding(String actor,String operation) {return find("DepositOperationBinding",Map.of("actorId",actor,"operationId",operation));}
-    public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {
-        Node receipt=tx.createNode(Label.label("DepositReceipt"));
-        receipt.setProperty("scope",scope);receipt.setProperty("operationId",c.operationId);receipt.setProperty("actorId",c.actorId);receipt.setProperty("requestHash",hash);
-        receipt.setProperty("outcome",Json.write(outcome.data()));receipt.setProperty("revision",c.revision);
-        receipt.setProperty("administrativeMode",c.state.scoped?c.state.administrative:(c.session!=null&&c.session.administrative));
-        if(outcome.node()!=null) {receipt.setProperty("nodeKind",kind(outcome.node()));receipt.setProperty("entityId",id(outcome.node()));}
-        if(outcome.rel()!=null) {receipt.setProperty("relId",id(outcome.rel()));receipt.setProperty("relKind",kind(outcome.rel()));receipt.setProperty("objectId",id(outcome.rel().getStartNode()));}
-        Node binding=tx.createNode(Label.label("DepositOperationBinding"));binding.setProperty("actorId",c.actorId);binding.setProperty("operationId",c.operationId);binding.setProperty("scope",scope);
-    }
-    public Outcome replay(Node receipt,String scope) {
-        Node node=null;Relationship rel=null;
-        if(receipt.hasProperty("entityId")) {String label=(String)receipt.getProperty("nodeKind");String id=(String)receipt.getProperty("entityId");node=Set.of("Namespace","User").contains(label)?find(label,"id",id):entity(label,scope,id);}
-        if(receipt.hasProperty("relId")) {
-            String category=(String)receipt.getProperty("relKind","Membership");
-            if(category.equals("Membership")) {Node object=entity("Object",scope,(String)receipt.getProperty("objectId"));if(object!=null) {var candidate=membership(object);if(candidate!=null && receipt.getProperty("relId").equals(id(candidate)))rel=candidate;}}
-            else rel=relationship(scope,category,(String)receipt.getProperty("relId"));
-        }
-        return new Outcome(node,rel,Json.read((String)receipt.getProperty("outcome")));
-    }
+    public Node receipt(String scope,String operation) {return receipts.receipt(scope,operation);}
+    public Node binding(String actor,String operation) {return receipts.binding(actor,operation);}
+    public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {receipts.saveReceipt(c,scope,hash,outcome);}
+    public Outcome replay(Node receipt,String scope) {return receipts.replay(receipt,scope);}
     public boolean bootstrapped() {return find("DepositInitialization","id","bootstrap")!=null || nodes("User",Map.of("serverRole","administrator")).size()>0;}
     public void validateOwnerDeactivation(String actor) {
         for(Node ns:nodes("Namespace",Map.of())) {
@@ -273,7 +235,7 @@ public final class CoreRepository {
     }
     public List<String> deleteNamespace(String namespace) {
         var deleted=new TreeSet<String>();
-        new HistoryRepository(tx,this).deleteNamespace(namespace);
+        new HistoryRecordDeletion(tx).deleteNamespace(namespace);
         // Remove owned values while ownership/declarations still exist; operational records survive.
         for(Node descriptor:nodes("Descriptor",Map.of("namespaceId",namespace))) {var ids=new ArrayList<String>();removeValue(descriptor,ids);deleted.addAll(ids);}
         geometry().deleteLayers(namespace);

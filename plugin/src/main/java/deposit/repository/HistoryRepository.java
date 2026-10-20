@@ -87,8 +87,8 @@ public final class HistoryRepository {
         if(epoch!=null){epoch.setProperty("closed",true);epoch.setProperty("endedSequence",sequence);}baseline(ns,actor,sequence,boot,timestamp);
     }
     public boolean tag(String ns,String id,String tag,String actor,ZonedDateTime time){revision(ns,id);Node old=core.find("RevisionTag",Map.of("namespaceId",ns,"revisionId",id));if(tag.equals(old==null?"":old.getProperty("tag")))return false;if(old!=null)delete(old);if(!tag.isEmpty()){Node n=node("RevisionTag",Json.map("id",UUID.randomUUID().toString(),"namespaceId",ns,"revisionId",id,"tag",tag,"updatedAt",time,"updatedBy",actor));core.entity("Revision",ns,id).createRelationshipTo(n,RelationshipType.withName("HAS_TAG"));}return true;}
-    public static void delete(Node n){try(var edges=n.getRelationships()){for(var e:edges)e.delete();}n.delete();}
-    public void deleteNamespace(String ns){for(String label:List.of("DepositSnapshot","RevisionTag","Revision","DepositHistoryEpoch"))for(Node n:core.nodes(label,Map.of("namespaceId",ns)))delete(n);}
+    public static void delete(Node n){HistoryRecordDeletion.delete(n);}
+    public void deleteNamespace(String ns){new HistoryRecordDeletion(tx).deleteNamespace(ns);}
     public void apply(String ns,String actor,UndoPlan plan){
         if(!plan.conflicts().isEmpty())throw ExceptionHandler.fail("REVISION_CONFLICT","History plan conflicts");var current=plan.changes().before;var target=plan.result();HistoryCodec.validate(target);validateResources(ns,target);
         Set<String> changed=plan.changes().touches.keySet();
