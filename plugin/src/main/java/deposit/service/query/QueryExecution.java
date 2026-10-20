@@ -1,7 +1,8 @@
 package deposit.service.query;
 
 import deposit.common.*;
-import deposit.repository.GetQueryRepository.Binding;
+import deposit.common.QueryContracts.Binding;
+import deposit.common.QueryContracts.Cell;
 import java.util.*;
 import java.util.stream.*;
 import static deposit.service.query.QueryParser.*;

@@ -1,8 +1,7 @@
 package deposit.repository;
 
 import deposit.common.*;
-import deposit.service.query.QueryTranslator.*;
-import deposit.service.query.QueryValues.Cell;
+import deposit.common.QueryContracts.*;
 import java.util.*;
 import java.util.stream.*;
 import org.neo4j.graphdb.*;
@@ -13,10 +12,9 @@ public final class GetQueryRepository {
     public GetQueryRepository(RequestContext c){tx=c.tx;core=new CoreRepository(tx,c.timestamp);namespace=c.namespaceId;}
     public ClassInfo schema(String name){Node clazz=core.find("Class",Map.of("namespaceId",namespace,"name",name));if(clazz==null||!clazz.hasLabel(Label.label("DepositLive")))throw ExceptionHandler.fail("NOT_FOUND","Class not found: "+name);
         var types=new LinkedHashMap<String,String>();for(Node d:core.children(clazz,"ClassDescriptor"))if(d.hasLabel(Label.label("DepositLive"))&&core.owner(d).equals(clazz))types.put((String)d.getProperty("name"),(String)d.getProperty("type"));return new ClassInfo(CoreRepository.id(clazz),types);}
-    public record Binding(Map<String,Node> objects,Map<Field,Cell> fields,Map<String,Object> raw,List<String> ids) {}
-    public Stream<Binding> execute(QueryPlan plan,Runnable check){check.run();Result result=tx.execute(plan.cypher,plan.parameters);
-        var iterator=new Spliterators.AbstractSpliterator<Binding>(Long.MAX_VALUE,Spliterator.ORDERED){public boolean tryAdvance(java.util.function.Consumer<? super Binding> action){check.run();if(!result.hasNext()){result.close();return false;}var raw=result.next();var objects=new LinkedHashMap<String,Node>();var ids=new ArrayList<String>();int n=0;for(String b:plan.bindings.keySet()){Node node=(Node)raw.get("o"+n++);objects.put(b,node);ids.add(CoreRepository.id(node));}
-            var fields=new HashMap<Field,Cell>();for(Field f:plan.fields){check.run();Node d=(Node)raw.get(f.variable());fields.put(f,new Cell(f.type(),d==null?null:ValueCodec.normalize(f.type(),core.descriptorValue(d)),d!=null));}action.accept(new Binding(objects,fields,raw,ids));check.run();return true;}};
+    public Stream<Binding> execute(ExecutionPlan plan,Runnable check){check.run();Result result=tx.execute(plan.cypher(),plan.parameters());
+        var iterator=new Spliterators.AbstractSpliterator<Binding>(Long.MAX_VALUE,Spliterator.ORDERED){public boolean tryAdvance(java.util.function.Consumer<? super Binding> action){check.run();if(!result.hasNext()){result.close();return false;}var raw=result.next();var objects=new LinkedHashMap<String,Node>();var ids=new ArrayList<String>();int n=0;for(String b:plan.bindings().keySet()){Node node=(Node)raw.get("o"+n++);objects.put(b,node);ids.add(CoreRepository.id(node));}
+            var fields=new HashMap<Field,Cell>();for(Field f:plan.fields()){check.run();Node d=(Node)raw.get(f.variable());fields.put(f,new Cell(f.type(),d==null?null:ValueCodec.normalize(f.type(),core.descriptorValue(d)),d!=null));}action.accept(new Binding(objects,fields,raw,ids));check.run();return true;}};
         return StreamSupport.stream(iterator,false).onClose(result::close);
     }
     public Map<String,Object> portable(Node object){return core.data(object);}

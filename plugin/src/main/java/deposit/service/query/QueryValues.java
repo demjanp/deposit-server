@@ -1,6 +1,7 @@
 package deposit.service.query;
 
 import deposit.common.*;
+import deposit.common.QueryContracts.Cell;
 import deposit.repository.CoreRepository;
 import java.util.*;
 import org.neo4j.graphdb.Node;
@@ -9,9 +10,8 @@ import org.neo4j.values.storable.Values;
 /** Equality and total ordering are separate: structured values have no public order. */
 public final class QueryValues {
     private QueryValues(){}
-    public record Cell(String type,Object value,boolean present) {}
     public static Object identity(Object value){if(value instanceof Node n)return CoreRepository.id(n);if(value instanceof Map<?,?> m){var out=new TreeMap<String,Object>();m.forEach((k,v)->out.put((String)k,identity(v)));return out;}if(value instanceof List<?> l)return l.stream().map(QueryValues::identity).toList();if(value instanceof Double d&&d==0)return 0.0;return value;}
-    public static String key(Cell cell){return Json.write(Json.map("type",cell.type,"value",identity(cell.value),"presence",cell.present));}
+    public static String key(Cell cell){return Json.write(Json.map("type",cell.type(),"value",identity(cell.value()),"presence",cell.present()));}
     public static String key(List<Cell> cells){return Json.write(cells.stream().map(QueryValues::key).toList());}
     public static boolean equal(String type,Object a,Object b){return Objects.equals(identity(a),identity(b));}
     @SuppressWarnings({"rawtypes","unchecked"}) public static int compare(String type,Object a,Object b){

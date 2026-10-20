@@ -26,6 +26,11 @@ public final class Results {
         public final Object value; public final Map<String,Object> meta;
         public ValueRow(Object value,Map<String,Object> meta) {this.value=value;this.meta=meta;}
     }
+    /** Passive internal eligibility projection used by the public result adapter. */
+    public static class EligibilityRow {
+        public final boolean value; public final Map<String,Object> data,meta;
+        public EligibilityRow(boolean value,Map<String,Object> data,Map<String,Object> meta){this.value=value;this.data=data;this.meta=meta;}
+    }
     public static class LoginRow {
         public final String value; public final Map<String,Object> data,meta;
         public LoginRow(String value,Map<String,Object> data,Map<String,Object> meta) {this.value=value;this.data=data;this.meta=meta;}
