@@ -32,4 +32,22 @@ class ResourceDownloadDrainTest {
             release.countDown();handler.get(2,TimeUnit.SECONDS);shutdown.join(2_000);assertFalse(shutdown.isAlive());assertNull(failure.get());assertFalse(server.hasReaderPin("resource"));assertEquals(0,downloads.activeReaderCount());
         }finally{release.countDown();if(shutdown!=null)shutdown.join(2_000);if(downloads!=null)downloads.close();ServerContext.detach(database);if(previous==null)System.clearProperty("deposit.config");else System.setProperty("deposit.config",previous);}
     }
+
+    @Test void openedReadIsRejectedAndReleasedWhenStopWinsAdmissionRace()throws Exception{
+        Path config=temporary.resolve("admission.properties");Files.writeString(config,"download.listenAddress=127.0.0.1\ndownload.port=0\ndownload.publicBaseUrl=http://127.0.0.1:1\n");
+        String previous=System.getProperty("deposit.config");System.setProperty("deposit.config",config.toString());
+        UUID database=UUID.randomUUID();ServerContext server=ServerContext.attach(database);ResourceDownloadServer downloads=null;
+        try{
+            downloads=new ResourceDownloadServer(server,null);downloads.start();
+            InputStream stream=new ByteArrayInputStream(new byte[]{1});var pin=server.pinResource("resource");
+            var constructor=BrowserDownloadService.ResourceRead.class.getDeclaredConstructors()[0];constructor.setAccessible(true);
+            var read=(BrowserDownloadService.ResourceRead)constructor.newInstance(stream,pin,"file","application/octet-stream","checksum",1L,new BrowserDownloadService.Range(0,1,false));
+            assertTrue(server.hasReaderPin("resource"),"The resource is pinned before the listener admits the read");
+            downloads.stopAccepting();
+            assertFalse(downloads.admitRead(read),"Stop and read admission share a linearization point");
+            read.close();
+            assertFalse(server.hasReaderPin("resource"),"Rejected reads release the pin acquired before opening bytes");
+            assertEquals(0,downloads.activeReaderCount());
+        }finally{if(downloads!=null)downloads.close();ServerContext.detach(database);if(previous==null)System.clearProperty("deposit.config");else System.setProperty("deposit.config",previous);}
+    }
 }
