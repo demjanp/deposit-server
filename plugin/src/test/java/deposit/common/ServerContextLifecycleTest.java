@@ -1,9 +1,7 @@
 package deposit.common;
 
 import static org.junit.jupiter.api.Assertions.*;
-import java.lang.reflect.Field;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.lang.reflect.Proxy;
@@ -13,9 +11,7 @@ import org.junit.jupiter.api.Test;
 class ServerContextLifecycleTest {
     private static ServerContext initialized(UUID database)throws Exception {
         ServerContext server=ServerContext.attach(database);
-        Field readiness=ServerContext.class.getDeclaredField("readiness");readiness.setAccessible(true);
-        ((CompletableFuture<Void>)readiness.get(server)).complete(null);
-        Field initialized=ServerContext.class.getDeclaredField("initialized");initialized.setAccessible(true);initialized.setBoolean(server,true);
+        server.markReadyForTesting();
         return server;
     }
     private static KernelTransaction transaction(long id) {return transaction(id,null);}
@@ -57,8 +53,7 @@ class ServerContextLifecycleTest {
             Thread invocation=Thread.ofPlatform().start(()->{ready.countDown();try{go.await();admitted.set(server.admit(transaction(sequence)));}catch(Throwable e){rejected.set(e);}});
             Thread stop=Thread.ofPlatform().start(()->{ready.countDown();try{go.await();server.beginStop();}catch(InterruptedException e){Thread.currentThread().interrupt();}});
             assertTrue(ready.await(1,TimeUnit.SECONDS));go.countDown();invocation.join(2_000);stop.join(2_000);assertFalse(invocation.isAlive());assertFalse(stop.isAlive());
-            Field transactions=ServerContext.class.getDeclaredField("transactions");transactions.setAccessible(true);var active=(java.util.Map<Long,ServerContext.TxState>)transactions.get(server);
-            if(admitted.get()!=null){assertNull(rejected.get());assertSame(admitted.get(),active.get(sequence));}else{assertNotNull(rejected.get());assertTrue(active.isEmpty());}
+            if(admitted.get()!=null){assertNull(rejected.get());assertSame(admitted.get(),server.transactionForTesting(sequence));}else{assertNotNull(rejected.get());assertEquals(0,server.transactionCountForTesting());}
             ServerContext.detach(database);
         }
     }
@@ -96,15 +91,28 @@ class ServerContextLifecycleTest {
     @Test void cleanupAttemptsEveryReleaseAndRetainsFailedDrainObligation()throws Exception {
         UUID database=UUID.randomUUID();ServerContext server=initialized(database);KernelTransaction tx=transaction(903,database);
         ServerContext.TxState state=server.admit(tx);java.util.concurrent.atomic.AtomicBoolean laterRelease=new java.util.concurrent.atomic.AtomicBoolean();
-        state.release.add(()->{throw new IllegalStateException("injected release failure");});
         state.release.add(()->laterRelease.set(true));
+        state.release.add(()->{throw new IllegalStateException("injected release failure");});
         try {
             server.commit(tx);
             assertTrue(laterRelease.get(),"a failed release must not skip later cleanup callbacks");
             assertThrows(IllegalStateException.class,()->server.shutdown(5,TimeUnit.MILLISECONDS));
-            Field transactions=ServerContext.class.getDeclaredField("transactions");transactions.setAccessible(true);
-            assertSame(state,((java.util.Map<Long,ServerContext.TxState>)transactions.get(server)).get(903L),"failed cleanup remains part of the drain barrier");
+            assertSame(state,server.transactionForTesting(903L),"failed cleanup remains part of the drain barrier");
         } finally {ServerContext.detach(database);}
+    }
+
+    @Test void concurrentCommitAndRollbackRunCompletionAndReleaseOnce()throws Exception {
+        UUID database=UUID.randomUUID();ServerContext server=initialized(database);KernelTransaction tx=transaction(904,database);
+        ServerContext.TxState state=server.admit(tx);CountDownLatch ready=new CountDownLatch(2),go=new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger callbacks=new java.util.concurrent.atomic.AtomicInteger(),releases=new java.util.concurrent.atomic.AtomicInteger();
+        state.afterCommit.add(callbacks::incrementAndGet);state.release.add(releases::incrementAndGet);
+        Thread commit=Thread.ofPlatform().start(()->{ready.countDown();try{go.await();}catch(InterruptedException e){Thread.currentThread().interrupt();return;}server.commit(tx);});
+        Thread rollback=Thread.ofPlatform().start(()->{ready.countDown();try{go.await();}catch(InterruptedException e){Thread.currentThread().interrupt();return;}server.rollback(tx,new IllegalStateException("racing completion"));});
+        try {
+            assertTrue(ready.await(1,TimeUnit.SECONDS));go.countDown();commit.join(2_000);rollback.join(2_000);
+            assertFalse(commit.isAlive());assertFalse(rollback.isAlive());assertTrue(callbacks.get()<=1);assertEquals(1,releases.get());
+            assertEquals(0,server.transactionCountForTesting());
+        } finally {go.countDown();commit.join(2_000);rollback.join(2_000);server.shutdown();ServerContext.detach(database);}
     }
 
     @Test void extensionDoesNotTreatTimedOutInitializerAsStopped()throws Exception {

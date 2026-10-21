@@ -15,8 +15,9 @@ public class SecurityProbe {
     @Procedure(name="testprobe.security.clock",mode=Mode.READ)
     public Stream<Value> clock(@Name("offsetMillis") long offset) throws Exception {
         var server=ServerContext.forDatabase(db.databaseId().databaseId().uuid());
-        var field=ServerContext.class.getDeclaredField("sessionClock");field.setAccessible(true);
-        field.set(server,(java.util.function.LongSupplier)()->System.currentTimeMillis()+offset);
+        var ownerField=ServerContext.class.getDeclaredField("sessionsAndRequests");ownerField.setAccessible(true);
+        Object registry=ownerField.get(server);var clockField=registry.getClass().getDeclaredField("clock");clockField.setAccessible(true);
+        clockField.set(registry,(java.util.function.LongSupplier)()->System.currentTimeMillis()+offset);
         return Stream.of(new Value(offset));
     }
     @Procedure(name="testprobe.security.failCommit",mode=Mode.READ)

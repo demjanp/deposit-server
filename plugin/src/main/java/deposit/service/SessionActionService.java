@@ -64,10 +64,11 @@ public final class SessionActionService extends BaseService {
     String fingerprint(String procedure,List<Object> arguments){return CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"arguments",arguments)));}
     private void lease(){
         synchronized(c.session){
-            if(c.session.mutationOwner!=null&&c.session.mutationOwner!=c.state)c.fail("SESSION_BUSY","Another mutation is active for this session");
-            if(c.session.mutationOwner==c.state)return;
-            c.session.mutationOwner=c.state;
-            c.state.release.add(()->{synchronized(c.session){if(c.session.mutationOwner==c.state)c.session.mutationOwner=null;}});
+            Object identity=c.state.identityToken();
+            if(c.session.mutationOwner!=null&&c.session.mutationOwner!=identity)c.fail("SESSION_BUSY","Another mutation is active for this session");
+            if(c.session.mutationOwner==identity)return;
+            c.session.mutationOwner=identity;
+            c.state.release.add(()->{synchronized(c.session){if(c.session.mutationOwner==identity)c.session.mutationOwner=null;}});
         }
     }
     void separate(){

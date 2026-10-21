@@ -1,18 +1,13 @@
 package deposit.common;
 
 import static org.junit.jupiter.api.Assertions.*;
-import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.LongSupplier;
 import org.junit.jupiter.api.Test;
 
 class ServerContextBrowserSessionTest {
-    private static final Field CLOCK;
-    static {try {CLOCK=ServerContext.class.getDeclaredField("sessionClock");CLOCK.setAccessible(true);}catch(Exception e){throw new ExceptionInInitializerError(e);}}
-
     private static ServerContext context(AtomicLong time,java.util.UUID id)throws Exception {
         ServerContext server=ServerContext.attach(id);
-        CLOCK.set(server,(LongSupplier)time::get);
+        server.sessionClockForTesting(time::get);
         return server;
     }
 

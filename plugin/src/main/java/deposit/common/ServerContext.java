@@ -14,7 +14,6 @@ import deposit.repository.SchemaRepository;
 
 /** Per-database state. No transaction or native entity is retained in a session. */
 public final class ServerContext implements TransactionExecutionMonitor, org.neo4j.graphdb.event.TransactionEventListener<Void> {
-    private static final System.Logger LOG=System.getLogger(ServerContext.class.getName());
     private static final ConcurrentMap<UUID,ServerContext> DATABASES=new ConcurrentHashMap<>();
     public static ServerContext forDatabase(UUID id) {
         ServerContext value=DATABASES.get(id);
@@ -24,47 +23,26 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public static ServerContext attach(UUID id) {var value=new ServerContext(id); DATABASES.put(id,value);return value;}
     public static void detach(UUID id) {DATABASES.remove(id);}
     private final UUID databaseId;
-    private ServerContext(UUID databaseId) {this.databaseId=databaseId;}
-    private final ConcurrentMap<Long,TxState> transactions=new ConcurrentHashMap<>();
-    private record ActiveRequest(String actor,TxState state) {}
-    private final ConcurrentMap<String,ActiveRequest> requests=new ConcurrentHashMap<>();
-    public void track(RequestContext c) {
-        ActiveRequest request=new ActiveRequest(c.actorId,c.state),old=requests.putIfAbsent(c.requestId,request);
-        if(old!=null&&!old.equals(request))c.fail("VALIDATION_FAILED","requestId is already active");
-        c.state.requestIds.add(c.requestId);
-    }
-    public boolean cancel(String requestId,String actor,boolean administrator) {
-        ActiveRequest request=requests.get(requestId);if(request==null)return false;
-        if(!administrator&&!request.actor().equals(actor))throw ExceptionHandler.fail("FORBIDDEN","Cannot cancel another actor's request");
-        request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);return true;
-    }
-    public List<Map<String,Object>> activeRequests(String actor,boolean administrator,TxState caller) {
-        return requests.entrySet().stream().filter(e->e.getValue().state()!=caller&&(administrator||e.getValue().actor().equals(actor)))
-            .map(e->Json.map("requestId",e.getKey(),"actorId",e.getValue().actor(),"namespaceId",e.getValue().state().namespace)).toList();
-    }
-    public boolean cancelSession(String tokenHash,TxState caller) {
-        boolean cancelled=false;
-        for(var request:requests.values())if(request.state()!=caller&&Objects.equals(tokenHash,request.state().tokenHash)){
-            request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);cancelled=true;
-        }
-        return cancelled;
-    }
-    public final ConcurrentMap<String,Session> sessions=new ConcurrentHashMap<>();
-    private final ConcurrentMap<String,java.util.concurrent.atomic.AtomicInteger> activeReaders=new ConcurrentHashMap<>();
-    private final ConcurrentMap<String,Failures> failures=new ConcurrentHashMap<>();
-    private final Semaphore serverLock=new Semaphore(1,true);
-    private final AuthorizationGuard authorization = new AuthorizationGuard();
-    private volatile java.util.function.LongSupplier sessionClock=System::currentTimeMillis;
-    public long sessionTime() {return sessionClock.getAsLong();}
+    private final TransactionLifecycle transactionLifecycle;
+    private ServerContext(UUID databaseId) {this.databaseId=databaseId;this.transactionLifecycle=new TransactionLifecycle(this,databaseId,lifecycleLock);}
+    private final SessionRequestRegistry sessionsAndRequests=new SessionRequestRegistry();
+    /** Compatibility view; the registry remains the sole owner of this map. */
+    public final ConcurrentMap<String,Session> sessions=sessionsAndRequests.sessions;
+    public void track(RequestContext c) { sessionsAndRequests.track(c); }
+    void completeRequests(TxState state) { sessionsAndRequests.completeRequests(state); }
+    public boolean cancel(String requestId,String actor,boolean administrator) { return sessionsAndRequests.cancel(requestId,actor,administrator); }
+    public List<Map<String,Object>> activeRequests(String actor,boolean administrator,TxState caller) { return sessionsAndRequests.activeRequests(actor,administrator,caller); }
+    public boolean cancelSession(String tokenHash,TxState caller) { return sessionsAndRequests.cancelSession(tokenHash,caller); }
+    private final ResourceReaderPins readerPins=new ResourceReaderPins();
+    private final Object lifecycleLock=new Object();
+    public long sessionTime() {return sessionsAndRequests.sessionTime();}
+    void sessionClockForTesting(java.util.function.LongSupplier clock) { sessionsAndRequests.clock(clock); }
     public final byte[] cursorKey=randomBytes(32);
     public final String runId=UUID.randomUUID().toString();
-    private volatile long revision;
     private volatile boolean initialized;
-    private final Object lifecycleLock=new Object();
     private volatile boolean stopping;
     private final Object shutdownMonitor=new Object();
     private boolean shutdownRunning,shutdownComplete;
-    private final Object drainMonitor=new Object();
     private volatile ResourceDownloadServer downloads;
     public volatile String downloadPublicBaseUrl;
     private GraphDatabaseAPI database;
@@ -72,6 +50,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private volatile java.util.function.Consumer<String> storageObserver=point->{};
     public void storagePoint(String point){storageObserver.accept(point);}
     public GraphDatabaseAPI database() {return database;}
+    void attachDownloadsForTesting(ResourceDownloadServer server) { downloads=server; }
     private final ConcurrentMap<String,Semaphore> storageLocks=new ConcurrentHashMap<>();
     public void holdStorage(TxState state,String key) {
         if(!state.storageKeys.add(key))return;
@@ -86,50 +65,28 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private boolean inheritedSecretAcl;
     public static byte[] randomBytes(int count) {byte[] bytes=new byte[count];new SecureRandom().nextBytes(bytes);return bytes;}
     public static String randomToken() {return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes(32));}
-    public TxState state(KernelTransaction tx) {return transactions.computeIfAbsent(tx.getTransactionSequenceNumber(),key->new TxState(tx));}
+    public TxState state(KernelTransaction tx) {return transactionLifecycle.state(tx);}
     /** Wait for initialization, then atomically admit this procedure transaction against shutdown. */
     public TxState admit(KernelTransaction tx) {
-        requireReady();
-        synchronized(lifecycleLock) {
-            if(stopping||!initialized)throw new IllegalStateException("Deposit is shutting down");
-            return transactions.computeIfAbsent(tx.getTransactionSequenceNumber(),key->new TxState(tx));
-        }
+        return transactionLifecycle.admit(tx);
     }
+    boolean admissionOpenUnderGate() { return !stopping && initialized; }
+    TxState transactionForTesting(long sequence) { return transactionLifecycle.find(sequence); }
+    int transactionCountForTesting() { return transactionLifecycle.transactionCount(); }
+    void markReadyForTesting() { synchronized(lifecycleLock) { initialized=true; readiness.complete(null); } }
     @Override public void start(KernelTransaction tx) {}
     @Override public void commit(KernelTransaction tx) {complete(tx,true);}
     @Override public void rollback(KernelTransaction tx,Throwable cause) {complete(tx,false);}
-    private void complete(KernelTransaction tx,boolean committed) {
-        if(!databaseId.equals(tx.getDatabaseId()))return;
-        TxState state=transactions.get(tx.getTransactionSequenceNumber());
-        if(state==null) return;
-        if(!state.completing.compareAndSet(false,true))return;
-        try {
-            if(committed) {
-                if(state.serverChanged) revision++;
-                for(Runnable callback:state.afterCommit) try {callback.run();}catch(RuntimeException ignored) {/* Durable jobs are retried by maintenance. */}
-            }
-        } finally {
-            Throwable cleanupFailure=null;
-            for(int i=state.release.size()-1;i>=0;i--)try{state.release.get(i).run();}catch(Throwable failure){cleanupFailure=recordCleanupFailure(cleanupFailure,failure);}
-            try{for(String requestId:state.requestIds)requests.computeIfPresent(requestId,(key,value)->value.state()==state?null:value);}catch(Throwable failure){cleanupFailure=recordCleanupFailure(cleanupFailure,failure);}
-            try{if(state.serverLocked)serverLock.release();}catch(Throwable failure){cleanupFailure=recordCleanupFailure(cleanupFailure,failure);}
-            try{authorization.release(state);}catch(Throwable failure){cleanupFailure=recordCleanupFailure(cleanupFailure,failure);}
-            if(cleanupFailure==null)transactions.remove(tx.getTransactionSequenceNumber(),state);
-            else {state.completionFailure=cleanupFailure;LOG.log(System.Logger.Level.ERROR,"Transaction cleanup failed; keeping storage drain blocked",cleanupFailure);}
-            synchronized(drainMonitor){drainMonitor.notifyAll();}
-        }
-    }
-    private static Throwable recordCleanupFailure(Throwable prior,Throwable failure){if(prior==null)return failure;if(prior!=failure)try{prior.addSuppressed(failure);}catch(Throwable ignored){}return prior;}
+    private void complete(KernelTransaction tx,boolean committed) { transactionLifecycle.complete(tx,committed); }
     public void guard(TxState state, boolean exclusive) {
-        if(exclusive && state.mutation) throw ExceptionHandler.fail("VALIDATION_FAILED", "Authorization changes must be the transaction's first mutation");
-        authorization.acquire(state, exclusive);
+        transactionLifecycle.guard(state,exclusive);
     }
-    public void revokeUser(String actor) { sessions.entrySet().removeIf(e -> e.getValue().actor.equals(actor)); }
-    public void demoteUser(String actor) { sessions.values().stream().filter(s -> s.actor.equals(actor)).forEach(s -> s.administrative=false); }
-    public void clearNamespace(String namespace) {sessions.values().forEach(s -> { synchronized(s) { if(namespace.equals(s.namespace)) s.namespace=null; } });}
+    public void revokeUser(String actor) { sessionsAndRequests.revokeUser(actor); }
+    public void demoteUser(String actor) { sessionsAndRequests.demoteUser(actor); }
+    public void clearNamespace(String namespace) { sessionsAndRequests.clearNamespace(namespace); }
     @Override public Void beforeCommit(org.neo4j.graphdb.event.TransactionData data, Transaction tx, GraphDatabaseService db) {
         var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;
-        TxState state=transactions.get(internal.kernelTransaction().getTransactionSequenceNumber());
+        TxState state=transactionLifecycle.find(internal.kernelTransaction().getTransactionSequenceNumber());
         if(state==null||state.tokenHash==null)return null;
         Session session=sessions.get(state.tokenHash);
         if(session==null)throw ExceptionHandler.fail("AUTH_FAILED","Session revoked before commit");
@@ -145,16 +102,10 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     @Override public void afterCommit(org.neo4j.graphdb.event.TransactionData data,Void state,GraphDatabaseService db) {}
     @Override public void afterRollback(org.neo4j.graphdb.event.TransactionData data,Void state,GraphDatabaseService db) {}
     public void lockServer(TxState state) {
-        if(state.serverLocked) return;
-        acquire(state.kernel);state.serverLocked=true;
-    }
-    private void acquire(KernelTransaction tx) {
-        try {while(!serverLock.tryAcquire(100,TimeUnit.MILLISECONDS)) tx.assertOpen();}
-        catch(InterruptedException e) {Thread.currentThread().interrupt();throw ExceptionHandler.fail("CANCELLED","Request interrupted");}
+        transactionLifecycle.lockServer(state);
     }
     public long revision(TxState state) {
-        if(state.serverLocked) return revision+(state.serverChanged?1:0);
-        acquire(state.kernel);try {return revision;} finally {serverLock.release();}
+        return transactionLifecycle.revision(state);
     }
     public void initialize(GraphDatabaseAPI db) {
         synchronized(lifecycleLock){if(initialized)return;if(stopping)throw new IllegalStateException("Deposit is shutting down");database=db;}
@@ -204,7 +155,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     }
     Map<String,Object> shutdownCounts(){
         ResourceDownloadServer currentDownloads=downloads;
-        return Map.of("transactions",transactions.size(),"readers",currentDownloads==null?0:currentDownloads.activeReaderCount(),
+        return Map.of("transactions",transactionLifecycle.transactionCount(),"readers",currentDownloads==null?0:currentDownloads.activeReaderCount(),
             "handlers",currentDownloads==null?0:currentDownloads.activeHandlerCount());
     }
     public void shutdown(){shutdown(30,TimeUnit.SECONDS);}
@@ -218,13 +169,13 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         try {
             ResourceDownloadServer currentDownloads=downloads;
             if(currentDownloads!=null)currentDownloads.stopAccepting();
-            boolean drained=awaitTransactions(timeout,unit);
+            boolean drained=transactionLifecycle.awaitTransactions(timeout,unit);
             if(!drained){
-                for(TxState state:transactions.values())try{state.kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);}catch(RuntimeException ignored){}
-                drained=awaitTransactions(timeout,unit);
+                for(TxState state:transactionLifecycle.activeTransactions())try{state.kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);}catch(RuntimeException ignored){}
+                drained=transactionLifecycle.awaitTransactions(timeout,unit);
             }
             if(!drained){
-                Throwable cleanupFailure=transactions.values().stream().map(state->state.completionFailure).filter(Objects::nonNull).findFirst().orElse(null);
+                Throwable cleanupFailure=transactionLifecycle.activeTransactions().stream().map(state->state.completionFailure).filter(Objects::nonNull).findFirst().orElse(null);
                 throw new IllegalStateException("Deposit transactions did not drain; storage remains open",cleanupFailure);
             }
             if(currentDownloads!=null){currentDownloads.close();downloads=null;}
@@ -234,22 +185,10 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             synchronized(shutdownMonitor){shutdownRunning=false;shutdownMonitor.notifyAll();}
         }
     }
-    private boolean awaitTransactions(long timeout,TimeUnit unit){
-        long deadline=System.nanoTime()+unit.toNanos(timeout);
-        synchronized(drainMonitor){
-            while(!transactions.isEmpty()){
-                long remaining=deadline-System.nanoTime();if(remaining<=0)return false;
-                try{TimeUnit.NANOSECONDS.timedWait(drainMonitor,remaining);}catch(InterruptedException e){Thread.currentThread().interrupt();return false;}
-            }
-        }
-        return true;
-    }
     public AutoCloseable pinResource(String resourceId){
-        var count=activeReaders.compute(resourceId,(key,current)->{if(current==null)current=new java.util.concurrent.atomic.AtomicInteger();current.incrementAndGet();return current;});
-        java.util.concurrent.atomic.AtomicBoolean closed=new java.util.concurrent.atomic.AtomicBoolean();
-        return ()->{if(closed.compareAndSet(false,true))activeReaders.computeIfPresent(resourceId,(key,current)->current.decrementAndGet()==0?null:current);};
+        return readerPins.pin(resourceId);
     }
-    public boolean hasReaderPin(String resourceId){var value=activeReaders.get(resourceId);return value!=null&&value.get()>0;}
+    public boolean hasReaderPin(String resourceId){return readerPins.hasPin(resourceId);}
     private static String secret(Path path,boolean inheritDirectoryAcl) throws java.io.IOException {
         if(!Files.exists(path)) {
             Path temporary=path.resolveSibling(path.getFileName()+"."+UUID.randomUUID()+".partial");
@@ -282,54 +221,22 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public Session authenticate(RequestContext c,String principal) {
         return authenticate(c,principal,true);
     }
-    public long committedRevision() {return revision;}
+    public long committedRevision() {return transactionLifecycle.committedRevision();}
     public Session authenticate(RequestContext c,String principal,boolean protect) {
         if(protect)guard(c.state, false);
-        if(c.token==null || c.token.isEmpty()) {c.fail("AUTH_REQUIRED","Session token required");}
-        var session=sessions.get(Json.hash(c.token));
-        if(session==null || session.transport!=Transport.BOLT || !Objects.equals(session.principal,principal)) {c.fail("AUTH_FAILED","Invalid session");}
-        synchronized(session) {
-            long now=sessionTime();
-            if(now-session.touched>=1_800_000L || now-session.created>=28_800_000L) {sessions.remove(Json.hash(c.token));c.fail("SESSION_EXPIRED","Session expired");}
-            session.touched=now;
-        }
-        if(c.state.tokenHash!=null && !c.state.tokenHash.equals(Json.hash(c.token))) c.fail("VALIDATION_FAILED","Cannot mix sessions in a transaction");
-        c.state.tokenHash=Json.hash(c.token);
-        c.session=session;c.actorId=session.actor;
-        track(c);
-        return session;
+        return sessionsAndRequests.authenticateBolt(c,principal);
     }
     /** Browser validation is deliberately separate from Bolt principal authentication. */
     public Session authenticateBrowser(RequestContext c) {
         guard(c.state,false);
-        if(c.token==null||c.token.isEmpty())c.fail("AUTH_REQUIRED","Browser session required");
-        String hash=Json.hash(c.token);Session session=sessions.get(hash);
-        if(session==null||session.transport!=Transport.BROWSER)c.fail("AUTH_FAILED","Invalid browser session");
-        synchronized(session){long now=sessionTime();if(now-session.touched>=1_800_000L||now-session.created>=28_800_000L){sessions.remove(hash,session);c.fail("SESSION_EXPIRED","Browser session expired");}}
-        if(c.state.tokenHash!=null&&!c.state.tokenHash.equals(hash))c.fail("VALIDATION_FAILED","Cannot mix sessions in a transaction");
-        c.state.tokenHash=hash;c.session=session;c.actorId=session.actor;track(c);return session;
+        return sessionsAndRequests.authenticateBrowser(c);
     }
     public boolean touchBrowserSession(String token,Session expected) {
-        String hash=Json.hash(token);if(sessions.get(hash)!=expected||expected.transport!=Transport.BROWSER)return false;
-        synchronized(expected){long now=sessionTime();if(sessions.get(hash)!=expected||now-expected.touched>=1_800_000L||now-expected.created>=28_800_000L){sessions.remove(hash,expected);return false;}expected.touched=now;return true;}
+        return sessionsAndRequests.touchBrowserSession(token,expected);
     }
     public enum Transport { BOLT, BROWSER }
-    public void checkLoginDelay(String username,String origin,KernelTransaction tx) {
-        long delay=Math.max(delay("user:"+username),delay("origin:"+origin));
-        long until=System.currentTimeMillis()+delay;
-        while(System.currentTimeMillis()<until) {
-            tx.assertOpen();try {Thread.sleep(Math.min(100,until-System.currentTimeMillis()));}
-            catch(InterruptedException e) {Thread.currentThread().interrupt();throw ExceptionHandler.fail("CANCELLED","Login interrupted");}
-        }
-    }
-    private long delay(String key) {var f=failures.get(key);return f==null?0:f.delay();}
-    public void loginFailed(String username,String origin) {for(String key:List.of("user:"+username,"origin:"+origin)) failures.computeIfAbsent(key,k->new Failures()).add();}
-    private static final class Failures {
-        private final Deque<Long> times=new ArrayDeque<>();
-        synchronized void add() {prune();times.addLast(System.currentTimeMillis());}
-        synchronized long delay() {prune();return times.size()<5?0:Math.min(5000,250L << Math.min(5,times.size()-5));}
-        void prune() {while(!times.isEmpty() && times.getFirst()<System.currentTimeMillis()-300_000) times.removeFirst();}
-    }
+    public void checkLoginDelay(String username,String origin,KernelTransaction tx) { sessionsAndRequests.checkLoginDelay(username,origin,tx); }
+    public void loginFailed(String username,String origin) { sessionsAndRequests.loginFailed(username,origin); }
     public static final class Session {
         public final String actor,principal; public final long created;public final Transport transport;public volatile String csrfToken;
         public long touched; public volatile String namespace;
@@ -337,7 +244,8 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public final Map<String,Long> baselines=new HashMap<>();
         public long observationGeneration;
         public volatile String preparedAction, lastOperation, lastScope;
-        public TxState mutationOwner;
+        /** Opaque identity only; session state must not retain the transaction state or kernel handle. */
+        public Object mutationOwner;
         public Session(String actor,String principal,long created) {this(actor,principal,created,Transport.BOLT);}
         public Session(String actor,String principal,long created,Transport transport) {this.actor=actor;this.principal=principal;this.created=created;this.touched=created;this.transport=transport;}
     }
@@ -348,13 +256,15 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public long observationGeneration;
         public final Map<String,Long> observations=new HashMap<>();
         public boolean scoped,selection,mutation,serverLocked,serverChanged,administrative,selfAccountChange,privileged,auditRegistered;
-        private final java.util.concurrent.atomic.AtomicBoolean completing=new java.util.concurrent.atomic.AtomicBoolean();
-        private volatile Throwable completionFailure;
+        final java.util.concurrent.atomic.AtomicBoolean completing=new java.util.concurrent.atomic.AtomicBoolean();
+        volatile Throwable completionFailure;
         public final List<Runnable> afterCommit=new ArrayList<>();
         public final List<Runnable> release=new ArrayList<>();
         public final Set<String> storageKeys=new HashSet<>();
         public final Map<String,org.neo4j.gis.spatial.EditableLayer> geometryLayers=new HashMap<>();
         public final Set<String> requestIds=ConcurrentHashMap.newKeySet();
+        private final Object identityToken=new Object();
         TxState(KernelTransaction kernel) {this.kernel=kernel;}
+        public Object identityToken() { return identityToken; }
     }
 }

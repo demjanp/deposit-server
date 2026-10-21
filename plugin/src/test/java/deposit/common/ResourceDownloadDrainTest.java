@@ -20,7 +20,7 @@ class ResourceDownloadDrainTest {
         ResourceDownloadServer downloads=null;Thread shutdown=null;
         try{
             downloads=new ResourceDownloadServer(server,null);downloads.start();
-            var downloadField=ServerContext.class.getDeclaredField("downloads");downloadField.setAccessible(true);downloadField.set(server,downloads);
+            server.attachDownloadsForTesting(downloads);
             InputStream stream=new ByteArrayInputStream(new byte[1]){@Override public void close(){closing.countDown();try{release.await();}catch(InterruptedException e){throw new IllegalStateException(e);}}};
             var constructor=BrowserDownloadService.ResourceRead.class.getDeclaredConstructors()[0];constructor.setAccessible(true);
             var read=(BrowserDownloadService.ResourceRead)constructor.newInstance(stream,server.pinResource("resource"),"file","application/octet-stream","checksum",1L,new BrowserDownloadService.Range(0,1,false));
