@@ -6,6 +6,12 @@ description: Plan, clarify, implement, test, or record a numbered stage of an ex
 # Project stage
 
 Follow the requested phase only; do not automatically advance through this list.
+For an explicitly authorized [project-run](../project-run/SKILL.md), its root
+coordinator dispatches these phases separately under the run authorization and
+supplies the selected plan/status files (which may be external Markdown files).
+Stage workers request specialists through that coordinator and return evidence;
+the coordinator owns independent review, tracker updates and stage commits.
+Standalone invocation retains all phase restrictions below.
 Use the applicable AGENTS.md project-entry pointer to read relevant agents-hub
 material and any linked supplementary knowledge base. Find the actual master
 plan and authoritative design/status destinations. If Stage N cannot be found,
@@ -46,6 +52,8 @@ changed.
 
 ## 4. Plan implementation
 In Plan mode, prepare ordered steps and dependencies based on the settled design.
+Within an authorized project-run, perform this same planning read-only in the
+editing-enabled session; do not require or attempt a client mode switch.
 Include affected repositories/files, interfaces and invariants, acceptance criteria,
 verification commands/strategy and material risks. Ask remaining questions with
 recommendations. Do not reopen approved decisions without new evidence; do not

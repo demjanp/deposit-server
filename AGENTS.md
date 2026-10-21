@@ -22,7 +22,8 @@ project mappings and approved decisions within a task.
 ### Routing
 Use the main Luna agent for conversation, routine planning, implementation,
 test execution and documentation. Use project-stage for a numbered master-plan
-stage; use project-task for other development tasks. The architect (`gpt-6-astra`,
+stage; use project-task for other development tasks and project-run for an
+authorized sequence of stages. The architect (`gpt-6-astra`,
 medium reasoning) advises on architecture and remains read-only. The
 expert_implementer (`gpt-6.1-sol`, high reasoning) can implement difficult fixes
 within the implementation scope already authorized by the user.
@@ -71,8 +72,10 @@ to prior recommendations, comparisons of alternatives, and proposed changes to
 previous decisions. Keep routine clarifications and minor implementation
 details with Luna. Avoid redundant consultation when no new evidence or concern
 has arisen. Luna presents the architect's advisory conclusions to the user.
-Architect approval is required only for an incomplete-work interruption under
-the external-blocker rule below.
+Outside project-run, architect approval is required only for an incomplete-work
+interruption under the external-blocker rule below. Project-run additionally
+requires independent post-implementation architect review with no unresolved
+blocking findings before stage completion.
 
 ### Implementation continuity
 Once implementation is explicitly authorized, continue until the agreed scope
@@ -116,6 +119,31 @@ Update design documentation and implementation status only when requested.
 Do not ask again for authorization already given for the current phase.
 Plan mode must be respected: do not write files in that mode. If a requested
 write is blocked by the current mode, explain the needed mode change.
+
+### Authorized project runs
+An explicit request to execute a bounded project-run supplies authorization for
+its planning, implementation, verification, necessary design/status updates,
+review corrections and separate stage commits. This is the narrow exception to
+separate user-controlled phase requests above; project-stage and project-task
+invoked independently retain their existing behavior. A planning-only run request
+does not grant execution authorization. Respect narrower user instructions.
+
+Use the deployed project-run skill for scope discovery, explicit external plan
+and tracker files, fresh Luna stage workers, independent architect review and
+checkpoint recovery. Root coordinates specialist calls; workers do not spawn
+agents. Preserve existing models, concurrency limits and expert escalation rules.
+Resolve routine details automatically; material changes to approved architecture,
+scope, compatibility or requirements require user input. Continue unaffected
+work. Update the selected tracker after every verified and reviewed stage and
+finish its commits before advancing. Do not push automatically.
+
+Actual Plan mode and runtime permissions remain binding, including for child
+agents and local checkpoints. Use a read-only planning phase inside editing-
+enabled runs, not automatic mode switching. User decisions, explicit stops,
+mode/permission restrictions and unavailable required specialists can interrupt
+a run independently of the external-blocker assessment; do not claim architect
+approval is needed to obey higher-priority restrictions. Preserve recovery
+evidence and resume without repeating completed work.
 
 ### Verification and reporting
 Follow the project's actual build and test instructions. Run focused tests and

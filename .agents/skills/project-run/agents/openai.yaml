@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Run"
+  short_description: "Run, review and commit consecutive project stages"
+  default_prompt: "Use $project-run to execute the next incomplete stages through Stage <end>, using implementation plan <plan.md> and status tracker <status.md>, with verification, independent review, tracker updates and stage commits; do not push."
