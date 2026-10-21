@@ -15,6 +15,15 @@ $repo=Split-Path $PSScriptRoot -Parent
 Assert-HarnessRoot $Root
 $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $rootPath
+. "$PSScriptRoot\IntegrationRunContext.ps1"
+$activeRun=Get-ValidatedIntegrationRunContext $rootPath
+if(!$activeRun) {
+    $ownerParameters=@{SelectedScenario='ServiceCrashRecovery';Root=$rootPath;Port=$Port;ScenarioProbeTest=$ProbeTest;ScenarioCrashPoint=$CrashPoint;ScenarioHistoryRecoveryChecks=[bool]$HistoryRecoveryChecks;ScenarioAdditionalCrashPoints=[string[]]$AdditionalCrashPoints}
+    if($LogPath){$ownerParameters.ScenarioLogPath=[IO.Path]::GetFullPath($LogPath)}
+    & (Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1') @ownerParameters
+    return
+}
+if($LogPath){Assert-HarnessPlainPath ([IO.Path]::GetFullPath($LogPath))}
 if(!$LogPath){$directory=Join-Path (Join-Path $PSScriptRoot '..\..\test_harness') 'logs';New-Item -ItemType Directory -Force -Path $directory|Out-Null;$LogPath=Join-Path $directory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')+'-operations-service-crash.log')}
 $LogPath=[IO.Path]::GetFullPath($LogPath)
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent)|Out-Null

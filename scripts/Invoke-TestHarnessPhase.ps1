@@ -25,6 +25,9 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $Root
+. "$PSScriptRoot\IntegrationRunContext.ps1"
+$activeRun=Get-ValidatedIntegrationRunContext $Root
+if(!$activeRun){throw 'Harness phases must be dispatched by an active integration run owner. Use Invoke-IntegrationSuite.ps1 to start an independent run.'}
 $manifest = Get-Content "$repo\runtime\artifacts.json" -Raw | ConvertFrom-Json
 $spatialLock = Get-Content (Join-Path "$repo\runtime" $manifest.dependencyLock) -Raw | ConvertFrom-Json
 $ocflLock = Get-Content (Join-Path "$repo\runtime" $manifest.ocflDependencyLock) -Raw | ConvertFrom-Json

@@ -17,7 +17,6 @@ public final class ResourceFiles {
             var config=new Properties();try(var in=Files.newInputStream(Path.of(System.getProperty("deposit.config")))){config.load(in);}
             root=checkedRoot(config.getProperty("resourceRoot"));exports=checkedRoot(config.getProperty("exportRoot"));
             if(root.startsWith(exports)||exports.startsWith(root))throw new IOException("Overlapping storage roots");
-            for(String legacy:List.of("live","deleted"))if(Files.exists(root.resolve(legacy),LinkOption.NOFOLLOW_LINKS))throw new IOException("Legacy resource storage requires fresh provisioning");
             for(String name:List.of("staging","ocfl","ocfl-work")){
                 Path child=root.resolve(name);Files.createDirectories(child);checkedRoot(child.toString());
                 if(!Files.getFileStore(child).equals(Files.getFileStore(root)))throw new IOException("Different filesystem");

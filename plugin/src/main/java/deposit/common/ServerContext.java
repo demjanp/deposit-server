@@ -26,8 +26,10 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private final TransactionLifecycle transactionLifecycle;
     private ServerContext(UUID databaseId) {this.databaseId=databaseId;this.transactionLifecycle=new TransactionLifecycle(this,databaseId,lifecycleLock);}
     private final SessionRequestRegistry sessionsAndRequests=new SessionRequestRegistry();
-    /** Compatibility view; the registry remains the sole owner of this map. */
-    public final ConcurrentMap<String,Session> sessions=sessionsAndRequests.sessions;
+    public void registerSession(String tokenHash, Session session) { sessionsAndRequests.register(tokenHash,session); }
+    public Session session(String tokenHash) { return sessionsAndRequests.session(tokenHash); }
+    public boolean removeSession(String tokenHash) { return sessionsAndRequests.removeSession(tokenHash); }
+    public boolean removeSession(String tokenHash, Session expected) { return sessionsAndRequests.removeSession(tokenHash,expected); }
     public void track(RequestContext c) { sessionsAndRequests.track(c); }
     void completeRequests(TxState state) { sessionsAndRequests.completeRequests(state); }
     public boolean cancel(String requestId,String actor,boolean administrator) { return sessionsAndRequests.cancel(requestId,actor,administrator); }
@@ -62,7 +64,6 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private String bootstrapHash;
     private Path secretPath;
     private Path secretDirectory;
-    private boolean inheritedSecretAcl;
     public static byte[] randomBytes(int count) {byte[] bytes=new byte[count];new SecureRandom().nextBytes(bytes);return bytes;}
     public static String randomToken() {return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes(32));}
     public TxState state(KernelTransaction tx) {return transactionLifecycle.state(tx);}
@@ -88,7 +89,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;
         TxState state=transactionLifecycle.find(internal.kernelTransaction().getTransactionSequenceNumber());
         if(state==null||state.tokenHash==null)return null;
-        Session session=sessions.get(state.tokenHash);
+        Session session=sessionsAndRequests.session(state.tokenHash);
         if(session==null)throw ExceptionHandler.fail("AUTH_FAILED","Session revoked before commit");
         synchronized(session) {
             long now=sessionTime();
@@ -113,17 +114,18 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         try {
             Path configPath=Path.of(System.getProperty("deposit.config")).toAbsolutePath();
             Properties configuration=new Properties();try(var input=Files.newInputStream(configPath)){configuration.load(input);}
-            inheritedSecretAcl=configuration.containsKey("secretRoot");
-            secretDirectory=inheritedSecretAcl?Path.of(configuration.getProperty("secretRoot")).toAbsolutePath():configPath.getParent();
-            if(!Files.isDirectory(secretDirectory)||Files.isSymbolicLink(secretDirectory)||!Files.isWritable(secretDirectory))throw new IllegalStateException("Deposit secret directory is unavailable");
+            String configuredSecretRoot=configuration.getProperty("secretRoot");
+            if(configuredSecretRoot==null||configuredSecretRoot.isBlank())throw new IllegalStateException("Deposit secretRoot is required");
+            secretDirectory=Path.of(configuredSecretRoot).toAbsolutePath().normalize();
+            if(!Path.of(configuredSecretRoot).isAbsolute()||!Files.isDirectory(secretDirectory)||Files.isSymbolicLink(secretDirectory)||!Files.isWritable(secretDirectory))throw new IllegalStateException("Deposit secretRoot is unavailable");
             secretPath=secretDirectory.resolve("deposit-bootstrap.secret");
             Path cursorPath=secretDirectory.resolve("deposit-"+db.databaseId().databaseId().uuid()+"-cursor.key");
-            byte[] persisted=Base64.getUrlDecoder().decode(secret(cursorPath,inheritedSecretAcl));
+            byte[] persisted=Base64.getUrlDecoder().decode(secret(cursorPath));
             System.arraycopy(persisted,0,cursorKey,0,cursorKey.length);
             boolean bootstrapped;
             try(var tx=db.beginTx()) {bootstrapped=tx.findNode(Label.label("DepositInitialization"),"id","bootstrap")!=null;tx.commit();}
             if(!bootstrapped) {
-                bootstrapHash=Json.hash(secret(secretPath,inheritedSecretAcl));
+                bootstrapHash=Json.hash(secret(secretPath));
             }
             storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();
             synchronized(lifecycleLock){
@@ -189,15 +191,13 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         return readerPins.pin(resourceId);
     }
     public boolean hasReaderPin(String resourceId){return readerPins.hasPin(resourceId);}
-    private static String secret(Path path,boolean inheritDirectoryAcl) throws java.io.IOException {
+    private static String secret(Path path) throws java.io.IOException {
         if(!Files.exists(path)) {
             Path temporary=path.resolveSibling(path.getFileName()+"."+UUID.randomUUID()+".partial");
             Files.createFile(temporary);
-            if(!inheritDirectoryAcl) {
-                var acl=Files.getFileAttributeView(temporary,AclFileAttributeView.class);
-                if(acl==null)throw new IllegalStateException("Deposit secrets require Windows owner ACL");
-                acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(Files.getOwner(temporary)).setPermissions(EnumSet.allOf(AclEntryPermission.class)).build()));
-            }
+            var acl=Files.getFileAttributeView(temporary,AclFileAttributeView.class);
+            if(acl==null)throw new IllegalStateException("Deposit secrets require Windows owner ACL");
+            acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(Files.getOwner(temporary)).setPermissions(EnumSet.allOf(AclEntryPermission.class)).build()));
             Files.writeString(temporary,randomToken());Files.move(temporary,path,StandardCopyOption.ATOMIC_MOVE);
         }
         String value=Files.readString(path).trim();if(!value.matches("[A-Za-z0-9_-]{43}"))throw new IllegalStateException("Invalid persisted Deposit secret");return value;

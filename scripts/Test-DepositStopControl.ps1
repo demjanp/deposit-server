@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Path $fixture|Out-Null;Set-OwnerOnlyDirectory $fix
 $log=New-Object System.Collections.Generic.List[string]
 $log.Add("Fixture retained: $fixture")
 function Check([bool]$Condition,[string]$Message){if(!$Condition){throw $Message};$log.Add("PASS: $Message")}
-function Expect-Failure([scriptblock]$Action,[string]$Expected){$observed=$null;try{& $Action}catch{$observed=$_.Exception.Message};Check ($observed -and $observed.Contains($Expected)) "Rejects $Expected"}
+function Expect-Failure([scriptblock]$Action,[string]$Expected){$observed=$null;try{& $Action}catch{$observed=$_.Exception.Message};if(!$observed -or !$observed.Contains($Expected)){throw "Expected failure containing '$Expected', observed '$observed'"};Check $true "Rejects $Expected"}
 try{
     $newServiceState='{"schemaVersion":1,"mode":"local","neo4jHome":"C:\\neo4j","javaHome":"C:\\jdk","dataRoot":"C:\\data","exportRoot":"C:\\exports","serviceName":"DepositNeo4j-test"}'|ConvertFrom-Json
     Set-DepositServiceState $newServiceState 'NT SERVICE\DepositNeo4j-test'
@@ -97,7 +97,7 @@ public static class DepositAtomicReadFixture {
     $localAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'runtime\distribution\helpers\LauncherLocal.ps1'),[ref]$null,[ref]$null)
     $definition=$launcherAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Fail'},$true);if(!$definition){throw 'Missing launcher error mapper'};Invoke-Expression $definition.Extent.Text
     $definition=$localAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Stop-Local'},$true);if(!$definition){throw 'Missing local stop helper'};Invoke-Expression $definition.Extent.Text
-    foreach($name in @('Service','Migrate-DepositSecrets','Set-SecretDirectoryAccess','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService','Set-ControlDirectoryAccess')){$definition=$serviceAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);if(!$definition){throw "Missing service helper $name"};Invoke-Expression $definition.Extent.Text}
+    foreach($name in @('Service','Get-ConfiguredSecretRoot','Set-DepositSecretIdentity','Set-SecretDirectoryAccess','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService','Assert-ActiveSuiteInstallation','Enter-ActiveSuiteLifecycle','Register-ActiveSuiteServiceIntent','Set-ControlDirectoryAccess')){$definition=$serviceAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);if(!$definition){throw "Missing service helper $name"};Invoke-Expression $definition.Extent.Text}
     $definition=$stateAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Save-State'},$true);if(!$definition){throw 'Missing state persistence helper'};Invoke-Expression $definition.Extent.Text
     $statePath=Join-Path $fixture 'deposit.install.json'
     $script:StatePath=$statePath
@@ -121,11 +121,12 @@ public static class DepositAtomicReadFixture {
     Set-DepositServiceState $stateToPersist 'NT SERVICE\DepositNeo4j-test';Save-State $statePath $stateToPersist
     $afterRecovery=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
     Check ($afterRecovery.mode -eq 'service' -and $afterRecovery.PSObject.Properties['serviceAccount'].Value -eq 'NT SERVICE\DepositNeo4j-test') 'State replacement succeeds after a failed attempt'
-    $legacyNeo4j=Join-Path $fixture 'legacy-neo4j';$legacyConf=Join-Path $legacyNeo4j 'conf';New-Item -ItemType Directory -Path $legacyConf -Force|Out-Null
-    $legacyConfig=Join-Path $legacyConf 'deposit.properties';$secretSource=Join-Path $legacyConf 'deposit-bootstrap.secret';[IO.File]::WriteAllText($legacyConfig,"resourceRoot=C:/data`nexportRoot=C:/exports`nexistingSetting=keep`n");[IO.File]::WriteAllText($secretSource,'fixture-secret')
-    $legacyState=[pscustomobject]@{neo4jHome=$legacyNeo4j;secretRoot=(Join-Path $legacyNeo4j 'deposit-secrets')};$operator=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $secretRoot=Migrate-DepositSecrets $legacyState $operator;$legacyText=Get-Content -LiteralPath $legacyConfig -Raw;$migratedSecret=Join-Path $secretRoot 'deposit-bootstrap.secret'
-    Check ($legacyText.Contains('existingSetting=keep') -and $legacyText.Contains('secretRoot=') -and (Test-Path -LiteralPath $migratedSecret) -and !(Test-Path -LiteralPath $secretSource)) 'Legacy secret-root configuration update preserves settings and moves the secret atomically'
+    $secretNeo4j=Join-Path $fixture 'secret-root-test';$secretConf=Join-Path $secretNeo4j 'conf';$secretRoot=Join-Path $secretNeo4j 'deposit-secrets';New-Item -ItemType Directory -Path $secretConf,$secretRoot -Force|Out-Null
+    $secretConfig=Join-Path $secretConf 'deposit.properties';[IO.File]::WriteAllText($secretConfig,"resourceRoot=C:/data`nexportRoot=C:/exports`nsecretRoot=$($secretRoot.Replace('\','/'))`n")
+    $secretState=[pscustomobject]@{neo4jHome=$secretNeo4j;secretRoot=$secretRoot}
+    Check ((Get-ConfiguredSecretRoot $secretState) -eq [IO.Path]::GetFullPath($secretRoot)) 'Current configuration requires its explicit secretRoot'
+    [IO.File]::WriteAllText($secretConfig,"resourceRoot=C:/data`nexportRoot=C:/exports`n")
+    Expect-Failure {Get-ConfiguredSecretRoot $secretState} 'exactly one secretRoot'
     function Set-RuntimeEnvironment {param($State)}
     function Get-Service {param($Name,$ErrorAction);$value=[pscustomobject]@{Status='Running'};$value|Add-Member ScriptMethod WaitForStatus {param($Status,$Timeout)$script:events.Add('wait')};return $value}
     $script:servicePid=12345
@@ -172,7 +173,7 @@ public static class DepositAtomicReadFixture {
         $launcherAst=[System.Management.Automation.Language.Parser]::ParseFile($launcherPath,[ref]$null,[ref]$null)
         $serviceAst=[System.Management.Automation.Language.Parser]::ParseFile($servicePath,[ref]$null,[ref]$null)
         $definition=$launcherAst.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Fail'},$true);if(!$definition){throw 'Missing launcher error mapper'};Invoke-Expression $definition.Extent.Text
-        foreach($name in @('Service','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService')){$definition=$serviceAst.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);if(!$definition){throw "Missing service helper $name"};Invoke-Expression $definition.Extent.Text}
+        foreach($name in @('Service','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService','Assert-ActiveSuiteInstallation','Enter-ActiveSuiteLifecycle','Register-ActiveSuiteServiceIntent')){$definition=$serviceAst.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);if(!$definition){throw "Missing service helper $name"};Invoke-Expression $definition.Extent.Text}
         $script:events=New-Object System.Collections.Generic.List[string];$script:servicePid=12345;$script:replaceDuringDrain=$false
         function Get-Service {param($Name,$ErrorAction);$value=[pscustomobject]@{Status='Running'};$value|Add-Member ScriptMethod WaitForStatus {param($Status,$Timeout)$script:events.Add('wait')};return $value}
         function Set-RuntimeEnvironment {param($State)}
@@ -181,7 +182,7 @@ public static class DepositAtomicReadFixture {
         function Get-DepositServiceProcessIdentity {param($Neo4jHome,$ServiceName,$ServiceAccount,$ExpectedPid=0,$ExpectedStartMillis=0);if($ExpectedPid -gt 0 -and $ExpectedPid -ne $script:servicePid){throw 'Deposit service process incarnation changed'};return [pscustomobject]@{name=$ServiceName;pid=$script:servicePid;startMillis=123000;serviceAccount=$ServiceAccount;runtimeSid=$currentSid}}
         function Request-DepositStop {param($Neo4jHome,$TargetProcessId,$ServiceName,$ServiceAccount);$script:events.Add('drain');if($script:replaceDuringDrain){$script:servicePid++};return $drainedIdentity}
         function Stop-Service {param($Name,$ErrorAction);$script:events.Add('signal')}
-        function Migrate-DepositSecrets {param($State,$ServiceAccount);$script:events.Add('migrate')}
+        function Set-DepositSecretIdentity {param($State,$Identity);$script:events.Add('secret-acl')}
         function Save-State {param($State);$script:events.Add('save')}
         function Drain-Installation {param($State);$script:events.Add('drain');if($script:replaceDuringDrain){$script:servicePid++};return $drainedIdentity}
         function Invoke-FreshScopeChecks([string]$StatePath) {
@@ -190,7 +191,7 @@ public static class DepositAtomicReadFixture {
         Service 'stop' $state $StatePath '' @()
         if(($script:events -join ',') -ne 'drain,signal,wait'){throw "Fresh-scope service stop order was $($script:events -join ',')"}
         $script:events.Clear();$state=[pscustomobject]@{neo4jHome=$installPath;javaHome=$installPath;serviceName='fresh';mode='service';serviceAccount='NT SERVICE\fresh'};Service 'remove' $state $StatePath '' @()
-        if(($script:events -join ',') -ne 'drain,signal,wait,migrate,save'){throw "Fresh-scope service removal order was $($script:events -join ',')"}
+        if(($script:events -join ',') -ne 'drain,signal,wait,secret-acl,save'){throw "Fresh-scope service removal order was $($script:events -join ',')"}
         if($state.PSObject.Properties['serviceAccount']){throw 'Partial service removal left the nonexistent account property present'}
         $script:events.Clear();$state.mode='service';$state|Add-Member -NotePropertyName serviceAccount -NotePropertyValue 'NT SERVICE\fresh' -Force;$script:replaceDuringDrain=$true
         try{Service 'stop' $state $StatePath '' @();throw 'Replacement service was not rejected'}catch{if(!$_.Exception.Message.Contains('restarted during its drain')){throw}}
@@ -206,7 +207,7 @@ public static class DepositAtomicReadFixture {
     Check (Test-Path -LiteralPath $uninstallMarker) 'Fresh-scope service removal invokes the Neo4j service uninstall command'
     $principal=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
     Set-ControlDirectoryAccess $secrets $principal $principal
-    Assert-DepositControlPath $control @($sid);Check $true 'Known control tree identity migration retains protected access'
+    Assert-DepositControlPath $control @($sid);Check $true 'Known control tree identity changes retain protected access'
     [IO.File]::WriteAllText((Join-Path $control 'unexpected.txt'),'unexpected')
     Expect-Failure {Set-ControlDirectoryAccess $secrets $principal $principal} 'Unexpected shutdown control file'
     $log.Add('Live Windows service validation was not run; service control was mocked.')

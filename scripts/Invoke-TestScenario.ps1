@@ -15,6 +15,16 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
 Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+. "$PSScriptRoot\IntegrationRunContext.ps1"
+$activeRun=Get-ValidatedIntegrationRunContext $rootPath
+if(!$activeRun) {
+    $ownerParameters=@{RecoverySeedTest=$SeedTest;RecoveryVerifyTest=$VerifyTest;RecoveryTransition=$Transition;Root=$rootPath;Port=$Port;RecoveryTestTimeoutSeconds=$TestTimeoutSeconds}
+    if($CrashSuite){$ownerParameters.RecoveryCrashSuite=$CrashSuite}
+    if($CrashPoint){$ownerParameters.RecoveryCrashPoint=$CrashPoint}
+    if($LogPath){$ownerParameters.RecoveryLogPath=[IO.Path]::GetFullPath($LogPath)}
+    & (Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1') @ownerParameters
+    return
+}
 Assert-HarnessRoot $rootPath
 if (!$LogPath) {
     $directory = Join-Path (Join-Path $PSScriptRoot '..\..\test_harness') 'logs'

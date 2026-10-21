@@ -55,8 +55,4 @@ function Invoke-Package($Context,[string]$ScriptsDir) {$Root=$Context.Root; $rep
         [IO.Compression.ZipFile]::ExtractToDirectory($archivePath,$archiveCheck)
         if(!(Test-DepositReleasePackage $archiveCheck)){throw 'Release archive failed manifest verification'}
     } finally {if(Test-Path -LiteralPath $archiveCheck){Remove-Item -LiteralPath $archiveCheck -Recurse -Force}}
-    $installedDistribution=Join-Path $run 'distribution'
-    if(Test-Path -LiteralPath $installedDistribution) {throw 'Installed distribution already exists; reset before packaging'}
-    Copy-Item -LiteralPath $destination -Destination $installedDistribution -Recurse
-    if(!(Test-DepositReleasePackage $installedDistribution)){throw 'Installed distribution copy failed manifest verification'}
 }

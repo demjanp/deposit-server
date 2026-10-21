@@ -1,10 +1,20 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$LogDirectory,
-      [Parameter(Mandatory=$true)][string]$TlsMaterialDirectory)
+param([string]$LogDirectory,
+      [string]$TlsMaterialDirectory)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
 $rootPath=Get-HarnessRoot
 $run=Get-HarnessRunRoot
+. (Join-Path $PSScriptRoot 'IntegrationRunContext.ps1')
+$activeRun=Get-ValidatedIntegrationRunContext $rootPath
+if(!$activeRun) {
+    & (Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1') -SelectedScenario DownloadListener
+    return
+}
+if(!$LogDirectory -or !$TlsMaterialDirectory){throw 'Listener scenario requires current-run log and TLS directories'}
+$expectedTls=[IO.Path]::GetFullPath((Join-Path $rootPath 'private\tls'))
+if([IO.Path]::GetFullPath($TlsMaterialDirectory) -ine $expectedTls){throw 'Listener scenario accepts only TLS material generated in the current run'}
+Assert-HarnessPlainPath ([IO.Path]::GetFullPath($LogDirectory))
 $env:DEPOSIT_TEST_ROOT=$rootPath
 $config=Join-Path $run 'neo4j\conf\deposit.properties'
 $state=Get-Content (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json

@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
 /** Storage lifecycle and maintenance scheduling/recovery coordinator. */
@@ -57,10 +56,6 @@ public final class StorageManager implements AutoCloseable {
     /** Startup reconciliation order is persisted purges, staging expiry, locations, orphans, then backend work. */
     public void recover() {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(50);
-        try (var tx = db.beginTx()) {
-            for (Node loc : new CoreRepository(tx, ZonedDateTime.now(java.time.ZoneOffset.UTC)).nodes("DepositResourceLocation", Map.of()))
-                if (loc.hasProperty("path") || loc.hasProperty("suffix")) throw new IllegalStateException("Legacy resource records require fresh provisioning");
-        }
         for (String id : ids("DepositPruneItem")) { jobs.collect(id); jobs.collect(id); }
         try { jobs.expireImportPlans(); jobs.expireTables(); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot expire staged operational data", e); }

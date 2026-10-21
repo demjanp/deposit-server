@@ -33,7 +33,7 @@ public final class AccountService extends ActionService {
         boolean valid=AccountCredentials.validLogin(user,password);
         if(!valid) {c.server.loginFailed(username,origin);c.fail("AUTH_FAILED","Invalid credentials");}
         String token=ServerContext.randomToken();var session=new ServerContext.Session(CoreRepository.id(user),internal.securityContext().subject().executingUser(),c.server.sessionTime());
-        c.state.afterCommit.add(()->c.server.sessions.put(Json.hash(token),session));c.revision=c.server.revision(c.state);
+        c.state.afterCommit.add(()->c.server.registerSession(Json.hash(token),session));c.revision=c.server.revision(c.state);
         session.baselines.put("server",c.revision);
         return new LoginRow(token,Json.map("user",repo.data(user),"expiresAt",Instant.ofEpochMilli(session.created+1_800_000).toString()),c.meta());
     }
@@ -46,13 +46,13 @@ public final class AccountService extends ActionService {
         boolean valid=AccountCredentials.validLogin(user,password);
         if(!valid){c.server.loginFailed(username,origin);c.fail("AUTH_FAILED","Invalid credentials");}
         String token=ServerContext.randomToken();var session=new ServerContext.Session(CoreRepository.id(user),null,c.server.sessionTime(),ServerContext.Transport.BROWSER);
-        session.csrfToken=ServerContext.randomToken();c.state.afterCommit.add(()->c.server.sessions.put(Json.hash(token),session));
+        session.csrfToken=ServerContext.randomToken();c.state.afterCommit.add(()->c.server.registerSession(Json.hash(token),session));
         c.revision=c.server.revision(c.state);return token;
     }
     public ValueRow logout(Map<String,Object> request) {
         fields(request);readContext();authenticate();
         if(c.state.scoped||c.state.mutation)c.fail("VALIDATION_FAILED","Logout requires separate transaction");
-        c.state.selection=true;c.state.afterCommit.add(()->c.server.sessions.remove(Json.hash(c.token)));c.revision=c.server.revision(c.state);return new ValueRow(true,c.meta());
+        c.state.selection=true;c.state.afterCommit.add(()->c.server.removeSession(Json.hash(c.token)));c.revision=c.server.revision(c.state);return new ValueRow(true,c.meta());
     }
     public Outcome createUser(Map<String,Object> request) { return new AccountMutationService(c).createUser(request); }
     public Outcome createNamespace(Map<String,Object> request) { return new NamespaceAdministrationService(c).create(request); }

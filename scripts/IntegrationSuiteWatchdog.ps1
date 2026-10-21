@@ -187,6 +187,9 @@ function Update-SuiteJournal([string]$Path,[scriptblock]$Change) {
     do { try { $journalLock = [IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None') } catch [IO.IOException] { Start-Sleep -Milliseconds 100 } } until ($journalLock -or [DateTime]::UtcNow -gt $deadline)
     if (!$journalLock) { throw 'Could not lock the integration suite journal' }
     try {
+        # A journal is authorization for process and service cleanup. Never
+        # let an update turn an untrusted or inherited-ACL file into authority.
+        [DepositSuiteJournalFiles]::Validate($Path)
         $journal = Read-SuiteJournal $Path
         & $Change $journal
         $temporary = $Path+'.'+[Guid]::NewGuid().ToString('N')+'.partial'
@@ -299,6 +302,11 @@ function Invoke-SuiteLocalRetirement([string]$Path,[string]$ExpectedInvocation) 
         }
     } finally {$runner.Dispose()}
     Assert-HarnessPlainPath $runtimeHome
+    foreach($runtime in @($journal.runtimeJobs)){
+        if($runtime.state -cne 'retired' -or !$runtime.jobAcknowledged -or $runtime.jobName -notmatch ('^Local\\DepositRuntime-'+[regex]::Escape($ExpectedInvocation)+'-[a-f0-9]{32}$')){throw 'Local retirement requires every runtime generation to be retired'}
+        $members=@([DepositSuiteJobs]::Members([string]$runtime.jobName))
+        try{if($members.Count){throw 'Local retirement found a live runtime containment generation'}}finally{foreach($member in $members){$member.Dispose()}}
+    }
     $installationPath=Join-Path (Split-Path $runtimeHome -Parent) 'distribution\deposit.install.json'
     Assert-HarnessPlainPath $installationPath
     $installation=Get-Content -LiteralPath $installationPath -Raw | ConvertFrom-Json
@@ -367,13 +375,23 @@ function Invoke-SuiteLocalRetirement([string]$Path,[string]$ExpectedInvocation) 
 function Hold-SuiteJobs([string]$Path,[string]$Invocation){
     $journal=Read-SuiteJournal $Path
     if($journal.invocationId -cne $Invocation){return}
-    foreach($child in @($journal.children)){
-        if($child.PSObject.Properties['jobName'] -and $child.jobName){
-            if($child.jobName -notmatch ('^Local\\DepositIT-'+[regex]::Escape($Invocation)+'-[a-f0-9]{32}$')){throw 'Containment job does not belong to this invocation'}
-            [DepositSuiteJobs]::Hold([string]$child.jobName)
-            if(!$child.jobAcknowledged){
-                $jobName=[string]$child.jobName
-                Update-SuiteJournal $Path {param($j) if($j.invocationId -cne $Invocation){throw 'Suite invocation changed during job acknowledgement'};foreach($entry in @($j.children)){if($entry.jobName -ceq $jobName){$entry.jobAcknowledged=$true}}}
+    foreach($entry in @($journal.children)){
+        if($entry.PSObject.Properties['jobName'] -and $entry.jobName){
+            if($entry.jobName -notmatch ('^Local\\DepositIT-'+[regex]::Escape($Invocation)+'-[a-f0-9]{32}$')){throw 'Containment job does not belong to this invocation'}
+            [DepositSuiteJobs]::Hold([string]$entry.jobName)
+            if(!$entry.jobAcknowledged){
+                $jobName=[string]$entry.jobName
+                Update-SuiteJournal $Path {param($j) if($j.invocationId -cne $Invocation){throw 'Suite invocation changed during job acknowledgement'};foreach($child in @($j.children)){if($child.jobName -ceq $jobName){$child.jobAcknowledged=$true}}}
+            }
+        }
+    }
+    foreach($entry in @($journal.runtimeJobs)){
+        if($entry.PSObject.Properties['jobName'] -and $entry.jobName){
+            if($entry.jobName -notmatch ('^Local\\DepositRuntime-'+[regex]::Escape($Invocation)+'-[a-f0-9]{32}$')){throw 'Runtime containment job does not belong to this invocation'}
+            [DepositSuiteJobs]::Hold([string]$entry.jobName)
+            if(!$entry.jobAcknowledged){
+                $jobName=[string]$entry.jobName
+                Update-SuiteJournal $Path {param($j) if($j.invocationId -cne $Invocation){throw 'Suite invocation changed during runtime job acknowledgement'};foreach($runtime in @($j.runtimeJobs)){if($runtime.jobName -ceq $jobName){$runtime.jobAcknowledged=$true}}}
             }
         }
     }
@@ -402,6 +420,14 @@ function Assert-SuiteService($Journal,$Service) {
     if ($executable -ine (Join-Path $runtimeHome 'bin\tools\prunsrv-amd64.exe') -or $match.Groups[3].Value -cne ('//RS//'+$Journal.serviceName)) { throw 'Service command differs from the pinned owned test installation' }
     Assert-HarnessPlainPath $executable
 }
+function Assert-SuiteEnvironmentQuiescent($Journal) {
+    $root=[IO.Path]::GetFullPath((Get-HarnessRoot)).TrimEnd('\')
+    $runtimeHome=[IO.Path]::GetFullPath([string]$Journal.neo4jHome).TrimEnd('\')
+    $services=@(Get-CimInstance Win32_Service -ErrorAction Stop|Where-Object {$_.PathName -and ([string]$_.PathName).IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0})
+    if($services.Count){throw ('A service remains registered under the harness: '+(($services|ForEach-Object Name)-join ', '))}
+    $processes=@(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object {$_.CommandLine -and ([string]$_.CommandLine).IndexOf($runtimeHome,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.Name -in @('java.exe','prunsrv-amd64.exe','neo4j.exe')})
+    if($processes.Count){throw ('A harness runtime process remains active: '+(($processes|ForEach-Object ProcessId)-join ', '))}
+}
 function Write-SuiteCleanupDiagnostic([string]$Path,[string]$Message){
     Update-SuiteJournal $Path {param($j) $j | Add-Member -NotePropertyName cleanupDiagnostics -NotePropertyValue (@($j.cleanupDiagnostics)+@([DateTime]::UtcNow.ToString('o')+' '+$Message)) -Force}
 }
@@ -409,7 +435,9 @@ function Invoke-SuiteCleanupLauncher($Journal,[string]$Operation){
     $launcher=Join-Path (Split-Path $Journal.neo4jHome -Parent) 'distribution\deposit.bat'
     Assert-HarnessPlainPath $launcher
     if(!(Test-Path -LiteralPath $launcher)){throw 'Owned cleanup launcher is unavailable'}
-    $command='& '''+$launcher.Replace("'","''")+''' '+$Operation+'; exit $LASTEXITCODE'
+    # Cleanup already owns the lifecycle fence and must bypass normal active
+    # run admission after terminalCleanup has closed child operations.
+    $command='$env:DEPOSIT_SUITE_JOURNAL=$null; & '''+$launcher.Replace("'","''")+''' '+$Operation+'; exit $LASTEXITCODE'
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Journal.logs ('cleanup-'+$Operation+'.stdout.log')) -RedirectStandardError (Join-Path $Journal.logs ('cleanup-'+$Operation+'.stderr.log'))
     try{$null=$child.Handle;if(!$child.WaitForExit(330000)){Stop-SuiteChildTree ([pscustomobject]@{pid=$child.Id;startTicks=$child.StartTime.ToUniversalTime().Ticks});throw "Graceful $Operation timed out"};$child.Refresh();if($child.ExitCode -ne 0){throw "Graceful $Operation failed ($($child.ExitCode))"}}finally{$child.Dispose()}
@@ -421,10 +449,28 @@ function Invoke-SuiteCleanup([string]$Path,[string]$ExpectedInvocation) {
     do { try { $cleanupLock = [IO.File]::Open($Path+'.cleanup.lock','OpenOrCreate','ReadWrite','None') } catch [IO.IOException] { Start-Sleep -Milliseconds 200 } } until ($cleanupLock -or [DateTime]::UtcNow -gt $deadline)
     if (!$cleanupLock) { throw 'Suite cleanup is still locked by another process' }
     try {
+        [DepositSuiteJournalFiles]::Validate($Path)
         $journal = Read-SuiteJournal $Path
         if($ExpectedInvocation -and $journal.invocationId -cne $ExpectedInvocation){return}
-        if ($journal.state -eq 'cleaned') { return }
-        Update-SuiteJournal $Path { param($j) $j.terminalCleanup=$true; $j.state='cleaning' }
+        if ($journal.state -eq 'cleaned') {
+            try {Assert-SuiteEnvironmentQuiescent $journal;return}
+            catch {$message=$_.Exception.Message;Update-SuiteJournal $Path {param($j)$j.state='cleanup-failed';$j.cleanupError=$message};throw}
+        }
+        # Installation and service start hold this same lock through their SCM
+        # mutation. Terminal cleanup waits for them, closes admission, then
+        # quiesces their contained children before service cleanup begins.
+        Assert-HarnessPlainPath ($Path+'.lifecycle.lock')
+        $lifecycleLock=[IO.File]::Open($Path+'.lifecycle.lock','OpenOrCreate','ReadWrite','None')
+        try {
+            [DepositSuiteJournalFiles]::Validate($Path)
+            $journal=Read-SuiteJournal $Path
+            if($ExpectedInvocation -and $journal.invocationId -cne $ExpectedInvocation){return}
+            if($journal.state -eq 'cleaned'){
+                try {Assert-SuiteEnvironmentQuiescent $journal;return}
+                catch {$message=$_.Exception.Message;Update-SuiteJournal $Path {param($j)$j.state='cleanup-failed';$j.cleanupError=$message};throw}
+            }
+            Update-SuiteJournal $Path { param($j) $j.terminalCleanup=$true; $j.state='cleaning' }
+        } finally {$lifecycleLock.Dispose()}
         try {
             foreach ($child in @($journal.children)) { Stop-SuiteChildTree $child -PreserveRuntime }
             if ($journal.serviceName) {
@@ -474,6 +520,19 @@ function Invoke-SuiteCleanup([string]$Path,[string]$ExpectedInvocation) {
                     if(Get-SuiteProcess $identity.pid $identity.startTicks){Write-SuiteCleanupDiagnostic $Path 'Using exact-process forced local cleanup after graceful stop.';Stop-SuiteChildTree $identity}
                 }
             }
+            foreach($runtime in @($journal.runtimeJobs)){
+                if(!$runtime.jobName -or $runtime.jobName -notmatch ('^Local\\DepositRuntime-'+[regex]::Escape([string]$journal.invocationId)+'-[a-f0-9]{32}$') -or
+                    $runtime.jobAcknowledged -isnot [bool] -or !$runtime.jobAcknowledged -or
+                    [long]$runtime.pid -le 0 -or [long]$runtime.startTicks -le 0 -or
+                    $runtime.generation -cnotmatch '^[a-f0-9]{32}$') {throw 'Local runtime cleanup has an invalid containment identity'}
+                if($runtime.state -cne 'retired'){
+                    Write-SuiteCleanupDiagnostic $Path ('Retiring local runtime containment generation '+$runtime.generation)
+                    Stop-SuiteChildTree $runtime -Deadline ([DateTime]::UtcNow.AddSeconds(30))
+                    Update-SuiteJournal $Path {param($j)if($j.invocationId -cne $journal.invocationId){throw 'Run owner changed during local runtime cleanup'};foreach($entry in @($j.runtimeJobs)){if($entry.generation -ceq $runtime.generation){$entry.state='retired';$entry|Add-Member -NotePropertyName retiredUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force}}}
+                }
+                $runtimeMembers=@([DepositSuiteJobs]::Members([string]$runtime.jobName))
+                try{if($runtimeMembers.Count){throw 'Local runtime containment generation remains active after cleanup'}}finally{foreach($member in $runtimeMembers){$member.Dispose()}}
+            }
             $left = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('java.exe','prunsrv-amd64.exe') -and $_.CommandLine -and $_.CommandLine.Contains([string]$journal.neo4jHome) })
             if($journal.runtimeOwned -and $left.Count){
                 # Startup can fail before its process.json is published. This
@@ -500,6 +559,7 @@ function Invoke-SuiteCleanup([string]$Path,[string]$ExpectedInvocation) {
                     try{if($members.Count){throw 'A contained process remains after runtime cleanup'}}finally{foreach($member in $members){$member.Dispose()}}
                 }
             }
+            Assert-SuiteEnvironmentQuiescent $journal
             Update-SuiteJournal $Path { param($j) $j.state='cleaned'; $j.cleanupError=$null; $j.cleanedUtc=[DateTime]::UtcNow.ToString('o') }
         } catch {
             $message = $_.Exception.Message

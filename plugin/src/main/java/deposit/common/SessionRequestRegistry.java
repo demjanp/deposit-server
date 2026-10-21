@@ -10,13 +10,17 @@ import org.neo4j.kernel.api.KernelTransaction;
 final class SessionRequestRegistry {
     private record ActiveRequest(String actor, ServerContext.TxState state) {}
 
-    final ConcurrentMap<String, ServerContext.Session> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ServerContext.Session> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ActiveRequest> requests = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Failures> failures = new ConcurrentHashMap<>();
     private volatile java.util.function.LongSupplier clock = System::currentTimeMillis;
 
     long sessionTime() { return clock.getAsLong(); }
     void clock(java.util.function.LongSupplier value) { clock = Objects.requireNonNull(value); }
+    void register(String tokenHash, ServerContext.Session session) { sessions.put(tokenHash,session); }
+    ServerContext.Session session(String tokenHash) { return sessions.get(tokenHash); }
+    boolean removeSession(String tokenHash) { return sessions.remove(tokenHash)!=null; }
+    boolean removeSession(String tokenHash,ServerContext.Session expected) { return sessions.remove(tokenHash,expected); }
 
     void track(RequestContext context) {
         ActiveRequest request = new ActiveRequest(context.actorId, context.state);

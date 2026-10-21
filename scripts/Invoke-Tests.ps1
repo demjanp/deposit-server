@@ -15,12 +15,21 @@ $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\HarnessPaths.ps1"
 $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $Root
+. "$PSScriptRoot\IntegrationRunContext.ps1"
+$activeRun=Get-ValidatedIntegrationRunContext $Root
+if(!$activeRun) {
+    $suiteParameters=@{SelectedKind=$Kind;SelectedTest=$Test;Root=$Root;Port=$Port}
+    if($LogPath){$suiteParameters.SelectedLogPath=[IO.Path]::GetFullPath($LogPath)}
+    & (Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1') @suiteParameters
+    return
+}
 if (!$LogPath) {
     $logDirectory = Join-Path $Root 'logs'
     New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
     $LogPath = Join-Path $logDirectory ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') + '-' + $Kind.ToLowerInvariant() + '.log')
 }
 $LogPath = [IO.Path]::GetFullPath($LogPath)
+Assert-HarnessPlainPath $LogPath
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
 
 $spatialJar = Join-Path $Root 'cache\neo4j-spatial-server-plugin-2025.10.0.jar'

@@ -17,7 +17,8 @@ final class TestInstallationPaths {
         Path config=runRoot().resolve("neo4j/conf/deposit.properties");
         try(var input=Files.newInputStream(config)){
             Properties values=new Properties();values.load(input);String configured=values.getProperty("secretRoot");
-            return configured==null?config.getParent():Path.of(configured);
+            if(configured==null||configured.isBlank())throw new IllegalStateException("Integration test configuration is missing secretRoot");
+            return Path.of(configured);
         }catch(java.io.IOException failure){throw new UncheckedIOException("Cannot read test harness secret configuration",failure);}
     }
     static Path bootstrapSecret(){return secretRoot().resolve("deposit-bootstrap.secret");}

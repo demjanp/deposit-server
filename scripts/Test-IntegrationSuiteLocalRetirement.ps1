@@ -103,7 +103,7 @@ public static class DepositRetirementHolder {
     $entry=Start-ContainedHolder $holderExe 'retained'
     $runner=Get-Process -Id $PID
     try {$runnerTicks=$runner.StartTime.ToUniversalTime().Ticks} finally {$runner.Dispose()}
-    $journal=[pscustomobject]@{schemaVersion=1;invocationId=$invocation;ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;runnerPid=$PID;runnerStartTicks=$runnerTicks;neo4jHome=$runtimeHome;runtimeOwned=$true;serviceName=$null;serviceAccount=$null;installationPhase='none';children=@($entry);state='running';terminalCleanup=$false;watchdogAcknowledged=$true}
+    $journal=[pscustomobject]@{schemaVersion=1;invocationId=$invocation;ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;runnerPid=$PID;runnerStartTicks=$runnerTicks;neo4jHome=$runtimeHome;runtimeOwned=$true;serviceName=$null;serviceAccount=$null;installationPhase='none';children=@($entry);runtimeJobs=@();state='running';terminalCleanup=$false;watchdogAcknowledged=$true}
     Write-CaseJournal $journal
     $stream=[IO.File]::Open((Join-Path $run 'retained.log'),'Open','Read',([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
     $sha=[Security.Cryptography.SHA256]::Create()

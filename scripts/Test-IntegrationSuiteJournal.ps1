@@ -15,6 +15,29 @@ function Assert-Journal([string]$Path,[int]$ExpectedCount) {
 }
 
 try {
+    . (Join-Path $PSScriptRoot 'IntegrationRunContext.ps1')
+    $staleContextPath=Join-Path $fixture 'stale-run-context.json'
+    $currentProcess=Get-Process -Id $PID
+    $currentStartTicks=$currentProcess.StartTime.ToUniversalTime().Ticks
+    $staleContext=[ordered]@{
+        schemaVersion=1;invocationId=[Guid]::NewGuid().ToString('N')
+        ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        runnerPid=$PID;runnerStartTicks=$currentStartTicks
+        watchdogPid=$PID;watchdogStartTicks=$currentStartTicks
+        neo4jHome=(Join-Path (Get-HarnessRoot) 'runs\test-host\neo4j')
+        state='running';watchdogAcknowledged=$true
+        logs=(Join-Path (Get-HarnessRoot) 'results');children=@()
+    }
+    Write-SuiteJournal $staleContextPath (ConvertTo-Json $staleContext -Depth 8)
+    $priorRunJournal=[Environment]::GetEnvironmentVariable('DEPOSIT_SUITE_JOURNAL','Process')
+    [Environment]::SetEnvironmentVariable('DEPOSIT_SUITE_JOURNAL',$staleContextPath,'Process')
+    try {
+        $staleContextRejected=$false
+        try { Get-ValidatedIntegrationRunContext (Get-HarnessRoot) | Out-Null }
+        catch { $staleContextRejected=$_.Exception.Message -like '*stale or invalid*' }
+    } finally { [Environment]::SetEnvironmentVariable('DEPOSIT_SUITE_JOURNAL',$priorRunJournal,'Process') }
+    if(!$staleContextRejected){throw 'Stale or forged noncanonical run journal was accepted as a nested run context'}
+
     # Delete a discovered leaf immediately before the real attribute probe.
     # A debugger breakpoint provides deterministic fault injection without a
     # production test hook or an unrelated worker-startup timing assumption.
@@ -186,23 +209,30 @@ try {
     $missingElapsed=([DateTime]::UtcNow-$missingStarted).TotalSeconds
     if(!$missingRejected -or $missingElapsed -lt 4 -or $missingElapsed -gt 8){throw "Persistent journal absence was not rejected within the bounded retry window ($missingElapsed seconds)"}
 
-    $legacyPath=Join-Path $fixture 'legacy.json'
-    [IO.File]::WriteAllText($legacyPath,'{"count":0}',(New-Object Text.UTF8Encoding($false)))
-    Update-SuiteJournal $legacyPath { param($journal) $journal.count=[int]$journal.count+1 }
-    Assert-Journal $legacyPath 1
+    $unprotectedPath=Join-Path $fixture 'unprotected.json'
+    [IO.File]::WriteAllText($unprotectedPath,'{"count":0}',(New-Object Text.UTF8Encoding($false)))
+    $unprotectedRejected=$false
+    try { Update-SuiteJournal $unprotectedPath { param($journal) $journal.count=[int]$journal.count+1 } }
+    catch [IO.IOException] { $unprotectedRejected=$true }
+    if(!$unprotectedRejected){throw 'Journal update accepted an unprotected ACL'}
+    if([IO.File]::ReadAllText($unprotectedPath) -cne '{"count":0}'){throw 'Rejected journal update changed untrusted contents'}
 
     $depositHelper=Join-Path (Get-DepositServerRoot) 'runtime\distribution\helpers\LauncherService.ps1'
     $ast=[System.Management.Automation.Language.Parser]::ParseFile($depositHelper,[ref]$null,[ref]$null)
-    $setter=$ast.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-ActiveSuiteInstallationPhase'},$true)
-    if(!$setter){throw 'Could not locate the production suite phase updater'}
+    $setter=$ast.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Register-ActiveSuiteServiceIntent'},$true)
+    if(!$setter){throw 'Could not locate the production suite service-intent recorder'}
     Invoke-Expression $setter.Extent.Text
     $phasePath=Join-Path $fixture 'phase.json'
-    Write-SuiteJournal $phasePath '{"installationPhase":"none"}'
-    Set-ActiveSuiteInstallationPhase $phasePath 'installing' (Join-Path (Get-HarnessRoot) 'runs\test-host\distribution')
-    if((Read-SuiteJournal $phasePath).installationPhase -ne 'installing'){throw 'Suite phase update lost the journal path after loading the watchdog'}
+    Write-SuiteJournal $phasePath '{"installationPhase":"none","serviceName":null,"serviceAccount":null,"serviceRegistrations":[]}'
+    $installationRoot=Join-Path (Get-HarnessRoot) 'runs\test-host'
+    $state=[pscustomobject]@{serviceName='DepositNeo4j-0123abcd';neo4jHome=(Join-Path $installationRoot 'neo4j')}
+    Register-ActiveSuiteServiceIntent $phasePath (Join-Path $installationRoot 'distribution') $state 'installing'
+    $registered=Read-SuiteJournal $phasePath
+    if($registered.installationPhase -ne 'installing' -or $registered.serviceRegistrations.Count -ne 1 -or $registered.serviceRegistrations[0].name -cne $state.serviceName){throw 'Service installation intent was not recorded before registration'}
     [DepositSuiteJournalFiles]::Validate($phasePath)
-    Set-ActiveSuiteInstallationPhase $phasePath 'configured' (Join-Path (Get-HarnessRoot) 'runs\test-host\distribution')
-    if((Read-SuiteJournal $phasePath).installationPhase -ne 'configured'){throw 'Repeated suite phase update lost the journal path after loading the watchdog'}
+    Register-ActiveSuiteServiceIntent $phasePath (Join-Path $installationRoot 'distribution') $state 'configured'
+    $registered=Read-SuiteJournal $phasePath
+    if($registered.installationPhase -ne 'configured' -or $registered.serviceRegistrations.Count -ne 1 -or $registered.serviceRegistrations[0].phase -cne 'installing'){throw 'Repeated service phase update duplicated or lost the original identity record'}
     [DepositSuiteJournalFiles]::Validate($phasePath)
 
     $before=[IO.File]::ReadAllText($journalPath)
@@ -211,7 +241,7 @@ try {
     catch [IO.IOException] { $collisionRejected=$true }
     if(!$collisionRejected){throw 'Journal creation replaced an existing destination'}
     if([IO.File]::ReadAllText($journalPath) -cne $before){throw 'Journal creation changed an existing destination'}
-    Write-Output 'PASS: plain path disappearance and security guards, concurrent journal replacement/ACK, bounded absence, ACLs, legacy repair, collisions, and repeated service phase updates'
+    Write-Output 'PASS: plain path disappearance and security guards, concurrent journal replacement/ACK, bounded absence, ACL rejection, collisions, and repeated service phase updates'
 } finally {
     if([IO.Directory]::Exists($fixture)){[IO.Directory]::Delete($fixture,$true)}
 }

@@ -93,7 +93,6 @@ class OcflResourceStorageTest {
         String previous=System.getProperty("deposit.config");Path container=Files.createDirectory(directory.resolve("resources")),exports=Files.createDirectory(directory.resolve("exports")),config=directory.resolve("deposit.properties");
         try{
             Files.writeString(config,"resourceRoot="+container.toString().replace('\\','/')+"\nexportRoot="+exports.toString().replace('\\','/')+"\n");System.setProperty("deposit.config",config.toString());
-            Path legacy=Files.createDirectory(container.resolve("live"));assertThrows(IllegalStateException.class,ResourceFiles::new);Files.delete(legacy);
             var staging=new ResourceFiles();assertThrows(IOException.class,()->staging.path("../outside"));assertThrows(IOException.class,()->staging.path("ocfl/object"));assertThrows(IOException.class,()->staging.path("staging/../../outside"));
             Files.writeString(config,"resourceRoot="+container.toString().replace('\\','/')+"\nexportRoot="+container.resolve("staging").toString().replace('\\','/')+"\n");assertThrows(IllegalStateException.class,ResourceFiles::new);
             Path nested=Files.createDirectory(root.resolve("work"));assertThrows(IOException.class,()->new OcflResourceStorage(root,nested));

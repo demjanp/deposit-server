@@ -31,7 +31,7 @@ public final class BrowserDownloadService {
     public Login login(String username,String password,String origin,String remoteAddress){
         try(var tx=database.beginTx()){
             RequestContext c=context(tx,null);String token=new AccountService(c).loginBrowser(username,password,remoteAddress==null?origin:remoteAddress);tx.commit();
-            ServerContext.Session session=server.sessions.get(Json.hash(token));if(session==null||session.transport!=ServerContext.Transport.BROWSER)throw new IllegalStateException("Browser session was not committed");
+            ServerContext.Session session=server.session(Json.hash(token));if(session==null||session.transport!=ServerContext.Transport.BROWSER)throw new IllegalStateException("Browser session was not committed");
             return new Login(token,session.csrfToken);
         }catch(RuntimeException e){throw translate(e);}
     }
@@ -49,7 +49,7 @@ public final class BrowserDownloadService {
     public void logout(String token,String csrf){
         try(var tx=database.beginTx()){
             RequestContext c=context(tx,token);ServerContext.Session session=server.authenticateBrowser(c);checkCsrf(session,csrf);
-            c.state.afterCommit.add(()->server.sessions.remove(Json.hash(token),session));tx.commit();
+            c.state.afterCommit.add(()->server.removeSession(Json.hash(token),session));tx.commit();
         }catch(RuntimeException e){throw translate(e);}
     }
 

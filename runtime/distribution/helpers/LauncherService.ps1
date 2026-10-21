@@ -51,13 +51,29 @@ function Assert-ActiveSuiteInstallation($State,[string]$PackageRoot) {
        [string]$journal.installationPhase -notin @('installing','configured','running')) { Fail 'Active suite journal does not authorize this exact service installation' }
     return $expected
 }
-function Set-ActiveSuiteInstallationPhase([string]$JournalPath,[string]$Phase,[string]$PackageRoot) {
+function Enter-ActiveSuiteLifecycle([string]$JournalPath,[string]$PackageRoot,$State) {
+    if(!$JournalPath){return $null}
+    $lockPath=$JournalPath+'.lifecycle.lock'
+    $item=Get-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+    if($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){Fail 'Integration lifecycle lock cannot be a reparse point'}
+    $lock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
+    try {$null=Assert-ActiveSuiteInstallation $State $PackageRoot;return $lock}
+    catch {$lock.Dispose();throw}
+}
+function Register-ActiveSuiteServiceIntent([string]$JournalPath,[string]$PackageRoot,$State,[string]$Phase) {
     if(!$JournalPath){return}
     $harness=[IO.Path]::GetFullPath((Join-Path $PackageRoot '..\..\..'))
     $watchdog=Join-Path $harness '..\deposit-server\scripts\IntegrationSuiteWatchdog.ps1'
     if(!(Test-Path -LiteralPath $watchdog -PathType Leaf)){Fail 'The integration suite journal writer is missing'}
     . $watchdog -JournalPath $JournalPath -LibraryOnly
-    Update-SuiteJournal $JournalPath {param($j) $j.installationPhase=$Phase}
+    Update-SuiteJournal $JournalPath {
+        param($j)
+        $identity=[pscustomobject]@{name=[string]$State.serviceName;account=('NT SERVICE\'+[string]$State.serviceName);home=[IO.Path]::GetFullPath([string]$State.neo4jHome);phase=$Phase;recordedUtc=[DateTime]::UtcNow.ToString('o')}
+        $registrations=@($j.serviceRegistrations)
+        $prior=@($registrations|Where-Object {$_.name -ceq $identity.name -and $_.account -ceq $identity.account -and [IO.Path]::GetFullPath([string]$_.home) -ieq $identity.home})
+        if(!$prior.Count){$j.serviceRegistrations=@($registrations)+@($identity)}
+        $j.serviceName=$identity.name;$j.serviceAccount=$identity.account;$j.installationPhase=$Phase
+    }
 }
 function Set-Neo4jSetting([string]$Path,[string]$Name,[string]$Value) {
     $lines=if(Test-Path -LiteralPath $Path){[IO.File]::ReadAllLines($Path)}else{@()}
@@ -91,7 +107,7 @@ function Set-ControlDirectoryAccess([string]$SecretRoot,$Operator,$Runtime) {
     $pending=New-Object System.Collections.Generic.Queue[string];$pending.Enqueue($control)
     $entries=New-Object System.Collections.Generic.List[object]
     $uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-    while($pending.Count){$directory=$pending.Dequeue();$item=Get-Item -LiteralPath $directory -Force;if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){Fail 'Unsafe shutdown control directory during identity migration'};$entries.Add($item)
+    while($pending.Count){$directory=$pending.Dequeue();$item=Get-Item -LiteralPath $directory -Force;if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){Fail 'Unsafe shutdown control directory during identity setup'};$entries.Add($item)
         foreach($child in Get-ChildItem -LiteralPath $directory -Force){
             if($child.Attributes -band [IO.FileAttributes]::ReparsePoint){Fail 'Shutdown control entries cannot be reparse points'}
             if($child.PSIsContainer){if($directory -ne $control -or $child.Name -notmatch "^$uuid`$"){Fail 'Unexpected shutdown control directory'};$pending.Enqueue($child.FullName)}
@@ -105,24 +121,22 @@ function Set-ControlDirectoryAccess([string]$SecretRoot,$Operator,$Runtime) {
         Set-Acl -LiteralPath $entry.FullName -AclObject $acl
     }
 }
-function Migrate-DepositSecrets($State,[string]$ServiceAccount) {
-    $config=Join-Path $State.neo4jHome 'conf\deposit.properties';$configText=[IO.File]::ReadAllText($config);$matches=[regex]::Matches($configText,'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
-    if($matches.Count -gt 1){Fail 'Duplicate secretRoot settings in Deposit configuration'}
-    $target=if($matches.Count){[IO.Path]::GetFullPath($matches[0].Groups[1].Value.Trim())}else{Join-Path $State.neo4jHome 'deposit-secrets'}
-    $configDirectory=[IO.Path]::GetFullPath((Join-Path $State.neo4jHome 'conf')).TrimEnd('\')+'\';if($target.StartsWith($configDirectory,[StringComparison]::OrdinalIgnoreCase)){Fail 'Deposit secretRoot must be outside Neo4j conf'}
-    $sourceDirectory=if($matches.Count){$target}else{Join-Path $State.neo4jHome 'conf'}
-    if($sourceDirectory -ne $target){$sourceItem=Get-Item -LiteralPath $sourceDirectory -Force;if($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint){Fail 'Existing secret directory cannot be a reparse point'}}
-    if(Test-Path -LiteralPath $target -PathType Container){foreach($partial in Get-ChildItem -LiteralPath $target -File -Force|Where-Object {$_.Name -match '^deposit-(?:bootstrap\.secret|.+-cursor\.key)\.[0-9a-f]{32}\.partial$'}){Remove-Item -LiteralPath $partial.FullName -Force}}
-    Set-SecretDirectoryAccess $target $ServiceAccount
-    $sources=@();if($sourceDirectory -ne $target){$sources+=@(Get-ChildItem -LiteralPath $sourceDirectory -File -Force|Where-Object {$_.Name -eq 'deposit-bootstrap.secret' -or $_.Name -match '^deposit-.+-cursor\.key$'})}
-    foreach($source in $sources){if($source.Attributes -band [IO.FileAttributes]::ReparsePoint){Fail "Existing Deposit secret cannot be a reparse point: $($source.Name)"};$destination=Join-Path $target $source.Name;$sourceHash=(Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash
-        if(Test-Path -LiteralPath $destination){$destinationItem=Get-Item -LiteralPath $destination -Force;if($destinationItem.Attributes -band [IO.FileAttributes]::ReparsePoint){Fail "Secret destination cannot be a reparse point: $($source.Name)"};if((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $sourceHash){Fail "Conflicting existing Deposit secret: $($source.Name)"}}
-        else{$partial=$destination+'.'+[guid]::NewGuid().ToString('N')+'.partial';try{Copy-Item -LiteralPath $source.FullName -Destination $partial;if((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ne $sourceHash){Fail "Deposit secret copy verification failed: $($source.Name)"};Move-Item -LiteralPath $partial -Destination $destination}catch{Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue;throw}}
-    }
-    foreach($source in $sources){$destination=Join-Path $target $source.Name;if((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash){Fail "Deposit secret migration changed bytes: $($source.Name)"}}
-    if(!$matches.Count){$text=$configText.TrimEnd()+"`r`nsecretRoot="+$target.Replace('\','/')+"`r`n";$tmp=$config+'.'+[guid]::NewGuid().ToString('N')+'.partial';$backup=$config+'.'+[guid]::NewGuid().ToString('N')+'.backup';try{[IO.File]::WriteAllText($tmp,$text,(New-Object Text.UTF8Encoding($false)));[IO.File]::Replace($tmp,$config,$backup);Remove-Item -LiteralPath $backup -Force}finally{Remove-Item -LiteralPath $tmp,$backup -Force -ErrorAction SilentlyContinue}}
-    foreach($source in Get-ChildItem -LiteralPath (Join-Path $State.neo4jHome 'conf') -File -Force|Where-Object {$_.Name -eq 'deposit-bootstrap.secret' -or $_.Name -match '^deposit-.+-cursor\.key$'}){$destination=Join-Path $target $source.Name;if(!(Test-Path -LiteralPath $destination -PathType Leaf) -or (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash){Fail "Unadopted or conflicting legacy Deposit secret: $($source.Name)"};Remove-Item -LiteralPath $source.FullName -Force}
-    $State.secretRoot=$target;return $target
+function Get-ConfiguredSecretRoot($State) {
+    $config=Join-Path $State.neo4jHome 'conf\deposit.properties'
+    $matches=[regex]::Matches([IO.File]::ReadAllText($config),'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
+    if($matches.Count -ne 1 -or [string]::IsNullOrWhiteSpace($matches[0].Groups[1].Value)){Fail 'Deposit configuration must contain exactly one secretRoot'}
+    $target=[IO.Path]::GetFullPath($matches[0].Groups[1].Value.Trim())
+    $configDirectory=[IO.Path]::GetFullPath((Join-Path $State.neo4jHome 'conf')).TrimEnd('\')+'\'
+    if($target.StartsWith($configDirectory,[StringComparison]::OrdinalIgnoreCase)){Fail 'Deposit secretRoot must be outside Neo4j conf'}
+    if(!$State.secretRoot -or [IO.Path]::GetFullPath([string]$State.secretRoot) -ine $target){Fail 'Configured Deposit secretRoot differs from installation state'}
+    if(!(Test-Path -LiteralPath $target -PathType Container)){Fail 'Configured Deposit secretRoot is unavailable'}
+    return $target
+}
+function Set-DepositSecretIdentity($State,[string]$Identity) {
+    $target=Get-ConfiguredSecretRoot $State
+    foreach($partial in Get-ChildItem -LiteralPath $target -File -Force|Where-Object {$_.Name -match '^deposit-(?:bootstrap\.secret|.+-cursor\.key)\.[0-9a-f]{32}\.partial$'}){Remove-Item -LiteralPath $partial.FullName -Force}
+    Set-SecretDirectoryAccess $target $Identity
+    return $target
 }
 function Service([string]$Operation,$State,[string]$StatePath,[string]$PackageRoot,[string[]]$Arguments) {
     Set-RuntimeEnvironment $State
@@ -135,11 +149,12 @@ function Service([string]$Operation,$State,[string]$StatePath,[string]$PackageRo
         if($Arguments.Count -gt 1){Fail 'Usage: deposit.bat install-service [dedicated-account]'}
         $account=if($Arguments.Count -eq 1){$Arguments[0]}else{"NT SERVICE\$($State.serviceName)"}
         if($account -match '[\r\n]'){Fail 'Invalid service account'}
+        $lifecycleLock=Enter-ActiveSuiteLifecycle $suiteJournal $PackageRoot $State
         $virtualAccount=$account.StartsWith('NT SERVICE\',[StringComparison]::OrdinalIgnoreCase)
         $credential=$null;$ptr=[IntPtr]::Zero
         if(!$virtualAccount){$credential=Read-Host "Password for $account (not echoed or logged)" -AsSecureString;$ptr=[Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($credential)}
         try {
-            Set-ActiveSuiteInstallationPhase $suiteJournal 'installing' $PackageRoot
+            Register-ActiveSuiteServiceIntent $suiteJournal $PackageRoot $State 'installing'
             & $neo4j windows-service install
             if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service installation failed; check elevated permissions and pinned runtime logs'}
             if($suiteJournal){
@@ -154,29 +169,48 @@ function Service([string]$Operation,$State,[string]$StatePath,[string]$PackageRo
             $password=if($ptr -eq [IntPtr]::Zero){$null}else{[Runtime.InteropServices.Marshal]::PtrToStringUni($ptr)}
             $result=[DepositServiceAccount]::Set($State.serviceName,$account,$password)
             if(!$result){Fail 'Could not assign the dedicated service identity. Remove the partial service, grant Log on as a service, and retry.'}
-            Set-ActiveSuiteInstallationPhase $suiteJournal 'configured' $PackageRoot
-            $null=Migrate-DepositSecrets $State $account
+            Register-ActiveSuiteServiceIntent $suiteJournal $PackageRoot $State 'configured'
+            $null=Set-DepositSecretIdentity $State $account
             foreach($path in @($State.neo4jHome,$State.javaHome)) {& icacls.exe (Get-IcaclsPath $path) '/grant' "$account`:(OI)(CI)RX" '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service read access to $path"}}
             foreach($path in @((Join-Path $State.neo4jHome 'data'),(Join-Path $State.neo4jHome 'logs'),$State.dataRoot,$State.exportRoot)) {New-Item -ItemType Directory -Path $path -Force|Out-Null;& icacls.exe (Get-IcaclsPath $path) '/grant' "$account`:(OI)(CI)M" '/T' '/Q' | Out-Null;if($LASTEXITCODE -ne 0){Fail "Could not grant service access to $path"}}
             Set-DepositServiceState $State $account;Save-State $StatePath $State
-        } finally {if($ptr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeGlobalAllocUnicode($ptr)};if($credential){$credential.Dispose()};$password=$null}
+        } finally {if($ptr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeGlobalAllocUnicode($ptr)};if($credential){$credential.Dispose()};$password=$null;if($lifecycleLock){$lifecycleLock.Dispose()}}
         Write-Output "Service $($State.serviceName) installed for $account. Start with: deposit.bat start"
         return
     }
     $service=Get-Service -Name $State.serviceName -ErrorAction SilentlyContinue
     if($Operation -eq 'remove'){
-        if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-ServiceInstallation $State $serviceIdentity;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
-        & $neo4j windows-service uninstall
-        if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service removal failed'}
-        $null=Migrate-DepositSecrets $State ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
-        $State.mode='local';$State.PSObject.Properties.Remove('serviceAccount');Save-State $StatePath $State
-        Write-Output 'Deposit Windows service removed.';return
+        $suiteJournal=if($service){Assert-ActiveSuiteInstallation $State $PackageRoot}else{$null}
+        $lifecycleLock=if($service){Enter-ActiveSuiteLifecycle $suiteJournal $PackageRoot $State}else{$null}
+        try {
+            $service=Get-Service -Name $State.serviceName -ErrorAction SilentlyContinue
+            if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-ServiceInstallation $State $serviceIdentity;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
+            & $neo4j windows-service uninstall
+            if($LASTEXITCODE -ne 0){Fail 'Neo4j Windows service removal failed'}
+            $null=Set-DepositSecretIdentity $State ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+            $State.mode='local';$State.PSObject.Properties.Remove('serviceAccount');Save-State $StatePath $State
+            Write-Output 'Deposit Windows service removed.';return
+        } finally {if($lifecycleLock){$lifecycleLock.Dispose()}}
     }
     if($Operation -eq 'start'){
         Test-NoConflictingRuntime $State.neo4jHome
         if(!$service){Fail 'Service is not installed. Run deposit.bat install-service <dedicated-account> from an elevated shell.'}
-        Start-Service -Name $State.serviceName -ErrorAction Stop;return
+        $suiteJournal=Assert-ActiveSuiteInstallation $State $PackageRoot
+        $lifecycleLock=Enter-ActiveSuiteLifecycle $suiteJournal $PackageRoot $State
+        try {
+            Register-ActiveSuiteServiceIntent $suiteJournal $PackageRoot $State 'running'
+            Start-Service -Name $State.serviceName -ErrorAction Stop
+        } finally {if($lifecycleLock){$lifecycleLock.Dispose()}}
+        return
     }
-    if($Operation -eq 'stop') {if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-ServiceInstallation $State $serviceIdentity;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))};return}
+    if($Operation -eq 'stop') {
+        $suiteJournal=if($service){Assert-ActiveSuiteInstallation $State $PackageRoot}else{$null}
+        $lifecycleLock=if($service){Enter-ActiveSuiteLifecycle $suiteJournal $PackageRoot $State}else{$null}
+        try {
+            $service=Get-Service -Name $State.serviceName -ErrorAction SilentlyContinue
+            if($service -and $service.Status -ne 'Stopped'){$serviceIdentity=Get-DepositServiceIncarnation $State;$drain=Drain-ServiceInstallation $State $serviceIdentity;Assert-DepositServiceIncarnation $State $serviceIdentity $drain;Stop-Service -Name $State.serviceName -ErrorAction Stop;$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}
+        } finally {if($lifecycleLock){$lifecycleLock.Dispose()}}
+        return
+    }
     if($Operation -eq 'status') {if(!$service){Write-Output 'Service is not installed.';exit 3};Write-Output "Service status: $($service.Status)";if($service.Status -ne 'Running'){exit 3};return}
 }

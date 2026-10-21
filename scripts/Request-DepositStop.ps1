@@ -24,6 +24,14 @@ function Read-DepositControlRecord([string]$Path,[string[]]$AllowedSids) {
         }catch{$cause=$_.Exception.GetBaseException();if(($cause -isnot [IO.IOException] -and $cause -isnot [System.Management.Automation.ItemNotFoundException]) -or $attempt -eq 9){throw};Start-Sleep -Milliseconds 50}
     }
 }
+function Get-DepositSecretRoot([string]$Installation) {
+    $config=Join-Path $Installation 'conf\deposit.properties'
+    $matches=[regex]::Matches([IO.File]::ReadAllText($config),'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
+    if($matches.Count -ne 1 -or [string]::IsNullOrWhiteSpace($matches[0].Groups[1].Value)){throw 'Deposit configuration must contain exactly one secretRoot'}
+    $secrets=[IO.Path]::GetFullPath($matches[0].Groups[1].Value)
+    if(!(Test-Path -LiteralPath $secrets -PathType Container)){throw 'Configured Deposit secretRoot is unavailable'}
+    return $secrets
+}
 function Assert-DepositServiceBinding($Service,$Process,[string]$ProcessSid,[string]$Neo4jHome,[string]$ServiceName,[string]$ServiceAccount,[long]$ExpectedPid=0,[long]$ExpectedStartMillis=0) {
     if(!$Service -or [string]$Service.Name -ine $ServiceName -or [string]$Service.State -ne 'Running' -or [string]$Service.StartName -ine $ServiceAccount -or [long]$Service.ProcessId -le 0){throw 'Deposit service identity is not running as configured'}
     if(!$Process -or [string]$Process.Name -ine 'prunsrv-amd64.exe' -or [long]$Process.ProcessId -ne [long]$Service.ProcessId){throw 'Deposit service process is not the configured Procrun instance'}
@@ -71,10 +79,7 @@ function Assert-DepositStopIdentity($Identity) {
         if($owner.ReturnValue -ne 0 -or [string]$owner.Sid -ne [string]$Identity.runtimeSid){throw 'Acknowledged Deposit runtime identity changed'}
     }
     $allowed=@([string]$Identity.operatorSid,[string]$Identity.runtimeSid)
-    $config=Join-Path $installation 'conf\deposit.properties'
-    $secretMatches=[regex]::Matches([IO.File]::ReadAllText($config),'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
-    if($secretMatches.Count -gt 1){throw 'Duplicate secretRoot configuration'}
-    $secrets=if($secretMatches.Count){[IO.Path]::GetFullPath($secretMatches[0].Groups[1].Value)}else{Join-Path $installation 'conf'}
+    $secrets=Get-DepositSecretRoot $installation
     Assert-DepositControlPath $secrets $allowed
     $control=Join-Path $secrets 'deposit-control';Assert-DepositControlPath $control $allowed
     $runDirectory=Join-Path $control ([string]$Identity.incarnation);Assert-DepositControlPath $runDirectory $allowed
@@ -106,10 +111,7 @@ function Request-DepositStop {
     }
     $operatorSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $allowed=@($operatorSid,$runtimeSid)
-    $config=Join-Path $installation 'conf\deposit.properties'
-    $secretMatches=[regex]::Matches([IO.File]::ReadAllText($config),'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
-    if($secretMatches.Count -gt 1){throw 'Duplicate secretRoot configuration'}
-    $secrets=if($secretMatches.Count){[IO.Path]::GetFullPath($secretMatches[0].Groups[1].Value)}else{Join-Path $installation 'conf'}
+    $secrets=Get-DepositSecretRoot $installation
     Assert-DepositControlPath $secrets $allowed
     $control=Join-Path $secrets 'deposit-control';Assert-DepositControlPath $control $allowed
     $descriptor=Read-DepositControlRecord (Join-Path $control 'run.json') $allowed

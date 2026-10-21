@@ -26,7 +26,9 @@ final class ShutdownControl implements AutoCloseable {
     static ShutdownControl start(ServerContext server,UUID database,Runnable awaitInitialization)throws IOException {
         Path config=Path.of(System.getProperty("deposit.config")).toAbsolutePath().normalize();
         Properties values=new Properties();try(var input=Files.newInputStream(config)){values.load(input);}
-        Path secrets=Path.of(values.getProperty("secretRoot",config.getParent().toString())).toAbsolutePath().normalize();
+        String configuredSecretRoot=values.getProperty("secretRoot");
+        if(configuredSecretRoot==null||configuredSecretRoot.isBlank())throw new IOException("Deposit secretRoot is required");
+        Path secrets=Path.of(configuredSecretRoot).toAbsolutePath().normalize();
         ShutdownControl control=new ShutdownControl(server,secrets,database,config.getParent().getParent(),awaitInitialization);
         control.watcher=Thread.ofVirtual().name("deposit-shutdown-control").start(control::watch);
         return control;

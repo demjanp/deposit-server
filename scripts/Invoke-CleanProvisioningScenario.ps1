@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][string]$ReleasePackage,
+    [string]$ReleasePackage,
     [ValidateRange(1024,65535)][int]$Port=17770,
     [string]$Root=(Join-Path $PSScriptRoot '..\..\test_harness'),
     [string]$LogPath,
@@ -12,6 +12,17 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1') -JournalPath $env:DEPOSIT_SUITE_JOURNAL -LibraryOnly
 Assert-HarnessRoot $Root
 $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
+$runContextScript=Join-Path $PSScriptRoot 'IntegrationRunContext.ps1'
+. $runContextScript
+$activeRun=Get-ValidatedIntegrationRunContext $rootPath
+if(!$activeRun) {
+    $ownerParameters=@{SelectedScenario='CleanProvisioning';Root=$rootPath;Port=$Port;FreshAccountProbe=[bool]$FreshAccountProbe}
+    if($LogPath){$ownerParameters.ScenarioLogPath=[IO.Path]::GetFullPath($LogPath)}
+    & (Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1') @ownerParameters
+    return
+}
+if($LogPath){Assert-HarnessPlainPath ([IO.Path]::GetFullPath($LogPath))}
+if(!$ReleasePackage -or !(Test-Path -LiteralPath $ReleasePackage -PathType Leaf)){throw 'Clean provisioning requires the release package generated in the current run'}
 $env:DEPOSIT_TEST_ROOT=$rootPath
 $run=Join-Path $rootPath 'runs\test-host'
 $repo=Split-Path $PSScriptRoot -Parent
