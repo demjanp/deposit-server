@@ -10,8 +10,11 @@ $journalPath=Join-Path $private 'active.json';$lockPath=Join-Path $private 'suit
 $suiteLock=$null
 $invocation=[Guid]::NewGuid().ToString('N');$logs=Join-Path $root ('results\focused-boundary-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')+'-'+$invocation.Substring(0,8))
 $watchdog=$null;$journalCreated=$false;$failure=$null;$saved=@{}
-$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1'),[ref]$null,[ref]$null)
-foreach($name in @('Quote-Suite','Invoke-SuiteChild','Invoke-SuitePhase','Invoke-SuiteNative')){
+$suiteScript=Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1'
+$childHelper=Join-Path $PSScriptRoot 'helpers\IntegrationSuiteChild.ps1'
+foreach($name in @('Quote-Suite','Invoke-ContainedSuiteChild','Invoke-SuiteChild','Invoke-SuitePhase','Invoke-SuiteNative')){
+    $source=if($name -in @('Quote-Suite','Invoke-ContainedSuiteChild')){$childHelper}else{$suiteScript}
+    $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$null,[ref]$null)
     $definition=$ast.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if(!$definition){throw "Missing suite helper: $name"}
     Invoke-Expression ($definition.Extent.Text.Replace('$PSScriptRoot',("'"+$PSScriptRoot.Replace("'","''")+"'")))

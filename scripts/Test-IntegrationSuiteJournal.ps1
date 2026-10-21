@@ -191,18 +191,17 @@ try {
     Update-SuiteJournal $legacyPath { param($journal) $journal.count=[int]$journal.count+1 }
     Assert-Journal $legacyPath 1
 
-    $depositScript=Join-Path (Get-DepositServerRoot) 'runtime\distribution\deposit.ps1'
-    $ast=[System.Management.Automation.Language.Parser]::ParseFile($depositScript,[ref]$null,[ref]$null)
+    $depositHelper=Join-Path (Get-DepositServerRoot) 'runtime\distribution\helpers\LauncherService.ps1'
+    $ast=[System.Management.Automation.Language.Parser]::ParseFile($depositHelper,[ref]$null,[ref]$null)
     $setter=$ast.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-ActiveSuiteInstallationPhase'},$true)
     if(!$setter){throw 'Could not locate the production suite phase updater'}
-    $script:PackageRoot=Join-Path (Get-HarnessRoot) 'runs\test-host\distribution'
     Invoke-Expression $setter.Extent.Text
     $phasePath=Join-Path $fixture 'phase.json'
     Write-SuiteJournal $phasePath '{"installationPhase":"none"}'
-    Set-ActiveSuiteInstallationPhase $phasePath 'installing'
+    Set-ActiveSuiteInstallationPhase $phasePath 'installing' (Join-Path (Get-HarnessRoot) 'runs\test-host\distribution')
     if((Read-SuiteJournal $phasePath).installationPhase -ne 'installing'){throw 'Suite phase update lost the journal path after loading the watchdog'}
     [DepositSuiteJournalFiles]::Validate($phasePath)
-    Set-ActiveSuiteInstallationPhase $phasePath 'configured'
+    Set-ActiveSuiteInstallationPhase $phasePath 'configured' (Join-Path (Get-HarnessRoot) 'runs\test-host\distribution')
     if((Read-SuiteJournal $phasePath).installationPhase -ne 'configured'){throw 'Repeated suite phase update lost the journal path after loading the watchdog'}
     [DepositSuiteJournalFiles]::Validate($phasePath)
 

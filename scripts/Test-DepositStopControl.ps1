@@ -91,28 +91,35 @@ public static class DepositAtomicReadFixture {
     $junction=Join-Path $fixture 'junction';& cmd.exe /c mklink /J $junction $control|Out-Null;if($LASTEXITCODE -ne 0){throw 'Could not create reparse fixture'}
     try{Expect-Failure {Assert-DepositControlPath $junction @($sid)} 'reparse'}finally{[IO.Directory]::Delete($junction)}
     # Load the actual orchestration functions, without executing the launcher's top-level command switch.
-    $ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'runtime\distribution\deposit.ps1'),[ref]$null,[ref]$null)
-    foreach($name in @('Fail','Stop-Local','Service','Save-State','Migrate-DepositSecrets','Set-SecretDirectoryAccess','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService','Set-ControlDirectoryAccess')){$definition=$ast.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $definition.Extent.Text}
-    $script:StatePath=Join-Path $fixture 'deposit.install.json'
+    $launcherAst=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'runtime\distribution\deposit.ps1'),[ref]$null,[ref]$null)
+    $stateAst=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'runtime\distribution\helpers\LauncherState.ps1'),[ref]$null,[ref]$null)
+    $serviceAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'runtime\distribution\helpers\LauncherService.ps1'),[ref]$null,[ref]$null)
+    $localAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'runtime\distribution\helpers\LauncherLocal.ps1'),[ref]$null,[ref]$null)
+    $definition=$launcherAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Fail'},$true);if(!$definition){throw 'Missing launcher error mapper'};Invoke-Expression $definition.Extent.Text
+    $definition=$localAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Stop-Local'},$true);if(!$definition){throw 'Missing local stop helper'};Invoke-Expression $definition.Extent.Text
+    foreach($name in @('Service','Migrate-DepositSecrets','Set-SecretDirectoryAccess','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService','Set-ControlDirectoryAccess')){$definition=$serviceAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);if(!$definition){throw "Missing service helper $name"};Invoke-Expression $definition.Extent.Text}
+    $definition=$stateAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Save-State'},$true);if(!$definition){throw 'Missing state persistence helper'};Invoke-Expression $definition.Extent.Text
+    $statePath=Join-Path $fixture 'deposit.install.json'
+    $script:StatePath=$statePath
     $stateToPersist='{"schemaVersion":1,"mode":"local","neo4jHome":"C:\\neo4j","javaHome":"C:\\jdk","dataRoot":"C:\\data","exportRoot":"C:\\exports","serviceName":"DepositNeo4j-test"}'|ConvertFrom-Json
-    Save-State $stateToPersist
-    $firstPersist=Get-Content -LiteralPath $script:StatePath -Raw|ConvertFrom-Json
+    Save-State $statePath $stateToPersist
+    $firstPersist=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
     Check ($firstPersist.mode -eq 'local' -and !$firstPersist.PSObject.Properties['serviceAccount']) 'State creation serializes a real local installation without service identity'
     Set-DepositServiceState $stateToPersist 'NT SERVICE\DepositNeo4j-test'
-    Save-State $stateToPersist
-    $persisted=Get-Content -LiteralPath $script:StatePath -Raw|ConvertFrom-Json
+    Save-State $statePath $stateToPersist
+    $persisted=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
     $stateArtifacts=@(Get-ChildItem -LiteralPath $fixture -File|Where-Object {$_.Name -match '^deposit\.install\.json\.'})
     Check ($persisted.mode -eq 'service' -and $persisted.PSObject.Properties['serviceAccount'].Value -eq 'NT SERVICE\DepositNeo4j-test' -and $stateArtifacts.Count -eq 0) 'Atomic state replacement persists service identity and leaves no backup or partial file'
-    $stateToPersist.mode='local';$stateToPersist.PSObject.Properties.Remove('serviceAccount');Save-State $stateToPersist
-    $localAgain=Get-Content -LiteralPath $script:StatePath -Raw|ConvertFrom-Json
+    $stateToPersist.mode='local';$stateToPersist.PSObject.Properties.Remove('serviceAccount');Save-State $statePath $stateToPersist
+    $localAgain=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
     Check ($localAgain.mode -eq 'local' -and !$localAgain.PSObject.Properties['serviceAccount']) 'Atomic state replacement returns service installation to local mode'
-    $held=[IO.File]::Open($script:StatePath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$replaceFailed=$false
-    try{try{Set-DepositServiceState $stateToPersist 'NT SERVICE\DepositNeo4j-test';Save-State $stateToPersist}catch{$replaceFailed=$true}}finally{$held.Dispose()}
-    $afterFailure=Get-Content -LiteralPath $script:StatePath -Raw|ConvertFrom-Json
+    $held=[IO.File]::Open($statePath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$replaceFailed=$false
+    try{try{Set-DepositServiceState $stateToPersist 'NT SERVICE\DepositNeo4j-test';Save-State $statePath $stateToPersist}catch{$replaceFailed=$true}}finally{$held.Dispose()}
+    $afterFailure=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
     $stateArtifacts=@(Get-ChildItem -LiteralPath $fixture -File|Where-Object {$_.Name -match '^deposit\.install\.json\.'})
     Check ($replaceFailed -and $afterFailure.mode -eq 'local' -and !$afterFailure.PSObject.Properties['serviceAccount'] -and $stateArtifacts.Count -eq 0) 'Failed state replacement keeps the prior record and cleans temporary artifacts'
-    Set-DepositServiceState $stateToPersist 'NT SERVICE\DepositNeo4j-test';Save-State $stateToPersist
-    $afterRecovery=Get-Content -LiteralPath $script:StatePath -Raw|ConvertFrom-Json
+    Set-DepositServiceState $stateToPersist 'NT SERVICE\DepositNeo4j-test';Save-State $statePath $stateToPersist
+    $afterRecovery=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
     Check ($afterRecovery.mode -eq 'service' -and $afterRecovery.PSObject.Properties['serviceAccount'].Value -eq 'NT SERVICE\DepositNeo4j-test') 'State replacement succeeds after a failed attempt'
     $legacyNeo4j=Join-Path $fixture 'legacy-neo4j';$legacyConf=Join-Path $legacyNeo4j 'conf';New-Item -ItemType Directory -Path $legacyConf -Force|Out-Null
     $legacyConfig=Join-Path $legacyConf 'deposit.properties';$secretSource=Join-Path $legacyConf 'deposit-bootstrap.secret';[IO.File]::WriteAllText($legacyConfig,"resourceRoot=C:/data`nexportRoot=C:/exports`nexistingSetting=keep`n");[IO.File]::WriteAllText($secretSource,'fixture-secret')
@@ -139,31 +146,33 @@ public static class DepositAtomicReadFixture {
     $state=[pscustomobject]@{neo4jHome=$installation;javaHome=$fixture;serviceName='fake';mode='service';serviceAccount='NT SERVICE\fake'}
     foreach($operation in @('stop','remove')){
         $script:events=New-Object System.Collections.Generic.List[string];$script:drainFails=$true
-        Expect-Failure {Service $operation $state} 'injected cleanup failure';Check (($script:events -join ',') -eq 'drain') "Service $operation does not signal after cleanup failure"
+        Expect-Failure {Service $operation $state $statePath '' @()} 'injected cleanup failure';Check (($script:events -join ',') -eq 'drain') "Service $operation does not signal after cleanup failure"
     }
-    $script:events=New-Object System.Collections.Generic.List[string];$script:drainFails=$false;Service 'stop' $state
+    $script:events=New-Object System.Collections.Generic.List[string];$script:drainFails=$false;Service 'stop' $state $statePath '' @()
     Check (($script:events -join ',') -eq 'drain,signal,wait') 'Service stop drains once before its signal and exit wait (mocked)'
     $script:events=New-Object System.Collections.Generic.List[string];$script:changeServiceDuringDrain=$true
-    Expect-Failure {Service 'stop' $state} 'restarted during its drain';Check (($script:events -join ',') -eq 'drain') 'Service stop refuses to signal a replacement service incarnation'
+    Expect-Failure {Service 'stop' $state $statePath '' @()} 'restarted during its drain';Check (($script:events -join ',') -eq 'drain') 'Service stop refuses to signal a replacement service incarnation'
     $script:changeServiceDuringDrain=$false;$script:servicePid=23456
     [IO.File]::WriteAllText((Join-Path $installation 'deposit-process.json'),(@{pid=12345;created=([DateTimeOffset]::FromUnixTimeMilliseconds(123000).UtcDateTime).ToString('o')}|ConvertTo-Json))
     function Get-Process {param($Id);return [pscustomobject]@{Handle=[IntPtr]::Zero}}
     $script:events=New-Object System.Collections.Generic.List[string];$script:drainFails=$true
-    Expect-Failure {Stop-Local $state} 'injected cleanup failure';Check (($script:events -join ',') -eq 'drain') 'Local stop does not signal after cleanup failure'
+    Expect-Failure {Stop-Local $state ''} 'injected cleanup failure';Check (($script:events -join ',') -eq 'drain') 'Local stop does not signal after cleanup failure'
 
     # Exercise the packaged launcher's actual Service functions in a separate module scope.
     # This catches helper functions that were accidentally available only in this test's scope.
     New-Item -ItemType Directory -Path (Join-Path $installation 'bin') -Force|Out-Null
     $uninstallMarker=Join-Path $fixture 'service-uninstalled.marker'
     [IO.File]::WriteAllText((Join-Path $installation 'bin\neo4j.bat'),"@echo off`r`necho uninstall> `"$uninstallMarker`"`r`nexit /b 0`r`n")
-    $freshModule=New-Module -ArgumentList @((Join-Path $repo 'runtime\distribution\deposit.ps1'),(Join-Path $repo 'scripts\Request-DepositStop.ps1'),$installation,$script:completedDrain,$sid) -ScriptBlock {
-        param($launcherPath,$helperPath,$installPath,$drainedIdentity,$currentSid)
+    $freshModule=New-Module -ArgumentList @((Join-Path $repo 'runtime\distribution\deposit.ps1'),(Join-Path $repo 'scripts\Request-DepositStop.ps1'),(Join-Path $repo 'runtime\distribution\helpers\LauncherService.ps1'),$installation,$script:completedDrain,$sid) -ScriptBlock {
+        param($launcherPath,$helperPath,$servicePath,$installPath,$drainedIdentity,$currentSid)
         Set-StrictMode -Version Latest;$ErrorActionPreference='Stop'
         . $helperPath
         $drainedIdentity|Add-Member -NotePropertyName serviceName -NotePropertyValue 'fresh' -Force
         $drainedIdentity|Add-Member -NotePropertyName serviceAccount -NotePropertyValue 'NT SERVICE\fresh' -Force
-        $ast=[System.Management.Automation.Language.Parser]::ParseFile($launcherPath,[ref]$null,[ref]$null)
-        foreach($name in @('Fail','Service','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService')){$definition=$ast.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $definition.Extent.Text}
+        $launcherAst=[System.Management.Automation.Language.Parser]::ParseFile($launcherPath,[ref]$null,[ref]$null)
+        $serviceAst=[System.Management.Automation.Language.Parser]::ParseFile($servicePath,[ref]$null,[ref]$null)
+        $definition=$launcherAst.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Fail'},$true);if(!$definition){throw 'Missing launcher error mapper'};Invoke-Expression $definition.Extent.Text
+        foreach($name in @('Service','Get-DepositServiceIncarnation','Assert-DepositServiceIncarnation','Drain-ServiceInstallation','Assert-NoInstalledDepositService')){$definition=$serviceAst.Find({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);if(!$definition){throw "Missing service helper $name"};Invoke-Expression $definition.Extent.Text}
         $script:events=New-Object System.Collections.Generic.List[string];$script:servicePid=12345;$script:replaceDuringDrain=$false
         function Get-Service {param($Name,$ErrorAction);$value=[pscustomobject]@{Status='Running'};$value|Add-Member ScriptMethod WaitForStatus {param($Status,$Timeout)$script:events.Add('wait')};return $value}
         function Set-RuntimeEnvironment {param($State)}
@@ -175,23 +184,23 @@ public static class DepositAtomicReadFixture {
         function Migrate-DepositSecrets {param($State,$ServiceAccount);$script:events.Add('migrate')}
         function Save-State {param($State);$script:events.Add('save')}
         function Drain-Installation {param($State);$script:events.Add('drain');if($script:replaceDuringDrain){$script:servicePid++};return $drainedIdentity}
-        function Invoke-FreshScopeChecks {
+        function Invoke-FreshScopeChecks([string]$StatePath) {
         $state=[pscustomobject]@{neo4jHome=$installPath;javaHome=$installPath;serviceName='fresh';mode='service';serviceAccount='NT SERVICE\fresh'}
         try{Assert-NoInstalledDepositService $state;throw 'A duplicate service was not rejected'}catch{if(!$_.Exception.Message.Contains('remove-service from an elevated shell')){throw}}
-        Service 'stop' $state
+        Service 'stop' $state $StatePath '' @()
         if(($script:events -join ',') -ne 'drain,signal,wait'){throw "Fresh-scope service stop order was $($script:events -join ',')"}
-        $script:events.Clear();$state=[pscustomobject]@{neo4jHome=$installPath;javaHome=$installPath;serviceName='fresh';mode='service';serviceAccount='NT SERVICE\fresh'};Service 'remove' $state
+        $script:events.Clear();$state=[pscustomobject]@{neo4jHome=$installPath;javaHome=$installPath;serviceName='fresh';mode='service';serviceAccount='NT SERVICE\fresh'};Service 'remove' $state $StatePath '' @()
         if(($script:events -join ',') -ne 'drain,signal,wait,migrate,save'){throw "Fresh-scope service removal order was $($script:events -join ',')"}
         if($state.PSObject.Properties['serviceAccount']){throw 'Partial service removal left the nonexistent account property present'}
         $script:events.Clear();$state.mode='service';$state|Add-Member -NotePropertyName serviceAccount -NotePropertyValue 'NT SERVICE\fresh' -Force;$script:replaceDuringDrain=$true
-        try{Service 'stop' $state;throw 'Replacement service was not rejected'}catch{if(!$_.Exception.Message.Contains('restarted during its drain')){throw}}
+        try{Service 'stop' $state $StatePath '' @();throw 'Replacement service was not rejected'}catch{if(!$_.Exception.Message.Contains('restarted during its drain')){throw}}
         if(($script:events -join ',') -ne 'drain'){throw "Fresh-scope replacement service was signalled: $($script:events -join ',')"}
         'fresh-scope stop, remove, and replacement checks passed'
         }
         Export-ModuleMember -Function Invoke-FreshScopeChecks
     }
     Import-Module $freshModule
-    $freshResult=Invoke-FreshScopeChecks
+    $freshResult=Invoke-FreshScopeChecks $statePath
     Remove-Module $freshModule.Name
     Check ($freshResult -contains 'fresh-scope stop, remove, and replacement checks passed') 'Fresh module scope resolves launcher helper for successful service stop/removal and refuses changed incarnation'
     Check (Test-Path -LiteralPath $uninstallMarker) 'Fresh-scope service removal invokes the Neo4j service uninstall command'
