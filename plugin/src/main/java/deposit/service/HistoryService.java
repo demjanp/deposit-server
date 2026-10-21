@@ -18,8 +18,8 @@ public final class HistoryService extends ActionService {
     private Node root(){return repo.namespace(c.namespaceId);}
     private void enabled(){if("disabled".equals(root().getProperty("historyMode")))c.fail("HISTORY_UNAVAILABLE","History is disabled");}
     private void read(String role){readContext();scoped(role);}
-    private long generation(){return ((Number)root().getProperty("historyAvailability",0L)).longValue();}
-    private void stable(long sequence,long generation){c.state.kernel.assertOpen();if(System.currentTimeMillis()-c.state.kernel.startTime()>30000)c.fail("CANCELLED","Read timeout exceeded");authenticate();requireRole(c.namespaceId,"viewer");if(repo.sequence(c.namespaceId)!=sequence||generation()!=generation)c.fail("REVISION_CONFLICT","History changed during read");}
+    private long generation(){return readService.generation();}
+    private void stable(long sequence,long generation){readService.stable(sequence,generation);}
     public DataRow revision(Map<String,Object> request){return readService.revision(request);}
     public ValueRow restored(Map<String,Object> request){return readService.restored(request);}
     public Stream<DataRow> records(Map<String,Object> request){return readService.records(request);}

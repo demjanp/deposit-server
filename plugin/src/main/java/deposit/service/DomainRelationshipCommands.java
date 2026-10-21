@@ -9,11 +9,6 @@ import org.neo4j.graphdb.*;
 final class DomainRelationshipCommands extends BaseService {
     DomainRelationshipCommands(RequestContext c) { super(c); }
 
-    private Node required(String label,Object id) {
-        Node n=repo.entity(label,c.namespaceId,RequestContext.uuid(id));
-        if(n==null)c.fail("NOT_FOUND",label+" not found");
-        return n;
-    }
     private Node clazz(Map<String,Object> request) {
         if(request.containsKey("classId")==request.containsKey("className"))c.fail("VALIDATION_FAILED","Supply classId or className");
         if(request.containsKey("classId"))return required("Class",request.get("classId"));

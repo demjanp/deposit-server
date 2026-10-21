@@ -54,6 +54,11 @@ public abstract class BaseService {
         if(ns==null || role==null) c.fail("NOT_FOUND","Namespace not found");
         if(rank(role)<rank(minimum)) c.fail("FORBIDDEN","Insufficient Namespace role");
     }
+    protected Node required(String kind,Object id) {
+        Node node=repo.entity(kind,c.namespaceId,RequestContext.uuid(id));
+        if(node==null)c.fail("NOT_FOUND",kind+" not found");
+        return node;
+    }
     protected String effectiveRole(String namespace) {return AuthorizationAdapter.role(c,repo,namespace);}
     protected boolean administrativeMode() {return AuthorizationAdapter.mode(c,repo.find("User","id",c.actorId));}
     protected void authorizationChange() {c.server.guard(c.state,true);}

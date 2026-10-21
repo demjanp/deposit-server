@@ -10,6 +10,7 @@ final class CoreProjectionRepository {
     interface Access {
         Node objectClass(Node object);
         List<Node> children(Node owner, String label);
+        List<Node> nodes(String label, Map<String,Object> properties);
         Object descriptorValue(Node descriptor);
         String descriptorType(Node descriptor);
         Node geometry(Node descriptor);
@@ -18,6 +19,18 @@ final class CoreProjectionRepository {
     private final Access access;
 
     CoreProjectionRepository(Access access) { this.access = access; }
+
+    TreeMap<String,Map<String,String>> namespaceSchema(String namespace) {
+        var schema = new TreeMap<String,Map<String,String>>();
+        for (Node clazz : access.nodes("Class", Map.of("namespaceId", namespace))) {
+            var declarations = new TreeMap<String,String>();
+            for (Node declaration : access.children(clazz, "ClassDescriptor")) {
+                declarations.put((String)declaration.getProperty("name"), (String)declaration.getProperty("type"));
+            }
+            schema.put((String)clazz.getProperty("name"), declarations);
+        }
+        return schema;
+    }
 
     Map<String,Object> data(Node node) { return data(node, true); }
 

@@ -155,6 +155,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     }
     public Map<String,Object> data(Node node) {return projections.data(node);}
     public Map<String,Object> data(Node node,boolean includeOwnedValues) {return projections.data(node,includeOwnedValues);}
+    public TreeMap<String,Map<String,String>> namespaceSchema(String namespace) {return projections.namespaceSchema(namespace);}
     public static String kind(Relationship rel) {
         String source=kind(rel.getStartNode()),target=kind(rel.getEndNode());
         if(rel.isType(RelationshipType.withName("MEMBER_OF"))&&source.equals("Object")&&target.equals("Class"))return "Membership";

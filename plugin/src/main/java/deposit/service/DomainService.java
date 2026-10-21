@@ -9,9 +9,6 @@ public final class DomainService extends ActionService {
     private final DomainRelationshipCommands relationships;
     private final DomainSchemaCommands schema;
     public DomainService(RequestContext c) {super(c);relationships=new DomainRelationshipCommands(c);schema=new DomainSchemaCommands(this,c);}
-    private Node required(String label,Object id) {
-        Node n=repo.entity(label,c.namespaceId,RequestContext.uuid(id));if(n==null)c.fail("NOT_FOUND",label+" not found");return n;
-    }
     private Node clazz(Map<String,Object> request,boolean infer) {
         if(request.containsKey("classId")==request.containsKey("className"))c.fail("VALIDATION_FAILED","Supply classId or className");
         if(request.containsKey("classId"))return required("Class",request.get("classId"));

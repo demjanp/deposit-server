@@ -73,6 +73,19 @@ class TypedDataModelIT {
         error("VALIDATION_FAILED",()->call("deposit.set.object",m("id",s1,"descriptors",m("Mass",1L),"clearDescriptors",List.of("Mass")),write(token,sequence)));
         error("VALIDATION_FAILED",()->call("deposit.create.object",m("classId",specimen,"className","Specimen"),write(token,sequence)));
         error("VALIDATION_FAILED",()->call("deposit.create.class",m("name","Bad","unexpected",true),write(token,sequence)));
+        // Required lookups parse IDs before consulting the captured Namespace and preserve the same NOT_FOUND contract.
+        error("VALIDATION_FAILED",()->get("deposit.get.object",m("id","not-a-uuid")));
+        error("NOT_FOUND",()->get("deposit.get.object",m("id",specimen)));
+        error("VALIDATION_FAILED",()->call("deposit.delete.object",m("id","not-a-uuid"),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.delete.object",m("id",specimen),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",specimen,"classId",contextClass),write(token,sequence)));
+        select(token,otherNamespace);long outsideSequence=revision(get("deposit.get.activeNamespace",Map.of()));
+        var outsideClass=call("deposit.create.class",m("name","Outside"),write(token,outsideSequence));
+        String outsideObject=id(call("deposit.create.object",m("classId",id(outsideClass)),write(token,revision(outsideClass))));
+        select(token,namespace);
+        error("NOT_FOUND",()->get("deposit.get.object",m("id",outsideObject)));
+        error("NOT_FOUND",()->call("deposit.delete.object",m("id",outsideObject),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",outsideObject,"classId",contextClass),write(token,sequence)));
         assertEquals(before,state());
     }
     @Test @Order(4) void membershipConversionDeletionAndReceiptHandleRehydration() {

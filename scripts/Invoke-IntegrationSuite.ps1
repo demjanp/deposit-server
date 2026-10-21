@@ -277,6 +277,10 @@ try {
         Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-TestScenario.ps1') $arguments 'recovery-scenario' 7200
     } elseif($SelectedScenario) {
         Update-SuiteJournal $journalPath {param($j) $j.state='running'}
+        if($SelectedScenario -eq 'ServiceCrashRecovery') {
+            Invoke-SuitePhase 'Start'
+            Invoke-SuiteSelection 'AuthenticationNamespaceLifecycleIT#bootstrapRollbackThenCommitAndLoginReadOnlyCompletion' 'service-prerequisite-bootstrap'
+        }
         if($SelectedScenario -in @('CleanProvisioning','DownloadListener','ServiceShutdown','ServiceCrashRecovery')) {Enable-TestService}
         if($SelectedScenario -eq 'ServiceCrashRecovery') {
             Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-ServiceShutdownScenario.ps1') @('-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'service-shutdown-prerequisite.log')) 'service-shutdown-prerequisite' 1800

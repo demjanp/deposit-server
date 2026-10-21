@@ -15,7 +15,7 @@ final class ImportSemantics {
 
     static Set<String> connectedRoles(String root,Map<String,Object> roles){var visited=new HashSet<String>();var queue=new ArrayDeque<String>();visited.add(root);queue.add(root);while(!queue.isEmpty()){String role=queue.remove();for(var entry:roles.entrySet())for(Object raw:(List<?>)ValueCodec.map(entry.getValue()).get("relationships")){String target=(String)ValueCodec.map(raw).get("targetName"),next=entry.getKey().equals(role)?target:target.equals(role)?entry.getKey():null;if(next!=null&&visited.add(next))queue.add(next);}}return visited;}
 
-    static TreeMap<String,Map<String,String>> namespaceSchema(CoreRepository repo,String namespace){var schema=new TreeMap<String,Map<String,String>>();for(Node clazz:repo.nodes("Class",Map.of("namespaceId",namespace))){var fields=new TreeMap<String,String>();for(Node d:repo.children(clazz,"ClassDescriptor"))fields.put((String)d.getProperty("name"),(String)d.getProperty("type"));schema.put((String)clazz.getProperty("name"),fields);}return schema;}
+    static TreeMap<String,Map<String,String>> namespaceSchema(CoreRepository repo,String namespace){return repo.namespaceSchema(namespace);}
 
     static Map<String,Object> mapPatternClasses(Map<String,Object> definition,Map<String,String> mapping){var normalized=PatternCodec.normalize(definition);var objects=new LinkedHashMap<String,Object>();ValueCodec.map(normalized.get("objects")).forEach((role,raw)->{var spec=new LinkedHashMap<>(ValueCodec.map(raw));spec.put("className",mapping.getOrDefault(spec.get("className"),(String)spec.get("className")));objects.put(role,spec);});return Json.map("objects",objects);}
 

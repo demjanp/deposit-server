@@ -14,8 +14,8 @@ final class HistoryReadService extends BaseService {
 
     private Node root(){return repo.namespace(c.namespaceId);}
     private void read(String role){readContext();scoped(role);}
-    private long generation(){return ((Number)root().getProperty("historyAvailability",0L)).longValue();}
-    private void stable(long sequence,long generation){c.state.kernel.assertOpen();if(System.currentTimeMillis()-c.state.kernel.startTime()>30000)c.fail("CANCELLED","Read timeout exceeded");authenticate();requireRole(c.namespaceId,"viewer");if(repo.sequence(c.namespaceId)!=sequence||generation()!=generation)c.fail("REVISION_CONFLICT","History changed during read");}
+    long generation(){return ((Number)root().getProperty("historyAvailability",0L)).longValue();}
+    void stable(long sequence,long generation){c.state.kernel.assertOpen();if(System.currentTimeMillis()-c.state.kernel.startTime()>30000)c.fail("CANCELLED","Read timeout exceeded");authenticate();requireRole(c.namespaceId,"viewer");if(repo.sequence(c.namespaceId)!=sequence||generation()!=generation)c.fail("REVISION_CONFLICT","History changed during read");}
 
     DataRow revision(Map<String,Object> request){fields(request);read("viewer");return new DataRow(Json.map("sequence",c.revision,"revisionId",root().getProperty("headRevisionId",null),"historyMode",root().getProperty("historyMode"),"historyEpochId",root().getProperty("historyEpochId",null)),c.meta());}
     ValueRow restored(Map<String,Object> request){fields(request);read("viewer");Object head=root().getProperty("headRevisionId",null);return new ValueRow(head!=null&&history.revision(c.namespaceId,(String)head).kind().equals("restore"),c.meta());}

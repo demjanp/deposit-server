@@ -11,12 +11,7 @@ final class PatternCompatibilityService extends BaseService {
 
     void validateNamespace(){validateNamespace(c.namespaceId);}
     void validateNamespace(String namespaceId){
-        var schema=new TreeMap<String,Map<String,String>>();
-        for(Node clazz:repo.nodes("Class",Map.of("namespaceId",namespaceId))){
-            var declarations=new TreeMap<String,String>();
-            for(Node declaration:repo.children(clazz,"ClassDescriptor"))declarations.put((String)declaration.getProperty("name"),(String)declaration.getProperty("type"));
-            schema.put((String)clazz.getProperty("name"),declarations);
-        }
+        var schema=repo.namespaceSchema(namespaceId);
         var definitions=new ArrayList<Map<String,Object>>();
         for(Node pattern:repo.nodes("Pattern",Map.of("namespaceId",namespaceId)))definitions.add(Json.read((String)pattern.getProperty("definition")));
         PatternCodec.validate(definitions,schema);

@@ -22,9 +22,6 @@ public final class ReadService extends BaseService {
     }
     private Map<String,Object> namespaceData(Node n) {var data=repo.data(n);data.put("role",effectiveRole(CoreRepository.id(n)));return data;}
     private String fingerprint(List<Map<String,Object>> data) {return Json.hash(Json.write(data));}
-    private Node required(String kind,Object id) {
-        Node n=repo.entity(kind,c.namespaceId,RequestContext.uuid(id));if(n==null)c.fail("NOT_FOUND",kind+" not found");return n;
-    }
     private record Item(Node node,Relationship rel,Map<String,Object> data) {
         Item(Node node,Map<String,Object> data) {this(node,null,data);}
     }
