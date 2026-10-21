@@ -34,7 +34,7 @@ class TabularXlsxStreamingTest {
 
     @Test void cancellationWhileReadingSharedStringsRemovesTemporaryWorkspace()throws Exception {
         Path source=temp.resolve("cancel.xlsx"),output=temp.resolve("cancel.json");writeWorkbook(source,1000);int preflightReads=zipChunkReads(source);java.util.concurrent.atomic.AtomicInteger checks=new java.util.concurrent.atomic.AtomicInteger();
-        assertThrows(Exception.class,()->XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{if(checks.incrementAndGet()==preflightReads+2)throw new IllegalStateException("cancelled");}));assertTrue(checks.get()>preflightReads);try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")),"Cancellation must remove the shared-string workspace");}
+        var injected=new IllegalStateException("cancelled");assertSame(injected,assertThrows(IllegalStateException.class,()->XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{if(checks.incrementAndGet()==preflightReads+2)throw injected;})));assertEquals("cancelled",injected.getMessage());assertTrue(checks.get()>preflightReads);try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")),"Cancellation must remove the shared-string workspace");}
     }
 
     @Test void preflightRejectsZipEntryAndExpandedContentLimits()throws Exception {
