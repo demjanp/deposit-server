@@ -134,6 +134,15 @@ class ExchangePackageCodecTest {
         images.add(historicalImage(ns,"Pattern",UUID.randomUUID().toString(),"name","Two","definition",Json.map("objects",Json.map("root",Json.map("className","Thing","root",true,"alwaysCreate",true)))));
         reject(manifest,graph(),bundle(ns,images));
     }
+    @Test void packagePatternsUseLookupSchemaForPresentAndAbsentClassesAndDeclarations()throws Exception{
+        var manifest=manifest();String ns=(String)manifest.get("sourceNamespaceId"),clazz=UUID.randomUUID().toString();var graph=graph();
+        graph.put("classes",List.of(Json.map("kind","Class","id",clazz,"namespaceId",ns,"name","Thing","descriptors",List.of(declaration(ns,clazz,"Code","String")))));
+        var pattern=Json.map("kind","Pattern","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","ByCode","definition",Json.map("objects",Json.map("root",Json.map("className","Thing","root",true,"descriptors",List.of(Json.map("name","Code"))))));
+        graph.put("patterns",List.of(pattern));Path valid=temp.resolve("pattern-lookup.zip");ExchangePackageCodec.write(valid,manifest,graph,null,Map.of());assertDoesNotThrow(()->ExchangePackageCodec.validate(valid));
+        var missingClass=graph();missingClass.put("classes",List.of(Json.map("kind","Class","id",clazz,"namespaceId",ns,"name","Thing","descriptors",List.of(declaration(ns,clazz,"Code","String")))));pattern.put("definition",Json.map("objects",Json.map("root",Json.map("className","Absent","root",true))));missingClass.put("patterns",List.of(pattern));reject(manifest,missingClass,null);
+        pattern.put("definition",Json.map("objects",Json.map("root",Json.map("className","Thing","root",true,"descriptors",List.of(Json.map("name","Absent"))))));missingClass.put("patterns",List.of(pattern));reject(manifest,missingClass,null);
+        pattern.put("definition",Json.map("objects",Json.map("root",Json.map("className","Thing","root",true,"descriptors",List.of(Json.map("name","Absent","type","String"))))));missingClass.put("patterns",List.of(pattern));Path proposed= temp.resolve("pattern-missing-declaration-with-proposal.zip");ExchangePackageCodec.write(proposed,manifest,missingClass,null,Map.of());assertDoesNotThrow(()->ExchangePackageCodec.validate(proposed));
+    }
     @Test void malformedMetadataAndOversizedRoleNamesAreRejected()throws Exception{
         var manifest=manifest();manifest.put("exportedRevision",1.5);reject(manifest,graph(),null);
         manifest=manifest();String ns=(String)manifest.get("sourceNamespaceId"),clazz=UUID.randomUUID().toString();var graph=graph();graph.put("classes",List.of(Json.map("kind","Class","id",clazz,"namespaceId",ns,"name","Thing","descriptors",List.of())));graph.put("patterns",List.of(Json.map("kind","Pattern","id",UUID.randomUUID().toString(),"namespaceId",ns,"name","Oversized","definition",Json.map("objects",Json.map("x".repeat(40000),Json.map("className","Thing","root",true))))));reject(manifest,graph,null);

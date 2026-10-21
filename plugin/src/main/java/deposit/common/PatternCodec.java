@@ -7,6 +7,23 @@ import java.util.*;
 public final class PatternCodec {
     private PatternCodec() {}
 
+    /** A lookup-only schema over indexes owned by the caller. */
+    static Map<String,Map<String,String>> lookupSchema(Map<String,String> classNames,Map<String,String> declarations) {
+        return new AbstractMap<>() {
+            public Map<String,String> get(Object name) {
+                String id=classNames.get(name);
+                if(id==null)return null;
+                return new AbstractMap<>() {
+                    public String get(Object field){return declarations.get(id+"\u0000"+field);}
+                    public boolean containsKey(Object field){return get(field)!=null;}
+                    public Set<Entry<String,String>> entrySet(){throw new UnsupportedOperationException("Lookup-only declaration view");}
+                };
+            }
+            public boolean containsKey(Object name){throw new UnsupportedOperationException("Lookup-only schema view");}
+            public Set<Entry<String,Map<String,String>>> entrySet(){throw new UnsupportedOperationException("Lookup-only schema view");}
+        };
+    }
+
     public static Map<String,Object> normalize(Map<String,Object> source) {
         fields(source,"objects");
         if(!(source.get("objects") instanceof Map<?,?>))fail("Pattern objects must be a map");

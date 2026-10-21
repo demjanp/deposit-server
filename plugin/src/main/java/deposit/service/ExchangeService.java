@@ -58,7 +58,7 @@ public final class ExchangeService extends BaseService {
         
         for(String id:ids){Node node=resources.resource(c.namespaceId,id);if(node==null)c.fail("RESOURCE_CORRUPT","Required historical resource is missing");
             resources.lock(id);ResourceStorage.Content verified=resources.verify(resources.location(id));
-            stage("final-resources",Json.map("kind","DResource","id",id,"filename",node.getProperty("filename"),"bytes",verified.bytes(),"mediaType",node.getProperty("mediaType"),"sha256",verified.checksum(),"entry","resources/"+verified.checksum()));}
+            stage("final-resources",PortableImportRecords.resource(id,(String)node.getProperty("filename"),verified.bytes(),(String)node.getProperty("mediaType"),verified.checksum()));}
         graph.put("resources",records.list("final-resources"));
     }
     private void stage(String category,Map<String,Object> value){try{c.state.kernel.assertOpen();records.add(category,value);}catch(IOException e){throw new UncheckedIOException(e);}}

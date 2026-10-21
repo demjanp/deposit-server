@@ -1,6 +1,7 @@
 package deposit.service;
 
 import deposit.common.Json;
+import deposit.common.ResourceFiles;
 import deposit.common.TabularValueCodec;
 import deposit.common.ValueCodec;
 import java.io.*;
@@ -52,7 +53,7 @@ final class GeoPackageAdapter {
         if(layer.isBlank()||layer.codePoints().anyMatch(Character::isISOControl)||Set.of("gpkg_spatial_ref_sys","gpkg_contents","gpkg_geometry_columns","gpkg_extensions","gpkg_tile_matrix_set","gpkg_tile_matrix").contains(layer.toLowerCase(Locale.ROOT)))throw new IOException("Invalid GeoPackage layer name");Files.createDirectories(directory);
         var srids=new TreeSet<Integer>();var warnings=new LinkedHashMap<String,Map<String,Object>>();boolean[] warningsTruncated={false};if(geometryColumns.isEmpty())srids.add(0);else try(Json.ArrayReader rows=new Json.ArrayReader(table,"rows")){Map<String,Object> row;while((row=rows.next())!=null){check.run();Map<String,Object> values=ValueCodec.map(row.get("values"));for(String field:geometryColumns){Object raw=values.get(field);GeometryValue geometry=raw==null?null:toGeometry(raw);srids.add(geometry==null?-1:geometry.srid());if(geometry!=null&&geometry.vertical()!=null){Map<String,Object> warning=Json.map("severity","warning","code","VERTICAL_CRS_OMITTED","rowId",row.get("rowId"),"column",field,"message","GeoPackage output omits vertical CRS metadata; Z coordinates are preserved");String key=Json.write(warning);if(warnings.size()<1000)warnings.putIfAbsent(key,warning);else warningsTruncated[0]=true;}}}}
         if(srids.isEmpty())srids.add(-1);var results=new ArrayList<Output>();String stem=filename.substring(0,filename.length()-5);
-        for(int srid:srids){String outputName=geometryColumns.isEmpty()?filename:stem+(srid<0?"_unknown":"_"+srid)+".gpkg";Path output=directory.resolve(UUID.randomUUID()+".gpkg");writePart(table,columns,attributes,geometryColumns,layer,srid,output,check,resourceLink);results.add(new Output(output,outputName,Files.size(output),sha256(output),List.copyOf(warnings.values()),warningsTruncated[0]));}
+        for(int srid:srids){String outputName=geometryColumns.isEmpty()?filename:stem+(srid<0?"_unknown":"_"+srid)+".gpkg";Path output=directory.resolve(UUID.randomUUID()+".gpkg");writePart(table,columns,attributes,geometryColumns,layer,srid,output,check,resourceLink);results.add(new Output(output,outputName,Files.size(output),ResourceFiles.checksum(output),List.copyOf(warnings.values()),warningsTruncated[0]));}
         return results;
     }
     private record GeometryValue(Geometry geometry,int srid,Long vertical) {}
@@ -81,5 +82,4 @@ final class GeoPackageAdapter {
         catch(IOException e){throw e;}catch(Exception e){throw new IOException("No GeoPackage SRS definition is available for EPSG:"+srid,e);}
     }
     private static String q(String name){return "\""+name.replace("\"","\"\"")+"\"";}
-    private static String sha256(Path path)throws IOException{try(var in=Files.newInputStream(path)){var digest=java.security.MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];int n;while((n=in.read(buffer))>=0)if(n>0)digest.update(buffer,0,n);return HexFormat.of().formatHex(digest.digest());}catch(java.security.NoSuchAlgorithmException e){throw new AssertionError(e);}}
 }

@@ -79,6 +79,37 @@ class DataImportExportIT {
         for(String removed:List.of("alwaysCreateClasses","receivingPatternIds","classMap","overwriteTargets","replaceDescriptors","replaceRelationships","userToolResolutions","conflictPolicies"))assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.import.rows",source,targets,relationships,m(removed,List.of()),token),"Removed rule should be rejected: "+removed);
 
     }
+    @Test void inlineRowPortableGeometryAndWeightedRelationshipKeepCallerFields(){
+        var shape=ResourceAndGeometryIT.geometry("POINT Z(1 2 3)",4326L,3);
+        call("deposit.create.class","RowRoot",m("descriptors",List.of(m("name","Code","type","String"),m("name","Optional","type","String"),m("name","Shape","type","DGeometry"))),token);
+        call("deposit.create.class","RowChild",m("descriptors",List.of(m("name","Label","type","String"))),token);
+        String root=id(call("deposit.create.object","RowRoot",m("descriptors",m("Code","R-1","Optional","keep","Shape",shape)),token));
+        var source=m("rows",List.of(m("id","row-1","values",m("Code","R-1","Optional",null,"Shape",shape,"Child label","new child"))));
+        var targets=m("Code",m("object","root","className","RowRoot","descriptor","Code","type","String"),
+            "Optional",m("object","root","className","RowRoot","descriptor","Optional","type","String"),
+            "Shape",m("object","root","className","RowRoot","descriptor","Shape","type","DGeometry"),
+            "Child label",m("object","child","className","RowChild","descriptor","Label","type","String"));
+        var edges=List.of(m("source","root","target","child","label","hasChild","weight",2.5));
+        var analyzed=call("deposit.import.rows",source,targets,edges,m("alwaysCreate",List.of("child")),token).get("data");
+        assertEquals(root,analyzed.get("rowMappings").get("row-1/root").asString());
+        assertTrue(analyzed.get("rowMappings").get("row-1/child").isNull());
+        call("deposit.import.apply",analyzed.get("planId").asString(),token);
+
+        assertEquals("keep",query("MATCH (:Object {id:$id})-[:HAS_DESCRIPTOR]->(d:Descriptor {name:'Optional'}) RETURN d.value AS value",m("id",root)).getFirst().get("value").asString(),"An explicitly present null remains a blank row value and does not replace the existing Descriptor");
+        var geometry=query("MATCH (:Object {id:$id})-[:HAS_DESCRIPTOR]->(:Descriptor {name:'Shape'})-[:HAS_GEOMETRY]->(g:DGeometry) RETURN g.id AS geometryNodeId,g.wkt AS wkt,g.srid AS srid,g.verticalSrid AS verticalSrid,g.axisOrder AS axisOrder,g.dimensions AS dimensions,g.geometryType AS geometryType",m("id",root)).getFirst();
+        assertFalse(geometry.get("geometryNodeId").isNull());
+        assertEquals("POINT Z(1 2 3)",geometry.get("wkt").asString());assertEquals(4326L,geometry.get("srid").asLong());assertTrue(geometry.get("verticalSrid").isNull());assertEquals("xyz",geometry.get("axisOrder").asString());assertEquals(3L,geometry.get("dimensions").asLong());assertEquals("Point",geometry.get("geometryType").asString());
+        String child=query("MATCH (o:Object {namespaceId:$ns})-[:HAS_DESCRIPTOR]->(:Descriptor {name:'Label',value:'new child'}) RETURN o.id AS id",m("ns",namespace)).getFirst().get("id").asString();
+        var membership=query("MATCH (o:Object {id:$child})-[r:MEMBER_OF]->(c:Class) RETURN r.id AS id,r.namespaceId AS namespaceId,c.name AS className",m("child",child)).getFirst();assertFalse(membership.get("id").isNull());assertEquals(namespace,membership.get("namespaceId").asString());assertEquals("RowChild",membership.get("className").asString());
+        var relation=query("MATCH (a:Object {id:$root})-[r:RELATED_TO]->(b:Object {id:$child}) RETURN r.id AS id,r.namespaceId AS namespaceId,r.label AS label,r.weight AS weight",m("root",root,"child",child)).getFirst();assertFalse(relation.get("id").isNull());assertEquals(namespace,relation.get("namespaceId").asString());assertEquals("hasChild",relation.get("label").asString());assertEquals(2.5,relation.get("weight").asDouble());
+        assertEquals(1L,query("MATCH (:Class {namespaceId:$ns,name:'RowRoot'})-[r:RELATED_TO {label:'hasChild'}]->(:Class {name:'RowChild'}) RETURN count(r) AS n",m("ns",namespace)).getFirst().get("n").asLong());
+    }
+    @Test void rowDResourceIsRejectedBeforePlanPublication(){
+        String resource=upload("row resource".getBytes(StandardCharsets.UTF_8),"row-resource.txt");long before=sequence(namespace);long plans=query("MATCH (p:DepositImportPlan {namespaceId:$ns}) RETURN count(p) AS n",m("ns",namespace)).getFirst().get("n").asLong();
+        var source=m("rows",List.of(m("id","resource-row","values",m("File",m("resourceId",resource)))));var targets=m("File",m("object","item","className","ResourceRow","descriptor","File","type","DResource"));
+        var failure=assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.import.rows",source,targets,List.of(),m(),token));assertTrue(failure.getMessage().contains("VALIDATION_FAILED"),failure.getMessage());
+        assertEquals(before,sequence(namespace));assertEquals(plans,query("MATCH (p:DepositImportPlan {namespaceId:$ns}) RETURN count(p) AS n",m("ns",namespace)).getFirst().get("n").asLong());assertEquals(0L,query("MATCH (c:Class {namespaceId:$ns,name:'ResourceRow'}) RETURN count(c) AS n",m("ns",namespace)).getFirst().get("n").asLong());
+    }
     @Test void invalidLateInlineRowBlocksAnalysisBeforeAnyWrite(){
         long before=sequence(namespace);var source=m("rows",List.of(m("id","r1","values",m("Count","1")),m("id","r2","values",m("Count","not-an-integer"))));var targets=m("Count",m("object","sample","className","Sample","descriptor","Count","type","Integer"));try{call("deposit.import.rows",source,targets,List.of(),m(),token);fail("Expected invalid row to reject the whole analysis");}catch(org.neo4j.driver.exceptions.Neo4jException expected){assertTrue(expected.getMessage().contains("VALIDATION_FAILED"));}assertEquals(before,sequence(namespace));try(var session=driver.session()){assertEquals(0L,session.run("MATCH (c:Class {namespaceId:$ns,name:'Sample'}) RETURN count(c) AS n",m("ns",namespace)).single().get("n").asLong());}
         for(var rows:List.of(List.of(m("id","duplicate","values",m("Count","1")),m("id","duplicate","values",m("Count","2"))),List.of(m("id","clear-supplied","values",m("Count","1"),"clearDescriptors",m("sample",List.of("Count"))))))assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.import.rows",m("rows",rows),targets,List.of(),m(),token));
@@ -106,6 +137,23 @@ class DataImportExportIT {
         assertEquals(1L,query("MATCH (:Object {id:$target}) RETURN count(*) AS n",m("target",removedTarget)).getFirst().get("n").asLong());
         assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.import.dataByPattern","SpecimenForm",m("specimen",m("Outside","tamper")),m("rootId",root),token),"Form values outside the stored Pattern must be rejected");
         long beforeWrongRoot=sequence(namespace),plans=query("MATCH (p:DepositImportPlan {namespaceId:$ns}) RETURN count(p) AS n",m("ns",namespace)).getFirst().get("n").asLong();var wrongRoot=assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,()->call("deposit.import.dataByPattern","SpecimenForm",m(),m("rootId",removedTarget),token));assertTrue(wrongRoot.getMessage().contains("IMPORT_CONFLICT"),wrongRoot.getMessage());assertFalse(wrongRoot.getMessage().contains("planId"),wrongRoot.getMessage());assertEquals(beforeWrongRoot,sequence(namespace));assertEquals(plans,query("MATCH (p:DepositImportPlan {namespaceId:$ns}) RETURN count(p) AS n",m("ns",namespace)).getFirst().get("n").asLong());
+    }
+    @Test void formPortableRecordsLinkGeometryRelationshipsAndDeduplicateRepeatedResources(){
+        String resource=upload("one immutable resource".getBytes(StandardCharsets.UTF_8),"shared-form.txt");var shape=ResourceAndGeometryIT.geometry("POINT (7 8)",4326L,2);
+        call("deposit.create.class","FormRoot",m("descriptors",List.of(m("name","Code","type","String"),m("name","FileA","type","DResource"),m("name","FileB","type","DResource"),m("name","Shape","type","DGeometry"))),token);
+        call("deposit.create.class","FormChild",m("descriptors",List.of(m("name","Label","type","String"))),token);
+        var definition=m("objects",m("root",m("className","FormRoot","root",true,"descriptors",List.of(m("name","Code"),m("name","FileA"),m("name","FileB"),m("name","Shape")),"relationships",List.of(m("label","hasChild","targetName","child"))),"child",m("className","FormChild","descriptors",List.of(m("name","Label")))));
+        call("deposit.create.pattern","PortableFormRecords",definition,m(),token);
+        var values=m("root",m("Code","FORM-1","FileA",m("resourceId",resource),"FileB",m("resourceId",resource),"Shape",shape),"child",m("Label","child"));
+        var analyzed=call("deposit.import.dataByPattern","PortableFormRecords",values,m(),token).get("data");
+        // Successful package analysis also proves duplicate resource IDs were collapsed before category validation.
+        var applied=call("deposit.import.apply",analyzed.get("planId").asString(),token).get("data");assertEquals(2L,applied.get("createdObjects").asLong());
+        String root=query("MATCH (o:Object {namespaceId:$ns})-[:HAS_DESCRIPTOR]->(:Descriptor {name:'Code',value:'FORM-1'}) RETURN o.id AS id",m("ns",namespace)).getFirst().get("id").asString();
+        String child=query("MATCH (o:Object {namespaceId:$ns})-[:HAS_DESCRIPTOR]->(:Descriptor {name:'Label',value:'child'}) RETURN o.id AS id",m("ns",namespace)).getFirst().get("id").asString();
+        var resourceRefs=query("MATCH (:Object {id:$root})-[:HAS_DESCRIPTOR]->(d:Descriptor)-[:HAS_RESOURCE]->(r:DResource) WHERE d.name IN ['FileA','FileB'] RETURN d.name AS name,r.id AS resourceId ORDER BY name",m("root",root));assertEquals(2,resourceRefs.size());String importedResource=resourceRefs.getFirst().get("resourceId").asString();assertNotEquals(resource,importedResource);for(var ref:resourceRefs)assertEquals(importedResource,ref.get("resourceId").asString());
+        assertEquals(1L,query("MATCH (r:DResource {id:$id,namespaceId:$ns}) RETURN count(r) AS n",m("id",importedResource,"ns",namespace)).getFirst().get("n").asLong());
+        var geometry=query("MATCH (:Object {id:$id})-[:HAS_DESCRIPTOR]->(:Descriptor {name:'Shape'})-[:HAS_GEOMETRY]->(g:DGeometry) RETURN g.id AS geometryNodeId,g.wkt AS wkt,g.srid AS srid,g.axisOrder AS axisOrder,g.dimensions AS dimensions,g.geometryType AS geometryType",m("id",root)).getFirst();assertFalse(geometry.get("geometryNodeId").isNull());assertEquals("POINT (7 8)",geometry.get("wkt").asString());assertEquals(4326L,geometry.get("srid").asLong());assertEquals("xy",geometry.get("axisOrder").asString());assertEquals(2L,geometry.get("dimensions").asLong());assertEquals("Point",geometry.get("geometryType").asString());
+        var relationship=query("MATCH (a:Object {id:$root})-[r:RELATED_TO]->(b:Object {id:$child}) RETURN r.id AS id,r.namespaceId AS namespaceId,r.label AS label,r.weight AS weight",m("root",root,"child",child)).getFirst();assertFalse(relationship.get("id").isNull());assertEquals(namespace,relationship.get("namespaceId").asString());assertEquals("hasChild",relationship.get("label").asString());assertTrue(relationship.get("weight").isNull());
     }
     @Test void rootImportRejectsDisconnectedPatternWithoutPlan(){
         call("deposit.create.class","Root",m(),token);call("deposit.create.class","Other",m(),token);String root=id(call("deposit.create.object","Root",m(),token));

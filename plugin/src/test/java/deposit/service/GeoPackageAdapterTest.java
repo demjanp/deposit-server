@@ -7,8 +7,14 @@ import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class GeoPackageAdapterTest {
+    @TempDir Path temp;
+    @Test void sharedChecksumPreservesPathReadFailureAsIOException()throws Exception {
+        Path missing=temp.resolve("absent.gpkg");
+        assertThrows(java.io.IOException.class,()->deposit.common.ResourceFiles.checksum(missing));
+    }
     @Test void featureLayerRequiresItsSoleRegisteredGeometryAndAnExactSelection()throws Exception {
         Path root=Files.createTempDirectory("deposit-gpkg-registration-");try{
             Path multiple=root.resolve("multiple.gpkg"),out=root.resolve("multiple.json");featureFixture(multiple,true,false,false);assertThrows(java.io.IOException.class,()->load(multiple,out,Json.map("layer","specimens","geometryColumn","geom")));assertFalse(Files.exists(out));

@@ -16,12 +16,12 @@ public abstract class BaseService {
         Set<String> allowed=Set.of(fields);
         for(String field:request.keySet()) if(!allowed.contains(field)) throw ExceptionHandler.fail("VALIDATION_FAILED","Unknown request field: "+field);
     }
-    public static String string(Object value) {if(!(value instanceof String s)) throw ExceptionHandler.fail("VALIDATION_FAILED","Expected String");return s;}
+    public static String string(Object value) {return StrictValues.string(value);}
     public static String name(Object value) {
         String s=Normalizer.normalize(string(value).strip(),Normalizer.Form.NFC);
         if(s.isEmpty()||s.codePointCount(0,s.length())>255||s.codePoints().anyMatch(Character::isISOControl)) throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid name");return s;
     }
-    public static long integer(Object value) {if(!(value instanceof Long || value instanceof Integer)) throw ExceptionHandler.fail("VALIDATION_FAILED","Expected Integer");return ((Number)value).longValue();}
+    public static long integer(Object value) {return StrictValues.integer(value);}
     public static List<Double> position(Object value) {
         if(!(value instanceof List<?> list)||list.size()!=2) throw ExceptionHandler.fail("VALIDATION_FAILED","Position requires two finite numbers");
         var out=new ArrayList<Double>();for(Object v:list) {if(!(v instanceof Number n)||!Double.isFinite(n.doubleValue())) throw ExceptionHandler.fail("VALIDATION_FAILED","Position requires two finite numbers");out.add(n.doubleValue());}return out;

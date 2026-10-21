@@ -38,4 +38,18 @@ class PatternCodecTest {
         assertThrows(ExceptionHandler.DepositException.class,()->PatternCodec.normalize(definition(role)));
         role.put("root",true);assertDoesNotThrow(()->PatternCodec.normalize(definition(role)));
     }
+    @Test void lookupSchemaBorrowsIndexesAndRejectsEnumeration(){
+        var classes=new HashMap<String,String>();classes.put("Thing","class-id");
+        var declarations=new HashMap<String,String>();declarations.put("class-id\u0000Code","String");
+        var schema=PatternCodec.lookupSchema(classes,declarations);
+        assertEquals("String",schema.get("Thing").get("Code"));
+        assertTrue(schema.get("Thing").containsKey("Code"));
+        assertFalse(schema.get("Thing").containsKey("Missing"));
+        assertNull(schema.get("Absent"));
+        declarations.put("class-id\u0000Code","Integer");
+        assertEquals("Integer",schema.get("Thing").get("Code"));
+        assertThrows(UnsupportedOperationException.class,()->schema.containsKey("Thing"));
+        assertThrows(UnsupportedOperationException.class,()->schema.entrySet());
+        assertThrows(UnsupportedOperationException.class,()->schema.get("Thing").entrySet());
+    }
 }

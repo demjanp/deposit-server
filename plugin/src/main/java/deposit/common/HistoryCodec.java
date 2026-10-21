@@ -83,14 +83,7 @@ public final class HistoryCodec {
         Map<String,String> classNames=workspace==null?new HashMap<>():workspace.map(),declarations=workspace==null?new HashMap<>():workspace.map();
         for(var image:state.values())if("Class".equals(image.get("kind")))classNames.put((String)image.get("name"),(String)image.get("id"));
         for(var image:state.values())if("ClassDescriptor".equals(image.get("kind")))declarations.put(image.get("classId")+"\u0000"+image.get("name"),(String)image.get("type"));
-        Map<String,Map<String,String>> schema=new AbstractMap<>(){
-            public Map<String,String> get(Object name){String id=classNames.get(name);if(id==null)return null;return new AbstractMap<>(){
-                public String get(Object field){return declarations.get(id+"\u0000"+field);}
-                public boolean containsKey(Object field){return get(field)!=null;}
-                public Set<Entry<String,String>> entrySet(){throw new UnsupportedOperationException("Lookup-only declaration view");}
-            };}
-            public Set<Entry<String,Map<String,String>>> entrySet(){throw new UnsupportedOperationException("Lookup-only schema view");}
-        };
+        Map<String,Map<String,String>> schema=PatternCodec.lookupSchema(classNames,declarations);
         Collection<Map<String,Object>> definitions=new AbstractCollection<>(){
             public int size(){return (int)state.values().stream().filter(image->"Pattern".equals(image.get("kind"))).count();}
             public Iterator<Map<String,Object>> iterator(){return state.values().stream().filter(image->"Pattern".equals(image.get("kind"))).map(image->ValueCodec.map(image.get("definition"))).iterator();}

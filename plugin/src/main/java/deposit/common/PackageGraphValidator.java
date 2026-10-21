@@ -54,14 +54,7 @@ final class PackageGraphValidator {
                 if(classNames.put((String)clazz.get("name"),(String)clazz.get("id"))!=null)throw new IOException("Duplicate Class name");
                 for(Object raw:(List<?>)clazz.getOrDefault("descriptors",List.of())){var declaration=ValueCodec.map(raw);declarations.put(clazz.get("id")+"\u0000"+declaration.get("name"),ValueCodec.type(declaration.get("type")));}
             }
-            Map<String,Map<String,String>> schema=new AbstractMap<>(){
-                public Map<String,String> get(Object name){String id=classNames.get(name);if(id==null)return null;return new AbstractMap<>(){
-                    public String get(Object field){return declarations.get(id+"\u0000"+field);}
-                    public boolean containsKey(Object field){return get(field)!=null;}
-                    public Set<Entry<String,String>> entrySet(){throw new UnsupportedOperationException("Lookup-only declaration view");}
-                };}
-                public Set<Entry<String,Map<String,String>>> entrySet(){throw new UnsupportedOperationException("Lookup-only schema view");}
-            };
+            Map<String,Map<String,String>> schema=PatternCodec.lookupSchema(classNames,declarations);
             Collection<Map<String,Object>> definitions=new AbstractCollection<>(){
                 public int size(){return patterns.size();}
                 public Iterator<Map<String,Object>> iterator(){return patterns.stream().map(raw->ValueCodec.map(ValueCodec.map(raw).get("definition"))).iterator();}

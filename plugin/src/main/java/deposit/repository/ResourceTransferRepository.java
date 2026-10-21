@@ -10,12 +10,10 @@ public final class ResourceTransferRepository {
     private final RequestContext c;private final ResourceRepository resources;
     public ResourceTransferRepository(RequestContext c,ResourceRepository resources){this.c=c;this.resources=resources;}
     private static void fields(Map<String,Object> request,String... keys){if(!Set.of(keys).containsAll(request.keySet()))throw ExceptionHandler.fail("VALIDATION_FAILED","Unknown transfer field");}
-    private static String string(Object value){if(!(value instanceof String))throw ExceptionHandler.fail("VALIDATION_FAILED","Expected String");return (String)value;}
-    private static long integer(Object value){if(!(value instanceof Long||value instanceof Integer))throw ExceptionHandler.fail("VALIDATION_FAILED","Expected Integer");return ((Number)value).longValue();}
     public static Map<String,Object> beginResult(Node t){return Json.map("uploadId",CoreRepository.id(t),"chunkBytes",(long)ResourceFiles.CHUNK,"nextOffset",t.getProperty("nextOffset"));}
     public Map<String,Object> begin(Map<String,Object> request) {
-        fields(request,"filename","bytes","sha256","mediaType");String filename=string(request.get("filename")),checksum=ResourceFiles.hash(request.get("sha256")),mediaType=string(request.get("mediaType"));
-        long bytes=integer(request.get("bytes"));if(bytes<0||bytes>ResourceFiles.MAX_BYTES)c.fail("LIMIT_EXCEEDED","Upload size exceeds limit");
+        fields(request,"filename","bytes","sha256","mediaType");String filename=StrictValues.string(request.get("filename")),checksum=ResourceFiles.hash(request.get("sha256")),mediaType=StrictValues.string(request.get("mediaType"));
+        long bytes=StrictValues.integer(request.get("bytes"));if(bytes<0||bytes>ResourceFiles.MAX_BYTES)c.fail("LIMIT_EXCEEDED","Upload size exceeds limit");
         String upload=UUID.randomUUID().toString(),id=UUID.randomUUID().toString(),stored=ResourceFiles.filename(filename,checksum);
         resources.lock(id);
         Node t=resources.record("DepositTransfer",upload,Json.map("namespaceId",c.namespaceId,"actorId",c.actorId,"resourceId",id,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"nextOffset",0L,"chunks","{}","state","uploading","expires",resources.now()+ResourceFiles.LEASE));
@@ -24,7 +22,7 @@ public final class ResourceTransferRepository {
     public Map<String,Object> chunk(Map<String,Object> request,Node t)throws IOException {
         fields(request,"uploadId","offset","bytesBase64","chunkSha256");
         if(!"uploading".equals(t.getProperty("state")))c.fail("RESOURCE_NOT_READY","Upload already finished");
-        long offset=integer(request.get("offset"));String encoded=string(request.get("bytesBase64"));
+        long offset=StrictValues.integer(request.get("offset"));String encoded=StrictValues.string(request.get("bytesBase64"));
         if(encoded.length()>4L*((ResourceFiles.MAX_CHUNK+2)/3))c.fail("LIMIT_EXCEEDED","Chunk exceeds limit");
         byte[] bytes;try{bytes=Base64.getDecoder().decode(encoded);}catch(IllegalArgumentException e){throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid Base64");}
         if(bytes.length==0||bytes.length>ResourceFiles.MAX_CHUNK)c.fail("LIMIT_EXCEEDED","Invalid chunk length");
