@@ -15,7 +15,7 @@ public final class ReadinessClient {
         try(var driver=GraphDatabase.driver(args[0],AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")),config);
             var session=driver.session()) {
             var info=session.run("CYPHER 25 CALL deposit.get.info() YIELD data RETURN data.version AS version",
-                TransactionConfig.builder().withTimeout(Duration.ofSeconds(10)).build()).single();
+                TransactionConfig.builder().withTimeout(Duration.ofSeconds(60)).build()).single();
             if(!"0.0.0-dev".equals(info.get("version").asString())) throw new IllegalStateException("Unexpected Deposit version");
             System.out.println("Authenticated Deposit discovery ready: " + info.get("version").asString());
         } catch(Exception failure) {

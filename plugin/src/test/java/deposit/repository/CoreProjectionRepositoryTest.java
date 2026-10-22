@@ -2,11 +2,40 @@ package deposit.repository;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.lang.reflect.*;
+import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryFlag;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
+import java.nio.file.FileSystems;
+import java.time.ZonedDateTime;
 import java.util.*;
+import org.junit.jupiter.api.io.TempDir;
+import org.neo4j.dbms.api.DatabaseManagementService;
+import org.neo4j.dbms.api.DatabaseManagementServiceBuilder;
+import org.neo4j.graphdb.*;
 import org.junit.jupiter.api.Test;
-import org.neo4j.graphdb.Node;
+import deposit.common.ExceptionHandler;
+import deposit.common.PatternCodec;
 
 class CoreProjectionRepositoryTest {
+    @TempDir Path temporaryDirectory;
+
+    private Path protectedDirectory() throws Exception {
+        Path path = Files.createDirectory(temporaryDirectory.resolve("secrets"));
+        UserPrincipal runtime = FileSystems.getDefault().getUserPrincipalLookupService()
+            .lookupPrincipalByName(ProcessHandle.current().info().user().orElseThrow());
+        if (!Files.getOwner(path).equals(runtime)) Files.setOwner(path, runtime);
+        AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
+        acl.setAcl(List.of(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(runtime)
+            .setPermissions(EnumSet.allOf(AclEntryPermission.class))
+            .setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT).build()));
+        return path;
+    }
+
     private static Node node(Map<String,Object> properties) {
         return (Node)Proxy.newProxyInstance(Node.class.getClassLoader(), new Class<?>[]{Node.class}, (proxy, method, args) -> {
             if (method.getName().equals("getProperty")) {
@@ -65,5 +94,48 @@ class CoreProjectionRepositoryTest {
         assertFalse(second.get("Alpha").containsKey("CallerOverlay"));
         second.get("Alpha").put("Mutable", "String");
         assertEquals("String", second.get("Alpha").get("Mutable"));
+    }
+
+    @Test void namespaceSchemaReadsUncommittedChangesFromItsSuppliedTransaction() throws Exception {
+        DatabaseManagementService management = null;
+        String previousConfig = System.getProperty("deposit.config");
+        try {
+            Path configDirectory = Files.createDirectories(temporaryDirectory.resolve("install/config"));
+            Path config = configDirectory.resolve("deposit.properties");
+            Files.writeString(config, "secretRoot=" + protectedDirectory().toString().replace('\\', '/') + "\n");
+            System.setProperty("deposit.config", config.toString());
+            management = new DatabaseManagementServiceBuilder(temporaryDirectory.resolve("neo4j")).build();
+            GraphDatabaseService database = management.database("neo4j");
+            try (Transaction tx = database.beginTx()) {
+                Node clazz = tx.createNode(Label.label("Class"));
+                clazz.setProperty("id", UUID.randomUUID().toString());
+                clazz.setProperty("namespaceId", "tx-namespace");
+                clazz.setProperty("name", "CurrentClass");
+                Node declaration = tx.createNode(Label.label("ClassDescriptor"));
+                declaration.setProperty("id", UUID.randomUUID().toString());
+                declaration.setProperty("namespaceId", "tx-namespace");
+                declaration.setProperty("ownerId", clazz.getProperty("id"));
+                declaration.setProperty("name", "CurrentField");
+                declaration.setProperty("type", "String");
+                clazz.createRelationshipTo(declaration, RelationshipType.withName("HAS_DESCRIPTOR"));
+
+                var schema = new CoreRepository(tx, ZonedDateTime.now()).namespaceSchema("tx-namespace");
+                assertEquals(Map.of("CurrentField", "String"), schema.get("CurrentClass"));
+                var pattern = Map.<String,Object>of("objects", Map.of("root", Map.of(
+                    "className", "CurrentClass", "root", true,
+                    "descriptors", List.of(Map.of("name", "CurrentField", "type", "String")))));
+                assertDoesNotThrow(() -> PatternCodec.validate(List.of(pattern), schema),
+                    "Pattern compatibility must see schema writes that are still uncommitted in this transaction");
+                var incompatible = Map.<String,Object>of("objects", Map.of("root", Map.of(
+                    "className", "CurrentClass", "root", true,
+                    "descriptors", List.of(Map.of("name", "CurrentField", "type", "Integer")))));
+                assertThrows(ExceptionHandler.DepositException.class, () -> PatternCodec.validate(List.of(incompatible), schema),
+                    "Current transaction declarations must participate in Pattern type-conflict validation");
+            }
+        } finally {
+            if (management != null) management.shutdown();
+            if (previousConfig == null) System.clearProperty("deposit.config");
+            else System.setProperty("deposit.config", previousConfig);
+        }
     }
 }

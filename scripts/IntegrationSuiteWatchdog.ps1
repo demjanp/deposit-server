@@ -431,6 +431,82 @@ function Assert-SuiteEnvironmentQuiescent($Journal) {
 function Write-SuiteCleanupDiagnostic([string]$Path,[string]$Message){
     Update-SuiteJournal $Path {param($j) $j | Add-Member -NotePropertyName cleanupDiagnostics -NotePropertyValue (@($j.cleanupDiagnostics)+@([DateTime]::UtcNow.ToString('o')+' '+$Message)) -Force}
 }
+function Get-SuiteServiceSid([string]$Name){
+    if($Name -cnotmatch '^DepositNeo4j-[a-f0-9]{8}$'){throw 'Unexpected service name while deriving its SID'}
+    $sha=[Security.Cryptography.SHA1]::Create()
+    try{$hash=$sha.ComputeHash([Text.Encoding]::Unicode.GetBytes($Name.ToUpperInvariant()));$parts=@(0,4,8,12,16|ForEach-Object {[BitConverter]::ToUInt32($hash,[int]$_)});return 'S-1-5-80-'+($parts -join '-')}finally{$sha.Dispose()}
+}
+function Assert-SuiteServiceAncestorPath([string]$Path,[string]$HarnessRoot){
+    $harnessRoot=[IO.Path]::GetFullPath($HarnessRoot).TrimEnd('\')
+    $depositRoot=[IO.Path]::GetFullPath((Split-Path $harnessRoot -Parent)).TrimEnd('\')
+    $documentsRoot=[IO.Path]::GetFullPath((Split-Path $depositRoot -Parent)).TrimEnd('\')
+    $expected=@($documentsRoot,$depositRoot,$harnessRoot,[IO.Path]::GetFullPath((Join-Path $harnessRoot 'runs')).TrimEnd('\'),[IO.Path]::GetFullPath((Join-Path $harnessRoot 'runs\test-host')).TrimEnd('\'))
+    $full=[IO.Path]::GetFullPath($Path).TrimEnd('\')
+    if($full -cnotin $expected){throw 'Test-service traversal ACL target is outside the approved ancestor set'}
+    $current=$full
+    while($current){
+        $attributes=$null
+        try{$attributes=[IO.File]::GetAttributes($current)}catch [IO.FileNotFoundException]{}catch [IO.DirectoryNotFoundException]{}
+        if($null -ne $attributes -and ($attributes -band [IO.FileAttributes]::ReparsePoint)){throw "Reparse point refused: $current"}
+        $current=[IO.Path]::GetDirectoryName($current)
+    }
+}
+function Remove-SuiteServiceAncestorAces($Journal,[string]$JournalPath,[string]$HarnessRoot=(Get-HarnessRoot)) {
+    if(!$Journal.PSObject.Properties['serviceAncestorAces']){return}
+    if(!@($Journal.serviceAncestorAces).Count){return}
+    $harnessRoot=[IO.Path]::GetFullPath($HarnessRoot).TrimEnd('\')
+    $depositRoot=[IO.Path]::GetFullPath((Split-Path $harnessRoot -Parent)).TrimEnd('\')
+    $documentsRoot=[IO.Path]::GetFullPath((Split-Path $depositRoot -Parent)).TrimEnd('\')
+    $expected=@($documentsRoot,$depositRoot,$harnessRoot,[IO.Path]::GetFullPath((Join-Path $harnessRoot 'runs')).TrimEnd('\'),[IO.Path]::GetFullPath((Join-Path $harnessRoot 'runs\test-host')).TrimEnd('\'))
+    $rights=[Security.AccessControl.FileSystemRights]::ReadAttributes -bor [Security.AccessControl.FileSystemRights]::Traverse -bor [Security.AccessControl.FileSystemRights]::ListDirectory
+    $effectiveRights=$rights -bor [Security.AccessControl.FileSystemRights]::Synchronize
+    $allowedMasks=@([int]$rights,[int]$effectiveRights)
+    if($Journal.serviceName -cnotmatch '^DepositNeo4j-[a-f0-9]{8}$' -or $Journal.serviceAccount -cne ('NT SERVICE\'+[string]$Journal.serviceName)){throw 'Service-ancestor ACL cleanup identity is invalid'}
+    $records=@{}
+    foreach($entry in @($Journal.serviceAncestorAces)) {
+        if(!$entry.path -or !$entry.sid -or !$entry.serviceName -or $null -eq $entry.rights){throw 'Service-ancestor ACL journal has an incomplete ownership record'}
+        $target=[IO.Path]::GetFullPath([string]$entry.path).TrimEnd('\')
+        if($target -cnotin $expected -or $entry.serviceName -cne $Journal.serviceName -or $entry.sid -cnotmatch '^S-1-5-80-(\d+-){4}\d+$' -or [int]$entry.rights -ne [int]$rights -or $records.ContainsKey($target)){throw 'Service-ancestor ACL cleanup identity is invalid'}
+        $records[$target]=[string]$entry.sid
+    }
+    if(!$records.Count){return}
+    $recordSids=@($records.Values|Select-Object -Unique)
+    if($recordSids.Count -ne 1){throw 'Service-ancestor ACL journal contains multiple service identities'}
+    $serviceSid=Get-SuiteServiceSid ([string]$Journal.serviceName)
+    if($serviceSid -cne $recordSids[0]){throw 'Service-ancestor ACL journal SID differs from the named service'}
+    $registeredService=Get-CimInstance Win32_Service -Filter "Name='$($Journal.serviceName)'" -ErrorAction Stop
+    if($registeredService){$resolvedSid=(New-Object Security.Principal.NTAccount('NT SERVICE\'+[string]$Journal.serviceName)).Translate([Security.Principal.SecurityIdentifier]).Value;if($resolvedSid -cne $serviceSid){throw 'Registered test service SID differs from its derived SID'}}
+    foreach($target in $expected){
+        Assert-SuiteServiceAncestorPath $target $harnessRoot
+        if(!(Test-Path -LiteralPath $target -PathType Container)){throw 'Service-ancestor ACL cleanup target is missing'}
+        $rules=@((Get-Acl -LiteralPath $target).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|Where-Object {$_.IdentityReference.Value -ceq [string]$recordSids[0]})
+        foreach($ace in $rules){
+            $sid=[string]$ace.IdentityReference.Value
+            if(!$records.ContainsKey($target) -or $records[$target] -cne $sid -or $ace.IsInherited -or
+                $ace.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $ace.InheritanceFlags -ne [Security.AccessControl.InheritanceFlags]::None -or
+                $ace.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None -or [int]$ace.FileSystemRights -notin $allowedMasks){throw 'Unowned or unexpected service ACE blocks traversal ACL cleanup'}
+        }
+    }
+    # Validate the complete set before mutating any ACL. Remove leaf-to-root
+    # because Windows may normalize matching child entries during parent writes.
+    foreach($target in @($expected | Sort-Object Length -Descending)){
+        if(!$records.ContainsKey($target)){continue}
+        $sid=[string]$records[$target]
+        $acl=Get-Acl -LiteralPath $target
+        $sidObject=New-Object Security.Principal.SecurityIdentifier($sid)
+        $rules=@($acl.GetAccessRules($true,$false,[Security.Principal.SecurityIdentifier])|Where-Object {$_.IdentityReference.Value -ceq $sid})
+        foreach($ace in $rules){
+            $rule=New-Object Security.AccessControl.FileSystemAccessRule($sidObject,$ace.FileSystemRights,[Security.AccessControl.InheritanceFlags]::None,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)
+            $acl.RemoveAccessRuleSpecific($rule)
+        }
+        if($rules.Count){Set-Acl -LiteralPath $target -AclObject $acl}
+    }
+    foreach($target in $expected){
+        $remaining=@((Get-Acl -LiteralPath $target).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|Where-Object {$_.IdentityReference.Value -ceq [string]$recordSids[0]})
+        if($remaining.Count){throw 'Temporary test-service traversal ACL remains after cleanup'}
+    }
+    if(@($Journal.serviceAncestorAces).Count) { Update-SuiteJournal $JournalPath {param($j) $j.serviceAncestorAces=@()} }
+}
 function Invoke-SuiteCleanupLauncher($Journal,[string]$Operation){
     $launcher=Join-Path (Split-Path $Journal.neo4jHome -Parent) 'distribution\deposit.bat'
     Assert-HarnessPlainPath $launcher
@@ -494,6 +570,9 @@ function Invoke-SuiteCleanup([string]$Path,[string]$ExpectedInvocation) {
                             }
                         }
                     }
+                    $service=Get-CimInstance Win32_Service -Filter "Name='$($journal.serviceName)'"
+                    if($service){Assert-SuiteService $journal $service;if($service.State -ne 'Stopped'){throw 'Service remained active before traversal ACL cleanup'}}
+                    Remove-SuiteServiceAncestorAces $journal $Path
                     $service = Get-CimInstance Win32_Service -Filter "Name='$($journal.serviceName)'"
                     if ($service) {
                         Assert-SuiteService $journal $service
@@ -559,6 +638,7 @@ function Invoke-SuiteCleanup([string]$Path,[string]$ExpectedInvocation) {
                     try{if($members.Count){throw 'A contained process remains after runtime cleanup'}}finally{foreach($member in $members){$member.Dispose()}}
                 }
             }
+            Remove-SuiteServiceAncestorAces $journal $Path
             Assert-SuiteEnvironmentQuiescent $journal
             Update-SuiteJournal $Path { param($j) $j.state='cleaned'; $j.cleanupError=$null; $j.cleanedUtc=[DateTime]::UtcNow.ToString('o') }
         } catch {

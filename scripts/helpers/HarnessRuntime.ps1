@@ -137,6 +137,51 @@ function Get-OwnedProcess {
     return $process
 }
 
+function Write-ServiceStartDiagnostics($State,[string]$RuntimeSid,[string]$Evidence,[string]$Run,[string]$Repo) {
+    $diagnostic=[ordered]@{capturedUtc=[DateTime]::UtcNow.ToString('o');serviceName=[string]$State.serviceName;runtimeSid=$RuntimeSid;configuredSecretRoot=$null;secretRootState=[string]$State.secretRoot;pathComponents=@();helperFiles=@();captureErrors=@()}
+    try {
+        $config=Join-Path ([string]$State.neo4jHome) 'conf\deposit.properties'
+        $matches=[regex]::Matches([IO.File]::ReadAllText($config),'(?m)^\s*secretRoot\s*=\s*(.*?)\s*$')
+        if($matches.Count -eq 1 -and ![string]::IsNullOrWhiteSpace($matches[0].Groups[1].Value)) {
+            $secretRoot=[IO.Path]::GetFullPath($matches[0].Groups[1].Value.Trim())
+            $diagnostic.configuredSecretRoot=$secretRoot
+            $pathRoot=[IO.Path]::GetPathRoot($secretRoot)
+            $components=New-Object 'System.Collections.Generic.List[string]'
+            $components.Add($pathRoot)
+            $current=$pathRoot
+            $relative=$secretRoot.Substring($pathRoot.Length).Trim('\')
+            foreach($part in @([regex]::Split($relative,'\\')|Where-Object {$_})) {$current=Join-Path $current $part;$components.Add($current)}
+            foreach($component in $components) {
+                $entry=[ordered]@{path=$component;exists=$false;owner=$null;sddl=$null;runtimeAces=@();error=$null}
+                try {
+                    if(Test-Path -LiteralPath $component) {
+                        $entry.exists=$true
+                        $acl=Get-Acl -LiteralPath $component -ErrorAction Stop
+                        $entry.owner=[string]$acl.Owner
+                        $entry.sddl=$acl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+                        if($RuntimeSid) {
+                            $entry.runtimeAces=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference.Value -ceq $RuntimeSid} | ForEach-Object {@{sid=$_.IdentityReference.Value;type=[string]$_.AccessControlType;rights=[string]$_.FileSystemRights;inheritance=[string]$_.InheritanceFlags;propagation=[string]$_.PropagationFlags;isInherited=[bool]$_.IsInherited}})
+                        }
+                    }
+                } catch {$entry.error=$_.Exception.GetType().FullName+': '+$_.Exception.Message}
+                $diagnostic.pathComponents+=@($entry)
+            }
+        } else {$diagnostic.captureErrors+=@('Could not read exactly one configured secretRoot from deposit.properties')}
+    } catch {$diagnostic.captureErrors+=@('Secret path capture failed: '+$_.Exception.GetType().FullName+': '+$_.Exception.Message)}
+    foreach($file in @(@{role='installed';path=(Join-Path $Run 'distribution\helpers\LauncherService.ps1')},@{role='source';path=(Join-Path $Repo 'runtime\distribution\helpers\LauncherService.ps1')})) {
+        $identity=[ordered]@{role=$file.role;path=$file.path;exists=$false;length=$null;lastWriteUtc=$null;sha256=$null;error=$null}
+        try {
+            if(Test-Path -LiteralPath $file.path -PathType Leaf) {
+                $item=Get-Item -LiteralPath $file.path -ErrorAction Stop
+                $identity.exists=$true;$identity.length=[long]$item.Length;$identity.lastWriteUtc=$item.LastWriteTimeUtc.ToString('o')
+                $identity.sha256=(Get-FileHash -LiteralPath $file.path -Algorithm SHA256 -ErrorAction Stop).Hash
+            }
+        } catch {$identity.error=$_.Exception.GetType().FullName+': '+$_.Exception.Message}
+        $diagnostic.helperFiles+=@($identity)
+    }
+    try {[IO.File]::WriteAllText((Join-Path $Evidence 'service-start-diagnostics.json'),($diagnostic|ConvertTo-Json -Depth 12),$utf8)} catch {}
+}
+
 function Test-LauncherAncestry($Process,$Launcher) {
     $current=$Process
     for($depth=0;$depth -lt 12;$depth++) {
@@ -171,6 +216,7 @@ function Invoke-Start($Context,[string]$ScriptsDir) {$Root=$Context.Root; $repo=
             $serviceProcess=Get-CimInstance Win32_Process -Filter "ProcessId=$($serviceIdentity.pid)"
             $created=$serviceProcess.CreationDate.ToUniversalTime().ToString('o')
             Write-Json @{pid=$serviceIdentity.pid;created=$created;startMillis=$serviceIdentity.startMillis;runtimeSid=$serviceIdentity.runtimeSid;serviceName=$serviceIdentity.name;serviceAccount=$serviceIdentity.serviceAccount;neo4jHome=$installation;mode='service';releaseMode=$true} "$run\process.json"
+            try {Write-ServiceStartDiagnostics $installState ([string]$serviceIdentity.runtimeSid) $evidence $run $repo} catch {}
             $readinessDeadline=[DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds);$ready=$false;$lastReadinessError=$null
             while([DateTime]::UtcNow -lt $readinessDeadline -and !$ready){try{Invoke-Readiness $readinessDeadline;$ready=$true}catch{$lastReadinessError=$_.Exception.Message;Start-Sleep -Milliseconds 500}}
             if(!$ready){throw "Deposit service startup readiness timed out: $lastReadinessError. Server retained for inspection."}

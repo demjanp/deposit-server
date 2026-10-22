@@ -52,7 +52,7 @@ public class StorageProbe {
     public Stream<Row> arm(@Name("point")String point,@Name("mode")String mode)throws Exception {
         if(!Set.of("fail","pause","clear").contains(mode))throw new IllegalArgumentException();
         pause.countDown();pause=new CountDownLatch(1);var latch=pause;var once=new AtomicBoolean();var server=server();
-        var marker=server.storage.files.root.getParent().resolve("resource-pause.json");Files.deleteIfExists(marker);
+        var marker=server.storage.files.root.resolve("resource-pause.json");Files.deleteIfExists(marker);
         var field=ServerContext.class.getDeclaredField("storageObserver");field.setAccessible(true);
         field.set(server,(java.util.function.Consumer<String>)p->{if(!mode.equals("clear")&&p.equals(point)&&once.compareAndSet(false,true)) {
             if(mode.equals("fail"))throw new IllegalStateException("RESOURCE_FAILURE_INJECTED_"+point);

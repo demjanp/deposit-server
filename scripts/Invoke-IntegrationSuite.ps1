@@ -152,6 +152,48 @@ function Invoke-SuiteNative([string]$File,[string[]]$Arguments,[string]$Label) {
     # Run through a tracked PowerShell child; encoded arguments preserve spaces.
     Invoke-SuiteChild $File $Arguments $Label 900
 }
+function Grant-TestServiceAncestorAccess([string]$Name,[string]$Account) {
+    $sidObject=(New-Object Security.Principal.NTAccount($Account)).Translate([Security.Principal.SecurityIdentifier])
+    $sid=$sidObject.Value
+    $rights=[Security.AccessControl.FileSystemRights]::ReadAttributes -bor [Security.AccessControl.FileSystemRights]::Traverse -bor [Security.AccessControl.FileSystemRights]::ListDirectory
+    $effectiveRights=$rights -bor [Security.AccessControl.FileSystemRights]::Synchronize
+    $harnessRoot=[IO.Path]::GetFullPath($root).TrimEnd('\')
+    $depositRoot=[IO.Path]::GetFullPath((Split-Path $harnessRoot -Parent)).TrimEnd('\')
+    $documentsRoot=[IO.Path]::GetFullPath((Split-Path $depositRoot -Parent)).TrimEnd('\')
+    $allowedTargets=@($documentsRoot,$depositRoot,$harnessRoot,[IO.Path]::GetFullPath((Join-Path $harnessRoot 'runs')).TrimEnd('\'),[IO.Path]::GetFullPath((Join-Path $harnessRoot 'runs\test-host')).TrimEnd('\'))
+    $journal=Read-SuiteJournal $journalPath
+    if($journal.serviceName -cne $Name -or $journal.serviceAccount -cne $Account -or $Account -cne ('NT SERVICE\'+$Name) -or $journal.installationPhase -notin @('installing','configured','installed')){throw 'Test-service traversal grant does not match the current owned installation'}
+    $ownedByPath=@{}
+    foreach($entry in @($journal.serviceAncestorAces)){
+        if(!$entry.path -or !$entry.sid -or !$entry.serviceName -or $null -eq $entry.rights){throw 'Test-service ACL journal contains an incomplete ownership record'}
+        $recordPath=[IO.Path]::GetFullPath([string]$entry.path).TrimEnd('\')
+        if($recordPath -cnotin $allowedTargets -or $entry.sid -cne $sid -or $entry.serviceName -cne $Name -or [int]$entry.rights -ne [int]$rights -or $ownedByPath.ContainsKey($recordPath)){throw 'Test-service ACL journal contains an invalid or duplicate ownership record'}
+        $ownedByPath[$recordPath]=$true
+    }
+    $preflight=@()
+    foreach($aclTarget in $allowedTargets){
+        Assert-SuiteServiceAncestorPath $aclTarget $harnessRoot
+        if(!(Test-Path -LiteralPath $aclTarget -PathType Container)){throw 'Test-service access target is outside the owned runtime ancestors'}
+        $acl=Get-Acl -LiteralPath $aclTarget
+        $existing=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|Where-Object {$_.IdentityReference.Value -ceq $sid})
+        $sufficient=@($existing|Where-Object {$_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and [int]$_.FileSystemRights -in @([int]$rights,[int]$effectiveRights) -and $_.InheritanceFlags -eq [Security.AccessControl.InheritanceFlags]::None -and $_.PropagationFlags -eq [Security.AccessControl.PropagationFlags]::None -and !$_.IsInherited})
+        if($existing.Count -and (!$ownedByPath.ContainsKey($aclTarget) -or $sufficient.Count -ne $existing.Count)){throw 'Test-service SID has a pre-existing or unexpected ACL on a runtime ancestor'}
+        if($ownedByPath.ContainsKey($aclTarget) -and $existing.Count -gt 1){throw 'Test-service ACL ownership is ambiguous on a runtime ancestor'}
+        $preflight+=,[pscustomobject]@{path=$aclTarget;acl=$acl;existing=$existing;owned=$ownedByPath.ContainsKey($aclTarget)}
+    }
+    foreach($item in $preflight){
+        $aclTarget=[string]$item.path
+        if($item.existing.Count){continue}
+        if(!$item.owned){Update-SuiteJournal $journalPath {param($j) $target=[string]$aclTarget; $j.serviceAncestorAces=@($j.serviceAncestorAces)+@([pscustomobject]@{path=$target;sid=$sid;rights=[int]$rights;serviceName=$Name})};$ownedByPath[$aclTarget]=$true}
+        $rule=New-Object Security.AccessControl.FileSystemAccessRule($sidObject,$rights,[Security.AccessControl.InheritanceFlags]::None,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)
+        $acl=$item.acl
+        $acl.AddAccessRule($rule)
+        Set-Acl -LiteralPath $aclTarget -AclObject $acl
+        $verified=Get-Acl -LiteralPath $aclTarget
+        $actual=@($verified.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|Where-Object {$_.IdentityReference.Value -ceq $sid -and $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and [int]$_.FileSystemRights -in @([int]$rights,[int]$effectiveRights) -and $_.InheritanceFlags -eq [Security.AccessControl.InheritanceFlags]::None -and $_.PropagationFlags -eq [Security.AccessControl.PropagationFlags]::None -and !$_.IsInherited})
+        if($actual.Count -ne 1){throw 'Test-service traversal ACL did not persist exactly'}
+    }
+}
 function Enable-TestService {
     Invoke-SuitePhase 'Stop'
     Invoke-SuiteLocalRetirement $journalPath $invocation
@@ -165,6 +207,7 @@ function Enable-TestService {
     Set-Service -Name $name -StartupType Manual
     & "$env:SystemRoot\System32\sc.exe" failure $name reset= 0 actions= '""' | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not disable test-service recovery' }
+    Grant-TestServiceAncestorAccess $name $account
     Invoke-SuitePhase 'Start'
 }
 try {
@@ -219,7 +262,7 @@ try {
     $env:PYTHONPYCACHEPREFIX=Join-Path $root 'cache\python';$env:PYTHONUSERBASE=Join-Path $root 'tools\python-user'
     $env:MAVEN_USER_HOME=Join-Path $root 'maven-user'
     $env:MAVEN_OPTS=($env:MAVEN_OPTS+' -Djava.io.tmpdir="'+$env:TEMP+'"').Trim()
-    $journal=[ordered]@{schemaVersion=1;invocationId=$invocation;ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;runnerPid=$PID;runnerStartTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks;neo4jHome=(Join-Path $run 'neo4j');runtimeOwned=$false;serviceName=$null;serviceAccount=$null;serviceRegistrations=@();installationPhase='none';allowedInitialServiceAccount='LocalSystem';children=@();runtimeJobs=@();state='preparing';terminalCleanup=$false;watchdogAcknowledged=$false;watchdogPid=$null;watchdogStartTicks=$null;cleanupError=$null;cleanupDiagnostics=@();cleanedUtc=$null;logs=$logs}
+        $journal=[ordered]@{schemaVersion=1;invocationId=$invocation;ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;runnerPid=$PID;runnerStartTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks;neo4jHome=(Join-Path $run 'neo4j');runtimeOwned=$false;serviceName=$null;serviceAccount=$null;serviceRegistrations=@();serviceAncestorAces=@();installationPhase='none';allowedInitialServiceAccount='LocalSystem';children=@();runtimeJobs=@();state='preparing';terminalCleanup=$false;watchdogAcknowledged=$false;watchdogPid=$null;watchdogStartTicks=$null;cleanupError=$null;cleanupDiagnostics=@();cleanedUtc=$null;logs=$logs}
     Write-SuiteJournal $journalPath ($journal | ConvertTo-Json -Depth 10)
     $journalCreated=$true
     $watchdogCommand='& '+(Quote-Suite (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1'))+' -JournalPath '+(Quote-Suite $journalPath)

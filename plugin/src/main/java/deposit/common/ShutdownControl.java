@@ -61,7 +61,23 @@ final class ShutdownControl implements AutoCloseable {
             BasicFileAttributes attrs=Files.readAttributes(current,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);
             if(attrs.isSymbolicLink()||attrs.isOther()||!attrs.isDirectory())throw new IOException("Unsafe shutdown control directory");
         }
-        if(!path.toAbsolutePath().normalize().equals(path.toRealPath()))throw new IOException("Shutdown control path traverses a reparse point");
+        Path real;
+        try{real=path.toRealPath();}
+        catch(IOException failure){
+            // Windows reports the full input even when an ancestor's name lookup fails.
+            // Probe only after failure and retain the original rejection and exception.
+            var components=new ArrayList<Path>();
+            for(Path current=path.toAbsolutePath().normalize();current!=null;current=current.getParent())components.add(current);
+            Collections.reverse(components);
+            var diagnostics=new StringJoiner("; ");
+            for(Path component:components){
+                try{diagnostics.add(component+" -> "+component.toRealPath());}
+                catch(IOException probeFailure){diagnostics.add(component+" -> "+probeFailure.getClass().getSimpleName()+": "+probeFailure.getMessage());}
+            }
+            failure.addSuppressed(new IOException("Shutdown control toRealPath component diagnostics: "+diagnostics));
+            throw failure;
+        }
+        if(!path.toAbsolutePath().normalize().equals(real))throw new IOException("Shutdown control path traverses a reparse point");
     }
     static void validateAcl(Path path,Set<UserPrincipal> allowed)throws IOException {
         AclFileAttributeView view=Files.getFileAttributeView(path,AclFileAttributeView.class,LinkOption.NOFOLLOW_LINKS);

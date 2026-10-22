@@ -13,6 +13,8 @@ final class TestInstallationPaths {
     static Path harnessRoot(){return HARNESS_ROOT;}
     static Path serverRoot(){return SERVER_ROOT;}
     static Path runRoot(){return HARNESS_ROOT.resolve("runs/test-host");}
+    static Path resourceRoot(){return runRoot().resolve("resources");}
+    static Path resourcePauseMarker(){return resourceRoot().resolve("resource-pause.json");}
     static Path secretRoot(){
         Path config=runRoot().resolve("neo4j/conf/deposit.properties");
         try(var input=Files.newInputStream(config)){

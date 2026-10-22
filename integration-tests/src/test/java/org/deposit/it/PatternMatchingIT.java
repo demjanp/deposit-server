@@ -40,6 +40,30 @@ class PatternMatchingIT {
         assertEquals(0,query("MATCH (p:Pattern {namespaceId:$ns}) RETURN count(p) AS n",m("ns",namespace)).getFirst().get("n").asLong());
     }
 
+    @Test void patternValidationAndMatchingSeeUncommittedSchemaInSuppliedTransaction() {
+        String clazz=key(),declaration=key(),object=key(),descriptor=key(),membership=key();
+        var definition=m("objects",m("root",m("className","TxVisible","root",true,
+            "descriptors",List.of(m("name","Code","type","String")))));
+        String pattern;
+        try(var session=driver.session();var tx=session.beginTransaction()) {
+            tx.run("CREATE (c:Class {id:$classId,namespaceId:$ns,name:'TxVisible'}) " +
+                   "CREATE (d:ClassDescriptor {id:$declarationId,namespaceId:$ns,ownerId:$classId,name:'Code',type:'String'}) " +
+                   "CREATE (o:Object {id:$objectId,namespaceId:$ns}) " +
+                   "CREATE (v:Descriptor {id:$descriptorId,namespaceId:$ns,ownerId:$objectId,name:'Code',value:'abc'}) " +
+                   "CREATE (o)-[:MEMBER_OF {id:$membershipId,namespaceId:$ns}]->(c) " +
+                   "CREATE (o)-[:HAS_DESCRIPTOR]->(v)",
+                m("classId",clazz,"declarationId",declaration,"objectId",object,"descriptorId",descriptor,"membershipId",membership,"ns",namespace));
+            var created=tx.run("CALL deposit.create.pattern($name,$definition,$properties,$token)",
+                m("name","TxSchemaPattern","definition",definition,"properties",m(),"token",token)).single();
+            pattern=id(created);
+            tx.commit();
+        }
+        var matches=query("CALL deposit.get.objectsByPattern({id:$pattern},$values,{},$token) YIELD data RETURN data",
+            m("pattern",pattern,"values",m("root",m("Code","abc")),"token",token));
+        assertEquals(1,matches.size());
+        assertEquals(object,matches.getFirst().get("data").get("bindings").get("root").asNode().get("id").asString());
+    }
+
     @Test void resultingNamespaceCompatibilityAndClassRenameAreAtomic(){
         call("deposit.create.class","Find",m("descriptors",List.of(m("name","Code","type","String"))),token);
         var def=m("objects",m("root",m("className","Find","root",true,"descriptors",List.of(m("name","Code")))));

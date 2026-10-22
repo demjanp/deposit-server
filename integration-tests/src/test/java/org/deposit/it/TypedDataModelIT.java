@@ -73,12 +73,31 @@ class TypedDataModelIT {
         error("VALIDATION_FAILED",()->call("deposit.set.object",m("id",s1,"descriptors",m("Mass",1L),"clearDescriptors",List.of("Mass")),write(token,sequence)));
         error("VALIDATION_FAILED",()->call("deposit.create.object",m("classId",specimen,"className","Specimen"),write(token,sequence)));
         error("VALIDATION_FAILED",()->call("deposit.create.class",m("name","Bad","unexpected",true),write(token,sequence)));
+        long requiredObjects=count("Object"),requiredClasses=count("Class"),requiredDescriptors=count("Descriptor"),requiredDeclarations=count("ClassDescriptor");
+        long requiredMemberships=query("MATCH (:Object {namespaceId:$ns})-[r:MEMBER_OF]->(:Class {namespaceId:$ns}) RETURN count(r) AS n",m("ns",namespace)).getFirst().get("n").asLong();
         // Required lookups parse IDs before consulting the captured Namespace and preserve the same NOT_FOUND contract.
         error("VALIDATION_FAILED",()->get("deposit.get.object",m("id","not-a-uuid")));
+        error("VALIDATION_FAILED",()->get("deposit.get.object",m("id",42L)));
         error("NOT_FOUND",()->get("deposit.get.object",m("id",specimen)));
+        error("NOT_FOUND",()->get("deposit.get.object",m("id",UUID.randomUUID().toString())));
         error("VALIDATION_FAILED",()->call("deposit.delete.object",m("id","not-a-uuid"),write(token,sequence)));
+        var nonStringDelete=assertThrows(org.neo4j.driver.exceptions.ClientException.class,
+            ()->call("deposit.delete.object",m("id",42L),write(token,sequence)));
+        assertTrue(nonStringDelete.getMessage().contains("expected String but was Integer"),nonStringDelete.getMessage());
         error("NOT_FOUND",()->call("deposit.delete.object",m("id",specimen),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.delete.object",m("id",UUID.randomUUID().toString()),write(token,sequence)));
         error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",specimen,"classId",contextClass),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",s1,"classId",s2),write(token,sequence)));
+        error("VALIDATION_FAILED",()->call("deposit.set.membership",m("objectId",s1,"classId",42L),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",s1,"classId",UUID.randomUUID().toString()),write(token,sequence)));
+        var staleLookup=write(token,sequence+1);
+        // Direct command UUID parsing remains before freshness checking.
+        error("VALIDATION_FAILED",()->call("deposit.delete.object",m("id","not-a-uuid"),staleLookup));
+        var selectorFailure=assertThrows(org.neo4j.driver.exceptions.ClientException.class,
+            ()->get("deposit.get.object",m("id","not-a-uuid","classId",contextClass)));
+        assertTrue(selectorFailure.getMessage().contains("ID selector is exclusive"),selectorFailure.getMessage());
+        assertFalse(selectorFailure.getMessage().contains("Invalid UUID"),selectorFailure.getMessage());
+        error("AUTH_FAILED",()->call("deposit.get.object",m("id","not-a-uuid"),ctx("not-a-valid-token")));
         select(token,otherNamespace);long outsideSequence=revision(get("deposit.get.activeNamespace",Map.of()));
         var outsideClass=call("deposit.create.class",m("name","Outside"),write(token,outsideSequence));
         String outsideObject=id(call("deposit.create.object",m("classId",id(outsideClass)),write(token,revision(outsideClass))));
@@ -86,7 +105,11 @@ class TypedDataModelIT {
         error("NOT_FOUND",()->get("deposit.get.object",m("id",outsideObject)));
         error("NOT_FOUND",()->call("deposit.delete.object",m("id",outsideObject),write(token,sequence)));
         error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",outsideObject,"classId",contextClass),write(token,sequence)));
+        error("NOT_FOUND",()->call("deposit.set.membership",m("objectId",s1,"classId",id(outsideClass)),write(token,sequence)));
         assertEquals(before,state());
+        assertEquals(requiredObjects,count("Object"));assertEquals(requiredClasses,count("Class"));
+        assertEquals(requiredDescriptors,count("Descriptor"));assertEquals(requiredDeclarations,count("ClassDescriptor"));
+        assertEquals(requiredMemberships,query("MATCH (:Object {namespaceId:$ns})-[r:MEMBER_OF]->(:Class {namespaceId:$ns}) RETURN count(r) AS n",m("ns",namespace)).getFirst().get("n").asLong());
     }
     @Test @Order(4) void membershipConversionDeletionAndReceiptHandleRehydration() {
         String destination=id(mutate("deposit.create.class",m("name","Destination")));

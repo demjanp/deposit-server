@@ -37,7 +37,7 @@ class ResourceCrashRecoveryIT {
                     String eligibility=collectionEligibility(resource);
                     assertTrue(candidates.contains(resource),"Target was not scheduled for collection; candidates="+candidates+"; target="+eligibility);
                 }
-                Path marker=ROOT.resolve("resource-pause.json");long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);while(!Files.exists(marker)&&System.nanoTime()<deadline)Thread.sleep(50);
+                Path marker=TestInstallationPaths.resourcePauseMarker();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);while(!Files.exists(marker)&&System.nanoTime()<deadline)Thread.sleep(50);
                 assertTrue(Files.exists(marker),"Storage barrier not reached: "+point);assertTrue(Files.readString(marker).contains(point));
                 try(var out=Files.newOutputStream(FIXTURE)){p.store(out,"resource real crash fixture");}
                 String record=Files.readString(ROOT.resolve("process.json"));Matcher pid=Pattern.compile("\"pid\"\\s*:\\s*(\\d+)").matcher(record);assertTrue(pid.find());ProcessHandle process=ProcessHandle.of(Long.parseLong(pid.group(1))).orElseThrow();
