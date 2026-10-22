@@ -13,6 +13,9 @@ class TabularCsvTest {
     @Test void preservesWhitespaceAndEmptyFields(){
         assertEquals(List.of(List.of("  ","")),TabularService.csv("  ,\r\n",','));
     }
+    @Test void inMemoryDecoderDoesNotExpandAnEmptyRecordToHeaderWidth(){
+        assertEquals(List.of(List.of("a"),List.of("")),TabularService.csv("a\r\n\r\n",','));
+    }
     @Test void honorsNonDefaultDelimiter(){
         assertEquals(List.of(List.of("code","note"),List.of("A-1","left;right")),TabularService.csv("code;note\r\nA-1;\"left;right\"\r\n",';'));
     }

@@ -95,9 +95,9 @@ public final class TabularService extends BaseService {
     private Map<String,Object> parseRecords(List<List<String>> records,int headerRow,Map<String,Object> typeMap,Map<String,Object> formats,String decimal){
         if(records.size()<headerRow)throw ExceptionHandler.fail("VALIDATION_FAILED","Header row is missing");
         List<String> names=new ArrayList<>(records.get(headerRow-1));Set<String> unique=new HashSet<>();List<Map<String,Object>> columns=new ArrayList<>();
-        for(String name:names){if(name.isEmpty()||!unique.add(java.text.Normalizer.normalize(name,java.text.Normalizer.Form.NFC)))throw ExceptionHandler.fail("VALIDATION_FAILED","Header names must be nonempty and unique");String type=typeMap.containsKey(name)?ValueCodec.type(typeMap.get(name)):"String";columns.add(Json.map("name",name,"type",type));}
-        for(String key:typeMap.keySet())if(!names.contains(key))throw ExceptionHandler.fail("VALIDATION_FAILED","columnTypes names an unknown column");for(String key:formats.keySet())if(!names.contains(key))throw ExceptionHandler.fail("VALIDATION_FAILED","dateFormats names an unknown column");
-        List<Map<String,Object>> rows=new ArrayList<>(),diagnostics=new ArrayList<>();boolean valid=true;long rowId=0,errorCount=0;
+        for(String name:names)columns.add(TabularPolicy.projectHeader(name,unique,typeMap));
+        TabularPolicy.validateOptions(names,typeMap,formats);
+        List<Map<String,Object>> rows=new ArrayList<>();TabularDiagnostics diagnostics=new TabularDiagnostics();boolean valid=true;long rowId=0;
         for(int i=headerRow;i<records.size();i++){
             c.state.kernel.assertOpen();
             List<String> record=records.get(i);if(i==records.size()-1&&record.size()==1&&record.getFirst().isEmpty())continue;
@@ -105,11 +105,11 @@ public final class TabularService extends BaseService {
             Map<String,Object> values=new LinkedHashMap<>(),presence=new LinkedHashMap<>();for(int j=0;j<names.size();j++){
                 String name=names.get(j),cell=record.get(j),type=(String)columns.get(j).get("type");presence.put(name,true);
                 try{values.put(name,cell.isEmpty()?"":TabularValueCodec.parseCell(type,cell,decimal,formats.get(name)));}
-                catch(RuntimeException ex){values.put(name,cell);valid=false;errorCount++;if(diagnostics.size()<1000)diagnostics.add(Json.map("severity","error","code","CELL_CONVERSION","rowId",Long.toString(rowId),"column",name,"message","Cell cannot be parsed as "+type));}
+                catch(RuntimeException ex){values.put(name,cell);valid=false;diagnostics.add("CELL_CONVERSION",Long.toString(rowId),name,"Cell cannot be parsed as "+type);}
             }
             rows.add(Json.map("rowId",Long.toString(rowId),"values",values,"presence",presence));
         }
-        return Json.map("columns",columns,"rows",rows,"rowCount",(long)rows.size(),"valid",valid,"diagnostics",diagnostics,"diagnosticsTruncated",errorCount>diagnostics.size());
+        return Json.map("columns",columns,"rows",rows,"rowCount",(long)rows.size(),"valid",valid,"diagnostics",diagnostics.items(),"diagnosticsTruncated",diagnostics.truncated());
     }
 
     static List<List<String>> csv(String text,char delimiter){List<List<String>> rows=new ArrayList<>();List<String> row=new ArrayList<>();StringBuilder cell=new StringBuilder();boolean quoted=false;for(int i=0;i<text.length();i++){char ch=text.charAt(i);if(quoted){if(ch=='"'){if(i+1<text.length()&&text.charAt(i+1)=='"'){cell.append('"');i++;}else quoted=false;}else cell.append(ch);}else if(ch=='"'){if(cell.length()!=0)throw ExceptionHandler.fail("VALIDATION_FAILED","Unexpected CSV quote");quoted=true;}else if(ch==delimiter){row.add(cell.toString());cell.setLength(0);}else if(ch=='\r'||ch=='\n'){if(ch=='\r'&&i+1<text.length()&&text.charAt(i+1)=='\n')i++;row.add(cell.toString());rows.add(row);row=new ArrayList<>();cell.setLength(0);}else cell.append(ch);}if(quoted)throw ExceptionHandler.fail("VALIDATION_FAILED","Unterminated CSV quote");if(cell.length()>0||!row.isEmpty()){row.add(cell.toString());rows.add(row);}return rows;}
@@ -152,7 +152,7 @@ public final class TabularService extends BaseService {
     static void requireContentLimit(long bytes,String message){if(bytes<0)throw new IllegalArgumentException("Content size cannot be negative");if(bytes>ResourceFiles.MAX_BYTES)throw ExceptionHandler.fail("LIMIT_EXCEEDED",message);}
     private long stageQuery(Map<String,Object> queryRequest,List<?> columns,Path destination,Long pinnedRevision)throws IOException{
         Stream<Results.QueryRowResult> query=queryStream(queryRequest,pinnedRevision);try(BufferedWriter out=Files.newBufferedWriter(destination,StandardCharsets.UTF_8,StandardOpenOption.CREATE_NEW);Stream<Results.QueryRowResult> rows=query){
-            out.write("{\"columns\":");out.write(Json.write(columns));out.write(",\"rows\":[");final long[] index={0};Iterator<Results.QueryRowResult> it=rows.iterator();while(it.hasNext()){c.state.kernel.assertOpen();Results.QueryRowResult row=it.next();if(index[0]>0)out.write(',');out.write(Json.write(Json.map("rowId",Long.toString(index[0]+1),"values",row.data,"presence",row.presence)));index[0]++;}out.write("],\"rowCount\":");out.write(Long.toString(index[0]));out.write(",\"valid\":true,\"diagnostics\":[],\"diagnosticsTruncated\":false}");return index[0];}
+            TabularJsonWriter.header(out,(List<?>)columns);final long[] index={0};Iterator<Results.QueryRowResult> it=rows.iterator();while(it.hasNext()){c.state.kernel.assertOpen();Results.QueryRowResult row=it.next();TabularJsonWriter.row(out,index[0]==0,Long.toString(index[0]+1),row.data,row.presence);index[0]++;}TabularJsonWriter.footer(out,index[0],true,List.of(),false);return index[0];}
     }
     private Results.DataRow queryPage(Map<String,Object> queryRequest,Long pinnedRevision){String operation=c.operationId;Long expected=c.expectedRevision;c.operationId=null;c.expectedRevision=null;try{return new GetQueryService(c).getQueryPage(queryRequest,pinnedRevision);}finally{c.operationId=operation;c.expectedRevision=expected;}}
     private Stream<Results.QueryRowResult> queryStream(Map<String,Object> queryRequest,Long pinnedRevision){String operation=c.operationId;Long expected=c.expectedRevision;c.operationId=null;c.expectedRevision=null;try{return new GetQueryService(c).getQuery(queryRequest,pinnedRevision);}finally{c.operationId=operation;c.expectedRevision=expected;}}

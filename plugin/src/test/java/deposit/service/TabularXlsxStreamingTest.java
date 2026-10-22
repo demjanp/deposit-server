@@ -27,7 +27,8 @@ class TabularXlsxStreamingTest {
     @Test void date1904FormulaCachesRichStringsAndSparsePresenceArePreserved()throws Exception {
         Path source=temp.resolve("edge-cells.xlsx"),output=temp.resolve("edge-cells.json");writeEdgeWorkbook(source);var result=XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of("date","Date","formula","Integer"),Map.of(),".",()->{});
         assertEquals(2L,result.get("rowCount"));assertFalse((Boolean)result.get("valid"));List<Map<String,Object>> rows=new ArrayList<>();try(Json.ArrayReader reader=new Json.ArrayReader(output,"rows")){Map<String,Object> row;while((row=reader.next())!=null)rows.add(row);}
-        Map<String,Object> first=rows.getFirst(),values=ValueCodec.map(first.get("values"));Map<String,Object> presence=ValueCodec.map(first.get("presence"));assertEquals("1904-01-01",values.get("date"));assertEquals(2L,values.get("formula"));assertEquals("#VALUE!",values.get("error"));assertEquals("",values.get("cacheless"));assertEquals("rich text",values.get("rich"));assertEquals("inline rich",values.get("inline"));assertTrue(Boolean.TRUE.equals(presence.get("rich")));assertTrue(((List<?>)result.get("diagnostics")).stream().anyMatch(d->"FORMULA_CACHED".equals(ValueCodec.map(d).get("code"))));
+        Map<String,Object> first=rows.getFirst(),values=ValueCodec.map(first.get("values"));Map<String,Object> presence=ValueCodec.map(first.get("presence"));assertEquals("1904-01-01",values.get("date"));assertEquals(2L,values.get("formula"));assertEquals("#VALUE!",values.get("error"));assertEquals("",values.get("cacheless"));assertEquals("rich text",values.get("rich"));assertEquals("inline rich",values.get("inline"));assertTrue(Boolean.TRUE.equals(presence.get("rich")));assertEquals("#VALUE!",values.get("error"));
+        List<Map<String,Object>> diagnostics=((List<?>)result.get("diagnostics")).stream().map(ValueCodec::map).toList();Map<String,Object> formulaDiagnostic=diagnostics.stream().filter(d->"FORMULA_CACHED".equals(d.get("code"))).findFirst().orElseThrow();assertEquals("1",formulaDiagnostic.get("rowId"));assertEquals("cacheless",formulaDiagnostic.get("column"));assertEquals("Formula has no usable cached result",formulaDiagnostic.get("message"));Map<String,Object> errorDiagnostic=diagnostics.stream().filter(d->"error".equals(d.get("column"))).findFirst().orElseThrow();assertEquals("CELL_CONVERSION",errorDiagnostic.get("code"));assertEquals("#VALUE!",values.get("error"));
         Map<String,Object> last=ValueCodec.map(rows.getLast().get("presence"));assertTrue(last.values().stream().allMatch(value->Boolean.FALSE.equals(value)),"Dimension-only trailing row must retain absent-cell presence");try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")));}
         Path emptySource=temp.resolve("empty.xlsx"),emptyOutput=temp.resolve("empty.json");writeWorkbook(emptySource,0);var empty=XlsxTableReader.parseXlsx(emptySource,emptyOutput,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{});assertEquals(0L,empty.get("rowCount"));
     }
@@ -42,6 +43,86 @@ class TabularXlsxStreamingTest {
         RuntimeException entries=assertThrows(RuntimeException.class,()->XlsxTableReader.preflightXlsx(source,()->{},4,Long.MAX_VALUE));assertTrue(entries.getMessage().contains("LIMIT_EXCEEDED"),entries.getMessage());assertTrue(entries.getMessage().contains("entry limit"),entries.getMessage());
         RuntimeException expanded=assertThrows(RuntimeException.class,()->XlsxTableReader.preflightXlsx(source,()->{},100,32));assertTrue(expanded.getMessage().contains("LIMIT_EXCEEDED"),expanded.getMessage());assertTrue(expanded.getMessage().contains("expanded size limit"),expanded.getMessage());
     }
+
+    @Test void xlsxHeaderPolicyKeepsOriginalNfcSpellingAndExactOptionMembership()throws Exception{
+        Path source=temp.resolve("nfc-header.xlsx"),output=temp.resolve("nfc-header.json");writeSmallWorkbook(source,"cafe\u0301", " code", "42", "7");
+        var parsed=XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of("cafe\u0301","Integer"),Map.of(),".",()->{});
+        assertEquals(List.of(Json.map("name","cafe\u0301","type","Integer"),Json.map("name"," code","type","String")),parsed.get("columns"));
+        Path duplicate=temp.resolve("nfc-duplicate.xlsx");writeSmallWorkbook(duplicate,"cafe\u0301","caf\u00e9","1","2");
+        var duplicateFailure=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(duplicate,temp.resolve("duplicate.json"),Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{}));
+        assertTrue(duplicateFailure.getMessage().contains("Header names must be nonempty and unique"));
+        var optionFailure=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(source,temp.resolve("wrong-option.json"),Map.of("sheet","Rows"),1,Map.of("caf\u00e9","Integer"),Map.of(),".",()->{}));
+        assertTrue(optionFailure.getMessage().contains("columnTypes names an unknown column"));
+        var precedence=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(source,temp.resolve("both-options.json"),Map.of("sheet","Rows"),1,Map.of("missingType","String"),Map.of("missingDate","yyyy"),".",()->{}));
+        assertTrue(precedence.getMessage().contains("columnTypes names an unknown column"));
+        var date=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(source,temp.resolve("date-option.json"),Map.of("sheet","Rows"),1,Map.of(),Map.of("missingDate","yyyy"),".",()->{}));
+        assertTrue(date.getMessage().contains("dateFormats names an unknown column"));
+    }
+
+    @Test void emptyXlsxHeaderNameFailsWithValidationError()throws Exception{
+        Path source=temp.resolve("empty-header.xlsx");writeSmallWorkbook(source,"","value","x","y");
+        var failure=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(source,temp.resolve("empty-header.json"),Map.of("sheet","Rows"),1,Map.of("missingType","String"),Map.of(),".",()->{}));
+        assertEquals("DEPOSIT_ERROR {\"code\":\"VALIDATION_FAILED\",\"details\":{},\"message\":\"Header names must be nonempty and unique\",\"requestId\":null,\"retryable\":false}",failure.getMessage());
+    }
+
+    @Test void xlsxProjectsTypeBeforeExtractingTheNextHeaderCell()throws Exception{
+        Path source=temp.resolve("invalid-type-before-next-cell.xlsx");writeMalformedSecondHeaderWorkbook(source);
+        var failure=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(source,temp.resolve("type-first.json"),Map.of("sheet","Rows"),1,Map.of("amount","not-a-descriptor-type"),Map.of(),".",()->{}));
+        assertTrue(failure.getMessage().contains("Unsupported descriptor type"),failure.getMessage());
+        assertFalse(failure.getMessage().contains("Invalid shared string index"),failure.getMessage());
+    }
+
+    @Test void xlsxDiagnosticCapCountsEveryFailureAndKeepsFirstThousandPayloads()throws Exception{
+        for(int errors:List.of(999,1000,1001)){
+            Path source=temp.resolve("bad-cells-"+errors+".xlsx"),output=temp.resolve("bad-cells-"+errors+".json");writeDiagnosticWorkbook(source,errors);
+            var parsed=XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of("amount","Integer"),Map.of(),".",()->{});
+            List<?> diagnostics=(List<?>)parsed.get("diagnostics");assertEquals(Math.min(errors,1000),diagnostics.size());assertEquals(errors>1000,parsed.get("diagnosticsTruncated"));assertFalse((Boolean)parsed.get("valid"));
+            Map<String,Object> first=ValueCodec.map(diagnostics.getFirst()),last=ValueCodec.map(diagnostics.getLast());assertEquals("1",first.get("rowId"));assertEquals("amount",first.get("column"));assertEquals("CELL_CONVERSION",first.get("code"));assertEquals(Integer.toString(Math.min(errors,1000)),last.get("rowId"));assertEquals("amount",last.get("column"));assertEquals("CELL_CONVERSION",last.get("code"));
+            if(errors==999){try(Json.ArrayReader rows=new Json.ArrayReader(output,"rows")){Map<String,Object> row=rows.next();assertEquals("bad-1",ValueCodec.map(row.get("values")).get("amount"));assertEquals(Boolean.TRUE,ValueCodec.map(row.get("presence")).get("amount"));}}
+        }
+    }
+
+    @Test void stagedXlsxJsonUsesExactIndependentBytesAndCancellationRemainsCallerOwned()throws Exception{
+        Path source=temp.resolve("literal-staging.xlsx"),output=temp.resolve("literal-staging.json");writeSmallWorkbook(source,"label","note","\u00e9","a,\"b\"\nline");
+        XlsxTableReader.parseXlsx(source,output,Map.of("sheet","Rows"),1,Map.of(),Map.of(),".",()->{});
+        assertEquals("{\"columns\":[{\"name\":\"label\",\"type\":\"String\"},{\"name\":\"note\",\"type\":\"String\"}],\"rows\":[{\"presence\":{\"label\":true,\"note\":true},\"rowId\":\"1\",\"values\":{\"label\":\"\u00e9\",\"note\":\"a,\\\"b\\\"\\nline\"}}],\"rowCount\":1,\"valid\":true,\"diagnostics\":[],\"diagnosticsTruncated\":false}",Files.readString(output));
+        Path cancelled=temp.resolve("cancel-row.xlsx"),cancelledOutput=temp.resolve("cancel-row.json");writeDiagnosticWorkbook(cancelled,3);int preflight=zipChunkReads(cancelled);var stop=new IllegalStateException("stop row");java.util.concurrent.atomic.AtomicInteger checks=new java.util.concurrent.atomic.AtomicInteger();
+        assertSame(stop,assertThrows(IllegalStateException.class,()->XlsxTableReader.parseXlsx(cancelled,cancelledOutput,Map.of("sheet","Rows"),1,Map.of("amount","Integer"),Map.of(),".",()->{if(checks.incrementAndGet()==preflight+5)throw stop;})));
+        assertEquals(preflight+5,checks.get(),"Cancellation should be observed in the first staged data row after preflight and shared strings");
+        try(var children=Files.list(temp)){assertFalse(children.anyMatch(path->path.getFileName().toString().startsWith("xlsx-")),"Row cancellation must clean XLSX workspace");}
+    }
+
+    private static void writeSmallWorkbook(Path path,String firstHeader,String secondHeader,String firstValue,String secondValue)throws IOException{
+        try(ZipOutputStream zip=new ZipOutputStream(Files.newOutputStream(path))){
+            entry(zip,"[Content_Types].xml",w->w.write("<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/></Types>"));
+            entry(zip,"_rels/.rels",w->w.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>"));
+            entry(zip,"xl/workbook.xml",w->w.write("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Rows\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"));
+            entry(zip,"xl/_rels/workbook.xml.rels",w->w.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>"));
+            entry(zip,"xl/sharedStrings.xml",w->{w.write("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");for(String value:List.of(firstHeader,secondHeader,firstValue,secondValue))w.write("<si><t>"+xml(value)+"</t></si>");w.write("</sst>");});
+            entry(zip,"xl/worksheets/sheet1.xml",w->w.write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><dimension ref=\"A1:B2\"/><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c></row><row r=\"2\"><c r=\"A2\" t=\"s\"><v>2</v></c><c r=\"B2\" t=\"s\"><v>3</v></c></row></sheetData></worksheet>"));
+        }
+    }
+    private static void writeDiagnosticWorkbook(Path path,int errors)throws IOException{
+        try(ZipOutputStream zip=new ZipOutputStream(Files.newOutputStream(path))){
+            entry(zip,"[Content_Types].xml",w->w.write("<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/></Types>"));
+            entry(zip,"_rels/.rels",w->w.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>"));
+            entry(zip,"xl/workbook.xml",w->w.write("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Rows\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"));
+            entry(zip,"xl/_rels/workbook.xml.rels",w->w.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>"));
+            entry(zip,"xl/sharedStrings.xml",w->{w.write("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>amount</t></si>");for(int i=1;i<=errors;i++)w.write("<si><t>bad-"+i+"</t></si>");w.write("</sst>");});
+            entry(zip,"xl/worksheets/sheet1.xml",w->{w.write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><dimension ref=\"A1:A"+(errors+1)+"\"/><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c></row>");for(int i=1;i<=errors;i++)w.write("<row r=\""+(i+1)+"\"><c r=\"A"+(i+1)+"\" t=\"s\"><v>"+i+"</v></c></row>");w.write("</sheetData></worksheet>");});
+        }
+    }
+    private static void writeMalformedSecondHeaderWorkbook(Path path)throws IOException{
+        try(ZipOutputStream zip=new ZipOutputStream(Files.newOutputStream(path))){
+            entry(zip,"[Content_Types].xml",w->w.write("<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/></Types>"));
+            entry(zip,"_rels/.rels",w->w.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>"));
+            entry(zip,"xl/workbook.xml",w->w.write("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Rows\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"));
+            entry(zip,"xl/_rels/workbook.xml.rels",w->w.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>"));
+            entry(zip,"xl/sharedStrings.xml",w->w.write("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>amount</t></si></sst>"));
+            entry(zip,"xl/worksheets/sheet1.xml",w->w.write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><dimension ref=\"A1:B1\"/><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>99</v></c></row></sheetData></worksheet>"));
+        }
+    }
+    private static String xml(String value){return value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;");}
 
     public static class Probe {
         public static void main(String[] args)throws Exception {
