@@ -71,6 +71,26 @@ class PreparedActionReplayIT {
         assertEquals(clazz,id(call("deposit.create.class","Find",m("comment","original"),renewed)));release(renewed);
         assertEquals("original",call("deposit.action.status",recovery,renewed).get("data").get("outcome").get("comment").asString());
     }
+    @Test void receiptGuardsKeepActorBindingScopeAndHashChecksOrdered(){
+        String recovery=key();var prepared=call("deposit.action.prepare",recovery,"deposit.create.class",List.of("Guarded",m()),token).get("data");String operation=prepared.get("operationId").asString();
+        var first=call("deposit.create.class","Guarded",m(),token);assertEquals("Guarded",first.get("node").asNode().get("name").asString());long before=sequence();
+        error("OPERATION_MISMATCH",()->call("deposit.create.class","Guarded",m("comment","changed"),token));assertEquals(before,sequence());assertEquals(1,count("Class"));
+        query("MATCH (b:DepositOperationBinding {operationId:$operation}) SET b.scope='server'",m("operation",operation));
+        error("SCOPE_MISMATCH",()->call("deposit.create.class","Guarded",m(),token));
+        query("MATCH (b:DepositOperationBinding {operationId:$operation}) SET b.scope=$scope",m("operation",operation,"scope",ns));
+
+        // A binding is looked up by actor and operation. Removing this actor's binding
+        // must still allow the same actor to replay its independently stored receipt.
+        String actor=query("MATCH (b:DepositOperationBinding {operationId:$operation}) RETURN b.actorId AS actor",m("operation",operation)).getFirst().get("actor").asString();
+        String receiptActor=query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) RETURN r.actorId AS actor",m("scope",ns,"operation",operation)).getFirst().get("actor").asString();
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor",m("scope",ns,"operation",operation,"actor",UUID.randomUUID().toString()));
+        error("FORBIDDEN",()->call("deposit.create.class","Guarded",m(),token));assertEquals(before,sequence());assertEquals(1,count("Class"));
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor",m("scope",ns,"operation",operation,"actor",receiptActor));
+        query("MATCH (b:DepositOperationBinding {actorId:$actor,operationId:$operation}) SET b.actorId=$other",m("actor",actor,"operation",operation,"other",UUID.randomUUID().toString()));
+        assertEquals("Guarded",call("deposit.create.class","Guarded",m(),token).get("node").asNode().get("name").asString());assertEquals(before,sequence());assertEquals(1,count("Class"));
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor,r.requestHash='changed'",m("scope",ns,"operation",operation,"actor",UUID.randomUUID().toString()));
+        error("FORBIDDEN",()->call("deposit.create.class","Guarded",m(),token));assertEquals(before,sequence());assertEquals(1,count("Class"));release(token);
+    }
     @Test void preparationResponseLossAndRequestNeverReceived(){
         String recovery=key();prepare(recovery,"deposit.create.object",List.of("Find",m()),token);prepare(recovery,"deposit.create.object",List.of("Find",m()),token);
         assertEquals(0,count("Object"));assertEquals("prepared",call("deposit.action.status",recovery,token).get("data").get("state").asString());

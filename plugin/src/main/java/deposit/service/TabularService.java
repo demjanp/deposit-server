@@ -32,7 +32,7 @@ public final class TabularService extends BaseService {
 
     private void operational(String role){
         scoped(role);
-        if(c.operationId==null||c.expectedRevision!=null)c.fail("VALIDATION_FAILED","Operational writes require operationId and no expectedRevision");
+        OperationalGuards.operationalContext(c);
         if(c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","One mutation per transaction");
         c.state.mutation=true;repo.lockActor(c.actorId);
     }
@@ -41,13 +41,13 @@ public final class TabularService extends BaseService {
     }
     private String operationalHash(String procedure,Map<String,Object> request){
         Node binding=repo.binding(c.actorId,c.operationId);
-        if(binding!=null&&!c.namespaceId.equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
+        if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
         return CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
     }
     private Map<String,Object> replayOperational(Node receipt,String hash){
         c.replayed=true;
-        if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");
-        if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
+        OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
+        OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));
         return repo.replay(receipt,c.namespaceId).data();
     }
 

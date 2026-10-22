@@ -71,6 +71,22 @@ class ResourceAndGeometryIT {
         var badOffset=assertThrows(org.neo4j.driver.exceptions.ClientException.class,()->call("deposit.resource.uploadChunk",m("uploadId",upload,"offset",null,"bytesBase64",Base64.getEncoder().encodeToString(ABC),"chunkSha256",hash(ABC)),op()));assertTrue(badOffset.getMessage().contains("\"code\":\"VALIDATION_FAILED\"")&&badOffset.getMessage().contains("\"message\":\"Expected Integer\""),badOffset.getMessage());
         var transfer=query("MATCH (t:DepositTransfer {id:$id}) RETURN t.nextOffset AS nextOffset,t.chunks AS chunks,t.state AS state",m("id",upload)).getFirst();assertEquals(0L,transfer.get("nextOffset").asLong());assertEquals("{}",transfer.get("chunks").asString());assertEquals("uploading",transfer.get("state").asString());assertEquals(revisionAfterBegin,seq());
     }
+    @Test void transferReceiptChecksPreserveScopeActorBindingAndHashOrder(){
+        var context=op();var request=meta(ABC,"guarded-begin");String upload=call("deposit.resource.beginUpload",request,context).get("data").get("uploadId").asString();String operation=(String)context.get("operationId");
+        String other=id(call("deposit.create.namespace",m("name","guard-scope-"+UUID.randomUUID(),"historyMode","disabled"),write(token,revision(call("deposit.get.user",Map.of(),ctx(token))))));BatchMutationIT.select(token,other);
+        error("SCOPE_MISMATCH",()->call("deposit.resource.beginUpload",request,context));BatchMutationIT.select(token,ns);
+        error("OPERATION_MISMATCH",()->call("deposit.resource.beginUpload",meta(ABC,"changed-name"),context));
+        String receiptActor=query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) RETURN r.actorId AS actor",m("scope",ns,"operation",operation)).getFirst().get("actor").asString();
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor",m("scope",ns,"operation",operation,"actor",UUID.randomUUID().toString()));
+        error("FORBIDDEN",()->call("deposit.resource.beginUpload",request,context));
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor",m("scope",ns,"operation",operation,"actor",receiptActor));
+        String actor=query("MATCH (b:DepositOperationBinding {operationId:$operation}) RETURN b.actorId AS actor",m("operation",operation)).getFirst().get("actor").asString();
+        query("MATCH (b:DepositOperationBinding {actorId:$actor,operationId:$operation}) SET b.actorId=$other",m("actor",actor,"operation",operation,"other",UUID.randomUUID().toString()));
+        assertEquals(0L,call("deposit.resource.beginUpload",request,context).get("data").get("nextOffset").asLong());
+        assertEquals(1L,query("MATCH (t:DepositTransfer {id:$id}) RETURN count(t) AS n",m("id",upload)).getFirst().get("n").asLong());
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor,r.requestHash='changed'",m("scope",ns,"operation",operation,"actor",UUID.randomUUID().toString()));
+        error("FORBIDDEN",()->call("deposit.resource.beginUpload",request,context));assertEquals(1L,query("MATCH (t:DepositTransfer {id:$id}) RETURN count(t) AS n",m("id",upload)).getFirst().get("n").asLong());
+    }
     @Test void allGeometryKindsXYXYZAndConversions() {
         List<String> xy=List.of("POINT (1 2)","LINESTRING (1 2,3 4)","POLYGON ((0 0,9 0,9 9,0 0),(6 1,7 1,7 2,6 1))","MULTIPOINT ((1 2),(3 4))","MULTILINESTRING ((1 2,3 4),(5 6,7 8))","MULTIPOLYGON (((0 0,9 0,9 9,0 0)),((20 20,30 20,30 30,20 20)))");
         List<String> xyz=List.of("POINT Z (1 2 7)","LINESTRING Z (1 2 7,3 4 8)","POLYGON Z ((0 0 1,9 0 2,9 9 3,0 0 1),(6 1 4,7 1 5,7 2 6,6 1 4))","MULTIPOINT Z ((1 2 7),(3 4 8))","MULTILINESTRING Z ((1 2 7,3 4 8),(5 6 9,7 8 10))","MULTIPOLYGON Z (((0 0 1,9 0 2,9 9 3,0 0 1)),((20 20 4,30 20 5,30 30 6,20 20 4)))");
@@ -101,7 +117,22 @@ class ResourceAndGeometryIT {
         query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0,l.orphanSince=0",m("id",id));
         awaitStagingCleanup(id);long expectedPhysical=physicalBytes(id);var req=m("dryRun",false,"minimumAgeHours",0L);var context=op();
         try(var s=driver.session();var tx=s.beginTransaction()){tx.run("CALL deposit.admin.pruneResources($r,$c)",m("r",req,"c",context)).consume();tx.rollback();}assertTrue(Files.exists(resourcePath(id)));
-        var job=call("deposit.admin.pruneResources",req,context).get("data");assertEquals(job,call("deposit.admin.pruneResources",req,context).get("data"));String prune=job.get("pruneId").asString();
+        var job=call("deposit.admin.pruneResources",req,context).get("data");assertEquals(job,call("deposit.admin.pruneResources",req,context).get("data"));String prune=job.get("pruneId").asString();String operation=(String)context.get("operationId");
+        String bindingActor=query("MATCH (b:DepositOperationBinding {operationId:$operation}) RETURN b.actorId AS actor",m("operation",operation)).getFirst().get("actor").asString();
+        query("MATCH (b:DepositOperationBinding {actorId:$actor,operationId:$operation}) SET b.scope='server'",m("actor",bindingActor,"operation",operation));
+        error("SCOPE_MISMATCH",()->call("deposit.admin.pruneResources",req,context));
+        query("MATCH (b:DepositOperationBinding {actorId:$actor,operationId:$operation}) SET b.scope=$scope",m("actor",bindingActor,"operation",operation,"scope",ns));
+        error("OPERATION_MISMATCH",()->call("deposit.admin.pruneResources",m("dryRun",false,"minimumAgeHours",1L),context));
+        long jobsBefore=query("MATCH (j:DepositPruneJob {scope:$scope}) RETURN count(j) AS n",m("scope",ns)).getFirst().get("n").asLong();
+        String receiptActor=query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) RETURN r.actorId AS actor",m("scope",ns,"operation",operation)).getFirst().get("actor").asString();
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor",m("scope",ns,"operation",operation,"actor",UUID.randomUUID().toString()));
+        error("FORBIDDEN",()->call("deposit.admin.pruneResources",req,context));
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor",m("scope",ns,"operation",operation,"actor",receiptActor));
+        query("MATCH (b:DepositOperationBinding {actorId:$actor,operationId:$operation}) SET b.actorId=$other",m("actor",bindingActor,"operation",operation,"other",UUID.randomUUID().toString()));
+        assertEquals(job,call("deposit.admin.pruneResources",req,context).get("data"));
+        query("MATCH (r:DepositReceipt {scope:$scope,operationId:$operation}) SET r.actorId=$actor,r.requestHash='changed'",m("scope",ns,"operation",operation,"actor",UUID.randomUUID().toString()));
+        error("FORBIDDEN",()->call("deposit.admin.pruneResources",req,context));
+        assertEquals(jobsBefore,query("MATCH (j:DepositPruneJob {scope:$scope}) RETURN count(j) AS n",m("scope",ns)).getFirst().get("n").asLong());
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);org.neo4j.driver.Value status;
         do{status=call("deposit.admin.pruneResourcesStatus",m("pruneId",prune),ctx(token)).get("data");if(status.get("state").asString().equals("completed"))break;Thread.sleep(50);}while(System.nanoTime()<deadline);
         assertEquals("completed",status.get("state").asString());assertEquals(expectedPhysical,status.get("reclaimedBytes").asLong());assertFalse(Files.exists(resourcePath(id)));

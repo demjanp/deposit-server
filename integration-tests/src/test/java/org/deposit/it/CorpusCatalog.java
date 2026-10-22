@@ -213,6 +213,9 @@ final class CorpusCatalog {
  BINDINGS.put("deposit.resource.beginUpload",List.of("filename","bytes","sha256","mediaType"));
  OUTPUTS.put("deposit.resource.beginUpload","data");
  ACTIONS.add("deposit.resource.beginUpload");
+ BINDINGS.put("deposit.load.csv",List.of("resourceId","formatOptions"));
+ OUTPUTS.put("deposit.load.csv","data");
+ ACTIONS.add("deposit.load.csv");
  BINDINGS.put("deposit.resource.uploadChunk",List.of("uploadId","offset","bytesBase64","chunkSha256"));
  OUTPUTS.put("deposit.resource.uploadChunk","data");
  ACTIONS.add("deposit.resource.uploadChunk");

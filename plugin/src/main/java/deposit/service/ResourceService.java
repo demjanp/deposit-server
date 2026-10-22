@@ -20,18 +20,18 @@ public final class ResourceService extends BaseService {
         if(active&&(!Set.of("uploading","finished").contains(text(t,"state"))||number(t,"expires",0)<=resources.now()))c.fail("NOT_FOUND","Upload expired or aborted");return t;
     }
     private void operational() {
-        if(c.operationId==null||c.expectedRevision!=null)c.fail("VALIDATION_FAILED","Operational writes require operationId and no expectedRevision");
+        OperationalGuards.operationalContext(c);
         if(c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","One mutation per transaction");c.state.mutation=true;repo.lockActor(c.actorId);
     }
     public Map<String,Object> transfer(String method,Map<String,Object> request) {
         scoped("editor");operational();repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,"editor");c.revision=repo.sequence(c.namespaceId);
         String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.resource."+method,"request",request)));
-        Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null&&!c.namespaceId.equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
+        Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
         Node receipt=repo.receipt(c.namespaceId,c.operationId);
         if(receipt!=null) {
             c.replayed=true;
-            if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");
-            if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
+            OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
+            OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));
             var saved=repo.replay(receipt,c.namespaceId).data();
             if(method.equals("beginUpload")){Node t=transfer(saved.get("uploadId"),true);resources.renew(t);return ResourceTransferRepository.beginResult(t);}
             if(method.equals("uploadChunk")){Node t=transfer(request.get("uploadId"),true);resources.renew(t);}
@@ -69,8 +69,8 @@ public final class ResourceService extends BaseService {
         long hours=integer(request.getOrDefault("minimumAgeHours",48L));if(hours<0||hours>Long.MAX_VALUE/3_600_000)c.fail("VALIDATION_FAILED","Invalid minimum age");long age=hours*3_600_000;
         String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
         if(!dryRun) {
-            Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null&&!bindingScope.equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
-            Node receipt=repo.receipt(bindingScope,c.operationId);if(receipt!=null){if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");return repo.replay(receipt,bindingScope).data();}
+            Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null)OperationalGuards.bindingScope(c,bindingScope,binding.getProperty("scope"));
+            Node receipt=repo.receipt(bindingScope,c.operationId);if(receipt!=null){OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));return repo.replay(receipt,bindingScope).data();}
         }
         List<Node> locations=repo.nodes("DepositResourceLocation",scope.equals("all")?Map.of():Map.of("namespaceId",c.namespaceId));
         for(String ns:locations.stream().map(n->text(n,"namespaceId")).distinct().sorted().toList())repo.lockNamespace(ns);

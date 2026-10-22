@@ -20,12 +20,12 @@ public abstract class ActionService extends BaseService {
         String scope=serverScope?"server":c.namespaceId;
         String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)?null:c.expectedRevision)));
         Node binding=repo.binding(c.actorId,c.operationId);
-        if(binding!=null && !scope.equals(binding.getProperty("scope"))) c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
+        if(binding!=null)OperationalGuards.bindingScope(c,scope,binding.getProperty("scope"));
         Node receipt=repo.receipt(scope,c.operationId);
         if(receipt!=null) {
             c.replayed=true;
-            if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");
-            if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
+            OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
+            OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));
             c.revision=serverScope?c.server.revision(c.state):((Number)receipt.getProperty("revision")).longValue();
             return repo.replay(receipt,scope);
         }
