@@ -19,10 +19,10 @@ class AuthenticationNamespaceLifecycleIT {
     static final Path ROOT=TestInstallationPaths.runRoot();
     @BeforeAll static void connect() {driver=CorpusTransport.wrap(GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")),Config.builder().withFetchSize(17).build()));driver.verifyConnectivity();}
     @AfterAll static void close() {if(driver!=null)driver.close();}
-    static Map<String,Object> m(Object... kv) {var m=new LinkedHashMap<String,Object>();for(int i=0;i<kv.length;i+=2)m.put((String)kv[i],kv[i+1]);return m;}
+    static Map<String,Object> m(Object... kv) {return TestTransport.orderedMap(kv);}
     static Map<String,Object> ctx(String token) {return m("token",token,"requestId",UUID.randomUUID().toString());}
     static Map<String,Object> write(String token,long revision) {var c=ctx(token);c.put("operationId",UUID.randomUUID().toString());c.put("expectedRevision",revision);return c;}
-    static List<org.neo4j.driver.Record> query(String query,Map<String,Object> params) {try(var s=driver.session()) {return s.run("CYPHER 25 "+query,params,TransactionConfig.builder().withTimeout(Duration.ofSeconds(30)).build()).list();}}
+    static List<org.neo4j.driver.Record> query(String query,Map<String,Object> params) {return TestTransport.query(driver,"CYPHER 25 "+query,params,Duration.ofSeconds(30));}
     static org.neo4j.driver.Record call(String procedure,Map<String,Object> request,Map<String,Object> context) {return query("CALL "+procedure+"($r,$c)",m("r",request,"c",context)).getFirst();}
     static org.neo4j.driver.Record special(String procedure,Map<String,Object> request) {return query("CALL "+procedure+"($r)",m("r",request)).getFirst();}
     static long revision(org.neo4j.driver.Record row) {return row.get("meta").get("revision").asLong();}

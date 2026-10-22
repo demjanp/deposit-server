@@ -41,6 +41,13 @@ final class TestTransport {
         }
     }
 
+    static java.util.List<Record> query(Driver driver, String text, Map<String,Object> parameters, Duration timeout) {
+        try (var session = driver.session()) {
+            return session.run(text, parameters,
+                TransactionConfig.builder().withTimeout(timeout).build()).list();
+        }
+    }
+
     static HttpClient cookieClient() {
         return HttpClient.newBuilder()
             .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))

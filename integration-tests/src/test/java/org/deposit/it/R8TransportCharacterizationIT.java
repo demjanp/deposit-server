@@ -26,6 +26,7 @@ class R8TransportCharacterizationIT {
             ShutdownDrainIT.m("first", null, "nested", NESTED, "duplicate", 1L, "middle", "v", "duplicate", null),
             DataImportExportIT.m("first", null, "nested", NESTED, "duplicate", 1L, "middle", "v", "duplicate", null),
             BrowserSessionIT.m("first", null, "nested", NESTED, "duplicate", 1L, "middle", "v", "duplicate", null),
+            AuthenticationNamespaceLifecycleIT.m("first", null, "nested", NESTED, "duplicate", 1L, "middle", "v", "duplicate", null),
             (Map<String,Object>) invoke(ScientificWorkflowIT.class, "m", new Class<?>[]{Object[].class}, (Object)new Object[]{"first", null, "nested", NESTED, "duplicate", 1L, "middle", "v", "duplicate", null})
         );
         List<Map<String,Object>> nullKeyFixtures = List.of(
@@ -36,6 +37,7 @@ class R8TransportCharacterizationIT {
             ShutdownDrainIT.m(null, "null-key", "first", null),
             DataImportExportIT.m(null, "null-key", "first", null),
             BrowserSessionIT.m(null, "null-key", "first", null),
+            AuthenticationNamespaceLifecycleIT.m(null, "null-key", "first", null),
             (Map<String,Object>) invoke(ScientificWorkflowIT.class, "m", new Class<?>[]{Object[].class}, (Object)new Object[]{null, "null-key", "first", null})
         );
         for (Map<String,Object> fixture : nullKeyFixtures) {
@@ -59,6 +61,8 @@ class R8TransportCharacterizationIT {
         assertThrows(ClassCastException.class, () -> PatternMatchingIT.m(1, "value"));
         assertThrows(ArrayIndexOutOfBoundsException.class, () -> TabularAndSpatialFormatsIT.m("odd"));
         assertThrows(ClassCastException.class, () -> ShutdownDrainIT.m(1, "value"));
+        assertThrows(ArrayIndexOutOfBoundsException.class, () -> AuthenticationNamespaceLifecycleIT.m("odd"));
+        assertThrows(ClassCastException.class, () -> AuthenticationNamespaceLifecycleIT.m(1, "value"));
         assertThrows(ArrayIndexOutOfBoundsException.class, () -> invokeUnchecked(DataImportExportIT.class, "m", new Class<?>[]{Object[].class}, (Object)new Object[]{"odd"}));
         assertThrows(ClassCastException.class, () -> invokeUnchecked(ScientificWorkflowIT.class, "m", new Class<?>[]{Object[].class}, (Object)new Object[]{1, "value"}));
     }
@@ -129,8 +133,41 @@ class R8TransportCharacterizationIT {
         assertEquals(1, scientificRunFailure.sessionCloses);
 
         Capture failure = installDriver("BrowserSessionIT"); failure.failList = true;
-        assertThrows(IllegalStateException.class, () -> BrowserSessionIT.call("fixture.proc", args));
+        failure.listFailure = new IllegalStateException("result materialization failed");
+        assertSame(failure.listFailure, assertThrows(IllegalStateException.class, () -> BrowserSessionIT.call("fixture.proc", args)));
         assertEquals(1, failure.sessionCloses, "session closes when eager result materialization fails");
+    }
+
+    @Test void authenticationQueryKeepsPrefixTimeoutEagerMaterializationAndOwnership() throws Exception {
+        Capture capture = installDriver("AuthenticationNamespaceLifecycleIT");
+        var parameters = new LinkedHashMap<String,Object>();
+        parameters.put("value", NESTED);
+        assertSame(capture.rows, AuthenticationNamespaceLifecycleIT.query("RETURN $value AS value", parameters));
+        assertEquals("CYPHER 25 RETURN $value AS value", capture.query);
+        assertSame(parameters, capture.parameters);
+        assertEquals(Duration.ofSeconds(30), capture.timeout.timeout());
+        assertSame(capture.suppliedDriver, capture.driverForSession);
+        assertEquals(1, capture.driverSessionCalls);
+        assertEquals(0, capture.driverCloseCalls);
+        assertEquals(1, capture.sessionCloses);
+        assertEquals(1, capture.listCalls);
+
+        Capture listFailure = installDriver("AuthenticationNamespaceLifecycleIT");
+        IllegalStateException original = new IllegalStateException("authentication result failure identity");
+        listFailure.failList = true;
+        listFailure.listFailure = original;
+        assertSame(original, assertThrows(IllegalStateException.class,
+            () -> AuthenticationNamespaceLifecycleIT.query("RETURN 1", Map.of())));
+        assertEquals(1, listFailure.sessionCloses);
+        assertEquals(1, listFailure.listCalls);
+
+        Capture runFailure = installDriver("AuthenticationNamespaceLifecycleIT");
+        runFailure.failRun = true;
+        runFailure.runFailure = original;
+        assertSame(original, assertThrows(IllegalStateException.class,
+            () -> AuthenticationNamespaceLifecycleIT.query("RETURN 1", Map.of())));
+        assertEquals(1, runFailure.sessionCloses);
+        assertEquals(0, runFailure.listCalls);
     }
 
     @Test void cookieClientsAreFreshAndUriOriginPreserveRedirectTimeoutAndBasePathRules() throws Exception {
@@ -191,7 +228,7 @@ class R8TransportCharacterizationIT {
 
     private static Capture installDriver(String owner) throws Exception {
         Capture capture=new Capture();
-        Result result=(Result)proxy(Result.class,(p,m,a)->{if(m.getName().equals("list")){capture.listCalls++;if(capture.failList)throw new IllegalStateException("result materialization failed");return capture.rows;}return defaultValue(m.getReturnType());});
+        Result result=(Result)proxy(Result.class,(p,m,a)->{if(m.getName().equals("list")){capture.listCalls++;if(capture.failList)throw capture.listFailure;return capture.rows;}return defaultValue(m.getReturnType());});
         Session session=(Session)proxy(Session.class,(p,m,a)->{if(m.getName().equals("run")){capture.query=(String)a[0];capture.parameters=(Map<String,Object>)a[1];if(a.length>2)capture.timeout=(TransactionConfig)a[2];if(capture.failRun)throw capture.runFailure;return result;}if(m.getName().equals("close")){capture.sessionCloses++;return null;}return defaultValue(m.getReturnType());});
         Driver driver=(Driver)proxy(Driver.class,(p,m,a)->{if(m.getName().equals("session")){capture.driverSessionCalls++;capture.driverForSession=(Driver)p;return session;}if(m.getName().equals("close")){capture.driverCloseCalls++;return null;}return defaultValue(m.getReturnType());});
         capture.suppliedDriver=driver;
@@ -199,5 +236,5 @@ class R8TransportCharacterizationIT {
         return capture;
     }
     private record CallCase(String owner,String method,String query,Integer timeoutSeconds,boolean sessionClose){}
-    private static final class Capture {String query;Map<String,Object> parameters;TransactionConfig timeout;Driver suppliedDriver,driverForSession;int driverSessionCalls,driverCloseCalls,sessionCloses,listCalls;boolean failList,failRun;RuntimeException runFailure;List<org.neo4j.driver.Record> rows=List.of((org.neo4j.driver.Record)ROW);}
+    private static final class Capture {String query;Map<String,Object> parameters;TransactionConfig timeout;Driver suppliedDriver,driverForSession;int driverSessionCalls,driverCloseCalls,sessionCloses,listCalls;boolean failList,failRun;RuntimeException runFailure,listFailure;List<org.neo4j.driver.Record> rows=List.of((org.neo4j.driver.Record)ROW);}
 }

@@ -100,6 +100,25 @@ function Invoke-SelectedTest([string]$Selection,[string]$Label) {
     if ($CrashPoint) { $childArguments += @('-CrashPoint',$CrashPoint) }
     Invoke-ChildScript "$PSScriptRoot\Invoke-Tests.ps1" $childArguments "$Label-runner" ($TestTimeoutSeconds*1000)
 }
+function Assert-StartupMarkerPermissions {
+    $markerDirectory=Join-Path $run 'resources\history-startup-test'
+    $armMarker=Join-Path $markerDirectory 'arm.txt'
+    if(!(Test-Path -LiteralPath $markerDirectory -PathType Container) -or !(Test-Path -LiteralPath $armMarker -PathType Leaf)){throw 'Startup marker directory or arm marker was not created.'}
+    $installationState=Get-Content -LiteralPath (Join-Path $run 'distribution\deposit.install.json') -Raw | ConvertFrom-Json
+    if($installationState.mode -ne 'service' -or !$installationState.serviceAccount){throw 'Startup marker permission check requires the configured service installation.'}
+    $serviceSid=(New-Object Security.Principal.NTAccount([string]$installationState.serviceAccount)).Translate([Security.Principal.SecurityIdentifier]).Value
+    $modify=[int][Security.AccessControl.FileSystemRights]::Modify
+    foreach($path in @($markerDirectory,$armMarker)){
+        $acl=Get-Acl -LiteralPath $path
+        $serviceCanReadWrite=$false
+        foreach($rule in $acl.Access){
+            try{$ruleSid=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{continue}
+            if($ruleSid -eq $serviceSid -and $rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and $rule.IsInherited -and (([int]$rule.FileSystemRights -band $modify) -eq $modify)){$serviceCanReadWrite=$true;break}
+        }
+        if(!$serviceCanReadWrite){throw "Startup marker path does not inherit Modify access for service account $($installationState.serviceAccount): $path"}
+    }
+    Write-ScenarioLog "Verified inherited service Modify access on startup marker directory and arm file for $($installationState.serviceAccount)."
+}
 
 if ($Transition -in @('ProcessCrashRestart','StartupCrashRestart') -and (!$CrashSuite -or !$CrashPoint)) { throw 'Crash transitions require -CrashSuite and -CrashPoint.' }
 if ($Transition -eq 'Restart' -and ($CrashSuite -or $CrashPoint)) { throw 'Crash settings are valid only for a crash transition.' }
@@ -123,7 +142,9 @@ try {
         StartupCrashRestart {
             Invoke-HarnessPhase 'Stop'
             if ($CrashSuite -eq 'history') {
-                $marker = Join-Path $run 'history-startup-paused.txt'
+                Assert-StartupMarkerPermissions
+                $markerDirectory=Join-Path $run 'resources\history-startup-test'
+                $marker = Join-Path $markerDirectory 'paused.txt'
                 $childLog = [IO.Path]::ChangeExtension($LogPath,'.startup.log')
                 $childErrorLog = [IO.Path]::ChangeExtension($LogPath,'.startup.err.log')
                 $command = '& ' + (Quote-ScenarioPowerShellString "$PSScriptRoot\Invoke-TestHarnessPhase.ps1") + ' ' + (Format-PowerShellArguments @('-Phase','Start','-Root',$rootPath,'-Port',[string]$Port))
@@ -131,16 +152,25 @@ try {
                 try {
                     $deadline = [DateTime]::UtcNow.AddSeconds(60)
                     while (!(Test-Path -LiteralPath $marker) -and [DateTime]::UtcNow -lt $deadline -and !$starter.Process.HasExited) { Start-Sleep -Milliseconds 100 }
-                    if (!(Test-Path -LiteralPath $marker) -or !(Get-Content -LiteralPath $marker -Raw).StartsWith($CrashPoint + '/')) { throw 'Expected startup recovery barrier was not reached.' }
+                    if (!(Test-Path -LiteralPath $marker) -or !(Get-Content -LiteralPath $marker -Raw).StartsWith($CrashPoint + '/')) {
+                        $barrierFailure=if($starter.Process.HasExited){'Expected startup recovery barrier was not reached before the startup subprocess exited.'}else{'Expected startup recovery barrier was not reached within 60 seconds.'}
+                        if(!$starter.Process.HasExited){$starter.Process.Kill();$null=$starter.Process.WaitForExit(15000)}
+                        $startCode=Complete-PowerShellChild $starter $childLog $childErrorLog 15000
+                        foreach($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue){Write-ScenarioLog ([string]$line)}
+                        foreach($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue){Write-ScenarioLog ([string]$line)}
+                        throw "$barrierFailure Startup subprocess exit code $startCode; diagnostics saved to $childLog and $childErrorLog."
+                    }
+                    $barrierReachedUtc=[DateTime]::UtcNow
                     Invoke-SelectedTest 'StartupReadinessIT#incompleteInitializationExcludesReadinessAndDownloadListener' 'recovery-gating'
-                    [IO.File]::WriteAllText((Join-Path $run 'history-startup-release.txt'),'continue')
                     Invoke-ChildScript "$PSScriptRoot\Kill-TestOwnedJvm.ps1" @() 'kill-startup-jvm'
+                    $crashElapsed=[DateTime]::UtcNow-$barrierReachedUtc
+                    if($crashElapsed.TotalSeconds -ge 120){throw "Recorded JVM termination occurred after the 120-second startup probe timeout ($([math]::Round($crashElapsed.TotalSeconds,1)) seconds)."}
                     # TestHarness retains its normal 90-second readiness deadline after
                     # the controlled JVM crash; observe that failure to completion.
                     $startCode = Complete-PowerShellChild $starter $childLog $childErrorLog 180000
-                    if ($startCode -eq 0) { throw 'Startup attempt unexpectedly passed after its JVM was terminated.' }
                     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
                     foreach ($line in Get-Content -LiteralPath $childErrorLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
+                    if ($startCode -eq 0) { throw 'Startup attempt unexpectedly passed after its JVM was terminated.' }
                 } finally { if (!$starter.Process.HasExited) { $starter.Process.Kill(); $null = $starter.Process.WaitForExit(15000) } }
                 Invoke-HarnessPhase 'Start'
             } else { throw 'StartupCrashRestart currently supports history startup scenarios.' }

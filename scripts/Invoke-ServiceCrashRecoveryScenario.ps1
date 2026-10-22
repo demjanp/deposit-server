@@ -46,6 +46,7 @@ $configChanged=$false
 $probeAdded=$false
 $state=$null
 $serviceName=$null
+$resourceCrashSeedStartedAt=$null
 
 function Write-ScenarioLog([string]$Text){$log.Add($Text);[IO.File]::WriteAllLines($LogPath,$log,$utf8)}
 function Wait-ServiceStatus([string]$Name,[string]$Status,[int]$Seconds){$service=Get-ScenarioServiceStatus $Name $Status $Seconds;if($service){return};throw "Service $Name did not reach $Status within $Seconds seconds"}
@@ -95,6 +96,7 @@ try{
     Wait-ServiceStatus $serviceName 'Stopped' 90
     $scenario=Join-Path $PSScriptRoot 'Invoke-TestScenario.ps1'
     foreach($point in @($CrashPoint)+$AdditionalCrashPoints){
+        $resourceCrashSeedStartedAt=[DateTime]::UtcNow
         Invoke-Child $scenario @('-SeedTest','ResourceCrashRecoveryIT#trigger','-VerifyTest','ResourceCrashRecoveryIT#verify','-Transition','ProcessCrashRestart','-CrashSuite','resource','-CrashPoint',$point,'-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,".crash-$point.log")) ('real-service-crash-'+$point)
         Write-ScenarioLog "The selected $point test triggered a real process crash, restarted the service, and passed its recovery verifier."
     }
@@ -109,8 +111,12 @@ finally{
         if(!$terminalCleanup){
             if($serviceName){$service=Get-Service -Name $serviceName -ErrorAction SilentlyContinue;if($service -and $service.Status -eq 'Stopped'){& $launcher start;if($LASTEXITCODE -ne 0){throw "Normal service restart after probe restoration failed ($LASTEXITCODE)"};Wait-ServiceStatus $serviceName 'Running' 90;Wait-Bolt 90}}
             $verify=Join-Path $PSScriptRoot 'Invoke-Tests.ps1'
-            Invoke-Child $verify @('-Kind','Integration','-Test','ResourceCrashRecoveryIT#verify','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-crash-recovery-verify.log')) 'normal-package-crash-recovery-verify' 300
-            Write-ScenarioLog 'The crash-recovery fixture verifier passed after restoring the normal package.'
+            $resourceCrashFixture=Join-Path $run 'resource-crash.properties'
+            $resourceCrashFixtureProduced=$null -ne $resourceCrashSeedStartedAt -and (Test-Path -LiteralPath $resourceCrashFixture -PathType Leaf) -and (Get-Item -LiteralPath $resourceCrashFixture).LastWriteTimeUtc -ge $resourceCrashSeedStartedAt
+            if($resourceCrashFixtureProduced){
+                Invoke-Child $verify @('-Kind','Integration','-Test','ResourceCrashRecoveryIT#verify','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-crash-recovery-verify.log')) 'normal-package-crash-recovery-verify' 300
+                Write-ScenarioLog 'The crash-recovery fixture verifier passed after restoring the normal package.'
+            }else{Write-ScenarioLog 'Skipped the normal-package crash-recovery fixture verifier because no resource-crash seed fixture was produced.'}
             Invoke-Child $verify @('-Kind','Integration','-Test','ShutdownDrainIT#verifyCommittedTransactionSurvivedServiceShutdown','-Port',[string]$Port,'-Root',$rootPath,'-LogPath',[IO.Path]::ChangeExtension($LogPath,'.normal-package-verify.log')) 'normal-package-post-restore-verify' 300
         }
     }catch{Write-ScenarioLog "RESTORE FAILURE: $($_.Exception.Message)";if(!$failure){$failure=$_.Exception.Message}}
