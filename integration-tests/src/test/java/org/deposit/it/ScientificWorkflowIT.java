@@ -47,9 +47,7 @@ class ScientificWorkflowIT {
     private static URI downloadBase;
 
     private static Map<String, Object> m(Object... values) {
-        var result = new LinkedHashMap<String, Object>();
-        for (int i = 0; i < values.length; i += 2) result.put((String) values[i], values[i + 1]);
-        return result;
+        return TestTransport.orderedMap(values);
     }
 
     private static org.neo4j.driver.Record query(String cypher, Map<String, Object> params) {
@@ -60,14 +58,7 @@ class ScientificWorkflowIT {
     }
 
     private static org.neo4j.driver.Record call(String procedure, Object... args) {
-        var params = new LinkedHashMap<String, Object>();
-        var names = new ArrayList<String>();
-        for (int i = 0; i < args.length; i++) {
-            String name = "p" + i;
-            params.put(name, args[i]);
-            names.add("$" + name);
-        }
-        return query("CALL " + procedure + "(" + String.join(",", names) + ")", params);
+        return TestTransport.call(driver, Duration.ofSeconds(60), procedure, args);
     }
 
     private static String nodeId(org.neo4j.driver.Record row) {

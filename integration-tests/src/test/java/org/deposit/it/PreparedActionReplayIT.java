@@ -15,9 +15,9 @@ class PreparedActionReplayIT {
     static final Path ROOT=TestInstallationPaths.runRoot();
     static final String USER="typed-data-admin",PASSWORD="typed-data-account-password";
     String token,other,ns,name;
-    static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
+    static Map<String,Object> m(Object... entries){return TestTransport.orderedMap(entries);}
     static List<org.neo4j.driver.Record> query(String query,Map<String,Object> parameters){try(var session=driver.session()){return session.run("CYPHER 25 "+query,parameters,TransactionConfig.builder().withTimeout(Duration.ofSeconds(45)).build()).list();}}
-    static org.neo4j.driver.Record call(String procedure,Object... args){var params=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){params.put("p"+i,args[i]);names.add("$p"+i);}return query("CALL "+procedure+"("+String.join(",",names)+")",params).getFirst();}
+    static org.neo4j.driver.Record call(String procedure,Object... args){var call=TestTransport.positionalCall(procedure,args);return query(call.text(),call.parameters()).getFirst();}
     static String login(){return call("deposit.utils.login",USER,PASSWORD).get("value").asString();}
     static String id(org.neo4j.driver.Record row){return row.get("node").asNode().get("id").asString();}
     static void error(String code,Runnable work){var failure=assertThrows(org.neo4j.driver.exceptions.Neo4jException.class,work::run);assertTrue(failure.getMessage().contains("\"code\":\""+code+"\""),failure.getMessage());}

@@ -15,9 +15,9 @@ class BrowserSessionRecoveryIT {
     static final Path SESSION=TestInstallationPaths.runRoot().resolve("secrets/browser-session.properties");
     static URI base;
     static org.neo4j.driver.Driver driver;
-    static HttpClient client(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(5)).build();}
-    static URI uri(String path){return URI.create(base.toASCIIString()+path);}
-    static String origin(){int port=base.getPort(),defaultPort="https".equals(base.getScheme())?443:80;return base.getScheme()+"://"+base.getHost()+(port<0||port==defaultPort?"":":"+port);}
+    static HttpClient client(){return TestTransport.cookieClient();}
+    static URI uri(String path){return TestTransport.endpoint(base,path);}
+    static String origin(){return TestTransport.origin(base);}
     static String csrf(String html){var matcher=java.util.regex.Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"").matcher(html);assertTrue(matcher.find());return matcher.group(1);}
     static String form(Map<String,String> values){return values.entrySet().stream().map(e->URLEncoder.encode(e.getKey(),StandardCharsets.UTF_8)+"="+URLEncoder.encode(e.getValue(),StandardCharsets.UTF_8)).collect(java.util.stream.Collectors.joining("&"));}
     @BeforeAll static void connect()throws Exception{BrowserSessionIT.connect();driver=BrowserSessionIT.driver;base=BrowserSessionIT.base;}

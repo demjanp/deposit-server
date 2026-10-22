@@ -32,8 +32,8 @@ class ShutdownDrainIT {
         control=Path.of(configuration.getProperty("secretRoot")).resolve("deposit-control");
     }
     @AfterAll static void close(){if(driver!=null)driver.close();}
-    static Map<String,Object> m(Object... values){var result=new LinkedHashMap<String,Object>();for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}
-    static org.neo4j.driver.Record call(String procedure,Object... args){var params=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){params.put("p"+i,args[i]);names.add("$p"+i);}try(var session=driver.session()){return session.run("CYPHER 25 CALL "+procedure+"("+String.join(",",names)+")",params).list().getFirst();}}
+    static Map<String,Object> m(Object... values){return TestTransport.orderedMap(values);}
+    static org.neo4j.driver.Record call(String procedure,Object... args){var call=TestTransport.positionalCall(procedure,args);try(var session=driver.session()){return session.run("CYPHER 25 "+call.text(),call.parameters()).list().getFirst();}}
     static String id(org.neo4j.driver.Record row){return row.get("node").asNode().get("id").asString();}
     static String hash(byte[] bytes)throws Exception{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));}
     static String upload(byte[] bytes,String filename,String token)throws Exception{

@@ -33,8 +33,8 @@ class BrowserSessionIT {
     static final String USER="typed-data-admin",PASSWORD="typed-data-account-password";
     static Driver driver;static URI base;static HttpClient http;
     String token,namespace;
-    static Map<String,Object> m(Object... values){var result=new LinkedHashMap<String,Object>();for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}
-    static org.neo4j.driver.Record call(String name,Object... args){var params=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){params.put("p"+i,args[i]);names.add("$p"+i);}try(var session=driver.session()){return session.run("CYPHER 25 CALL "+name+"("+String.join(",",names)+")",params,TransactionConfig.builder().withTimeout(Duration.ofSeconds(60)).build()).list().getFirst();}}
+    static Map<String,Object> m(Object... values){return TestTransport.orderedMap(values);}
+    static org.neo4j.driver.Record call(String name,Object... args){return TestTransport.call(driver,Duration.ofSeconds(60),name,args);}
     static List<org.neo4j.driver.Record> query(String cypher,Map<String,Object> params){try(var session=driver.session()){return session.run(cypher,params).list();}}
     static long serverRevision(String value){return call("deposit.utils.login",USER,PASSWORD).get("meta").get("revision").asLong();}
     static long namespaceRevision(String value){return call("deposit.get.activeNamespace",value).get("meta").get("revision").asLong();}
@@ -62,9 +62,9 @@ class BrowserSessionIT {
     private static long safeFileSize(Path file){try{return Files.size(file);}catch(IOException ignored){return -1;}}
     static String text(String resource,long bytes,String actor){return new String(content(resource,bytes,actor),StandardCharsets.UTF_8);}
     static byte[] content(String resource,long bytes,String actor){try(var out=new ByteArrayOutputStream()){for(long offset=0;offset<bytes;){long length=Math.min(1_048_576L,bytes-offset);byte[] part=Base64.getDecoder().decode(call("deposit.resource.downloadChunk",resource,offset,length,actor).get("data").get("bytesBase64").asString());out.write(part);offset+=part.length;}return out.toByteArray();}catch(IOException e){throw new AssertionError(e);}}
-    static HttpClient client(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(5)).build();}
-    static URI uri(String path){return URI.create(base.toASCIIString()+path);}
-    static String origin(){int port=base.getPort(),defaultPort="https".equals(base.getScheme())?443:80;return base.getScheme()+"://"+base.getHost()+(port<0||port==defaultPort?"":":"+port);}
+    static HttpClient client(){return TestTransport.cookieClient();}
+    static URI uri(String path){return TestTransport.endpoint(base,path);}
+    static String origin(){return TestTransport.origin(base);}
     static HttpResponse<String> get(HttpClient client,URI uri)throws Exception{return client.send(HttpRequest.newBuilder(uri).GET().build(),HttpResponse.BodyHandlers.ofString());}
     static String form(Map<String,?> values){return values.entrySet().stream().map(e->URLEncoder.encode(e.getKey(),StandardCharsets.UTF_8)+"="+URLEncoder.encode(String.valueOf(e.getValue()),StandardCharsets.UTF_8)).collect(java.util.stream.Collectors.joining("&"));}
     static String csrf(String html){Matcher matcher=Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"").matcher(html);assertTrue(matcher.find(),"CSRF form token missing");return matcher.group(1);}

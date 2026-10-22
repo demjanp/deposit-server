@@ -13,9 +13,9 @@ class PatternMatchingIT {
     static Driver driver;
     static final String USER="typed-data-admin",PASSWORD="typed-data-account-password";
     String token,namespace,name;
-    static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
+    static Map<String,Object> m(Object... entries){return TestTransport.orderedMap(entries);}
     static List<org.neo4j.driver.Record> query(String q,Map<String,Object> p){try(var s=driver.session()){return s.run("CYPHER 25 "+q,p,TransactionConfig.builder().withTimeout(Duration.ofSeconds(45)).build()).list();}}
-    static org.neo4j.driver.Record call(String proc,Object... args){var p=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){p.put("p"+i,args[i]);names.add("$p"+i);}return query("CALL "+proc+"("+String.join(",",names)+")",p).getFirst();}
+    static org.neo4j.driver.Record call(String proc,Object... args){var call=TestTransport.positionalCall(proc,args);return query(call.text(),call.parameters()).getFirst();}
     static String id(org.neo4j.driver.Record r){return r.get("node").asNode().get("id").asString();}
     static String key(){return UUID.randomUUID().toString();}
     @BeforeAll static void connect() throws Exception {driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();Path secret=TestInstallationPaths.bootstrapSecret();if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);}

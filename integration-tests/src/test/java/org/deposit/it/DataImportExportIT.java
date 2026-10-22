@@ -24,8 +24,8 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 class DataImportExportIT {
     static Driver driver;static final String USER="typed-data-admin",PASSWORD="typed-data-account-password";
     String token,namespace;
-    static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
-    static org.neo4j.driver.Record call(String proc,Object... args){var p=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){p.put("p"+i,args[i]);names.add("$p"+i);}try(var session=driver.session()){return session.run("CYPHER 25 CALL "+proc+"("+String.join(",",names)+")",p,TransactionConfig.builder().withTimeout(Duration.ofSeconds(45)).build()).list().getFirst();}}
+    static Map<String,Object> m(Object... entries){return TestTransport.orderedMap(entries);}
+    static org.neo4j.driver.Record call(String proc,Object... args){return TestTransport.call(driver,Duration.ofSeconds(45),proc,args);}
     static List<org.neo4j.driver.Record> query(String text,Map<String,Object> params){try(var session=driver.session()){return session.run(text,params).list();}}
     static long sequence(String ns){try(var session=driver.session()){return session.run("MATCH (n:Namespace {id:$id}) RETURN n.sequence AS sequence",m("id",ns)).single().get("sequence").asLong();}}
     static String id(org.neo4j.driver.Record row){return row.get("node").asNode().get("id").asString();}

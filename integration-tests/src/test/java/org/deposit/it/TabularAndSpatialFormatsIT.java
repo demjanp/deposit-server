@@ -19,8 +19,8 @@ class TabularAndSpatialFormatsIT {
     static org.neo4j.driver.Driver driver;
     static final Path ROOT=TestInstallationPaths.runRoot();
     String token,namespace;
-    static Map<String,Object> m(Object... entries){var map=new LinkedHashMap<String,Object>();for(int i=0;i<entries.length;i+=2)map.put((String)entries[i],entries[i+1]);return map;}
-    static org.neo4j.driver.Record call(String procedure,Object... args){var params=new LinkedHashMap<String,Object>();var names=new ArrayList<String>();for(int i=0;i<args.length;i++){params.put("p"+i,args[i]);names.add("$p"+i);}try(var session=driver.session()){return session.run("CYPHER 25 CALL "+procedure+"("+String.join(",",names)+")",params).list().getFirst();}}
+    static Map<String,Object> m(Object... entries){return TestTransport.orderedMap(entries);}
+    static org.neo4j.driver.Record call(String procedure,Object... args){var call=TestTransport.positionalCall(procedure,args);try(var session=driver.session()){return session.run("CYPHER 25 "+call.text(),call.parameters()).list().getFirst();}}
     static String id(org.neo4j.driver.Record row){return row.get("node").asNode().get("id").asString();}
     static String hash(byte[] bytes){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}catch(Exception e){throw new AssertionError(e);}}
     static String upload(byte[] bytes,String filename,String token){String checksum=hash(bytes);String upload=call("deposit.resource.beginUpload",filename,(long)bytes.length,checksum,"text/csv; charset=utf-8",token).get("data").get("uploadId").asString();if(bytes.length>0)call("deposit.resource.uploadChunk",upload,0L,Base64.getEncoder().encodeToString(bytes),checksum,token);return call("deposit.resource.finishUpload",upload,token).get("data").get("resourceId").asString();}
