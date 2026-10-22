@@ -12,6 +12,7 @@ param(
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'ScenarioPrimitives.ps1')
 Assert-HarnessRoot $Root
 $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $rootPath
@@ -47,7 +48,7 @@ $state=$null
 $serviceName=$null
 
 function Write-ScenarioLog([string]$Text){$log.Add($Text);[IO.File]::WriteAllLines($LogPath,$log,$utf8)}
-function Wait-ServiceStatus([string]$Name,[string]$Status,[int]$Seconds){$deadline=[DateTime]::UtcNow.AddSeconds($Seconds);do{$service=Get-Service -Name $Name -ErrorAction SilentlyContinue;if($service -and [string]$service.Status -eq $Status){return};Start-Sleep -Milliseconds 250}while([DateTime]::UtcNow -lt $deadline);throw "Service $Name did not reach $Status within $Seconds seconds"}
+function Wait-ServiceStatus([string]$Name,[string]$Status,[int]$Seconds){$service=Get-ScenarioServiceStatus $Name $Status $Seconds;if($service){return};throw "Service $Name did not reach $Status within $Seconds seconds"}
 function Wait-Bolt([int]$Seconds){$deadline=[DateTime]::UtcNow.AddSeconds($Seconds);do{$client=New-Object Net.Sockets.TcpClient;try{$pending=$client.BeginConnect([Net.IPAddress]::Loopback,$Port,$null,$null);if($pending.AsyncWaitHandle.WaitOne(500)){$client.EndConnect($pending);return}}catch{}finally{$client.Dispose()};Start-Sleep -Milliseconds 250}while([DateTime]::UtcNow -lt $deadline);throw "Bolt listener 127.0.0.1:$Port did not become reachable"}
 function Invoke-Child([string]$Script,[string[]]$Arguments,[string]$Label,[int]$TimeoutSeconds=600){
     $stdout=Join-Path (Split-Path $LogPath -Parent) "$Label.stdout.log";$stderr=Join-Path (Split-Path $LogPath -Parent) "$Label.stderr.log"

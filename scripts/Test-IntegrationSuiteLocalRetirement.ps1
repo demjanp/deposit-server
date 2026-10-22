@@ -7,6 +7,7 @@ New-Item -ItemType Directory -Path $fixture -Force | Out-Null
 
 # Load the exact production types/helpers without initializing the real DPAPI
 # store. This regression owns only its isolated fixture, even without elevation.
+. (Join-Path $PSScriptRoot 'IntegrationHarnessAcl.ps1')
 $secretsAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'IntegrationHarnessSecrets.ps1'),[ref]$null,[ref]$null)
 $plainPath=$secretsAst.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Assert-HarnessPlainPath'},$true)
 Invoke-Expression $plainPath.Extent.Text

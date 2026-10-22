@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'ScenarioPrimitives.ps1')
 Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $rootPath
@@ -39,33 +40,16 @@ function Write-ScenarioLog([string]$Text) {
     $scenarioLog.Add($Text)
     [IO.File]::WriteAllLines($LogPath,$scenarioLog,$utf8)
 }
-function Quote-PowerShell([string]$Value) { "'" + $Value.Replace("'", "''") + "'" }
 function Format-PowerShellArguments([string[]]$Values) {
-    ($Values | ForEach-Object { if ([string]$_ -match '^-') { [string]$_ } else { Quote-PowerShell ([string]$_) } }) -join ' '
-}
-function Start-PowerShellChild([string]$Command) {
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
-    $startInfo = New-Object Diagnostics.ProcessStartInfo
-    $startInfo.FileName = Join-Path $PSHOME 'powershell.exe'
-    $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $startInfo
-    if (!$process.Start()) { throw 'Could not start a operational scenario subprocess.' }
-    return [pscustomobject]@{ Process=$process; StandardOutput=$process.StandardOutput.ReadToEndAsync(); StandardError=$process.StandardError.ReadToEndAsync() }
+    ($Values | ForEach-Object { if ([string]$_ -match '^-') { [string]$_ } else { Quote-ScenarioPowerShellString ([string]$_) } }) -join ' '
 }
 function Complete-PowerShellChild($Child,[string]$OutputPath,[string]$ErrorPath,[int]$TimeoutMilliseconds) {
     $process = $Child.Process
     if (!$process.WaitForExit($TimeoutMilliseconds)) { throw "Scenario subprocess timed out; see $OutputPath and $ErrorPath" }
     $process.WaitForExit()
     $exitCode = $process.ExitCode
-    $stdout = if ($Child.StandardOutput.Wait(5000)) { try { $Child.StandardOutput.Result } catch { "Scenario stdout collection failed: $($_.Exception.Message)" } }
-        else { 'Scenario child exited, but a descendant kept stdout open; remaining output was omitted.' }
-    $stderr = if ($Child.StandardError.Wait(5000)) { try { $Child.StandardError.Result } catch { "Scenario stderr collection failed: $($_.Exception.Message)" } }
-        else { 'Scenario child exited, but a descendant kept stderr open; remaining output was omitted.' }
+    $stdout = Get-ScenarioChildOutput $Child.StandardOutput 'Scenario stdout collection failed: ' 'Scenario child exited, but a descendant kept stdout open; remaining output was omitted.'
+    $stderr = Get-ScenarioChildOutput $Child.StandardError 'Scenario stderr collection failed: ' 'Scenario child exited, but a descendant kept stderr open; remaining output was omitted.'
     [IO.File]::WriteAllText($OutputPath,$stdout,$utf8)
     [IO.File]::WriteAllText($ErrorPath,$stderr,$utf8)
     $process.Dispose()
@@ -78,8 +62,8 @@ function Get-OwnedServer {
     } | Select-Object -First 1
 }
 function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[string]$Label) {
-    $command = '& ' + (Quote-PowerShell $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments) + '; exit $LASTEXITCODE'
-    $child = Start-PowerShellChild $command
+    $command = '& ' + (Quote-ScenarioPowerShellString $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments) + '; exit $LASTEXITCODE'
+    $child = Start-ScenarioPowerShellChild $command 'Could not start a operational scenario subprocess.'
     $base = [IO.Path]::ChangeExtension($LogPath,".$Label-runner")
     $code = Complete-PowerShellChild $child "$base.log" "$base.err.log" 330000
     foreach ($line in Get-Content -LiteralPath "$base.log" -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
@@ -88,30 +72,6 @@ function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[stri
 }
 function Start-TestHarness {
     Invoke-ChildScript (Join-Path $PSScriptRoot 'Invoke-TestHarnessPhase.ps1') @('-Phase','Start','-Root',$rootPath,'-Port',[string]$Port) 'harness-phase-start'
-}
-function Get-DownloadProbeResult([string]$BaseUrl) {
-    $request = [System.Net.HttpWebRequest]::Create([Uri]::new($BaseUrl.TrimEnd('/') + '/login'))
-    $request.Method = 'GET'
-    $request.AllowAutoRedirect = $false
-    $request.KeepAlive = $false
-    $request.Proxy = $null
-    $request.Timeout = 5000
-    try {
-        $response = $request.GetResponse()
-        $status = [int]$response.StatusCode
-        $response.Dispose()
-        return [pscustomobject]@{ Rejected=($status -eq 503); Detail="HTTP $status" }
-    } catch [System.Net.WebException] {
-        if ($_.Exception.Response) {
-            $status = [int]$_.Exception.Response.StatusCode
-            $_.Exception.Response.Dispose()
-            return [pscustomobject]@{ Rejected=($status -eq 503); Detail="HTTP $status" }
-        }
-        $rejected = $_.Exception.Status -in @([System.Net.WebExceptionStatus]::ConnectFailure,[System.Net.WebExceptionStatus]::ConnectionClosed)
-        return [pscustomobject]@{ Rejected=$rejected; Detail="Request rejected: $($_.Exception.Status)" }
-    } catch {
-        return [pscustomobject]@{ Rejected=$false; Detail="Probe failed: $($_.Exception.GetType().Name)" }
-    } finally { $request.Abort() }
 }
 function Wait-ChildExit($Child,[string]$Label,[int]$TimeoutSeconds) {
     if (!$Child.Process.WaitForExit($TimeoutSeconds * 1000)) { throw "$Label did not exit within $TimeoutSeconds seconds" }
@@ -132,6 +92,10 @@ $launcherIdentity=Join-Path $run 'neo4j\deposit-process.json'
 $identityPrepared=$false
 try {
     if (!$wasRunning) { Start-TestHarness }
+    $runtimeProcessRecordPath=Join-Path $run 'process.json'
+    $runtimeIdentityBeforeStop=Get-Content -LiteralPath $runtimeProcessRecordPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    $runtimeInstallState=Get-Content -LiteralPath (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json -ErrorAction Stop
+    if($runtimeInstallState.mode -cne 'local' -or !$runtimeIdentityBeforeStop.runtimeGeneration -or !$runtimeIdentityBeforeStop.runtimeJobName -or !$runtimeIdentityBeforeStop.pid){throw 'Local drain scenario requires the active local runtime generation record.'}
     $backup = New-Item -ItemType Directory -Path $stateBackup
     . (Join-Path $PSScriptRoot 'Credentials.ps1')
     Set-OwnerOnlyDirectory $backup.FullName
@@ -141,8 +105,8 @@ try {
     $previousReady=if(Test-Path -LiteralPath $ready){[IO.File]::ReadAllText($ready)}else{''}
 
     $testLog = [IO.Path]::ChangeExtension($LogPath,'.hold-test.log')
-    $testCommand = '& ' + (Quote-PowerShell (Join-Path $PSScriptRoot 'Invoke-Tests.ps1')) + ' -Kind Integration -Test ' + (Quote-PowerShell 'ShutdownDrainIT#holdTransactionAndDownloadUntilShutdownSignalsRelease') + ' -Port ' + $Port + ' -LogPath ' + (Quote-PowerShell $testLog) + '; exit $LASTEXITCODE'
-    $testChild = Start-PowerShellChild $testCommand
+    $testCommand = '& ' + (Quote-ScenarioPowerShellString (Join-Path $PSScriptRoot 'Invoke-Tests.ps1')) + ' -Kind Integration -Test ' + (Quote-ScenarioPowerShellString 'ShutdownDrainIT#holdTransactionAndDownloadUntilShutdownSignalsRelease') + ' -Port ' + $Port + ' -LogPath ' + (Quote-ScenarioPowerShellString $testLog) + '; exit $LASTEXITCODE'
+    $testChild = Start-ScenarioPowerShellChild $testCommand 'Could not start a operational scenario subprocess.'
     Write-ScenarioLog 'Started the selected Operations hold test.'
 
     $readyDeadline = [DateTime]::UtcNow.AddSeconds(150)
@@ -156,9 +120,11 @@ try {
     Write-ScenarioLog 'Observed a fresh READY signal after the transaction and download were admitted.'
 
     # Stage a task-owned launcher around the existing installation; exercise the actual production Stop implementation.
-    $launcher=Join-Path $stateBackup 'launcher';New-Item -ItemType Directory -Path (Join-Path $launcher 'helpers') -Force|Out-Null
+    $launcher=Join-Path $stateBackup 'launcher';$launcherHelpers=Join-Path $launcher 'helpers';New-Item -ItemType Directory -Path $launcherHelpers -Force|Out-Null
     Copy-Item -LiteralPath (Join-Path $repo 'runtime\distribution\deposit.ps1'),(Join-Path $repo 'runtime\artifacts.json') -Destination $launcher
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Request-DepositStop.ps1'),(Join-Path $PSScriptRoot 'Stop-Console.ps1') -Destination (Join-Path $launcher 'helpers')
+    $runtimeHelperDirectory=Join-Path $repo 'runtime\distribution\helpers'
+    Get-ChildItem -LiteralPath $runtimeHelperDirectory -File | Copy-Item -Destination $launcherHelpers -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Request-DepositStop.ps1'),(Join-Path $PSScriptRoot 'Stop-Console.ps1') -Destination $launcherHelpers -Force
     $owned=Get-OwnedServer;if(!$owned){throw 'Owned runtime is absent before production Stop'}
     if(![IO.Path]::GetFullPath($launcherIdentity).StartsWith([IO.Path]::GetFullPath($run).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Launcher process identity escaped the approved run root'}
     if(Test-Path -LiteralPath $launcherIdentity){Copy-Item -LiteralPath $launcherIdentity -Destination (Join-Path $stateBackup 'prior-deposit-process.json')}
@@ -170,8 +136,8 @@ try {
     $control=Join-Path $secretRoot 'deposit-control';$descriptor=Get-Content (Join-Path $control 'run.json') -Raw|ConvertFrom-Json
     if($descriptor.pid -ne $owned.ProcessId -or $descriptor.transactions -lt 1 -or $descriptor.readers -lt 1 -or $descriptor.handlers -lt 1){throw 'The control descriptor does not confirm the owned live transaction/reader/handler'}
     [IO.File]::WriteAllText((Join-Path $launcher 'deposit.install.json'),(@{neo4jHome=(Join-Path $run 'neo4j');javaHome=(Join-Path $rootPath $manifest.javaHome);dataRoot=(Join-Path $run 'resources');exportRoot=(Join-Path $run 'exports');secretRoot=$secretRoot;mode='local';serviceName='DepositTriageNoService'}|ConvertTo-Json),$utf8)
-    $stopCommand = '& ' + (Quote-PowerShell (Join-Path $launcher 'deposit.ps1')) + ' stop; exit $LASTEXITCODE'
-    $stopChild = Start-PowerShellChild $stopCommand
+    $stopCommand = '& ' + (Quote-ScenarioPowerShellString (Join-Path $launcher 'deposit.ps1')) + ' stop; exit $LASTEXITCODE'
+    $stopChild = Start-ScenarioPowerShellChild $stopCommand 'Could not start a operational scenario subprocess.'
     Write-ScenarioLog 'Started the production launcher Stop for the owned TestHarness process.'
 
     $publicBase = ([regex]::Match([IO.File]::ReadAllText((Join-Path $run 'neo4j\conf\deposit.properties')),'(?m)^download\.publicBaseUrl=(.+)$')).Groups[1].Value.Trim()
@@ -183,7 +149,7 @@ try {
         $owned = Get-OwnedServer
         if (!$owned) { throw 'The owned server exited before the held transaction was released.' }
         if($stopChild.Process.HasExited){Wait-ChildExit $stopChild 'graceful-stop' 1;throw 'Production Stop exited without holding the admitted work'}
-        $probe = Get-DownloadProbeResult $publicBase
+        $probe = Get-ScenarioDownloadProbeResult $publicBase
         $lastProbeDetail = $probe.Detail
         if ($probe.Rejected) { $rejection = $probe; break }
         if ($probe.Detail -ne 'HTTP 200') { Write-ScenarioLog "Shutdown probe remains inconclusive: $($probe.Detail)." }
@@ -212,7 +178,26 @@ try {
     if($completed.state -ne 'complete' -or $completed.transactions -ne 0 -or $completed.readers -ne 0 -or $completed.handlers -ne 0 -or !$completed.storageClosed){throw 'The terminal acknowledgement did not establish full cleanup before the process signal'}
     Write-ScenarioLog 'Confirmed the owned process exited after admitted work completed cleanup.'
 
+    # The production launcher above stopped the JVM directly; ask the suite runtime owner
+    # to validate and retire its exact now-empty containment generation before restarting.
+    Invoke-ChildScript (Join-Path $PSScriptRoot 'Invoke-TestHarnessPhase.ps1') @('-Phase','Stop','-Root',$rootPath,'-Port',[string]$Port) 'retire-stopped-runtime'
+    $journalPath=[Environment]::GetEnvironmentVariable('DEPOSIT_SUITE_JOURNAL','Process')
+    $journal=Read-SuiteJournal $journalPath
+    $retired=@($journal.runtimeJobs|Where-Object {$_.generation -ceq [string]$runtimeIdentityBeforeStop.runtimeGeneration -and $_.jobName -ceq [string]$runtimeIdentityBeforeStop.runtimeJobName})
+    if($retired.Count -ne 1 -or $retired[0].state -cne 'retired' -or !$retired[0].jobAcknowledged){throw 'The suite owner did not retire the exact stopped runtime generation.'}
+    $oldMembers=@([DepositSuiteJobs]::Members([string]$runtimeIdentityBeforeStop.runtimeJobName))
+    try{if($oldMembers.Count){throw 'The retired local runtime generation still has live containment members.'}}finally{foreach($member in $oldMembers){$member.Dispose()}}
+    Write-ScenarioLog "Retired stopped runtime generation $($runtimeIdentityBeforeStop.runtimeGeneration) after its containment job emptied."
+
     Start-TestHarness
+    $runtimeIdentityAfterRestart=Get-Content -LiteralPath $runtimeProcessRecordPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    if($runtimeIdentityAfterRestart.runtimeGeneration -ceq [string]$runtimeIdentityBeforeStop.runtimeGeneration -or $runtimeIdentityAfterRestart.runtimeJobName -ceq [string]$runtimeIdentityBeforeStop.runtimeJobName){throw 'Post-drain restart did not publish a distinct local runtime generation.'}
+    $journal=Read-SuiteJournal $journalPath
+    $restarted=@($journal.runtimeJobs|Where-Object {$_.generation -ceq [string]$runtimeIdentityAfterRestart.runtimeGeneration -and $_.jobName -ceq [string]$runtimeIdentityAfterRestart.runtimeJobName})
+    if($restarted.Count -ne 1 -or $restarted[0].state -cne 'running' -or !$restarted[0].jobAcknowledged -or [long]$restarted[0].serverPid -ne [long]$runtimeIdentityAfterRestart.pid){throw 'Post-drain restart did not publish a distinct acknowledged runtime generation.'}
+    $restartedServer=Get-Process -Id ([int]$runtimeIdentityAfterRestart.pid) -ErrorAction Stop
+    try{if(![DepositSuiteJobs]::Contains([string]$runtimeIdentityAfterRestart.runtimeJobName,$restartedServer)){throw 'Post-drain server is outside its new acknowledged runtime generation.'}}finally{$restartedServer.Dispose()}
+    Write-ScenarioLog "Started distinct acknowledged runtime generation $($runtimeIdentityAfterRestart.runtimeGeneration) for commit verification."
     $verifyLog = [IO.Path]::ChangeExtension($LogPath,'.verify-test.log')
     Invoke-ChildScript (Join-Path $PSScriptRoot 'Invoke-Tests.ps1') @('-Kind','Integration','-Test','ShutdownDrainIT#verifyCommittedTransactionSurvivedServiceShutdown','-Port',[string]$Port,'-LogPath',$verifyLog) 'verify-test'
     Write-ScenarioLog 'The post-restart transaction verifier passed.'

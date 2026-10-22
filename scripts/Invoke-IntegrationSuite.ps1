@@ -320,11 +320,51 @@ try {
         Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-TestScenario.ps1') $arguments 'recovery-scenario' 7200
     } elseif($SelectedScenario) {
         Update-SuiteJournal $journalPath {param($j) $j.state='running'}
-        if($SelectedScenario -eq 'ServiceCrashRecovery') {
+        if($SelectedScenario -in @('LocalShutdownDrain','ServiceShutdown','ServiceCrashRecovery')) {
             Invoke-SuitePhase 'Start'
             Invoke-SuiteSelection 'AuthenticationNamespaceLifecycleIT#bootstrapRollbackThenCommitAndLoginReadOnlyCompletion' 'service-prerequisite-bootstrap'
         }
         if($SelectedScenario -in @('CleanProvisioning','DownloadListener','ServiceShutdown','ServiceCrashRecovery')) {Enable-TestService}
+        if($SelectedScenario -eq 'ServiceShutdown') {
+            $processRecordPath=Join-Path $run 'process.json'
+            Assert-HarnessPlainPath $processRecordPath
+            if(!(Test-Path -LiteralPath $processRecordPath -PathType Leaf)){throw 'Owned service refusal gate requires the service process identity record.'}
+            $processRecordBytes=[IO.File]::ReadAllBytes($processRecordPath)
+            $processRecord=Get-Content -LiteralPath $processRecordPath -Raw|ConvertFrom-Json -ErrorAction Stop
+            $installationState=Get-Content -LiteralPath (Join-Path $run 'distribution\deposit.install.json') -Raw|ConvertFrom-Json -ErrorAction Stop
+            if($installationState.mode -cne 'service' -or !$installationState.serviceName -or !$processRecord.pid -or !$processRecord.startMillis){throw 'Owned service refusal gate requires a configured service-mode installation and process identity.'}
+            $serviceBefore=Get-CimInstance Win32_Service -Filter "Name='$($installationState.serviceName)'"
+            if(!$serviceBefore -or [string]$serviceBefore.State -cne 'Running' -or [long]$serviceBefore.ProcessId -ne [long]$processRecord.pid){throw 'Owned service refusal gate requires the recorded service incarnation to be running.'}
+            $processBefore=Get-CimInstance Win32_Process -Filter "ProcessId=$([long]$processRecord.pid)"
+            if(!$processBefore -or ([DateTimeOffset]$processBefore.CreationDate.ToUniversalTime()).ToUnixTimeMilliseconds() -ne [long]$processRecord.startMillis){throw 'Owned service refusal gate process start identity does not match the running service.'}
+
+            $gateFailure=$null
+            try {Invoke-SuiteChild (Join-Path $PSScriptRoot 'Test-KillTestOwnedJvm.ps1') @() 'service-kill-test-owned-jvm' 600}
+            catch {$gateFailure=$_.Exception}
+            if($gateFailure) {
+                $gateJournal=Read-SuiteJournal $journalPath
+                $gateChildren=@($gateJournal.children|Where-Object {$_.label -ceq 'service-kill-test-owned-jvm'})
+                foreach($gateChild in $gateChildren){Stop-SuiteChildTree $gateChild}
+                foreach($gateChild in $gateChildren){
+                    $members=@([DepositSuiteJobs]::Members([string]$gateChild.jobName))
+                    try {if(@($members|Where-Object {!$_.HasExited}).Count){throw 'Owned service refusal gate child tree remains live; process record was not restored.'}}
+                    finally {foreach($member in $members){$member.Dispose()}}
+                }
+                [IO.File]::WriteAllBytes($processRecordPath,$processRecordBytes)
+                if([Convert]::ToBase64String([IO.File]::ReadAllBytes($processRecordPath)) -cne [Convert]::ToBase64String($processRecordBytes)){throw 'Owned service refusal gate failed and exact process record restoration could not be verified.'}
+                throw $gateFailure
+            }
+
+            if([Convert]::ToBase64String([IO.File]::ReadAllBytes($processRecordPath)) -cne [Convert]::ToBase64String($processRecordBytes)) {
+                [IO.File]::WriteAllBytes($processRecordPath,$processRecordBytes)
+                if([Convert]::ToBase64String([IO.File]::ReadAllBytes($processRecordPath)) -cne [Convert]::ToBase64String($processRecordBytes)){throw 'Owned service refusal gate changed the process record and byte-exact restoration failed.'}
+                throw 'Owned service refusal gate did not restore the exact process record bytes.'
+            }
+            $serviceAfter=Get-CimInstance Win32_Service -Filter "Name='$($installationState.serviceName)'"
+            $processAfter=Get-CimInstance Win32_Process -Filter "ProcessId=$([long]$processRecord.pid)"
+            if(!$serviceAfter -or [string]$serviceAfter.State -cne 'Running' -or [long]$serviceAfter.ProcessId -ne [long]$processRecord.pid -or !$processAfter -or ([DateTimeOffset]$processAfter.CreationDate.ToUniversalTime()).ToUnixTimeMilliseconds() -ne [long]$processRecord.startMillis){throw 'Owned service refusal gate changed the running service PID or process start identity.'}
+            Write-Output "PASS: Test-KillTestOwnedJvm refused invalid identities without terminating service $($installationState.serviceName) PID $($processRecord.pid); process record bytes and start identity were restored."
+        }
         if($SelectedScenario -eq 'ServiceCrashRecovery') {
             Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-ServiceShutdownScenario.ps1') @('-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'service-shutdown-prerequisite.log')) 'service-shutdown-prerequisite' 1800
         }

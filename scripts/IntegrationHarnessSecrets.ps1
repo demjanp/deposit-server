@@ -1,6 +1,7 @@
 # Harness-only secrets. The distribution's Credential Manager implementation is unchanged.
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'IntegrationHarnessAcl.ps1')
 
 function Assert-HarnessPlainPath([string]$Path) {
     $full = [IO.Path]::GetFullPath($Path)
@@ -32,7 +33,7 @@ function Set-OwnerOnlyDirectory([string]$Path) {
 
 if (-not ('DepositHarnessSecretStore' -as [type])) {
     Add-Type -AssemblyName System.Security
-    Add-Type -ReferencedAssemblies System.Security -TypeDefinition @'
+    $secretStoreSource=@'
 using System;
 using System.IO;
 using System.Text;
@@ -71,13 +72,10 @@ public static class DepositHarnessSecretStore {
             return path;
         }
     }
+    /*DEPOSIT_HARNESS_ACL_METHOD*/
     static FileSecurity OwnerOnlyFileSecurity() {
         var sid = WindowsIdentity.GetCurrent().User;
-        var acl = new FileSecurity();
-        acl.SetOwner(sid);
-        acl.SetAccessRuleProtection(true,false);
-        acl.AddAccessRule(new FileSystemAccessRule(sid,FileSystemRights.FullControl,AccessControlType.Allow));
-        return acl;
+        return OwnerOnlyFileSecurity(sid);
     }
     static void ValidateNewFile(string path) {
         Plain(path);
@@ -120,6 +118,8 @@ public static class DepositHarnessSecretStore {
     public static void Delete(string target) { string path=FileName(target); if(File.Exists(path)) File.Delete(path); }
 }
 '@
+    $secretStoreSource=$secretStoreSource.Replace('/*DEPOSIT_HARNESS_ACL_METHOD*/',$script:DepositHarnessOwnerOnlyAclMethod)
+    Add-Type -ReferencedAssemblies System.Security -TypeDefinition $secretStoreSource
 }
 $secretRoot = Join-Path (Get-HarnessRoot) 'private\credentials'
 Set-OwnerOnlyDirectory $secretRoot

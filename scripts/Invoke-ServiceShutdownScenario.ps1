@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'ScenarioPrimitives.ps1')
 Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $rootPath
@@ -41,27 +42,12 @@ function Write-ScenarioLog([string]$Text) {
     $scenarioLog.Add($Text)
     [IO.File]::WriteAllLines($LogPath,$scenarioLog,$utf8)
 }
-function Quote-PowerShell([string]$Value) { "'" + $Value.Replace("'", "''") + "'" }
-function Start-PowerShellChild([string]$Command) {
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
-    $startInfo = New-Object Diagnostics.ProcessStartInfo
-    $startInfo.FileName = Join-Path $PSHOME 'powershell.exe'
-    $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $startInfo
-    if (!$process.Start()) { throw 'Could not start a operational service scenario subprocess.' }
-    return [pscustomobject]@{ Process=$process; StandardOutput=$process.StandardOutput.ReadToEndAsync(); StandardError=$process.StandardError.ReadToEndAsync() }
-}
 function Complete-PowerShellChild($Child,[string]$Label,[int]$TimeoutMilliseconds) {
     $process = $Child.Process
     if (!$process.WaitForExit($TimeoutMilliseconds)) { throw "$Label timed out; see $LogPath" }
     $process.WaitForExit()
-    $stdout = if ($Child.StandardOutput.Wait(5000)) { try { $Child.StandardOutput.Result } catch { "stdout collection failed: $($_.Exception.Message)" } } else { 'Child exited, but a descendant kept stdout open.' }
-    $stderr = if ($Child.StandardError.Wait(5000)) { try { $Child.StandardError.Result } catch { "stderr collection failed: $($_.Exception.Message)" } } else { 'Child exited, but a descendant kept stderr open.' }
+    $stdout = Get-ScenarioChildOutput $Child.StandardOutput 'stdout collection failed: ' 'Child exited, but a descendant kept stdout open.'
+    $stderr = Get-ScenarioChildOutput $Child.StandardError 'stderr collection failed: ' 'Child exited, but a descendant kept stderr open.'
     Write-ScenarioLog "$Label exit code: $($process.ExitCode)"
     if ($stdout) { foreach($line in ($stdout -split "`r?`n")) { if($line){Write-ScenarioLog "$Label stdout: $line"} } }
     if ($stderr) { foreach($line in ($stderr -split "`r?`n")) { if($line){Write-ScenarioLog "$Label stderr: $line"} } }
@@ -70,8 +56,8 @@ function Complete-PowerShellChild($Child,[string]$Label,[int]$TimeoutMillisecond
     return $code
 }
 function Invoke-Launcher([string]$Operation,[string]$Label,[int]$TimeoutMilliseconds=330000) {
-    $command = '& ' + (Quote-PowerShell $launcher) + ' ' + $Operation + '; exit $LASTEXITCODE'
-    $child = Start-PowerShellChild $command
+    $command = '& ' + (Quote-ScenarioPowerShellString $launcher) + ' ' + $Operation + '; exit $LASTEXITCODE'
+    $child = Start-ScenarioPowerShellChild $command 'Could not start a operational service scenario subprocess.'
     $code = Complete-PowerShellChild $child $Label $TimeoutMilliseconds
     if($code -ne 0){throw "$Label failed with exit code $code"}
 }
@@ -80,18 +66,10 @@ function Get-ServiceIdentity($State) {
     . (Join-Path $PSScriptRoot 'Request-DepositStop.ps1')
     Get-DepositServiceProcessIdentity $State.neo4jHome $State.serviceName $State.serviceAccount
 }
-function Get-DownloadProbeResult([string]$BaseUrl) {
-    $request=[System.Net.HttpWebRequest]::Create([Uri]::new($BaseUrl.TrimEnd('/')+'/login'))
-    $request.Method='GET';$request.AllowAutoRedirect=$false;$request.KeepAlive=$false;$request.Proxy=$null;$request.Timeout=5000
-    try{$response=$request.GetResponse();$status=[int]$response.StatusCode;$response.Dispose();return [pscustomobject]@{Rejected=($status -eq 503);Detail="HTTP $status"}}
-    catch [System.Net.WebException]{if($_.Exception.Response){$status=[int]$_.Exception.Response.StatusCode;$_.Exception.Response.Dispose();return [pscustomobject]@{Rejected=($status -eq 503);Detail="HTTP $status"}};$rejected=$_.Exception.Status -in @([System.Net.WebExceptionStatus]::ConnectFailure,[System.Net.WebExceptionStatus]::ConnectionClosed);return [pscustomobject]@{Rejected=$rejected;Detail="Request rejected: $($_.Exception.Status)"}}
-    catch{return [pscustomobject]@{Rejected=$false;Detail="Probe failed: $($_.Exception.GetType().Name)"}}
-    finally{$request.Abort()}
-}
 function Read-Json([string]$Path) { Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop }
 function Wait-ServiceStatus([string]$Name,[string]$Status,[int]$Seconds) {
-    $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
-    do{$service=Get-Service -Name $Name -ErrorAction SilentlyContinue;if($service -and [string]$service.Status -eq $Status){return $service};Start-Sleep -Milliseconds 250}while([DateTime]::UtcNow -lt $deadline)
+    $service=Get-ScenarioServiceStatus $Name $Status $Seconds
+    if($service){return $service}
     throw "Service $Name did not reach $Status within $Seconds seconds"
 }
 function Wait-BoltPort([int]$Port,[int]$Seconds) {
@@ -108,8 +86,8 @@ function Wait-BoltPort([int]$Port,[int]$Seconds) {
 }
 function Invoke-Test([string]$TestName,[string]$Label) {
     $script=Join-Path $PSScriptRoot 'Invoke-Tests.ps1'
-    $command='& '+(Quote-PowerShell $script)+' -Kind Integration -Test '+(Quote-PowerShell $TestName)+' -Port '+$Port+' -LogPath '+(Quote-PowerShell ([IO.Path]::ChangeExtension($LogPath,".$Label.log")))+'; exit $LASTEXITCODE'
-    $child=Start-PowerShellChild $command
+    $command='& '+(Quote-ScenarioPowerShellString $script)+' -Kind Integration -Test '+(Quote-ScenarioPowerShellString $TestName)+' -Port '+$Port+' -LogPath '+(Quote-ScenarioPowerShellString ([IO.Path]::ChangeExtension($LogPath,".$Label.log")))+'; exit $LASTEXITCODE'
+    $child=Start-ScenarioPowerShellChild $command 'Could not start a operational service scenario subprocess.'
     $code=Complete-PowerShellChild $child $Label 330000
     if($code -ne 0){throw "$Label failed with exit code $code"}
 }
@@ -144,8 +122,8 @@ try {
     foreach($path in @($ready,$release,$fixture)){if(Test-Path -LiteralPath $path){Copy-Item -LiteralPath $path -Destination (Join-Path $backup ([IO.Path]::GetFileName($path)))}}
     $previousReady=if(Test-Path -LiteralPath $ready){[IO.File]::ReadAllText($ready)}else{''}
     $testScript=Join-Path $PSScriptRoot 'Invoke-Tests.ps1'
-    $testCommand='& '+(Quote-PowerShell $testScript)+' -Kind Integration -Test '+(Quote-PowerShell 'ShutdownDrainIT#holdTransactionAndDownloadUntilShutdownSignalsRelease')+' -Port '+$Port+' -LogPath '+(Quote-PowerShell ([IO.Path]::ChangeExtension($LogPath,'.hold-test.log')))+'; exit $LASTEXITCODE'
-    $testChild=Start-PowerShellChild $testCommand
+    $testCommand='& '+(Quote-ScenarioPowerShellString $testScript)+' -Kind Integration -Test '+(Quote-ScenarioPowerShellString 'ShutdownDrainIT#holdTransactionAndDownloadUntilShutdownSignalsRelease')+' -Port '+$Port+' -LogPath '+(Quote-ScenarioPowerShellString ([IO.Path]::ChangeExtension($LogPath,'.hold-test.log')))+'; exit $LASTEXITCODE'
+    $testChild=Start-ScenarioPowerShellChild $testCommand 'Could not start a operational service scenario subprocess.'
     Write-ScenarioLog 'Started the selected operational transaction and download hold test.'
     $readyDeadline=[DateTime]::UtcNow.AddSeconds(180)
     while([DateTime]::UtcNow -lt $readyDeadline){
@@ -164,8 +142,8 @@ try {
     $ackDirectory=Join-Path $control ([string]$descriptor.incarnation)
     $baseUrl=([regex]::Match($config,'(?m)^download\.publicBaseUrl=(.+)$')).Groups[1].Value.Trim()
     if(!$baseUrl){throw 'Configured download public base URL is missing.'}
-    $stopCommand='& '+(Quote-PowerShell $launcher)+' stop; exit $LASTEXITCODE'
-    $stopChild=Start-PowerShellChild $stopCommand
+    $stopCommand='& '+(Quote-ScenarioPowerShellString $launcher)+' stop; exit $LASTEXITCODE'
+    $stopChild=Start-ScenarioPowerShellChild $stopCommand 'Could not start a operational service scenario subprocess.'
     Write-ScenarioLog 'Started the real packaged service-mode deposit.bat stop command.'
 
     $progressDeadline=[DateTime]::UtcNow.AddSeconds(20)
@@ -179,7 +157,7 @@ try {
             $candidate=Read-Json $ackFile.FullName
             if($candidate.state -eq 'admissionClosed' -and $candidate.transactions -gt 0 -and $candidate.readers -gt 0 -and $candidate.handlers -gt 0){$draining=$candidate;break}
         }
-        $probe=Get-DownloadProbeResult $baseUrl;$lastProbe=$probe.Detail
+        $probe=Get-ScenarioDownloadProbeResult $baseUrl;$lastProbe=$probe.Detail
         if($draining -and $probe.Rejected){break}
         Start-Sleep -Milliseconds 100
     }

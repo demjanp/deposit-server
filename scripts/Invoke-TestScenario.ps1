@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ScenarioPrimitives.ps1')
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
 Assert-HarnessRoot $Root
 $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
@@ -66,32 +67,15 @@ function Get-OwnedServer {
         $_.CommandLine -match 'org\.neo4j\.server\.(Neo4jCommunity|CommunityEntryPoint)|Neo4jBoot'
     } | Select-Object -First 1
 }
-function Quote-PowerShell([string]$Value) { "'" + $Value.Replace("'", "''") + "'" }
 function Format-PowerShellArguments([string[]]$Values) {
-    ($Values | ForEach-Object { if ([string]$_ -match '^-') { [string]$_ } else { Quote-PowerShell ([string]$_) } }) -join ' '
-}
-function Start-PowerShellChild([string]$Command) {
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
-    $startInfo = New-Object Diagnostics.ProcessStartInfo
-    $startInfo.FileName = Join-Path $PSHOME 'powershell.exe'
-    $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $startInfo
-    if (!$process.Start()) { throw 'Could not start the scenario subprocess.' }
-    return [pscustomobject]@{ Process=$process; StandardOutput=$process.StandardOutput.ReadToEndAsync(); StandardError=$process.StandardError.ReadToEndAsync() }
+    ($Values | ForEach-Object { if ([string]$_ -match '^-') { [string]$_ } else { Quote-ScenarioPowerShellString ([string]$_) } }) -join ' '
 }
 function Complete-PowerShellChild($Child,[string]$OutputPath,[string]$ErrorPath,[int]$TimeoutMilliseconds) {
     $process = $Child.Process
     if (!$process.WaitForExit($TimeoutMilliseconds)) { $process.Kill(); $null = $process.WaitForExit(15000); throw 'Scenario subprocess timed out.' }
     $process.WaitForExit()
-    $stdout = if ($Child.StandardOutput.Wait(5000)) { try { $Child.StandardOutput.Result } catch { "Scenario stdout collection failed: $($_.Exception.Message)" } }
-        else { 'Scenario child exited, but a descendant kept stdout open; remaining output was omitted.' }
-    $stderr = if ($Child.StandardError.Wait(5000)) { try { $Child.StandardError.Result } catch { "Scenario stderr collection failed: $($_.Exception.Message)" } }
-        else { 'Scenario child exited, but a descendant kept stderr open; remaining output was omitted.' }
+    $stdout = Get-ScenarioChildOutput $Child.StandardOutput 'Scenario stdout collection failed: ' 'Scenario child exited, but a descendant kept stdout open; remaining output was omitted.'
+    $stderr = Get-ScenarioChildOutput $Child.StandardError 'Scenario stderr collection failed: ' 'Scenario child exited, but a descendant kept stderr open; remaining output was omitted.'
     [IO.File]::WriteAllText($OutputPath,$stdout,$utf8)
     [IO.File]::WriteAllText($ErrorPath,$stderr,$utf8)
     return $process.ExitCode
@@ -99,8 +83,8 @@ function Complete-PowerShellChild($Child,[string]$OutputPath,[string]$ErrorPath,
 function Invoke-ChildScript([string]$ScriptPath,[string[]]$ScriptArguments,[string]$Label,[int]$TimeoutMilliseconds=180000) {
     $childLog = [IO.Path]::ChangeExtension($LogPath,".$Label.log")
     $childErrorLog = [IO.Path]::ChangeExtension($LogPath,".$Label.err.log")
-    $command = '& ' + (Quote-PowerShell $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments)
-    $child = Start-PowerShellChild $command
+    $command = '& ' + (Quote-ScenarioPowerShellString $ScriptPath) + ' ' + (Format-PowerShellArguments $ScriptArguments)
+    $child = Start-ScenarioPowerShellChild $command 'Could not start the scenario subprocess.'
     $timeout = if ($Label -eq 'harness-stop') { 330000 } else { $TimeoutMilliseconds }
     $code = Complete-PowerShellChild $child $childLog $childErrorLog $timeout
     foreach ($line in Get-Content -LiteralPath $childLog -ErrorAction SilentlyContinue) { Write-ScenarioLog ([string]$line) }
@@ -142,8 +126,8 @@ try {
                 $marker = Join-Path $run 'history-startup-paused.txt'
                 $childLog = [IO.Path]::ChangeExtension($LogPath,'.startup.log')
                 $childErrorLog = [IO.Path]::ChangeExtension($LogPath,'.startup.err.log')
-                $command = '& ' + (Quote-PowerShell "$PSScriptRoot\Invoke-TestHarnessPhase.ps1") + ' ' + (Format-PowerShellArguments @('-Phase','Start','-Root',$rootPath,'-Port',[string]$Port))
-                $starter = Start-PowerShellChild $command
+                $command = '& ' + (Quote-ScenarioPowerShellString "$PSScriptRoot\Invoke-TestHarnessPhase.ps1") + ' ' + (Format-PowerShellArguments @('-Phase','Start','-Root',$rootPath,'-Port',[string]$Port))
+                $starter = Start-ScenarioPowerShellChild $command 'Could not start the scenario subprocess.'
                 try {
                     $deadline = [DateTime]::UtcNow.AddSeconds(60)
                     while (!(Test-Path -LiteralPath $marker) -and [DateTime]::UtcNow -lt $deadline -and !$starter.Process.HasExited) { Start-Sleep -Milliseconds 100 }

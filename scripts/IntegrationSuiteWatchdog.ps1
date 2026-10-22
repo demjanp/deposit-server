@@ -94,20 +94,16 @@ public static class DepositSuiteJobs {
 }
 
 if (-not ('DepositSuiteJournalFiles' -as [type])) {
-    Add-Type -TypeDefinition @'
+    $journalFileSource=@'
 using System;
 using System.IO;
 using System.Security.AccessControl;
 using System.Security.Principal;
 public static class DepositSuiteJournalFiles {
     static SecurityIdentifier CurrentSid() { return WindowsIdentity.GetCurrent().User; }
+    /*DEPOSIT_HARNESS_ACL_METHOD*/
     static FileSecurity OwnerOnlySecurity() {
-        var sid=CurrentSid();
-        var security=new FileSecurity();
-        security.SetOwner(sid);
-        security.SetAccessRuleProtection(true,false);
-        security.AddAccessRule(new FileSystemAccessRule(sid,FileSystemRights.FullControl,AccessControlType.Allow));
-        return security;
+        return OwnerOnlyFileSecurity(CurrentSid());
     }
     public static void WriteNew(string path,byte[] contents) {
         using(var stream=new FileStream(path,FileMode.CreateNew,FileSystemRights.FullControl,FileShare.None,4096,FileOptions.None,OwnerOnlySecurity())) {
@@ -134,6 +130,8 @@ public static class DepositSuiteJournalFiles {
     }
 }
 '@
+    $journalFileSource=$journalFileSource.Replace('/*DEPOSIT_HARNESS_ACL_METHOD*/',$script:DepositHarnessOwnerOnlyAclMethod)
+    Add-Type -TypeDefinition $journalFileSource
 }
 
 function Write-SuiteJournal([string]$Path,[string]$Content) {
