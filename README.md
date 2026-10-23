@@ -4,7 +4,7 @@ Deposit Server is the Neo4j plugin implementation for Deposit 2.0. The Deposit H
 
 ## Current state
 
-The build label is `0.0.0-dev`. The accepted source snapshots cover typed data, authorization, batch updates, resource storage, revision history, query, patterns, clone and import/export workflows, and browser sessions. Windows release and recovery behavior is complete in its approved server scope, with evidence qualifications recorded in the [implementation status](../deposit-hub/implementation_status.md#current-status). Python wrapper and GUI implementation remain pending.
+The accepted source snapshots cover typed data, authorization, batch updates, resource storage, revision history, query, patterns, clone and import/export workflows, and browser sessions. Windows release and recovery behavior is complete in its approved server scope, with evidence qualifications recorded in the [implementation status](../deposit-hub/implementation_status.md#current-status). Python wrapper and GUI implementation remain pending.
 
 ## Project documentation
 
@@ -16,7 +16,6 @@ The build label is `0.0.0-dev`. The accepted source snapshots cover typed data, 
 - [Selected test runner](scripts/Invoke-Tests.ps1)
 - [Seed, transition and verification scenarios](scripts/Invoke-TestScenario.ps1)
 
-The full suite runs the documented integration workflows, including seed/restart/verification transitions, browser workflows, crash recovery and Windows service/listener scenarios. The selected-test and scenario scripts remain available for focused work. Retired cumulative test gates and the legacy Codex/work-package runner have been removed. The inactive historical source formerly under the root `src` tree is preserved at [immutable commit `988e21b524befcd419dd6f1a950c1f170f44c60e`](https://github.com/demjanp/deposit-server/tree/988e21b524befcd419dd6f1a950c1f170f44c60e/src); the active Maven reactor is `plugin`, `runtime-probe` and `integration-tests`.
 
 ## Windows integration suite
 
