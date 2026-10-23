@@ -38,6 +38,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Codex ###
+.codex/
+
 ### Mac OS ###
 .DS_Store
 
