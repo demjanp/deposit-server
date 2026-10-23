@@ -28,7 +28,10 @@ function Set-OwnerOnlyDirectory([string]$Path) {
     $acl.SetOwner($owner)
     $acl.SetAccessRuleProtection($true,$false)
     $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($owner,'FullControl','ContainerInherit,ObjectInherit','None','Allow')))
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    # Set-Acl requests SACL privileges even though this helper only changes the
+    # owner and DACL. Persist those same owner/DACL sections through the .NET
+    # directory API so standard developer accounts can create the private root.
+    [IO.Directory]::SetAccessControl($Path, $acl)
 }
 
 if (-not ('DepositHarnessSecretStore' -as [type])) {

@@ -4,6 +4,7 @@ $ErrorActionPreference='Stop'
 $principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run this selective service-transition check from Administrator PowerShell.'}
 . (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1') -LibraryOnly
+. (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 $root=Get-HarnessRoot;$repo=Get-DepositServerRoot;$port=17770;$run=Join-Path $root 'runs\test-host';$private=Join-Path $root 'private\suite'
 Set-OwnerOnlyDirectory $private
 $journalPath=Join-Path $private 'active.json';$lockPath=Join-Path $private 'suite.lock';Assert-HarnessPlainPath $lockPath
@@ -87,7 +88,8 @@ try{
     Invoke-SuiteNative (Join-Path $run 'distribution\deposit.bat') @('install-service') 'install-temporary-service'
     Update-SuiteJournal $journalPath {param($j)$j.installationPhase='configured'}
     Invoke-SuitePhase 'Start'
-    Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-CleanProvisioningScenario.ps1') @('-ReleasePackage',(Join-Path $root 'build\deposit-server-0.0.0-dev.zip'),'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'clean-provision.log')) 'clean-provision' 3600
+    $build=Get-DepositBuildMetadata $repo $root
+    Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-CleanProvisioningScenario.ps1') @('-ReleasePackage',(Join-Path $root "build\$($build.ArchiveFile)"),'-Root',$root,'-Port',[string]$port,'-LogPath',(Join-Path $logs 'clean-provision.log')) 'clean-provision' 3600
 }catch{$failure=$_.Exception.Message}finally{
     if($journalCreated){try{Invoke-SuiteCleanup $journalPath $invocation}catch{$failure=($failure+' Cleanup failed: '+$_.Exception.Message).Trim()}}
     if($watchdog){$null=$watchdog.WaitForExit(10000);$watchdog.Dispose()}

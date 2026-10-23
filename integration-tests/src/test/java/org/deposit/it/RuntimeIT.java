@@ -22,6 +22,7 @@ class RuntimeIT {
     static String otherNamespace;
     static final String PASSWORD = Objects.requireNonNull(System.getenv("DEPOSIT_TEST_PASSWORD"), "DEPOSIT_TEST_PASSWORD required");
     static final String URI = Objects.requireNonNull(System.getenv("DEPOSIT_TEST_URI"), "DEPOSIT_TEST_URI required");
+    static final String EXPECTED_DEPOSIT_VERSION = Objects.requireNonNull(System.getenv("DEPOSIT_EXPECTED_VERSION"), "DEPOSIT_EXPECTED_VERSION required");
     static final boolean VERIFY_ONLY = "verify".equals(System.getenv("DEPOSIT_TEST_MODE"));
     static final Config CONFIG = Config.builder().withConnectionTimeout(5, java.util.concurrent.TimeUnit.SECONDS).build();
 
@@ -50,7 +51,7 @@ class RuntimeIT {
 
     @Test @Order(1) void discoveryAndRuntime() {
         var rows=query("CALL deposit.get.info()"); assertEquals(1,rows.size());
-        assertEquals(Map.of("version","0.0.0-dev"), rows.getFirst().get("data").asMap());
+        assertEquals(Map.of("version",EXPECTED_DEPOSIT_VERSION), rows.getFirst().get("data").asMap());
         assertEquals(List.of("data"),rows.getFirst().keys());
         assertEquals(System.getenv("DEPOSIT_TEST_NEO4J_VERSION"),query("RETURN apoc.version() AS version").getFirst().get("version").asString());
         assertEquals(System.getenv("DEPOSIT_TEST_NEO4J_VERSION"),query("CALL dbms.components() YIELD versions RETURN versions[0] AS version").getFirst().get("version").asString());

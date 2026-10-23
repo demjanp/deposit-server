@@ -1,9 +1,7 @@
 package org.deposit.runtime;
 
-import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.neo4j.procedure.Description;
@@ -14,19 +12,12 @@ import org.neo4j.procedure.Procedure;
 public class Discovery {
     @org.neo4j.procedure.Context public org.neo4j.graphdb.GraphDatabaseService db;
     @Procedure(name = "deposit.get.info", mode = Mode.READ)
-    @Description("Return the Deposit development version. No Deposit login is required.")
+    @Description("Return the running Deposit version. No Deposit login is required.")
     public Stream<Info> info() {
         RuntimeReadiness.requireReady();
         var database=(org.neo4j.kernel.internal.GraphDatabaseAPI)db;
         deposit.common.ServerContext.forDatabase(database.databaseId().databaseId().uuid()).requireReady();
-        Properties build = new Properties();
-        try (var stream = Discovery.class.getResourceAsStream("/deposit-build.properties")) {
-            if (stream == null) throw new IllegalStateException("Missing Deposit build metadata");
-            build.load(stream);
-        } catch (IOException e) {
-            throw new IllegalStateException("Cannot read Deposit build metadata", e);
-        }
-        return Stream.of(new Info(build.getProperty("version")));
+        return Stream.of(new Info(deposit.common.DepositInfo.version()));
     }
 
     public static class Info {

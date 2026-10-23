@@ -33,6 +33,7 @@ git.properties
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
+**/.git-versioned-pom.xml
 
 ### VS Code ###
 .vscode/

@@ -25,6 +25,8 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+$repo=Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
 $root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $root
@@ -274,7 +276,8 @@ try {
     Invoke-SuitePhase 'Provision'
     if($SelectedKind -ne 'Unit') {
         Invoke-SuitePhase 'Build'
-        $archive=Join-Path $root 'build\deposit-server-0.0.0-dev.zip'
+        $build=Get-DepositBuildMetadata $repo $root
+        $archive=Join-Path $root "build\$($build.ArchiveFile)"
         Invoke-SuitePhase 'Package'
         Update-SuiteJournal $journalPath {param($j) $j.runtimeOwned=$true}
         Invoke-SuitePhase 'Install' @('-ReleasePackage',$archive)

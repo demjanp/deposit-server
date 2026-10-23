@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot '..\DepositBuildMetadata.ps1')
+
 function Invoke-Build($Context,[string]$ScriptsDir) {$Root=$Context.Root; $repo=$Context.Repo; $run=$Context.Run; $evidence=$Context.Evidence; $manifest=$Context.Manifest; $spatialLock=$Context.SpatialLock; $ocflLock=$Context.OcflLock; $formatLock=$Context.FormatLock; $RunId=$Context.RunId; $Port=$Context.Port; $ReleasePackage=$Context.ReleasePackage; $BoltUri=$Context.BoltUri; $DiagnosticBuild=$Context.DiagnosticBuild; $WithoutProbe=$Context.WithoutProbe; $StartupTimeoutSeconds=$Context.StartupTimeoutSeconds; $installation=$Context.Installation; $credentialTarget=$Context.CredentialTarget; $utf8=$Context.Utf8;
     Test-Artifacts
     $null=Get-ToolDirectory $manifest 'temurin' $Root
@@ -12,8 +14,10 @@ function Invoke-Build($Context,[string]$ScriptsDir) {$Root=$Context.Root; $repo=
 function Invoke-Package($Context,[string]$ScriptsDir) {$Root=$Context.Root; $repo=$Context.Repo; $run=$Context.Run; $evidence=$Context.Evidence; $manifest=$Context.Manifest; $spatialLock=$Context.SpatialLock; $ocflLock=$Context.OcflLock; $formatLock=$Context.FormatLock; $RunId=$Context.RunId; $Port=$Context.Port; $ReleasePackage=$Context.ReleasePackage; $BoltUri=$Context.BoltUri; $DiagnosticBuild=$Context.DiagnosticBuild; $WithoutProbe=$Context.WithoutProbe; $StartupTimeoutSeconds=$Context.StartupTimeoutSeconds; $installation=$Context.Installation; $credentialTarget=$Context.CredentialTarget; $utf8=$Context.Utf8;
     Test-Artifacts
     Invoke-ProvisionLicenses
-    $plugin=Join-Path $Root 'build\deposit-plugin\target\deposit-plugin-0.0.0-dev.jar'
+    $build=Get-DepositBuildMetadata $repo $Root
+    $plugin=Join-Path $Root "build\deposit-plugin\target\$($build.PluginFile)"
     if(!(Test-Path -LiteralPath $plugin -PathType Leaf)) {throw 'Build the plugin before packaging'}
+    if((Get-DepositJarVersion $plugin) -cne $build.Version){throw 'Build metadata version differs from plugin JAR metadata'}
     $jar=[IO.Compression.ZipFile]::OpenRead($plugin)
     try {if(@($jar.Entries | Where-Object {$_.FullName.EndsWith('.class') -and !$_.FullName.StartsWith('org/deposit/runtime/') -and !$_.FullName.StartsWith('deposit/')}).Count) {throw 'Normal plugin contains foreign/test classes'}} finally {$jar.Dispose()}
     $destination=Join-Path $Root 'build\distribution'
@@ -48,7 +52,7 @@ function Invoke-Package($Context,[string]$ScriptsDir) {$Root=$Context.Root; $rep
     foreach($lock in @($spatialLock,$ocflLock,$formatLock)){foreach($artifact in @($lock.dependencies|Where-Object ship)){$expectedPluginPaths.Add('plugins/'+$artifact.file)}}
     Get-ReleaseManifestData $destination $expectedPluginPaths.ToArray()
     if(!(Test-DepositReleasePackage $destination)){throw 'Generated release package failed manifest verification'}
-    $archivePath=Join-Path $Root 'build\deposit-server-0.0.0-dev.zip'
+    $archivePath=Join-Path $Root "build\$($build.ArchiveFile)"
     New-DeterministicZip $destination $archivePath
     $archiveCheck=Join-Path $run ('tmp\release-verify-'+[Guid]::NewGuid().ToString('N'))
     try {

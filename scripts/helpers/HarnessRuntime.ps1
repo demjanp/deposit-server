@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot '..\DepositBuildMetadata.ps1')
+
 function Write-Json($Value,[string]$Path) {
     $temporary=$Path+'.'+[Guid]::NewGuid().ToString('N')+'.partial'
     [IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 15), $utf8)
@@ -17,7 +19,8 @@ function Invoke-Install($Context,[string]$ScriptsDir) {$Root=$Context.Root; $rep
     Test-Artifacts
     $runtimeDirectory=Get-ToolDirectory $manifest 'neo4j' $Root
     $null=Get-ToolDirectory $manifest 'temurin' $Root
-    if (!$DiagnosticBuild -and !(Test-Path -LiteralPath "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-dev.jar" -PathType Leaf)) {throw 'Build the plugin before installation'}
+    $build=$null
+    if (!$DiagnosticBuild) {$build=Get-DepositBuildMetadata $repo $Root;$pluginPath=Join-Path $Root "build\deposit-plugin\target\$($build.PluginFile)";if(!(Test-Path -LiteralPath $pluginPath -PathType Leaf)){throw 'Build the plugin before installation'};if((Get-DepositJarVersion $pluginPath) -cne $build.Version){throw 'Build metadata version differs from plugin JAR metadata'}}
     if (Test-Path "$run\owner.json") { Assert-Run; throw 'Stop and reset test-host before reinstalling' }
     $releaseMode=![string]::IsNullOrWhiteSpace($ReleasePackage)
     $distribution=Join-Path $run 'distribution'
@@ -51,9 +54,13 @@ function Invoke-Install($Context,[string]$ScriptsDir) {$Root=$Context.Root; $rep
         $expectedInstallation=@{neo4jHome=$installation;javaHome=$env:JAVA_HOME;dataRoot=(Join-Path $run 'resources');exportRoot=(Join-Path $run 'exports');mode='local'}
         if(!(Test-DepositReleasePackage -Root $distribution -ConfiguredInstallation -ExpectedInstallation $expectedInstallation)){throw 'Configured release installation failed manifest verification'}
     } else {
-    $plugin = "$Root\build\deposit-plugin\target\deposit-plugin-0.0.0-dev.jar"
-    $probe = "$Root\build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-dev.jar"
-    if ($DiagnosticBuild) { $plugin="$Root\diagnostic-build\deposit-plugin.jar"; $probe="$Root\diagnostic-build\deposit-runtime-probe.jar" }
+    if ($DiagnosticBuild) {
+        $plugin="$Root\diagnostic-build\deposit-plugin.jar"
+        $probe="$Root\diagnostic-build\deposit-runtime-probe.jar"
+    } else {
+        $plugin = Join-Path $Root "build\deposit-plugin\target\$($build.PluginFile)"
+        $probe = Join-Path $Root "build\deposit-runtime-probe\target\$($build.ProbeFile)"
+    }
     $files=@($plugin)
     if(!$WithoutProbe) {$files+=@($probe)}
     foreach ($file in $files) { Copy-Item -LiteralPath $file -Destination "$installation\plugins" }
@@ -351,8 +358,12 @@ function Invoke-Start($Context,[string]$ScriptsDir) {$Root=$Context.Root; $repo=
 }
 
 function Invoke-Readiness([DateTime]$Deadline) {
-    $env:DEPOSIT_TEST_PASSWORD=[DepositHarnessSecretStore]::Read($credentialTarget)
+    $previousExpectedVersion=[Environment]::GetEnvironmentVariable('DEPOSIT_EXPECTED_VERSION','Process')
     try {
+        $env:DEPOSIT_TEST_PASSWORD=[DepositHarnessSecretStore]::Read($credentialTarget)
+    $expectedPlugin=@(Get-ChildItem -LiteralPath (Join-Path $installation 'plugins') -Filter 'deposit-plugin*.jar' -File)
+        if($expectedPlugin.Count -ne 1){throw 'Installed plugins must contain exactly one versioned Deposit plugin JAR'}
+        $env:DEPOSIT_EXPECTED_VERSION=Get-DepositJarVersion $expectedPlugin[0].FullName
         $remaining=[int]($Deadline-[DateTime]::UtcNow).TotalMilliseconds
         if($remaining -le 0) {throw 'Readiness deadline exhausted'}
         $readinessUri=if($BoltUri){$BoltUri}else{"bolt://127.0.0.1:$Port"}
@@ -362,8 +373,8 @@ function Invoke-Readiness([DateTime]$Deadline) {
         try {
             if(!$client.WaitForExit($remaining)) {$client.Kill(); throw 'Authenticated readiness timed out'}
             if ($client.ExitCode -ne 0) {throw 'Deposit startup readiness rejected; see readiness.err.log. Server retained for inspection.'}
-        } finally {$client.Dispose()}
-    } finally {$ErrorActionPreference='Stop'; Remove-Item Env:\DEPOSIT_TEST_PASSWORD -ErrorAction SilentlyContinue}
+    } finally {$client.Dispose()}
+    } finally {$ErrorActionPreference='Stop';[Environment]::SetEnvironmentVariable('DEPOSIT_EXPECTED_VERSION',$previousExpectedVersion,'Process'); Remove-Item Env:\DEPOSIT_TEST_PASSWORD -ErrorAction SilentlyContinue}
 }
 
 function Invoke-Stop($Context,[string]$ScriptsDir,[bool]$Force) {$Root=$Context.Root; $repo=$Context.Repo; $run=$Context.Run; $evidence=$Context.Evidence; $manifest=$Context.Manifest; $spatialLock=$Context.SpatialLock; $ocflLock=$Context.OcflLock; $formatLock=$Context.FormatLock; $RunId=$Context.RunId; $Port=$Context.Port; $ReleasePackage=$Context.ReleasePackage; $BoltUri=$Context.BoltUri; $DiagnosticBuild=$Context.DiagnosticBuild; $WithoutProbe=$Context.WithoutProbe; $StartupTimeoutSeconds=$Context.StartupTimeoutSeconds; $installation=$Context.Installation; $credentialTarget=$Context.CredentialTarget; $utf8=$Context.Utf8;

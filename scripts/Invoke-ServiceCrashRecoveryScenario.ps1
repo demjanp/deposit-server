@@ -13,6 +13,7 @@ $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
 . (Join-Path $PSScriptRoot 'ScenarioPrimitives.ps1')
+. (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 Assert-HarnessRoot $Root
 $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $rootPath
@@ -34,8 +35,9 @@ $distribution=Join-Path $run 'distribution'
 $launcher=Join-Path $distribution 'deposit.bat'
 $statePath=Join-Path $distribution 'deposit.install.json'
 $config=Join-Path $neo4j 'conf\neo4j.conf'
-$probe=Join-Path $rootPath 'build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-dev.jar'
-$probeTarget=Join-Path $neo4j 'plugins\deposit-runtime-probe-0.0.0-dev.jar'
+$build=Get-DepositBuildMetadata $repo $rootPath
+$probe=Join-Path $rootPath "build\deposit-runtime-probe\target\$($build.ProbeFile)"
+$probeTarget=Join-Path $neo4j "plugins\$($build.ProbeFile)"
 $utf8=New-Object Text.UTF8Encoding($false)
 $log=New-Object System.Collections.Generic.List[string]
 $evidence=Join-Path (Split-Path $LogPath -Parent) ([IO.Path]::GetFileNameWithoutExtension($LogPath)+'.preserved-state')

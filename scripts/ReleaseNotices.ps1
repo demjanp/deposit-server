@@ -1,5 +1,6 @@
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'ReleaseManifest.ps1')
+. (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 function Get-ReleaseNoticeHash([byte[]]$Bytes) {
@@ -42,10 +43,12 @@ function Write-DepositReleaseNotices([string]$PackageRoot,[string]$RepositoryRoo
         if($artifact.Count -ne 1){throw "Missing release artifact identity: $id"};$artifact=$artifact[0]
         $inputs[$artifact.file]=[ordered]@{id=$id;sha256=$artifact.sha256;source=[ordered]@{lock='artifacts.json';url=$artifact.url};declarations=@([ordered]@{name=$artifact.license;provenance='artifacts.json'})}
     }
-    [xml]$project=Get-Content -LiteralPath (Join-Path $RepositoryRoot 'pom.xml') -Raw
-    $version=$project.SelectSingleNode('/*[local-name()="project"]/*[local-name()="version"]').InnerText
-    $projectFile="deposit-plugin-$version.jar"
-    $inputs[$projectFile]=[ordered]@{id="org.deposit:deposit-plugin:$version";version=$version;sha256=$null;source=[ordered]@{lock='pom.xml';url='repository:plugin/pom.xml'};declarations=@([ordered]@{name='GPL-3.0';provenance='repository:LICENSE'})}
+    $projectJars=@(Get-ChildItem -LiteralPath (Join-Path $PackageRoot 'plugins') -File -Filter 'deposit-plugin-*.jar')
+    if($projectJars.Count -ne 1){throw 'Release package must contain exactly one Deposit plugin JAR'}
+    $projectFile=$projectJars[0].Name;$version=Get-DepositJarVersion $projectJars[0].FullName
+    if($projectFile -cne "deposit-plugin-$version.jar"){throw 'Deposit plugin JAR filename differs from its embedded version'}
+    $inputs[$projectFile]=[ordered]@{id="org.deposit:deposit-plugin:$version";version=$version;sha256=$null;source=[ordered]@{lock='deposit-build.properties';url='repository:plugin JAR metadata'};declarations=@([ordered]@{name='GPL-3.0';provenance='repository:LICENSE'})}
+    foreach($component in $noticesLock.components){if($component.file -ceq 'deposit-plugin-{version}.jar'){$component.file=$projectFile;$component.id="org.deposit:deposit-plugin:$version";$component.version=$version}}
     $lockedFiles=@($noticesLock.components|ForEach-Object {[string]$_.file})
     $null=Get-ReleasePathSet $lockedFiles 'notice lock component'
     $actualFiles=@(Get-ChildItem -LiteralPath (Join-Path $PackageRoot 'plugins') -File -Filter '*.jar'|ForEach-Object {$_.Name})
@@ -96,7 +99,7 @@ function Write-DepositReleaseNotices([string]$PackageRoot,[string]$RepositoryRoo
     $indexPath=Join-Path $PackageRoot 'notices/component-index.json'
     New-Item -ItemType Directory -Force -Path (Split-Path $indexPath -Parent)|Out-Null
     [IO.File]::WriteAllText($indexPath,(ConvertTo-Json -InputObject $index -Depth 20)+"`n",(New-Object Text.UTF8Encoding($false)))
-    Copy-Item -LiteralPath (Join-Path $runtime 'release-notices-lock.json') -Destination (Join-Path $PackageRoot 'release-notices-lock.json')
+    [IO.File]::WriteAllText((Join-Path $PackageRoot 'release-notices-lock.json'),($noticesLock|ConvertTo-Json -Depth 30)+"`n",(New-Object Text.UTF8Encoding($false)))
     return Test-DepositReleaseNotices $PackageRoot
 }
 

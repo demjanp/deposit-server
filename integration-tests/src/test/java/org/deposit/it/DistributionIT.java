@@ -11,7 +11,7 @@ class DistributionIT {
     @Test void normalDistributionExcludesProbePermissionsAndProcedures() {
         try(var driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")),
                 Config.builder().withConnectionTimeout(5,TimeUnit.SECONDS).build());var session=driver.session()) {
-            assertEquals("0.0.0-dev",session.run("CYPHER 25 CALL deposit.get.info() YIELD data RETURN data.version AS v").single().get("v").asString());
+            assertEquals(System.getenv("DEPOSIT_EXPECTED_VERSION"),session.run("CYPHER 25 CALL deposit.get.info() YIELD data RETURN data.version AS v").single().get("v").asString());
             assertEquals(0,session.run("SHOW PROCEDURES YIELD name WHERE name STARTS WITH 'testprobe.' RETURN count(*) AS n").single().get("n").asInt());
             assertEquals("",session.run("SHOW SETTINGS 'dbms.security.procedures.unrestricted' YIELD value RETURN value").single().get("value").asString());
             var error=assertThrows(ClientException.class,()->session.run("CALL testprobe.geometry.inspect('unused',null)").consume());

@@ -13,6 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\HarnessPaths.ps1"
+. "$PSScriptRoot\DepositBuildMetadata.ps1"
 $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $Root
 . "$PSScriptRoot\IntegrationRunContext.ps1"
@@ -53,7 +54,7 @@ if ($Kind -eq 'Integration') {
     . "$PSScriptRoot\IntegrationHarnessSecrets.ps1"
     $manifest = Get-Content (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
     $savedEnvironment = @{}
-    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','DEPOSIT_TEST_ROOT','DEPOSIT_TEST_URI','DEPOSIT_TEST_PASSWORD','DEPOSIT_TEST_HTTP_BASE','DEPOSIT_TEST_NEO4J_VERSION','DEPOSIT_TEST_BASELINE_MAP','DEPOSIT_TEST_MODE','DEPOSIT_TEST_EXPECTED_FAILURE','DEPOSIT_TEST_RESOURCE_CRASH_POINT','DEPOSIT_TEST_HISTORY_CRASH_POINT','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER')) {
+    foreach ($name in @('JAVA_HOME','MAVEN_USER_HOME','TEMP','TMP','DEPOSIT_TEST_ROOT','DEPOSIT_TEST_URI','DEPOSIT_TEST_PASSWORD','DEPOSIT_TEST_HTTP_BASE','DEPOSIT_TEST_NEO4J_VERSION','DEPOSIT_TEST_BASELINE_MAP','DEPOSIT_TEST_MODE','DEPOSIT_TEST_EXPECTED_FAILURE','DEPOSIT_TEST_RESOURCE_CRASH_POINT','DEPOSIT_TEST_HISTORY_CRASH_POINT','DEPOSIT_EXPECTED_VERSION','SE_CACHE_PATH','SE_AVOID_STATS','SE_BROWSER_PATH','SE_GECKODRIVER')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
     }
     $run = Join-Path $Root 'runs\test-host'
@@ -64,6 +65,7 @@ if ($Kind -eq 'Integration') {
     $env:MAVEN_USER_HOME = Join-Path $Root 'maven-user'
     $env:TEMP = Join-Path $Root 'tmp'; $env:TMP=$env:TEMP; $env:DEPOSIT_TEST_ROOT=$Root
     $env:DEPOSIT_TEST_URI = "bolt://127.0.0.1:$Port"
+    $env:DEPOSIT_EXPECTED_VERSION=(Get-DepositBuildMetadata $repo $Root).Version
     $env:DEPOSIT_TEST_PASSWORD = [DepositHarnessSecretStore]::Read('Deposit/IntegrationHarness/test-host')
     $env:DEPOSIT_TEST_HTTP_BASE = $downloadBase
     $env:DEPOSIT_TEST_NEO4J_VERSION = $manifest.neo4jVersion

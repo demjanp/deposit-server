@@ -23,9 +23,12 @@ try{
         @{file='spatial-1.0.jar';id='spatial';version='1.0';entries=@{'library/Main.class'='class'}},
         @{file='provider-1.0.jar';id='bcrypt-provider';version='1.0';entries=@{'about.html'='EPL 2.0';'about_files/third-party.txt'='third party attribution';'org/author/LICENSE.class'='class'}}
     )){
+        if($spec.id -like 'org.deposit:*'){$spec.entries['deposit-build.properties']='version=1.0'}
         Make-NoticeJar "$package/plugins/$($spec.file)" $spec.entries;$hash=(Get-FileHash "$package/plugins/$($spec.file)" -Algorithm SHA256).Hash.ToLowerInvariant()
-        $embedded=@($spec.entries.Keys|Where-Object {$_ -notmatch '\.class$'}|Sort-Object|ForEach-Object {@{entry=$_;sha256=(Get-ReleaseNoticeHash ([Text.Encoding]::UTF8.GetBytes($spec.entries[$_])))}})
-        $components.Add(@{file=$spec.file;id=$spec.id;version=$spec.version;sha256=$hash;embedded=$embedded;supplemental=@(@{path='runtime/notices/source.txt';sha256=$sourceHash;kind='upstreamLicenseText';source=@{url='https://upstream.example/version-1.0/LICENSE';sha256=$sourceHash}});declarationDiscrepancy='upstream declarations differ; unresolved'})
+        $embedded=@($spec.entries.Keys|Where-Object {$_ -notmatch '\.class$' -and $_ -cne 'deposit-build.properties'}|Sort-Object|ForEach-Object {@{entry=$_;sha256=(Get-ReleaseNoticeHash ([Text.Encoding]::UTF8.GetBytes($spec.entries[$_])))}})
+        $lockFile=$spec.file;$lockId=$spec.id;$lockVersion=$spec.version
+        if($spec.id -like 'org.deposit:*'){$lockFile='deposit-plugin-{version}.jar';$lockId='org.deposit:deposit-plugin:{version}';$lockVersion='{version}'}
+        $components.Add(@{file=$lockFile;id=$lockId;version=$lockVersion;sha256=$hash;embedded=$embedded;supplemental=@(@{path='runtime/notices/source.txt';sha256=$sourceHash;kind='upstreamLicenseText';source=@{url='https://upstream.example/version-1.0/LICENSE';sha256=$sourceHash}});declarationDiscrepancy='upstream declarations differ; unresolved'})
         if($spec.id -notlike 'org.deposit:*'){$artifacts.Add(@{file=$spec.file;id=$spec.id;sha256=$hash;url='https://upstream.example/'+$spec.file;license='test declaration'})}
     }
     foreach($id in @('neo4j','temurin')){$artifacts.Add(@{id=$id;file="$id-1.0.zip";sha256=('0'*64);url="https://upstream.example/$id";license='external declaration'})}
@@ -50,7 +53,7 @@ try{
     $bad=ConvertFrom-Json $originalLock;$bad.components[1].embedded[0].sha256='0'*64;Write-NoticeJson $lockPath $bad;Reject-Notice {Write-DepositReleaseNotices $package $repository} 'Wrong embedded notice hash accepted';[IO.File]::WriteAllText($lockPath,$originalLock)
     $bad=ConvertFrom-Json $originalLock;$bad.components[1].embedded=@();Write-NoticeJson $lockPath $bad;Reject-Notice {Write-DepositReleaseNotices $package $repository} 'Omitted embedded notice accepted';[IO.File]::WriteAllText($lockPath,$originalLock)
     $bad=ConvertFrom-Json $originalLock;$bad.components[0].supplemental[0].path='../escape.txt';Write-NoticeJson $lockPath $bad;Reject-Notice {Write-DepositReleaseNotices $package $repository} 'Notice source traversal accepted';[IO.File]::WriteAllText($lockPath,$originalLock)
-    $bad=ConvertFrom-Json $originalLock;$bad.components[0].id='incorrect-component';Write-NoticeJson $lockPath $bad;Reject-Notice {Write-DepositReleaseNotices $package $repository} 'Wrong component identity accepted';[IO.File]::WriteAllText($lockPath,$originalLock)
+    $bad=ConvertFrom-Json $originalLock;$bad.components[1].id='incorrect-component';Write-NoticeJson $lockPath $bad;Reject-Notice {Write-DepositReleaseNotices $package $repository} 'Wrong component identity accepted';[IO.File]::WriteAllText($lockPath,$originalLock)
     [IO.File]::WriteAllText("$package/notices/components/apoc-1.0.jar/META-INF/NOTICE.txt",'changed');Reject-Notice {Test-DepositReleaseNotices $package} 'Changed packaged attribution accepted'
     Write-Output "PASS: Release notices ($script:assertions assertions)"
 }finally{

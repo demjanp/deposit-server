@@ -35,7 +35,7 @@ class AuthenticationNamespaceLifecycleIT {
     private static String readSecret(Path path) {try{return Files.readString(path).trim();}catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}}
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
-        assertEquals("0.0.0-dev",query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
+        assertEquals(System.getenv("DEPOSIT_EXPECTED_VERSION"),query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
         String secret=Files.readString(TestInstallationPaths.bootstrapSecret()).trim();
         var request=m("bootstrapSecret",secret,"username",ACCOUNT,"password",PASSWORD);
         try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(ACCOUNT,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("data").get("username").asString());tx.rollback();}
@@ -60,6 +60,7 @@ class AuthenticationNamespaceLifecycleIT {
             assertTrue(entered.await(5,TimeUnit.SECONDS));assertThrows(TimeoutException.class,()->competing.get(250,TimeUnit.MILLISECONDS));
             transaction.commit();var failure=assertThrows(ExecutionException.class,()->competing.get(10,TimeUnit.SECONDS));assertTrue(failure.getCause().getMessage().contains("REVISION_CONFLICT"));serverRevision=revision(pending);
         }
+        assertEquals(System.getenv("DEPOSIT_EXPECTED_VERSION"),query("MATCH (n:Namespace {id:$id}) RETURN n.depositVersion AS version",Map.of("id",ns)).getFirst().get("version").asString());
         try(var s=driver.session();var tx=s.beginTransaction()) {tx.run("CALL deposit.create.namespace($r,$c)",m("r",m("name","rolled-back","historyMode","disabled"),"c",write(token,serverRevision))).consume();tx.rollback();}
         var result=call("deposit.create.namespace",m("name","N2","historyMode","disabled"),write(token,serverRevision));otherNs=id(result);serverRevision=revision(result);
         var replay=call("deposit.create.namespace",request,context);assertEquals(ns,id(replay));assertEquals(serverRevision,revision(replay));

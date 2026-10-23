@@ -8,6 +8,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 . (Join-Path $PSScriptRoot 'IntegrationHarnessSecrets.ps1')
 . (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1') -JournalPath $env:DEPOSIT_SUITE_JOURNAL -LibraryOnly
 Assert-HarnessRoot $Root
@@ -268,7 +269,8 @@ try{
     $trackFreshChildren=$true
     Invoke-Phase 'Install' @('-ReleasePackage',$archive)
     if($FreshAccountProbe){
-        Copy-Item -LiteralPath (Join-Path $rootPath 'build\deposit-runtime-probe\target\deposit-runtime-probe-0.0.0-dev.jar') -Destination (Join-Path $run 'neo4j\plugins')
+        $build=Get-DepositBuildMetadata $repo $rootPath
+        Copy-Item -LiteralPath (Join-Path $rootPath "build\deposit-runtime-probe\target\$($build.ProbeFile)") -Destination (Join-Path $run 'neo4j\plugins')
         $config=Join-Path $run 'neo4j\conf\neo4j.conf'
         $text=[IO.File]::ReadAllText($config)
         $text=[regex]::Replace($text,'(?m)^dbms\.security\.procedures\.allowlist=.*$','dbms.security.procedures.allowlist=deposit.*,testprobe.geometry.*,testprobe.security.*,testprobe.storage.*,apoc.version')

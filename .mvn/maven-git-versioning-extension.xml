@@ -1,0 +1,9 @@
+<configuration xmlns="https://github.com/qoomon/maven-git-versioning-extension" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://github.com/qoomon/maven-git-versioning-extension https://qoomon.github.io/maven-git-versioning-extension/configuration-9.12.0.xsd">
+  <describeTagPattern><![CDATA[(?<tagversion>\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)]]></describeTagPattern>
+  <describeTagFirstParent>true</describeTagFirstParent>
+  <refs considerTagsOnBranches="true">
+    <ref type="tag"><pattern><![CDATA[(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)]]></pattern><version>${ref.version}${dirty:+-DIRTY-SNAPSHOT}</version></ref>
+    <ref type="branch"><pattern><![CDATA[.+]]></pattern><version>${describe.tag.tagversion}-post.${describe.distance}.g${commit.short}${dirty:+-DIRTY}-SNAPSHOT</version></ref>
+  </refs>
+  <rev><version>${describe.tag.tagversion}-post.${describe.distance}.g${commit.short}${dirty:+-DIRTY}-SNAPSHOT</version></rev>
+</configuration>
