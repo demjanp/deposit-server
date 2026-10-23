@@ -1,4 +1,4 @@
-﻿// Create this sample in a new, selected Namespace. Set the `token` parameter
+// Create this sample in a new, selected Namespace. Set the `token` parameter
 // with :param {token: '...'} in Cypher Shell before sourcing this file.
 CALL deposit.apply.batch([
   {
