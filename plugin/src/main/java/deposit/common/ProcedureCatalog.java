@@ -70,7 +70,7 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.set.membership",new Spec("namespace",true,List.of("objectId","@Class:classId")));
   SPECS.put("deposit.apply.batch",new Spec("namespace",true,List.of("commands")));
   SPECS.put("deposit.delete.all",new Spec("namespace",true,List.of("confirmNamespaceName")));
-  SPECS.put("deposit.utils.bootstrap",new Spec("server",false,List.of("bootstrapSecret","username","password")));
+  SPECS.put("deposit.utils.bootstrap",new Spec("server",false,List.of("username","password")));
   SPECS.put("deposit.utils.login",new Spec("server",false,List.of("username","password")));
   SPECS.put("deposit.utils.logout",new Spec("server",false,List.of()));
   SPECS.put("deposit.create.user",new Spec("server",true,List.of("username","password","+")));

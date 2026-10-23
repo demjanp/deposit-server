@@ -22,7 +22,7 @@ For the pinned release checklist and initial password setup, follow the [Windows
    Replace the example paths with the actual Neo4j, Java, resource and export paths. The final number is the Bolt port; it defaults to `7687`.
 5. Open a Bolt client on the server machine using `bolt://127.0.0.1:7687`.
 
-The launcher installs the plugin and its dependencies, enables authentication, configures resource storage and a loopback download listener, and protects the bootstrap-secret directory. It disables Neo4j HTTP/HTTPS. It does not change firewall rules or install a Windows service. Use `.\deposit.bat stop` for a graceful stop.
+The launcher installs the plugin and its dependencies, enables authentication, configures resource storage and a loopback download listener, and protects `secretRoot`. Deposit uses this directory for persistent cursor and shutdown-control keys. Create the first Deposit administrator over an authenticated Bolt connection. The launcher disables Neo4j HTTP/HTTPS. It does not change firewall rules or install a Windows service. Use `.\deposit.bat stop` for a graceful stop.
 
 For a Windows service, run `.\deposit.bat install-service` from an elevated shell. The launcher uses a dedicated Neo4j service identity by default. Before exposing the service to remote clients, configure a private Bolt interface and certificate-validating TLS. Use `.\deposit.bat remove-service` to stop and unregister it; the command does not delete the database or Deposit files. Do not use the local-console and service modes against one Neo4j installation at the same time.
 
@@ -53,7 +53,7 @@ Neo4j settings belong in `conf/neo4j.conf`. Deposit settings belong in `conf/dep
 | --- | --- |
 | `resourceRoot` | Writable Deposit resource container. The server creates staging, OCFL and OCFL work directories below it. |
 | `exportRoot` | Separate writable directory for temporary export files. |
-| `secretRoot` | Protected directory for bootstrap and cursor secrets. |
+| `secretRoot` | Protected directory for persistent cursor and shutdown-control keys. |
 | `download.listenAddress`, `download.port` | Address and port for authenticated resource downloads. The local launcher binds to loopback and allocates a dedicated port. |
 | `download.publicBaseUrl` | Stable base URL embedded in exported resource links. Local use should use the loopback URL. Remote access requires HTTPS. |
 | `download.tlsKeyStore`, `download.tlsKeyStorePasswordFile` | Optional direct TLS settings for the download listener. Store the password file so only the service identity can read it. |

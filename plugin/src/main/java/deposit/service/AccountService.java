@@ -6,19 +6,24 @@ import deposit.repository.CoreRepository;
 import java.util.*;
 import java.time.*;
 import org.neo4j.graphdb.Node;
+import org.neo4j.internal.kernel.api.security.AuthSubject;
+import org.neo4j.internal.kernel.api.security.AuthenticationResult;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 public final class AccountService extends ActionService {
     public AccountService(RequestContext c) {super(c);}
     public DataRow bootstrap(Map<String,Object> request) {
-        fields(request,"bootstrapSecret","username","password");
-        String secret=string(request.get("bootstrapSecret")),username=name(request.get("username")),password=AccountCredentials.password(request.get("password"));
+        var security=((InternalTransaction)c.tx).securityContext();var subject=security.subject();
+        if(security.isAuthDisabled()||subject==AuthSubject.AUTH_DISABLED||subject==AuthSubject.ANONYMOUS||subject.getAuthenticationResult()!=AuthenticationResult.SUCCESS)
+            c.fail("AUTH_FAILED","Bootstrap requires an authenticated Neo4j administrator");
+        fields(request,"username","password");
+        String username=name(request.get("username")),password=AccountCredentials.password(request.get("password"));
         if(c.state.mutation||c.state.selection||c.state.scoped)c.fail("VALIDATION_FAILED","Bootstrap must be the transaction's only action");c.state.mutation=true;
         c.server.guard(c.state,false);
         c.server.lockServer(c.state);
-        if(c.server.revision(c.state)!=0||repo.bootstrapped()||!c.server.acceptsBootstrap(secret))c.fail("AUTH_FAILED","Bootstrap unavailable or secret invalid");
+        if(c.server.revision(c.state)!=0||repo.bootstrapped())c.fail("AUTH_FAILED","Bootstrap unavailable");
         Node user=repo.create("User",null,null,Json.map("username",username,"passwordHash",AccountCredentials.hash(password),"enabled",true,"serverRole","administrator"));
-        repo.markBootstrap();c.state.serverChanged=true;c.state.afterCommit.add(c.server::consumeBootstrap);c.revision=c.server.revision(c.state);
+        repo.markBootstrap();c.state.serverChanged=true;c.revision=c.server.revision(c.state);
         return new DataRow(repo.data(user),c.meta());
     }
     public LoginRow login(Map<String,Object> request) {

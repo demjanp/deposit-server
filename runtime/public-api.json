@@ -685,11 +685,6 @@
     "name": "deposit.utils.bootstrap",
     "args": [
       {
-        "name": "bootstrapSecret",
-        "type": "String",
-        "binding": "bootstrapSecret"
-      },
-      {
         "name": "username",
         "type": "String",
         "binding": "username"
@@ -703,7 +698,8 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": false
+    "action": false,
+    "admin": true
   },
   {
     "name": "deposit.utils.login",

@@ -105,7 +105,7 @@ final class CorpusCatalog {
  BINDINGS.put("deposit.delete.all",List.of("confirmNamespaceName"));
  OUTPUTS.put("deposit.delete.all","data");
  ACTIONS.add("deposit.delete.all");
- BINDINGS.put("deposit.utils.bootstrap",List.of("bootstrapSecret","username","password"));
+ BINDINGS.put("deposit.utils.bootstrap",List.of("username","password"));
  OUTPUTS.put("deposit.utils.bootstrap","data");
  SERVER.add("deposit.utils.bootstrap");
  BINDINGS.put("deposit.utils.login",List.of("username","password"));

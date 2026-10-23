@@ -24,5 +24,4 @@ final class TestInstallationPaths {
             return Path.of(configured);
         }catch(java.io.IOException failure){throw new UncheckedIOException("Cannot read test harness secret configuration",failure);}
     }
-    static Path bootstrapSecret(){return secretRoot().resolve("deposit-bootstrap.secret");}
 }

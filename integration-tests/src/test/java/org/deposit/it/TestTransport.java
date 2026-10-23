@@ -41,6 +41,13 @@ final class TestTransport {
         }
     }
 
+    static void bootstrapIfFresh(Driver driver, Duration timeout, String username, String password) {
+        try { call(driver, timeout, "deposit.utils.bootstrap", username, password); }
+        catch (org.neo4j.driver.exceptions.ClientException failure) {
+            if (!failure.getMessage().contains("AUTH_FAILED")) throw failure;
+        }
+    }
+
     static java.util.List<Record> query(Driver driver, String text, Map<String,Object> parameters, Duration timeout) {
         try (var session = driver.session()) {
             return session.run(text, parameters,

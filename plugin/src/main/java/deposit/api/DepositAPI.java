@@ -82,8 +82,9 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p36(@Name("commands") List<Object> a0,@Name("token") String token) { return invokePublic(token,"deposit.apply.batch",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.delete.all",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p37(@Name("confirmNamespaceName") String a0,@Name("token") String token) { return invokePublic(token,"deposit.delete.all",Arrays.asList(a0)).map(PublicResults::data); }
+ @Admin
  @Procedure(name="deposit.utils.bootstrap",mode=Mode.WRITE)
- public Stream<PublicResults.DataRow> p38(@Name("bootstrapSecret") String a0,@Name("username") String a1,@Name("password") String a2) { return invokePublic(null,"deposit.utils.bootstrap",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
+ public Stream<PublicResults.DataRow> p38(@Name("username") String a0,@Name("password") String a1) { return invokePublic(null,"deposit.utils.bootstrap",Arrays.asList(a0,a1)).map(PublicResults::data); }
  @Procedure(name="deposit.utils.login",mode=Mode.READ)
  public Stream<PublicResults.ValueRow> p39(@Name("username") String a0,@Name("password") String a1) { return invokePublic(null,"deposit.utils.login",Arrays.asList(a0,a1)).map(PublicResults::value); }
  @Procedure(name="deposit.utils.logout",mode=Mode.READ)

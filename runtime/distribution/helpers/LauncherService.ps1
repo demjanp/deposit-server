@@ -89,6 +89,7 @@ function Set-Neo4jSetting([string]$Path,[string]$Name,[string]$Value) {
     if($matches.Count){$lines[$matches[0]]="$Name=$Value"}else{$lines+= "$Name=$Value"}
     [IO.File]::WriteAllLines($Path,$lines,(New-Object Text.UTF8Encoding($false)))
 }
+# Tolerate a legacy bootstrap file during service upgrades; the server never reads it for authorization.
 function Set-SecretDirectoryAccess([string]$Path,[string]$ServiceAccount) {
     $resolved=[IO.Path]::GetFullPath($Path)
     if(!(Test-Path -LiteralPath $resolved -PathType Container)){New-Item -ItemType Directory -Path $resolved -Force|Out-Null}

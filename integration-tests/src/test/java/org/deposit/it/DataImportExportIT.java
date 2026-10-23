@@ -47,7 +47,7 @@ class DataImportExportIT {
     }
     Map<String,Object> context(){return m("token",token,"requestId",UUID.randomUUID().toString(),"operationId",UUID.randomUUID().toString());}
     String upload(byte[] bytes,String filename){String upload=call("deposit.resource.beginUpload",filename,(long)bytes.length,hash(bytes),"text/csv; charset=utf-8",token).get("data").get("uploadId").asString();if(bytes.length>0)call("deposit.resource.uploadChunk",upload,0L,Base64.getEncoder().encodeToString(bytes),hash(bytes),token);return call("deposit.resource.finishUpload",upload,token).get("data").get("resourceId").asString();}
-    @BeforeAll static void connect()throws Exception{driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();var secret=TestInstallationPaths.bootstrapSecret();if(java.nio.file.Files.exists(secret))call("deposit.utils.bootstrap",java.nio.file.Files.readString(secret).trim(),USER,PASSWORD);}
+    @BeforeAll static void connect()throws Exception{driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();TestTransport.bootstrapIfFresh(driver,Duration.ofSeconds(30),USER,PASSWORD);}
     @AfterAll static void close(){if(driver!=null)driver.close();}
     @BeforeEach void setup(){token=login();namespace=id(call("deposit.create.namespace","ImportExport-"+UUID.randomUUID(),m("historyMode","disabled"),token));call("deposit.set.activeNamespace",m("id",namespace),token);}
 

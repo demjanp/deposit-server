@@ -29,20 +29,15 @@ class AuthenticationNamespaceLifecycleIT {
     static String id(org.neo4j.driver.Record row) {return row.get("data").get("id").asString();}
     static void error(String code,Runnable action) {var e=assertThrows(org.neo4j.driver.exceptions.ClientException.class,action::run);assertTrue(e.getMessage().contains("\"code\":\""+code+"\""),e.getMessage());}
     static void ensureAccount() {
-        Path secret=TestInstallationPaths.bootstrapSecret();
-        if(Files.exists(secret)) special("deposit.utils.bootstrap",m("bootstrapSecret",readSecret(secret),"username",ACCOUNT,"password",PASSWORD));
+        TestTransport.bootstrapIfFresh(driver,Duration.ofSeconds(30),ACCOUNT,PASSWORD);
     }
-    private static String readSecret(Path path) {try{return Files.readString(path).trim();}catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}}
 
     @Test @Order(1) void bootstrapRollbackThenCommitAndLoginReadOnlyCompletion() throws Exception {
         assertEquals(System.getenv("DEPOSIT_EXPECTED_VERSION"),query("CALL deposit.get.info() YIELD data RETURN data",Map.of()).getFirst().get("data").get("version").asString());
-        String secret=Files.readString(TestInstallationPaths.bootstrapSecret()).trim();
-        var request=m("bootstrapSecret",secret,"username",ACCOUNT,"password",PASSWORD);
+        var request=m("username",ACCOUNT,"password",PASSWORD);
         try(var s=driver.session();var tx=s.beginTransaction()) {assertEquals(ACCOUNT,tx.run("CALL deposit.utils.bootstrap($r)",m("r",request)).single().get("data").get("username").asString());tx.rollback();}
-        assertTrue(Files.exists(TestInstallationPaths.bootstrapSecret()));
         assertEquals(0,query("MATCH (u:User) RETURN count(u) AS n",Map.of()).getFirst().get("n").asInt());
         var result=special("deposit.utils.bootstrap",request);userId=id(result);assertEquals(1,revision(result));
-        assertFalse(Files.exists(TestInstallationPaths.bootstrapSecret()));
         error("AUTH_FAILED",()->special("deposit.utils.bootstrap",request));
         var login=special("deposit.utils.login",m("username",ACCOUNT,"password",PASSWORD));token=login.get("value").asString();serverRevision=revision(login);
         otherToken=special("deposit.utils.login",m("username",ACCOUNT,"password",PASSWORD)).get("value").asString();assertNotEquals(token,otherToken);

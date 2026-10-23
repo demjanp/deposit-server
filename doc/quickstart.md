@@ -20,18 +20,18 @@ CALL deposit.get.info() YIELD data RETURN data;
 
 ## 2. Bootstrap and log in to Deposit
 
-The first Deposit user is an administrator. Read the bootstrap secret from the protected `deposit-bootstrap.secret` file under the configured `secretRoot`. Cypher Shell does not prompt for query parameters. Set them in the interactive session; `--history disable` above prevents the commands from being saved to shell history. Do not put credentials or tokens in a file or in the `cypher-shell` command line.
+The first Deposit user is an administrator. Bootstrap uses the authenticated Neo4j Bolt connection and does not need a Deposit token. On Neo4j Community, every authenticated native account has administrator privileges, so any Bolt account can claim the first Deposit administrator. Bootstrap before sharing Bolt credentials with other users. Cypher Shell does not prompt for query parameters. Set them in the interactive session; `--history disable` above prevents the commands from being saved to shell history. Do not put credentials or tokens in a file or in the `cypher-shell` command line.
 
 Call bootstrap once, with your chosen Deposit username and password:
 
 ```text
-:param {bootstrapSecret: 'paste secret from protected file', username: 'deposit-admin', password: 'choose a strong password'}
+:param {username: 'deposit-admin', password: 'choose a strong password'}
 ```
 
 Then run:
 
 ```cypher
-CALL deposit.utils.bootstrap($bootstrapSecret, $username, $password) YIELD data RETURN data;
+CALL deposit.utils.bootstrap($username, $password) YIELD data RETURN data;
 ```
 
 Log in with the same parameters and keep the returned token for the steps below:
@@ -52,7 +52,7 @@ In Cypher Shell, set the returned value as a parameter for later commands:
 :param {token: 'paste-the-returned-token-here'}
 ```
 
-Tokens expire and are invalidated by a server restart. Log in again when needed. A new installation has a one-time bootstrap secret; normal use starts with Deposit login.
+Tokens expire and are invalidated by a server restart. Log in again when needed. Bootstrap works once on a fresh installation; later use starts with Deposit login. The Neo4j connection must be authenticated, and the bootstrap procedure requires Neo4j administrative-procedure access.
 
 ## 3. Create a sample Namespace
 

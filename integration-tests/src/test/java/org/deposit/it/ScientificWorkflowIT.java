@@ -152,8 +152,7 @@ class ScientificWorkflowIT {
         downloadBase = URI.create(Objects.requireNonNull(System.getenv("DEPOSIT_TEST_HTTP_BASE"), "Installed listener URL is missing"));
         driver = GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"), AuthTokens.basic("neo4j", System.getenv("DEPOSIT_TEST_PASSWORD")));
         driver.verifyConnectivity();
-        Path secret = TestInstallationPaths.bootstrapSecret();
-        if (Files.exists(secret)) call("deposit.utils.bootstrap", Files.readString(secret).trim(), USER, PASSWORD);
+        TestTransport.bootstrapIfFresh(driver,Duration.ofSeconds(30),USER,PASSWORD);
     }
 
     @AfterAll

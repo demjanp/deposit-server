@@ -28,7 +28,7 @@ class PreparedActionReplayIT {
     long count(String label){return query("MATCH (n:`"+label+"` {namespaceId:$ns}) RETURN count(n) AS n",m("ns",ns)).getFirst().get("n").asLong();}
     @BeforeAll static void connect() throws Exception {
         driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();
-        Path secret=TestInstallationPaths.bootstrapSecret();if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);
+        TestTransport.bootstrapIfFresh(driver,Duration.ofSeconds(30),USER,PASSWORD);
     }
     @AfterAll static void disconnect(){driver.close();}
     @BeforeEach void setup(){token=login();name="PreparedAction-"+key();ns=id(call("deposit.create.namespace",name,m("historyMode","persistent"),token));call("deposit.set.activeNamespace",m("id",ns),token);other=login();call("deposit.set.activeNamespace",name,other);}

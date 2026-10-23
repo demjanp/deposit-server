@@ -18,7 +18,7 @@ class PatternMatchingIT {
     static org.neo4j.driver.Record call(String proc,Object... args){var call=TestTransport.positionalCall(proc,args);return query(call.text(),call.parameters()).getFirst();}
     static String id(org.neo4j.driver.Record r){return r.get("node").asNode().get("id").asString();}
     static String key(){return UUID.randomUUID().toString();}
-    @BeforeAll static void connect() throws Exception {driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();Path secret=TestInstallationPaths.bootstrapSecret();if(Files.exists(secret))call("deposit.utils.bootstrap",Files.readString(secret).trim(),USER,PASSWORD);}
+    @BeforeAll static void connect() throws Exception {driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();TestTransport.bootstrapIfFresh(driver,Duration.ofSeconds(30),USER,PASSWORD);}
     @AfterAll static void disconnect(){if(driver!=null)driver.close();}
     @BeforeEach void setup(){token=call("deposit.utils.login",USER,PASSWORD).get("value").asString();name="Pattern-"+key();namespace=id(call("deposit.create.namespace",name,m("historyMode","persistent"),token));call("deposit.set.activeNamespace",m("id",namespace),token);}
 

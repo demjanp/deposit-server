@@ -1151,13 +1151,13 @@ CALL deposit.set.versionTag($revisionId, 'example', $token) YIELD data RETURN da
 ## Utilities and accounts
 
 ### deposit.utils.bootstrap
-Purpose: Create the first Deposit administrator using the one-time bootstrap secret.
-Inputs: bootstrapSecret (String), username (String), password (String).
-Access: No Deposit token; requires the one-time bootstrap secret and an uninitialized server.
+Purpose: Create the first Deposit administrator.
+Inputs: username (String), password (String).
+Access: Requires an authenticated Neo4j caller authorized to execute administrative procedures; no Deposit token. The server must be uninitialized. On Neo4j Community, every authenticated native account has administrator privileges and can bootstrap a fresh installation.
 Example:
 
 ```cypher
-CALL deposit.utils.bootstrap($bootstrapSecret, 'demo-user', $password) YIELD data RETURN data;
+CALL deposit.utils.bootstrap('demo-user', $password) YIELD data RETURN data;
 ```
 
 ### deposit.utils.cancel

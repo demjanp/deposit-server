@@ -61,8 +61,6 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         catch(InterruptedException e) {Thread.currentThread().interrupt();throw ExceptionHandler.fail("CANCELLED","Storage wait interrupted");}
     }
     private final CompletableFuture<Void> readiness=new CompletableFuture<>();
-    private String bootstrapHash;
-    private Path secretPath;
     private Path secretDirectory;
     public static byte[] randomBytes(int count) {byte[] bytes=new byte[count];new SecureRandom().nextBytes(bytes);return bytes;}
     public static String randomToken() {return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes(32));}
@@ -118,15 +116,9 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             if(configuredSecretRoot==null||configuredSecretRoot.isBlank())throw new IllegalStateException("Deposit secretRoot is required");
             secretDirectory=Path.of(configuredSecretRoot).toAbsolutePath().normalize();
             if(!Path.of(configuredSecretRoot).isAbsolute()||!Files.isDirectory(secretDirectory)||Files.isSymbolicLink(secretDirectory)||!Files.isWritable(secretDirectory))throw new IllegalStateException("Deposit secretRoot is unavailable");
-            secretPath=secretDirectory.resolve("deposit-bootstrap.secret");
             Path cursorPath=secretDirectory.resolve("deposit-"+db.databaseId().databaseId().uuid()+"-cursor.key");
             byte[] persisted=Base64.getUrlDecoder().decode(secret(cursorPath));
             System.arraycopy(persisted,0,cursorKey,0,cursorKey.length);
-            boolean bootstrapped;
-            try(var tx=db.beginTx()) {bootstrapped=tx.findNode(Label.label("DepositInitialization"),"id","bootstrap")!=null;tx.commit();}
-            if(!bootstrapped) {
-                bootstrapHash=Json.hash(secret(secretPath));
-            }
             storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();
             synchronized(lifecycleLock){
                 if(stopping)throw new IllegalStateException("Deposit stopped during initialization");
@@ -212,11 +204,6 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         synchronized(lifecycleLock) {
             if(stopping||!initialized)throw new IllegalStateException("Deposit is shutting down");
         }
-    }
-    public boolean acceptsBootstrap(String secret) {return bootstrapHash!=null && MessageDigest.isEqual(bootstrapHash.getBytes(java.nio.charset.StandardCharsets.US_ASCII),Json.hash(secret).getBytes(java.nio.charset.StandardCharsets.US_ASCII));}
-    public void consumeBootstrap() {
-        bootstrapHash=null;
-        try {Files.deleteIfExists(secretPath);} catch(java.io.IOException ignored) {/* Durable initialization still prevents reuse. */}
     }
     public Session authenticate(RequestContext c,String principal) {
         return authenticate(c,principal,true);

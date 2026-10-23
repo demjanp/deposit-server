@@ -72,7 +72,7 @@ class BrowserSessionIT {
     @BeforeAll static void connect()throws Exception{
         base=URI.create(Objects.requireNonNull(System.getenv("DEPOSIT_TEST_HTTP_BASE"),"Installed download listener URL missing"));
         http=client();driver=GraphDatabase.driver(System.getenv("DEPOSIT_TEST_URI"),AuthTokens.basic("neo4j",System.getenv("DEPOSIT_TEST_PASSWORD")));driver.verifyConnectivity();
-        Path bootstrap=TestInstallationPaths.bootstrapSecret();if(Files.exists(bootstrap))call("deposit.utils.bootstrap",Files.readString(bootstrap).trim(),USER,PASSWORD);
+        TestTransport.bootstrapIfFresh(driver,Duration.ofSeconds(30),USER,PASSWORD);
     }
     @AfterAll static void close(){if(driver!=null)driver.close();}
     @BeforeEach void setup(){token=login(USER,PASSWORD);namespace=nodeId(call("deposit.create.namespace","Browser-"+UUID.randomUUID(),m("historyMode","disabled"),token));call("deposit.set.activeNamespace",m("id",namespace),token);}

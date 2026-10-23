@@ -82,12 +82,12 @@ final class CorpusTransport {
     @SuppressWarnings("unchecked") Translation translate(String text,Map<String,Object> input,Object runner,Frame frame){
         var matcher=Pattern.compile("CALL\\s+(deposit\\.[A-Za-z.]+)\\s*\\(").matcher(text);if(!matcher.find())return null;
         String old=matcher.group(1);int open=matcher.end()-1,close=matching(text,open);List<String> expressions=split(text.substring(open+1,close));
-        boolean unauth=Set.of("deposit.utils.login","deposit.utils.bootstrap").contains(old);
-        if(unauth?expressions.size()!=1:expressions.size()!=2)return null;
-        if(!unauth&&!expressions.getLast().matches("\\$[A-Za-z][A-Za-z0-9_]*"))return null;
-        Object context=unauth?null:input.get(expressions.getLast().substring(1));if(!unauth&&!(context instanceof Map<?,?>))return null;
+        boolean tokenless=Set.of("deposit.utils.login","deposit.utils.bootstrap").contains(old);
+        if(tokenless?expressions.size()!=1:expressions.size()!=2)return null;
+        if(!tokenless&&!expressions.getLast().matches("\\$[A-Za-z][A-Za-z0-9_]*"))return null;
+        Object context=tokenless?null:input.get(expressions.getLast().substring(1));if(!tokenless&&!(context instanceof Map<?,?>))return null;
         Map<String,Object> request=(Map<String,Object>)run(runner,"CYPHER 25 RETURN "+expressions.getFirst()+" AS input",input).single().get("input").asObject();
-        var ctx=unauth?new LinkedHashMap<String,Object>():(Map<String,Object>)context;String token=(String)ctx.get("token"),procedure=renamed(old);
+        var ctx=tokenless?new LinkedHashMap<String,Object>():(Map<String,Object>)context;String token=(String)ctx.get("token"),procedure=renamed(old);
         if(ctx.get("requestId") instanceof String rid&&token!=null)REQUEST_TOKENS.put(rid,token);
         if(procedure.equals("deposit.utils.cancel")){
             String target=REQUEST_TOKENS.get((String)request.get("requestId"));
@@ -98,7 +98,7 @@ final class CorpusTransport {
         }
         var args=arguments(procedure,request);String output=OUTPUTS.get(procedure);boolean action=ACTIONS.contains(procedure)&&(!procedure.equals("deposit.admin.pruneResources")||Boolean.FALSE.equals(request.get("dryRun")));
         Map<String,Object> session=Map.of();
-        if(!unauth&&!Set.of("deposit.utils.cancel","deposit.utils.cancelRequest").contains(procedure))session=run(runner,"CYPHER 25 CALL deposit.get.session($t) YIELD data RETURN data",AuthenticationNamespaceLifecycleIT.m("t",token)).single().get("data").asMap();
+        if(!tokenless&&!Set.of("deposit.utils.cancel","deposit.utils.cancelRequest").contains(procedure))session=run(runner,"CYPHER 25 CALL deposit.get.session($t) YIELD data RETURN data",AuthenticationNamespaceLifecycleIT.m("t",token)).single().get("data").asMap();
         String operation=null;boolean replay=false;
         if(action&&!frame.mutation&&ctx.get("operationId") instanceof String key){
             direct("deposit.action.release",token);
@@ -116,7 +116,7 @@ final class CorpusTransport {
             String actual=OPERATIONS.get(key);if(actual==null){try(var s=raw.session()){var rows=s.run("MATCH (a:DepositPreparedAction {recoveryKey:$key}) RETURN a.operationId AS id",AuthenticationNamespaceLifecycleIT.m("key",key)).list();if(!rows.isEmpty())actual=rows.getFirst().get("id").asString();}}
             if(actual!=null)args.set(0,actual);
         }
-        var params=new LinkedHashMap<>(input);var placeholders=new ArrayList<String>();for(int i=0;i<args.size();i++){String key="__s65a"+i;params.put(key,args.get(i));placeholders.add("$"+key);}if(!unauth){params.put("__s65token",token);placeholders.add("$__s65token");}
+        var params=new LinkedHashMap<>(input);var placeholders=new ArrayList<String>();for(int i=0;i<args.size();i++){String key="__s65a"+i;params.put(key,args.get(i));placeholders.add("$"+key);}if(!tokenless){params.put("__s65token",token);placeholders.add("$__s65token");}
         params.put("__s65replay",replay);params.put("__s65op",operation);params.put("__s65server",session.getOrDefault("serverRevision",0L));params.put("__s65ns",session.get("namespaceId"));
         String suffix=text.substring(close+1);var yield=Pattern.compile("^\\s*YIELD\\s+([\\w, ]+?)(?=\\s+(?:RETURN|MATCH|WITH|WHERE|CALL|LIMIT|OPTIONAL)\\b|$)",Pattern.CASE_INSENSITIVE).matcher(suffix);
         if(yield.find())suffix=suffix.substring(yield.end());
@@ -126,7 +126,7 @@ final class CorpusTransport {
         else if(output.equals("node")||output.equals("rel")){
             String entity=output;body.append(" CALL { WITH ").append(entity).append(" WITH ").append(entity).append(" WHERE ").append(entity).append(" IS NOT NULL CALL deposit.utils.toData(").append(entity).append(",$__s65token) YIELD data RETURN data UNION WITH ").append(entity).append(" WITH ").append(entity).append(" WHERE ").append(entity).append(" IS NULL RETURN null AS data }");
         }
-        if(!unauth){
+        if(!tokenless){
             String namespace=CorpusCatalog.SERVER.contains(procedure)&&!procedure.endsWith("activeNamespace")?"null":"$__s65ns";
             body.append(" OPTIONAL MATCH (__namespace:Namespace {id:").append(namespace).append("}) WITH *, {namespaceId:").append(namespace).append(",revision:");
             if(action&&operation!=null)body.append(CorpusCatalog.SERVER.contains(procedure)?"CASE WHEN $__s65replay THEN $__s65server ELSE __receipt.revision END":"__receipt.revision");
