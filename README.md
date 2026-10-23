@@ -4,14 +4,14 @@ Deposit Server is the Neo4j plugin implementation for Deposit 2.0. The Deposit H
 
 ## Current state
 
-The accepted source snapshots cover typed data, authorization, batch updates, resource storage, revision history, query, patterns, clone and import/export workflows, and browser sessions. Windows release and recovery behavior is complete in its approved server scope, with evidence qualifications recorded in the [implementation status](../deposit-hub/implementation_status.md#current-status). Python wrapper and GUI implementation remain pending.
+The accepted source snapshots cover typed data, authorization, batch updates, resource storage, revision history, query, patterns, clone and import/export workflows, and browser sessions. Windows release and recovery behavior is complete in its approved server scope, with evidence qualifications recorded in the [implementation status](https://github.com/demjanp/deposit-hub/blob/main/implementation_status.md#current-status). Python wrapper and GUI implementation remain pending.
 
 ## Project documentation
 
 - [Deposit Server user guide](doc/README.md)
-- [Server specification and Windows operations](../deposit-hub/deposit-server.md)
-- [Readable procedure API](../deposit-hub/deposit-server-api.md)
-- [Current implementation status, maintenance workflow and acceptance history](../deposit-hub/implementation_status.md)
+- [Server specification and Windows operations](https://github.com/demjanp/deposit-hub/blob/main/deposit-server.md)
+- [Readable procedure API](https://github.com/demjanp/deposit-hub/blob/main/deposit-server-api.md)
+- [Current implementation status, maintenance workflow and acceptance history](https://github.com/demjanp/deposit-hub/blob/main/implementation_status.md)
 - [Full Windows integration suite](scripts/Invoke-IntegrationSuite.ps1)
 - [Selected test runner](scripts/Invoke-Tests.ps1)
 - [Seed, transition and verification scenarios](scripts/Invoke-TestScenario.ps1)
@@ -19,7 +19,7 @@ The accepted source snapshots cover typed data, authorization, batch updates, re
 
 ## Windows integration suite
 
-Integration test sources and execution remain in this repository. The runner derives the sibling harness path as `..\test_harness`; generated tools, caches, database state, temporary files, secrets, logs and results stay there. The harness is not checked into the repository. If it is empty, setup downloads and verifies pinned dependencies, extracts the Java/Neo4j/Maven/Python/Firefox/geckodriver tools, builds and packages the server, and prepares a fresh local test runtime. Packaging also requires the adjacent `deposit-hub` checkout because setup reads `deposit-hub/deposit-server.md` to generate the release `OPERATIONS.md`.
+Integration test sources and execution remain in this repository. The runner derives the sibling harness path as `..\test_harness`; generated tools, caches, database state, temporary files, secrets, logs and results stay there. The harness is not checked into the repository. If it is empty, setup downloads and verifies pinned dependencies, extracts the Java/Neo4j/Maven/Python/Firefox/geckodriver tools, builds and packages the server, and prepares a fresh local test runtime. Building, packaging and testing require no Deposit Hub checkout or access.
 
 ### Requirements
 
@@ -68,7 +68,7 @@ The runner uses the harness root itself; there is no nested `test-harness` direc
 | `results` | Per-invocation logs and generated verification packages |
 | `preserved` | Previous runtime and package trees retained when a clean runtime is prepared |
 
-The setup phase reuses checksum-verified downloads and Maven dependencies, but prepares a new database/runtime tree for the suite. Results and preserved evidence remain in `test_harness`; remove the harness directory manually only after no runner, watchdog, service or runtime process is using it. The harness password is protected with Windows DPAPI for the current Windows user and machine, stored in an owner-only file, and replaced when a new database runtime is prepared; the suite does not create temporary Windows Credential Manager entries. Setup, the full suite and watchdog/service cleanup were exercised on this Windows host; [the hub status record](../deposit-hub/implementation_status.md#latest-assembled-regression) gives the 21 October 2026 revision-specific results and qualifications. This provides no clean-machine or cross-host verification.
+The setup phase reuses checksum-verified downloads and Maven dependencies, but prepares a new database/runtime tree for the suite. Results and preserved evidence remain in `test_harness`; remove the harness directory manually only after no runner, watchdog, service or runtime process is using it. The harness password is protected with Windows DPAPI for the current Windows user and machine, stored in an owner-only file, and replaced when a new database runtime is prepared; the suite does not create temporary Windows Credential Manager entries. Setup, the full suite and watchdog/service cleanup were exercised on this Windows host; [the hub status record](https://github.com/demjanp/deposit-hub/blob/main/implementation_status.md#latest-assembled-regression) gives the 21 October 2026 revision-specific results and qualifications. This provides no clean-machine or cross-host verification.
 
 ### Earlier machine-level test service
 

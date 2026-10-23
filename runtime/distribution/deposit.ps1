@@ -49,7 +49,6 @@ Deposit Windows launcher
 
 Java and Neo4j are separate pinned runtime components. Headless service setup
 requires an elevated shell and uses a dedicated virtual service account by default.
-See OPERATIONS.md for TLS, firewall, permissions and configuration guidance.
 '@ }
 
 try {

@@ -37,14 +37,6 @@ function Invoke-Package($Context,[string]$ScriptsDir) {$Root=$Context.Root; $rep
     Copy-Item -LiteralPath "$repo\runtime\distribution\deposit.bat","$repo\runtime\distribution\deposit.ps1" -Destination $destination
     New-Item -ItemType Directory -Force "$destination\helpers" | Out-Null
     Copy-Item -LiteralPath "$ScriptsDir\Credentials.ps1","$ScriptsDir\Configure-DepositDownloads.ps1","$ScriptsDir\Stop-Console.ps1","$ScriptsDir\Request-DepositStop.ps1","$repo\runtime\distribution\helpers\deposit-worker.ps1","$repo\runtime\distribution\helpers\LauncherPathHelpers.ps1","$repo\runtime\distribution\helpers\LauncherState.ps1","$repo\runtime\distribution\helpers\LauncherSetup.ps1","$repo\runtime\distribution\helpers\LauncherService.ps1","$repo\runtime\distribution\helpers\LauncherLocal.ps1" -Destination "$destination\helpers"
-    # Keep the hub as the sole source; extract its operations section into the release package.
-    $hubServerDoc=Join-Path (Split-Path $repo -Parent) 'deposit-hub\deposit-server.md'
-    if(!(Test-Path -LiteralPath $hubServerDoc -PathType Leaf)) {throw 'Deposit Hub server documentation is required to package OPERATIONS.md'}
-    $hubServerText=[IO.File]::ReadAllText($hubServerDoc)
-    $operationsMatch=[regex]::Match($hubServerText,'(?ms)^## Operations[ \t]*\r?\n(.*?)(?=^## Runtime[ \t]*\r?$)')
-    if(!$operationsMatch.Success) {throw 'Windows operations section is missing from Deposit Hub server documentation'}
-    $operationsText="# Deposit Server on Windows`r`n`r`n"+$operationsMatch.Groups[1].Value.Trim()+"`r`n"
-    [IO.File]::WriteAllText((Join-Path $destination 'OPERATIONS.md'),$operationsText,(New-Object Text.UTF8Encoding($false)))
     . (Join-Path $ScriptsDir 'ReleaseManifest.ps1')
     $expectedPluginPaths=New-Object 'System.Collections.Generic.List[string]'
     $expectedPluginPaths.Add('plugins/'+[IO.Path]::GetFileName($plugin))

@@ -4,7 +4,7 @@
 
 The current Windows release uses Neo4j Community 2026.05.0, Temurin Java 21 and Cypher 25. Use the exact versions and checksums in the release's `artifacts.json` and `release-manifest.json`. Java and Neo4j are separate from the Deposit plugin package.
 
-For the pinned release checklist and initial password setup, follow the [Windows release package instructions](https://github.com/demjanp/deposit-hub/blob/main/deposit-server.md#windows-release-package). The steps below show the launcher commands.
+The steps below cover initial password setup, launcher commands and service configuration.
 
 ## Install a release package
 
@@ -65,5 +65,3 @@ For remote access, configure a private Bolt interface and certificate-validating
 ## Startup and backup notes
 
 Use `status`, `diagnose` and the server logs to inspect operation. `diagnose` includes local paths; review it before sharing. Back up the stopped Neo4j database, transaction state, Deposit resources, configuration and required secrets together. A graph-only or resource-only copy is incomplete. Never copy a running Community database as an ordinary filesystem backup.
-
-For full launcher and Windows service behavior, see the [headless Windows service guide](https://github.com/demjanp/deposit-hub/blob/main/deposit-server.md#headless-windows-service). Release configuration details are in the [deployment and configuration guide](https://github.com/demjanp/deposit-hub/blob/main/deposit-server-downloads.md#deployment-and-configuration).
