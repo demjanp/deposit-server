@@ -8,6 +8,7 @@ The build label is `0.0.0-dev`. The accepted source snapshots cover typed data, 
 
 ## Project documentation
 
+- [Deposit Server user guide](doc/README.md)
 - [Server specification and Windows operations](../deposit-hub/deposit-server.md)
 - [Readable procedure API](../deposit-hub/deposit-server-api.md)
 - [Current implementation status, maintenance workflow and acceptance history](../deposit-hub/implementation_status.md)
