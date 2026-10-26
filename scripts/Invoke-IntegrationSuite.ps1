@@ -6,6 +6,10 @@ param(
     [ValidateSet('Unit','Integration')][string]$SelectedKind,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$SelectedTest,
     [string]$SelectedLogPath,
+    [ValidateSet('Smoke')][string]$SelectedPythonTest,
+    [string]$PythonRoot,
+    [string]$PythonEnvironment,
+    [string]$PythonBuildBundle,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$RecoverySeedTest,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$RecoveryVerifyTest,
     [ValidateSet('Restart','KillRestart','ProcessCrashRestart','StartupCrashRestart')][string]$RecoveryTransition,
@@ -47,6 +51,8 @@ if ($ListOnly) {
     Write-Output 'Local lifecycle: AuthenticationNamespaceLifecycleIT'
     $normal | ForEach-Object { Write-Output "Normal selection: $_" }
     Write-Output 'Independent Python decoding: generated-whole.zip and generated-subgraph.zip'
+    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
+    Write-Output 'Optional clean tagged build bundle: -PythonBuildBundle <bundle under harness cache>; skips Build and Package only.'
     foreach($transition in @('Restart','KillRestart')) { Write-Output "$transition seed: $seed"; Write-Output "$transition verify: $verify" }
     Write-Output 'Service: clean provisioning; fresh-account probes; graceful shutdown; probe selection; three history crash scenarios'
     Write-Output "Service probes: $probes"
@@ -57,16 +63,20 @@ if ($ListOnly) {
 }
 if ($SetupOnly) { $Phase='Setup' }
 if([bool]$SelectedKind -ne [bool]$SelectedTest){throw 'SelectedKind and SelectedTest must be supplied together.'}
+if([bool]$SelectedPythonTest -ne [bool]$PythonRoot -or [bool]$SelectedPythonTest -ne [bool]$PythonEnvironment){throw 'Python test, repository root, and environment must be supplied together.'}
+if($PythonBuildBundle -and !$SelectedPythonTest){throw 'PythonBuildBundle is available only with SelectedPythonTest.'}
+if($PythonBuildBundle -and $Phase -ne 'Run'){throw 'PythonBuildBundle requires a Run phase with the selected Python test.'}
 if([bool]$RecoverySeedTest -ne [bool]$RecoveryVerifyTest -or [bool]$RecoverySeedTest -ne [bool]$RecoveryTransition){throw 'Recovery seed, verification, and transition must be supplied together.'}
 $selectionCount=0
 if($SelectedKind){$selectionCount++}
 if($RecoverySeedTest){$selectionCount++}
 if($SelectedScenario){$selectionCount++}
+if($SelectedPythonTest){$selectionCount++}
 if($selectionCount -gt 1){throw 'Select one independent test or scenario per run.'}
 if($SelectedLogPath){$SelectedLogPath=[IO.Path]::GetFullPath($SelectedLogPath);Assert-HarnessPlainPath $SelectedLogPath}
 if($RecoveryLogPath){$RecoveryLogPath=[IO.Path]::GetFullPath($RecoveryLogPath);Assert-HarnessPlainPath $RecoveryLogPath}
 if($ScenarioLogPath){$ScenarioLogPath=[IO.Path]::GetFullPath($ScenarioLogPath);Assert-HarnessPlainPath $ScenarioLogPath}
-if ($Phase -eq 'Run' -and !$SelectedKind -and !$RecoverySeedTest -and !$SelectedScenario) {
+if ($Phase -eq 'Run' -and !$SelectedKind -and !$RecoverySeedTest -and !$SelectedScenario -and !$SelectedPythonTest) {
     $principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'The full integration suite includes temporary Windows service scenarios. Run PowerShell as Administrator, or use -SetupOnly to provision without tests.' }
 }
@@ -75,6 +85,15 @@ if($SelectedScenario -in @('CleanProvisioning','DownloadListener','ServiceShutdo
     if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'This standalone scenario installs a temporary Windows service. Run PowerShell as Administrator; no harness state was reset.'}
 }
 . (Join-Path $PSScriptRoot 'IntegrationHarnessSecrets.ps1')
+. (Join-Path $PSScriptRoot 'helpers\PythonAcceptanceBuildBundle.ps1')
+if($SelectedPythonTest) {
+    $PythonRoot=[IO.Path]::GetFullPath($PythonRoot)
+    $PythonEnvironment=[IO.Path]::GetFullPath($PythonEnvironment)
+    if((Split-Path $PythonRoot -Leaf) -cne 'deposit-python' -or !(Test-Path -LiteralPath (Join-Path $PythonRoot 'pyproject.toml') -PathType Leaf)){throw 'PythonRoot must identify the deposit-python checkout.'}
+    Assert-HarnessPlainPath $PythonEnvironment
+    if(!(Test-Path -LiteralPath (Join-Path $PythonEnvironment 'Scripts\python.exe') -PathType Leaf)){throw 'PythonEnvironment must be a prepared venv under the harness root.'}
+}
+if($PythonBuildBundle){$PythonBuildBundle=[IO.Path]::GetFullPath($PythonBuildBundle);Assert-HarnessPlainPath $PythonBuildBundle}
 . (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1') -LibraryOnly
 . (Join-Path $PSScriptRoot 'helpers\IntegrationSuiteChild.ps1')
 $private=Join-Path $root 'private\suite'
@@ -275,10 +294,15 @@ try {
     $statePath=Join-Path $run 'distribution\deposit.install.json'
     Invoke-SuitePhase 'Provision'
     if($SelectedKind -ne 'Unit') {
-        Invoke-SuitePhase 'Build'
-        $build=Get-DepositBuildMetadata $repo $root
-        $archive=Join-Path $root "build\$($build.ArchiveFile)"
-        Invoke-SuitePhase 'Package'
+        if($SelectedPythonTest -and $PythonBuildBundle){
+            $targetVersion=Get-PythonAcceptanceTargetVersion $PythonRoot
+            $archive=Import-PythonAcceptanceBuildBundle -BundleRoot $PythonBuildBundle -ExpectedVersion $targetVersion -RepositoryRoot $repo
+        }else{
+            Invoke-SuitePhase 'Build'
+            $build=Get-DepositBuildMetadata $repo $root
+            $archive=Join-Path $root "build\$($build.ArchiveFile)"
+            Invoke-SuitePhase 'Package'
+        }
         Update-SuiteJournal $journalPath {param($j) $j.runtimeOwned=$true}
         Invoke-SuitePhase 'Install' @('-ReleasePackage',$archive)
     }
@@ -313,6 +337,19 @@ try {
         $label='selected-integration-'+$SelectedTest.Split('#')[0]
         if($SelectedLogPath){$arguments=@('-Kind','Integration','-Test',$SelectedTest,'-Root',$root,'-Port',[string]$port,'-LogPath',$SelectedLogPath);Invoke-SuiteChild (Join-Path $PSScriptRoot 'Invoke-Tests.ps1') $arguments $label 3600}
         else{Invoke-SuiteSelection $SelectedTest $label 'Integration'}
+        Invoke-SuitePhase 'Stop'
+    } elseif($SelectedPythonTest) {
+        Update-SuiteJournal $journalPath {param($j) $j.state='running'}
+        Invoke-SuitePhase 'Start'
+        $label='selected-python-'+$SelectedPythonTest.ToLowerInvariant()
+        $hook=Join-Path $PSScriptRoot 'Invoke-PythonAcceptance.ps1'
+        $identityRecord=Join-Path $logs 'native-identity.json'
+        $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Seed','-IdentityRecordPath',$identityRecord)
+        Invoke-SuiteChild $hook $arguments $label 3600
+        Invoke-SuitePhase 'Stop'
+        Invoke-SuitePhase 'Start'
+        $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Verify','-IdentityRecordPath',$identityRecord)
+        Invoke-SuiteChild $hook $arguments ($label+'-identity-after-restart') 3600
         Invoke-SuitePhase 'Stop'
     } elseif($RecoverySeedTest) {
         Update-SuiteJournal $journalPath {param($j) $j.state='running'}

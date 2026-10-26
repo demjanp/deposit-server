@@ -1,2 +1,3 @@
 /runtime/notices/** -text
+runtime/*-dependencies.pom.xml text eol=lf
 /LICENSE -text

@@ -134,6 +134,7 @@ class PreparedActionReplayIT {
     @Test void registeredCatalogMatchesNamesModesArgumentsAndColumns() throws Exception {
         Path root=Path.of(System.getProperty("user.dir")).toAbsolutePath();while(root!=null&&!Files.exists(root.resolve("runtime/public-api.json")))root=root.getParent();assertNotNull(root);
         var catalog=new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(root.resolve("runtime/public-api.json")));
+        var implementation=parseProcedureCatalog(root);
         var rows=query("SHOW PROCEDURES YIELD name,signature,mode WHERE name STARTS WITH 'deposit.' RETURN name,signature,mode",m());assertEquals(catalog.size()+1,rows.size());
         var types=Map.of("String","STRING","Object","ANY","Map<String,Object>","MAP","List<Object>","LIST<ANY>","List<String>","LIST<STRING>","List<Map<String,Object>>","LIST<MAP>","Long","INTEGER","Boolean","BOOLEAN","byte[]","BYTEARRAY");
         for(var spec:catalog){String name=spec.get("name").asText();var row=rows.stream().filter(r->r.get("name").asString().equals(name)).findFirst().orElseThrow();assertEquals(spec.get("mode").asText(),row.get("mode").asString(),name);
@@ -141,7 +142,35 @@ class PreparedActionReplayIT {
             if(!Set.of("deposit.utils.login","deposit.utils.bootstrap").contains(name))params.add("token :: STRING");
             String columns=switch(spec.get("output").asText()){case "node"->"node :: NODE";case "rel"->"rel :: RELATIONSHIP";case "value"->"value :: ANY";case "query"->"data :: MAP, columns :: LIST<MAP>, presence :: MAP";case "eligibility"->"value :: BOOLEAN, data :: MAP";default->"data :: MAP";};
             assertEquals(name+"("+String.join(", ",params)+") :: ("+columns+")",row.get("signature").asString().replace("?",""),name);
+            assertCatalogEntryMatchesImplementation(spec,implementation);
         }
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        for(String name:List.of("deposit.load.csv","deposit.load.xlsx","deposit.load.gpkg")){
+            var stale=mapper.readTree(catalog.toString()).deepCopy();
+            var staleEntry=java.util.stream.StreamSupport.stream(stale.spliterator(),false).filter(item->item.get("name").asText().equals(name)).findFirst().orElseThrow();
+            ((com.fasterxml.jackson.databind.node.ObjectNode)staleEntry).put("scope","namespace");
+            ((com.fasterxml.jackson.databind.node.ObjectNode)staleEntry).put("action",false);
+            assertThrows(AssertionError.class,()->assertCatalogEntryMatchesImplementation(staleEntry,implementation),name+" stale catalog metadata must be rejected");
+        }
+    }
+    private record ProcedureSpec(String scope,boolean action,List<String> bindings){}
+    private static Map<String,ProcedureSpec> parseProcedureCatalog(Path root)throws Exception{
+        String source=Files.readString(root.resolve("plugin/src/main/java/deposit/common/ProcedureCatalog.java"));
+        var pattern=java.util.regex.Pattern.compile("SPECS\\.put\\(\\\"([^\\\"]+)\\\",new Spec\\(\\\"([^\\\"]+)\\\",(true|false),List\\.of\\(([^)]*)\\)\\)\\);");
+        var matcher=pattern.matcher(source);var parsed=new LinkedHashMap<String,ProcedureSpec>();
+        while(matcher.find()){
+            var values=java.util.regex.Pattern.compile("\\\"([^\\\"]*)\\\"").matcher(matcher.group(4));var bindings=new ArrayList<String>();
+            while(values.find())bindings.add(values.group(1));
+            String name=matcher.group(1);if(parsed.putIfAbsent(name,new ProcedureSpec(matcher.group(2),Boolean.parseBoolean(matcher.group(3)),List.copyOf(bindings)) )!=null)fail("duplicate ProcedureCatalog declaration "+name);
+        }
+        assertFalse(parsed.isEmpty(),"ProcedureCatalog declarations were not parsed");return parsed;
+    }
+    private static void assertCatalogEntryMatchesImplementation(com.fasterxml.jackson.databind.JsonNode spec,Map<String,ProcedureSpec> implementation){
+        String name=spec.get("name").asText();var declaration=implementation.get(name);assertNotNull(declaration,"ProcedureCatalog missing "+name);
+        assertEquals(spec.get("scope").asText(),declaration.scope(),name+" scope");
+        assertEquals(spec.get("action").asBoolean(),declaration.action(),name+" action");
+        var bindings=new ArrayList<String>();for(var arg:spec.get("args"))bindings.add(arg.get("binding").asText());
+        assertEquals(bindings,declaration.bindings(),name+" ordered bindings");
     }
     @Test void preparedBatchBindsNamesBeforeExecution(){
         String original=id(call("deposit.create.class","Find",m(),token));String recovery=key();var commands=List.of(m("key","edit","procedure","deposit.set.class","arguments",List.of("Find",m("comment","bound"))));

@@ -1831,8 +1831,8 @@
     ],
     "output": "data",
     "mode": "WRITE",
-    "scope": "namespace",
-    "action": false
+    "scope": "operational",
+    "action": true
   },
   {
     "name": "deposit.load.xlsx",
@@ -1842,8 +1842,8 @@
     ],
     "output": "data",
     "mode": "WRITE",
-    "scope": "namespace",
-    "action": false
+    "scope": "operational",
+    "action": true
   },
   {
     "name": "deposit.load.gpkg",
@@ -1853,8 +1853,8 @@
     ],
     "output": "data",
     "mode": "WRITE",
-    "scope": "namespace",
-    "action": false
+    "scope": "operational",
+    "action": true
   },
   {
     "name": "deposit.get.table",
