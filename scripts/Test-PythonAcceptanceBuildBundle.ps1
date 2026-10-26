@@ -10,10 +10,14 @@ Add-Type -AssemblyName System.IO.Compression
 . (Join-Path $PSScriptRoot 'helpers\PythonAcceptanceBuildBundle.ps1')
 $Root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $Root
-$repo=Split-Path $PSScriptRoot -Parent
-$version=Get-PythonAcceptanceTargetVersion (Join-Path $repo '..\deposit-python')
-$commit=(& git -C $repo rev-parse --verify HEAD 2>$null).Trim()
-if($LASTEXITCODE -ne 0){throw 'Could not read server source commit for bundle fixture.'}
+$checkout=Split-Path $PSScriptRoot -Parent
+$pythonRoot=[IO.Path]::GetFullPath((Join-Path $checkout '..\deposit-python'))
+$version=Get-PythonAcceptanceTargetVersion $pythonRoot
+$tagCommit=(& git -C $checkout rev-parse --verify "$version^{commit}" 2>$null).Trim()
+if($LASTEXITCODE -ne 0 -or $tagCommit -notmatch '^[0-9a-f]{40}$'){throw 'Could not resolve the exact-version server tag for bundle fixtures.'}
+$tagPoints=@(& git -C $checkout tag --points-at $tagCommit 2>$null|Where-Object {$_ -ceq $version})
+if($LASTEXITCODE -ne 0 -or $tagPoints.Count -ne 1){throw 'The selected server version is not one exact tag at its source commit.'}
+$sourceWorktree=Join-Path $Root ('cache\python-acceptance-build-bundles\probe-source-'+[Guid]::NewGuid().ToString('N'))
 $bundleRoot=Join-Path $Root ('cache\python-acceptance-build-bundles\test-fixtures-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $bundleRoot -Force|Out-Null
 function Add-ZipText([IO.Compression.ZipArchive]$Zip,[string]$Name,[string]$Text){$entry=$Zip.CreateEntry($Name);$stream=$entry.Open();try{$writer=New-Object IO.StreamWriter($stream,(New-Object Text.UTF8Encoding($false)));try{$writer.Write($Text)}finally{$writer.Dispose()}}finally{$stream.Dispose()}}
@@ -71,6 +75,16 @@ function Assert-ImportedBundleLayout([string]$ImportedRoot,[string]$Archive){
        !@(Get-ChildItem -Path $paths[1] -File | Where-Object Extension -eq '.jar').Count){throw 'Imported outputs do not satisfy the actual readiness classpath.'}
 }
 try{
+    # Build provenance fixtures against a separate, pristine checkout of the
+    # selected tag. The active server branch may contain later Python hook
+    # changes and must not be mislabeled as a tagged build source.
+    & git -C $checkout worktree add --detach $sourceWorktree $version 2>&1|Out-Null
+    if($LASTEXITCODE -ne 0){throw 'Could not create the clean exact-version source worktree for bundle probes.'}
+    $repo=$sourceWorktree
+    $commit=(& git -C $repo rev-parse --verify HEAD 2>$null).Trim()
+    if($LASTEXITCODE -ne 0 -or $commit -cne $tagCommit){throw 'The bundle probe source worktree does not match the exact-version tag.'}
+    $sourceStatus=@(& git -C $repo status --porcelain 2>$null)
+    if($LASTEXITCODE -ne 0 -or $sourceStatus.Count -ne 0){throw 'The exact-version bundle probe worktree is not clean.'}
     $null=New-Item -ItemType Directory -Path (Join-Path $bundleRoot 'release') -Force
     $plugin=Join-Path $bundleRoot "build\deposit-plugin\target\deposit-plugin-$version.jar"
     $metadata=Join-Path $bundleRoot 'build\deposit-build.properties'
@@ -138,7 +152,8 @@ try{
                 $SelectedKind=if($selection -eq 'unit'){'Unit'}else{'Integration'}
                 $SelectedPythonTest=if($selection -in @('bundle','python-build')){'Smoke'}else{$null}
                 $PythonBuildBundle=if($selection -eq 'bundle'){$bundleRoot}else{$null}
-                $PythonRoot=Join-Path $repo '..\deposit-python'
+                $PythonBuildSourceRepository=$repo
+                $PythonRoot=$pythonRoot
                 . ([scriptblock]::Create($dispatch.Extent.Text))
                 $expected=if($selection -eq 'bundle'){'Install'}elseif($selection -eq 'unit'){''}else{'Build,Package,Install'}
                 if(($phases -join ',') -cne $expected){throw "Unexpected suite phases for ${selection}: $($phases -join ',')"}
@@ -196,4 +211,8 @@ try{
 } finally {
     Assert-PythonAcceptanceBundlePlainPath $bundleRoot
     Remove-Item -LiteralPath $bundleRoot -Recurse -Force
+    if(Test-Path -LiteralPath $sourceWorktree -PathType Container){
+        & git -C $checkout worktree remove --force $sourceWorktree 2>&1|Out-Null
+        if($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $sourceWorktree)){throw 'Could not clean up the exact-version bundle probe worktree.'}
+    }
 }

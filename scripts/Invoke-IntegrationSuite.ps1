@@ -6,11 +6,12 @@ param(
     [ValidateSet('Unit','Integration')][string]$SelectedKind,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$SelectedTest,
     [string]$SelectedLogPath,
-    [ValidateSet('Smoke','Core')][string]$SelectedPythonTest,
+    [ValidateSet('Smoke','Core','Gateway')][string]$SelectedPythonTest,
     [ValidateSet('Restart','KillRestart')][string]$PythonRecoveryTransition='Restart',
     [string]$PythonRoot,
     [string]$PythonEnvironment,
     [string]$PythonBuildBundle,
+    [string]$PythonBuildSourceRepository,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$RecoverySeedTest,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$RecoveryVerifyTest,
     [ValidateSet('Restart','KillRestart','ProcessCrashRestart','StartupCrashRestart')][string]$RecoveryTransition,
@@ -53,7 +54,7 @@ if ($ListOnly) {
     Write-Output 'Local lifecycle: AuthenticationNamespaceLifecycleIT'
     $normal | ForEach-Object { Write-Output "Normal selection: $_" }
     Write-Output 'Independent Python decoding: generated-whole.zip and generated-subgraph.zip'
-    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
+    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core|Gateway -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
     Write-Output 'Python Core transition: -PythonRecoveryTransition Restart|KillRestart (default Restart)'
     Write-Output 'Optional clean tagged build bundle: -PythonBuildBundle <bundle under harness cache>; skips Build and Package only.'
     foreach($transition in @('Restart','KillRestart')) { Write-Output "$transition seed: $seed"; Write-Output "$transition verify: $verify" }
@@ -69,6 +70,7 @@ if([bool]$SelectedKind -ne [bool]$SelectedTest){throw 'SelectedKind and Selected
 if([bool]$SelectedPythonTest -ne [bool]$PythonRoot -or [bool]$SelectedPythonTest -ne [bool]$PythonEnvironment){throw 'Python test, repository root, and environment must be supplied together.'}
 if($PythonBuildBundle -and !$SelectedPythonTest){throw 'PythonBuildBundle is available only with SelectedPythonTest.'}
 if($PythonBuildBundle -and $Phase -ne 'Run'){throw 'PythonBuildBundle requires a Run phase with the selected Python test.'}
+if($PythonBuildSourceRepository -and !$PythonBuildBundle){throw 'PythonBuildSourceRepository requires PythonBuildBundle.'}
 if([bool]$RecoverySeedTest -ne [bool]$RecoveryVerifyTest -or [bool]$RecoverySeedTest -ne [bool]$RecoveryTransition){throw 'Recovery seed, verification, and transition must be supplied together.'}
 $selectionCount=0
 if($SelectedKind){$selectionCount++}
@@ -96,6 +98,7 @@ if($SelectedPythonTest) {
     if(!(Test-Path -LiteralPath (Join-Path $PythonEnvironment 'Scripts\python.exe') -PathType Leaf)){throw 'PythonEnvironment must be a prepared venv under the harness root.'}
 }
 if($PythonBuildBundle){$PythonBuildBundle=[IO.Path]::GetFullPath($PythonBuildBundle);Assert-HarnessPlainPath $PythonBuildBundle}
+if($PythonBuildSourceRepository){$PythonBuildSourceRepository=[IO.Path]::GetFullPath($PythonBuildSourceRepository)}else{$PythonBuildSourceRepository=$repo}
 . (Join-Path $PSScriptRoot 'IntegrationSuiteWatchdog.ps1') -LibraryOnly
 . (Join-Path $PSScriptRoot 'helpers\IntegrationSuiteChild.ps1')
 $private=Join-Path $root 'private\suite'
@@ -298,7 +301,7 @@ try {
     if($SelectedKind -ne 'Unit') {
         if($SelectedPythonTest -and $PythonBuildBundle){
             $targetVersion=Get-PythonAcceptanceTargetVersion $PythonRoot
-            $archive=Import-PythonAcceptanceBuildBundle -BundleRoot $PythonBuildBundle -ExpectedVersion $targetVersion -RepositoryRoot $repo
+            $archive=Import-PythonAcceptanceBuildBundle -BundleRoot $PythonBuildBundle -ExpectedVersion $targetVersion -RepositoryRoot $PythonBuildSourceRepository
         }else{
             Invoke-SuitePhase 'Build'
             $build=Get-DepositBuildMetadata $repo $root
