@@ -6,7 +6,8 @@ param(
     [ValidateSet('Unit','Integration')][string]$SelectedKind,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$SelectedTest,
     [string]$SelectedLogPath,
-    [ValidateSet('Smoke')][string]$SelectedPythonTest,
+    [ValidateSet('Smoke','Core')][string]$SelectedPythonTest,
+    [ValidateSet('Restart','KillRestart')][string]$PythonRecoveryTransition='Restart',
     [string]$PythonRoot,
     [string]$PythonEnvironment,
     [string]$PythonBuildBundle,
@@ -32,6 +33,7 @@ $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 . (Join-Path $PSScriptRoot 'HarnessPaths.ps1')
+. (Join-Path $PSScriptRoot 'IntegrationHarnessSecrets.ps1')
 $root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $root
 $repo=Get-DepositServerRoot
@@ -51,7 +53,8 @@ if ($ListOnly) {
     Write-Output 'Local lifecycle: AuthenticationNamespaceLifecycleIT'
     $normal | ForEach-Object { Write-Output "Normal selection: $_" }
     Write-Output 'Independent Python decoding: generated-whole.zip and generated-subgraph.zip'
-    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
+    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
+    Write-Output 'Python Core transition: -PythonRecoveryTransition Restart|KillRestart (default Restart)'
     Write-Output 'Optional clean tagged build bundle: -PythonBuildBundle <bundle under harness cache>; skips Build and Package only.'
     foreach($transition in @('Restart','KillRestart')) { Write-Output "$transition seed: $seed"; Write-Output "$transition verify: $verify" }
     Write-Output 'Service: clean provisioning; fresh-account probes; graceful shutdown; probe selection; three history crash scenarios'
@@ -84,7 +87,6 @@ if($SelectedScenario -in @('CleanProvisioning','DownloadListener','ServiceShutdo
     $principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'This standalone scenario installs a temporary Windows service. Run PowerShell as Administrator; no harness state was reset.'}
 }
-. (Join-Path $PSScriptRoot 'IntegrationHarnessSecrets.ps1')
 . (Join-Path $PSScriptRoot 'helpers\PythonAcceptanceBuildBundle.ps1')
 if($SelectedPythonTest) {
     $PythonRoot=[IO.Path]::GetFullPath($PythonRoot)
@@ -346,7 +348,8 @@ try {
         $identityRecord=Join-Path $logs 'native-identity.json'
         $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Seed','-IdentityRecordPath',$identityRecord)
         Invoke-SuiteChild $hook $arguments $label 3600
-        Invoke-SuitePhase 'Stop'
+        $pythonTransitionPhase=if($PythonRecoveryTransition -eq 'KillRestart'){'Kill'}else{'Stop'}
+        Invoke-SuitePhase $pythonTransitionPhase
         Invoke-SuitePhase 'Start'
         $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Verify','-IdentityRecordPath',$identityRecord)
         Invoke-SuiteChild $hook $arguments ($label+'-identity-after-restart') 3600
