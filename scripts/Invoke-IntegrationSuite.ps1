@@ -6,7 +6,7 @@ param(
     [ValidateSet('Unit','Integration')][string]$SelectedKind,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$SelectedTest,
     [string]$SelectedLogPath,
-    [ValidateSet('Smoke','Core','Gateway')][string]$SelectedPythonTest,
+    [ValidateSet('Smoke','Core','Gateway','Domain')][string]$SelectedPythonTest,
     [ValidateSet('Restart','KillRestart')][string]$PythonRecoveryTransition='Restart',
     [string]$PythonRoot,
     [string]$PythonEnvironment,
@@ -54,7 +54,7 @@ if ($ListOnly) {
     Write-Output 'Local lifecycle: AuthenticationNamespaceLifecycleIT'
     $normal | ForEach-Object { Write-Output "Normal selection: $_" }
     Write-Output 'Independent Python decoding: generated-whole.zip and generated-subgraph.zip'
-    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core|Gateway -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
+    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core|Gateway|Domain -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
     Write-Output 'Python Core transition: -PythonRecoveryTransition Restart|KillRestart (default Restart)'
     Write-Output 'Optional clean tagged build bundle: -PythonBuildBundle <bundle under harness cache>; skips Build and Package only.'
     foreach($transition in @('Restart','KillRestart')) { Write-Output "$transition seed: $seed"; Write-Output "$transition verify: $verify" }

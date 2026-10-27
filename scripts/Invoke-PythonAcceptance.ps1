@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('Smoke','Core','Gateway')][string]$Selection,
+    [Parameter(Mandatory=$true)][ValidateSet('Smoke','Core','Gateway','Domain')][string]$Selection,
     [Parameter(Mandatory=$true)][string]$PythonRoot,
     [Parameter(Mandatory=$true)][string]$PythonEnvironment,
     [Parameter(Mandatory=$true)][string]$Root,
@@ -29,8 +29,10 @@ $test=Join-Path $PythonRoot 'tests\integration\test_live_smoke.py'
 $tests=@($test)
 $stage2Test=Join-Path $PythonRoot 'tests\integration\test_stage2_store.py'
 $stage3Test=Join-Path $PythonRoot 'tests\integration\test_stage3_gateway.py'
-if($Selection -in @('Core','Gateway')){$tests+= $stage2Test}
+$stage4Test=Join-Path $PythonRoot 'tests\integration\test_stage4_domain.py'
+if($Selection -in @('Core','Gateway','Domain')){$tests+= $stage2Test}
 if($Selection -eq 'Gateway'){$tests+= $stage3Test}
+if($Selection -eq 'Domain'){$tests+= $stage3Test; $tests+= $stage4Test}
 if(!(Test-Path -LiteralPath $python -PathType Leaf) -or @($tests|Where-Object {!(Test-Path -LiteralPath $_ -PathType Leaf)}).Count){throw 'Installed Python environment or selected Python acceptance test is missing.'}
 $IdentityRecordPath=[IO.Path]::GetFullPath($IdentityRecordPath)
 Assert-HarnessPlainPath $IdentityRecordPath
