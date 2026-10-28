@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Root)
+param([string]$Root,[string]$FixtureTag='2.0.0-dev.77')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if(!$Root){$Root=Join-Path $PSScriptRoot '..\..\test_harness'}
@@ -11,12 +11,16 @@ Add-Type -AssemblyName System.IO.Compression
 $Root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 Assert-HarnessRoot $Root
 $checkout=Split-Path $PSScriptRoot -Parent
-$pythonRoot=[IO.Path]::GetFullPath((Join-Path $checkout '..\deposit-python'))
-$version=Get-PythonAcceptanceTargetVersion $pythonRoot
-$tagCommit=(& git -C $checkout rev-parse --verify "$version^{commit}" 2>$null).Trim()
-if($LASTEXITCODE -ne 0 -or $tagCommit -notmatch '^[0-9a-f]{40}$'){throw 'Could not resolve the exact-version server tag for bundle fixtures.'}
-$tagPoints=@(& git -C $checkout tag --points-at $tagCommit 2>$null|Where-Object {$_ -ceq $version})
-if($LASTEXITCODE -ne 0 -or $tagPoints.Count -ne 1){throw 'The selected server version is not one exact tag at its source commit.'}
+if($FixtureTag -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$'){throw 'FixtureTag must be an exact server version tag.'}
+$version=$FixtureTag
+$tagRef="refs/tags/$FixtureTag"
+& git -C $checkout show-ref --verify --quiet $tagRef
+$tagExistsExit=$LASTEXITCODE
+if($tagExistsExit -ne 0){throw "Could not resolve fixture tag '$FixtureTag' to a commit."}
+$tagCommit=(& git -C $checkout rev-parse --verify "$tagRef^{commit}").Trim()
+if($LASTEXITCODE -ne 0 -or $tagCommit -notmatch '^[0-9a-f]{40}$'){throw "Could not resolve fixture tag '$FixtureTag' to a commit."}
+$tagPoints=@(& git -C $checkout tag --points-at $tagCommit 2>$null|Where-Object {$_ -ceq $FixtureTag})
+if($LASTEXITCODE -ne 0 -or $tagPoints.Count -ne 1){throw "Fixture tag '$FixtureTag' is not the exact tag at its source commit."}
 $sourceWorktree=Join-Path $Root ('cache\python-acceptance-build-bundles\probe-source-'+[Guid]::NewGuid().ToString('N'))
 $bundleRoot=Join-Path $Root ('cache\python-acceptance-build-bundles\test-fixtures-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $bundleRoot -Force|Out-Null
@@ -75,10 +79,9 @@ function Assert-ImportedBundleLayout([string]$ImportedRoot,[string]$Archive){
        !@(Get-ChildItem -Path $paths[1] -File | Where-Object Extension -eq '.jar').Count){throw 'Imported outputs do not satisfy the actual readiness classpath.'}
 }
 try{
-    # Build provenance fixtures against a separate, pristine checkout of the
-    # selected tag. The active server branch may contain later Python hook
-    # changes and must not be mislabeled as a tagged build source.
-    & git -C $checkout worktree add --detach $sourceWorktree $version 2>&1|Out-Null
+    # These bundle contents are synthetic; their provenance is the explicitly
+    # selected historical Server tag, not a runtime package version.
+    & git -C $checkout worktree add --detach $sourceWorktree $tagRef 2>&1|Out-Null
     if($LASTEXITCODE -ne 0){throw 'Could not create the clean exact-version source worktree for bundle probes.'}
     $repo=$sourceWorktree
     $commit=(& git -C $repo rev-parse --verify HEAD 2>$null).Trim()
@@ -105,6 +108,11 @@ try{
     $importRoot=Join-Path $Root ('cache\python-acceptance-bundle-import-'+[Guid]::NewGuid().ToString('N'))
     $savedRoot=$root
     try{
+        $pythonFixtureRoot=Join-Path $importRoot 'python-fixture'
+        $pythonManifestDirectory=Join-Path $pythonFixtureRoot 'src\deposit'
+        New-Item -ItemType Directory -Path $pythonManifestDirectory -Force|Out-Null
+        $pythonManifest=[ordered]@{support=[ordered]@{target_server_version=$FixtureTag}}
+        [IO.File]::WriteAllText((Join-Path $pythonManifestDirectory '_procedure_manifest.json'),($pythonManifest|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
         $root=$importRoot
         foreach($state in @('absent','empty')){
             if($state -eq 'empty'){New-Item -ItemType Directory -Path (Join-Path $root 'build') -Force|Out-Null}
@@ -153,7 +161,7 @@ try{
                 $SelectedPythonTest=if($selection -in @('bundle','python-build')){'Smoke'}else{$null}
                 $PythonBuildBundle=if($selection -eq 'bundle'){$bundleRoot}else{$null}
                 $PythonBuildSourceRepository=$repo
-                $PythonRoot=$pythonRoot
+                $PythonRoot=$pythonFixtureRoot
                 . ([scriptblock]::Create($dispatch.Extent.Text))
                 $expected=if($selection -eq 'bundle'){'Install'}elseif($selection -eq 'unit'){''}else{'Build,Package,Install'}
                 if(($phases -join ',') -cne $expected){throw "Unexpected suite phases for ${selection}: $($phases -join ',')"}
@@ -203,11 +211,11 @@ try{
     Expect-BundleFailure {Test-PythonAcceptanceBuildBundle -BundleRoot (Join-Path $bundleRoot 'missing') -ExpectedVersion $version -RepositoryRoot $repo} 'missing bundle' 'bundle is missing'
     $suite=Join-Path $PSScriptRoot 'Invoke-IntegrationSuite.ps1'
     Expect-BundleFailure {& $suite -PythonBuildBundle $bundleRoot} 'bundle without Python selection' 'available only with SelectedPythonTest'
-    $pythonSelection=@{SelectedPythonTest='Smoke';PythonRoot=(Join-Path $repo '..\deposit-python');PythonEnvironment=(Join-Path $Root 'tools\python-tests');PythonBuildBundle=$bundleRoot}
+    $pythonSelection=@{SelectedPythonTest='Smoke';PythonRoot=$pythonFixtureRoot;PythonEnvironment=(Join-Path $Root 'tools\python-tests');PythonBuildBundle=$bundleRoot}
     Expect-BundleFailure {& $suite @pythonSelection -Phase Setup} 'setup phase with bundle' 'requires a Run phase'
     Expect-BundleFailure {& $suite @pythonSelection -SetupOnly} 'setup-only with bundle' 'requires a Run phase'
     Expect-BundleFailure {& $suite @pythonSelection -SelectedKind Unit -SelectedTest FixtureTest} 'mixed Python and Java selections' 'one independent test or scenario'
-    Write-Output 'PASS: bundle layout matches metadata/Install/readiness consumers; absent/empty build import, manifest copy hashes, tamper, missing inputs, wrong version, and incompatible parameters'
+    Write-Output "PASS: synthetic bundle provenance tag=$FixtureTag commit=$commit; metadata/Install/readiness consumers, absent/empty build import, manifest copy hashes, tamper, missing inputs, wrong version, and incompatible parameters"
 } finally {
     Assert-PythonAcceptanceBundlePlainPath $bundleRoot
     Remove-Item -LiteralPath $bundleRoot -Recurse -Force
