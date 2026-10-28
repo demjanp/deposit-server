@@ -1,4 +1,0 @@
-interface:
-  display_name: "Project Stage"
-  short_description: "Plan and deliver approved master-plan stages"
-  default_prompt: "Use $project-stage to analyze Stage N and return unresolved questions with recommendations; do not implement."

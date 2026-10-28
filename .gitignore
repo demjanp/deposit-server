@@ -38,8 +38,8 @@ build/
 ### VS Code ###
 .vscode/
 
-### Codex ###
 .codex/
+.agents/
 
 ### Mac OS ###
 .DS_Store

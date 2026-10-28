@@ -1,4 +1,0 @@
-interface:
-  display_name: "Project Task"
-  short_description: "Plan and implement an individual project task"
-  default_prompt: "Use $project-task to plan this task using agents-hub and its linked knowledge bases; do not implement."
