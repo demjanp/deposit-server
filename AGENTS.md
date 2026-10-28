@@ -95,6 +95,11 @@ criteria. Architect approval cannot authorize a scope change or override the
 user's instructions. Honor an explicit user stop or change of scope and
 higher-priority execution restrictions.
 
+User stops, actual Plan mode, runtime/approval restrictions and unavailable
+required specialists are separate interruption conditions. Obey them without
+waiting for architect approval; no specialist can override them. Use an exposed,
+permitted approval path when available and continue independent authorized work.
+
 Luna writes and updates documentation only when the user explicitly requests
 those changes. For a significant architectural decision recorded in documentation,
 have architect perform a read-only consistency review against approved decisions,
@@ -145,7 +150,36 @@ a run independently of the external-blocker assessment; do not claim architect
 approval is needed to obey higher-priority restrictions. Preserve recovery
 evidence and resume without repeating completed work.
 
+For project-run, a demonstrated need for Windows administrator rights in a
+non-elevated session interrupts implementation and delegated edits. Preserve
+permitted cleanup/recovery evidence, then ask the user to rerun the session with
+administrator privileges and resume the existing run. Do not self-elevate or
+treat generic access denials as proof that administrator rights are needed.
+
 ### Verification and reporting
+Before expensive verification, establish the actual working directory, source
+access, interpreter/shell versions, required runner environment, writable test
+locations and required reviewer availability. Recheck affected assumptions after
+context changes. Separate runtime artifact provenance from acceptance-script
+revision; preserve compatibility checks and unrelated checkout changes.
+Identify allowed scratch paths, reset boundaries, persistent evidence and the
+cleanup owner before creating probes. Isolate test profile state where supported.
+Retain reviewed, redacted evidence before later harness invocations can erase it.
+
+Diagnose each failed command/test as implementation, fixture, harness,
+environment or unknown using concrete evidence. Check fixture setup/teardown and
+contract assumptions; validate corrections with focused checks before expensive
+gates. Report environment-dependent failures individually, without silently
+excluding them or weakening checks. Preserve mandatory final acceptance gates.
+Confirm original process/journal state before restarting interrupted runs.
+Distinguish runtime restrictions, ACLs and open handles; do not infer permission
+from configuration, invent a denial's cause, or retry denied actions through an
+equivalent route. Cleanup must be attributable, permitted and verified.
+For conditional procedures, read the relevant sections of the deployed reference
+at `.agents/skills/project-run/references/verification-environment.md`, relative
+to the repository root. These safeguards do not add phase, commit or
+permission authorization to standalone tasks.
+
 Follow the project's actual build and test instructions. Run focused tests and
 necessary regression checks; address failures, including reporting unrelated
 pre-existing failures. Never report unexecuted checks as passed. Report changes,
