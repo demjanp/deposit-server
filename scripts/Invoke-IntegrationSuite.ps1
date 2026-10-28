@@ -6,7 +6,7 @@ param(
     [ValidateSet('Unit','Integration')][string]$SelectedKind,
     [ValidatePattern('^[A-Za-z0-9_#+,*-]+$')][string]$SelectedTest,
     [string]$SelectedLogPath,
-    [ValidateSet('Smoke','Core','Gateway','Domain')][string]$SelectedPythonTest,
+    [ValidateSet('Smoke','Core','Gateway','Domain','Workflows')][string]$SelectedPythonTest,
     [ValidateSet('Restart','KillRestart')][string]$PythonRecoveryTransition='Restart',
     [string]$PythonRoot,
     [string]$PythonEnvironment,
@@ -54,7 +54,7 @@ if ($ListOnly) {
     Write-Output 'Local lifecycle: AuthenticationNamespaceLifecycleIT'
     $normal | ForEach-Object { Write-Output "Normal selection: $_" }
     Write-Output 'Independent Python decoding: generated-whole.zip and generated-subgraph.zip'
-    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core|Gateway|Domain -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
+    Write-Output 'Python wrapper hook: -SelectedPythonTest Smoke|Core|Gateway|Domain|Workflows -PythonRoot <deposit-python> -PythonEnvironment <harness venv>'
     Write-Output 'Python Core transition: -PythonRecoveryTransition Restart|KillRestart (default Restart)'
     Write-Output 'Optional clean tagged build bundle: -PythonBuildBundle <bundle under harness cache>; skips Build and Package only.'
     foreach($transition in @('Restart','KillRestart')) { Write-Output "$transition seed: $seed"; Write-Output "$transition verify: $verify" }
@@ -347,14 +347,34 @@ try {
         Update-SuiteJournal $journalPath {param($j) $j.state='running'}
         Invoke-SuitePhase 'Start'
         $label='selected-python-'+$SelectedPythonTest.ToLowerInvariant()
+        if($SelectedPythonTest -eq 'Workflows') {
+            Invoke-SuiteSelection 'BrowserSessionIT' 'stage5-browser-session'
+            Invoke-SuiteSelection 'BrowserFailureIT#invalidLoginAndPasswordResetRejectOldBrowserSession+corruptContentReturnsUnavailableAndClientCancellationDoesNotBlockLaterReads' 'stage5-browser-failure'
+            Invoke-SuiteSelection 'RevisionHistoryIT' 'stage5-history-regressions'
+            Invoke-SuiteSelection 'ResourceAndGeometryIT' 'stage5-resource-geometry'
+            Invoke-SuiteSelection 'PatternMatchingIT' 'stage5-patterns'
+            Invoke-SuiteSelection 'TabularAndSpatialFormatsIT' 'stage5-tabular-spatial'
+            Invoke-SuiteSelection 'TabularListenerAvailabilityTest,GeoPackageAdapterTest' 'stage5-tabular-listener' 'Unit'
+            Invoke-SuiteSelection 'NamespaceCloneAnalysisIT#subgraphPackageCanBeAnalyzedAndAppliedWithoutImportingUnselectedObjects' 'stage5-subgraph-import'
+            Invoke-SuiteSelection 'AccountAuthorizationIT#ordinaryPermissionsLogoutAndMixedSessions' 'stage5-namespace-authorization'
+            # The Java fixtures bootstrap their fixed typed-data-admin account.
+            # Reset the owned test-host before Python's fresh-runtime bootstrap
+            # so its separate stage1-admin identity is exercised on a clean graph.
+            Invoke-SuitePhase 'Stop'
+            Invoke-SuitePhase 'Reset'
+            Invoke-SuitePhase 'Install' @('-ReleasePackage',$archive)
+            Invoke-SuitePhase 'Start'
+        }
         $hook=Join-Path $PSScriptRoot 'Invoke-PythonAcceptance.ps1'
         $identityRecord=Join-Path $logs 'native-identity.json'
-        $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Seed','-IdentityRecordPath',$identityRecord)
+        # Workflows is cumulative and includes long protected transfer/recovery work.
+        $pythonBudget=if($SelectedPythonTest -eq 'Workflows'){1800}else{300}
+        $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Seed','-IdentityRecordPath',$identityRecord,'-TimeoutSeconds',[string]$pythonBudget)
         Invoke-SuiteChild $hook $arguments $label 3600
         $pythonTransitionPhase=if($PythonRecoveryTransition -eq 'KillRestart'){'Kill'}else{'Stop'}
         Invoke-SuitePhase $pythonTransitionPhase
         Invoke-SuitePhase 'Start'
-        $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Verify','-IdentityRecordPath',$identityRecord)
+        $arguments=@('-Selection',$SelectedPythonTest,'-PythonRoot',$PythonRoot,'-PythonEnvironment',$PythonEnvironment,'-Root',$root,'-Port',[string]$port,'-IdentityPhase','Verify','-IdentityRecordPath',$identityRecord,'-TimeoutSeconds',[string]$pythonBudget)
         Invoke-SuiteChild $hook $arguments ($label+'-identity-after-restart') 3600
         Invoke-SuitePhase 'Stop'
     } elseif($RecoverySeedTest) {

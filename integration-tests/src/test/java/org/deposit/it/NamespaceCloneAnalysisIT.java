@@ -90,6 +90,26 @@ class NamespaceCloneAnalysisIT {
         assertEquals(1L,query("MATCH (:Object {id:$a})-[:RELATED_TO {label:'links'}]->(:Object {id:$b}) RETURN count(*) AS n",m("a",existingKeyed,"b",(String)objectMap.get(sourceNew))).getFirst().get("n").asLong());
     }
 
+    @Test void subgraphPackageCanBeAnalyzedAndAppliedWithoutImportingUnselectedObjects(){
+        call("deposit.create.class","SubgraphItem",m("descriptors",List.of(m("name","Code","type","String"))),token);
+        call("deposit.create.object","SubgraphItem",m("descriptors",m("Code","selected")),token);
+        call("deposit.create.object","SubgraphItem",m("descriptors",m("Code","excluded")),token);
+        String selected=query("MATCH (o:Object {namespaceId:$ns})-[:HAS_DESCRIPTOR]->(:Descriptor {name:'Code',value:'selected'}) RETURN o.id AS id",m("ns",namespace)).getFirst().get("id").asString();
+        var exported=call("deposit.save.data",m("rootIds",List.of(selected)),m(),token).get("data");
+        String packageId=exported.get("resourceId").asString();
+        var validation=call("deposit.load.data",packageId,token).get("data");
+        assertTrue(validation.get("valid").asBoolean());
+        assertEquals("subgraph",validation.get("scope").asString());
+        String receiver=id(call("deposit.create.namespace","Subgraph-receiver-"+key(),m("historyMode","disabled"),token));
+        call("deposit.set.activeNamespace",m("id",receiver),token);
+        String plan=analyze(packageId);
+        var applied=call("deposit.import.apply",plan,token).get("data");
+        String mapped=applied.get("identityMappings").get("Object").get(selected).asString();
+        assertNotEquals(selected,mapped);
+        assertEquals(1L,query("MATCH (o:Object {namespaceId:$ns}) RETURN count(o) AS n",m("ns",receiver)).getFirst().get("n").asLong());
+        assertEquals("selected",query("MATCH (o:Object {id:$id})-[:HAS_DESCRIPTOR]->(d:Descriptor {name:'Code'}) RETURN d.value AS value",m("id",mapped)).getFirst().get("value").asString());
+    }
+
     @Test void persistentCloneRemapsHistoryAndKeepsSelection(){
         call("deposit.create.class","Find",m(),token);call("deposit.create.object","Find",m(),token);String packageId=export();assertEquals(packageId,UUID.fromString(packageId).toString());assertTrue(call("deposit.load.data",packageId,token).get("data").get("valid").asBoolean());String original=name;call("deposit.set.namespace",m("name",name+"-source-renamed"),token);String selected=call("deposit.get.session",token).get("data").get("namespaceId").asString();var clone=call("deposit.import.namespaceData",packageId,token).get("data").asMap();String cloneId=(String)clone.get("namespaceId");assertNotEquals(namespace,cloneId);assertEquals(selected,call("deposit.get.session",token).get("data").get("namespaceId").asString());assertEquals(original,clone.get("name"));assertTrue(query("MATCH (r:Revision {namespaceId:$ns}) RETURN count(r) AS n",m("ns",cloneId)).getFirst().get("n").asLong()>=2);assertNotEquals(query("MATCH (n:Namespace {id:$a}) RETURN n.headRevisionId AS id",m("a",namespace)).getFirst().get("id").asString(),query("MATCH (n:Namespace {id:$a}) RETURN n.headRevisionId AS id",m("a",cloneId)).getFirst().get("id").asString());
     }

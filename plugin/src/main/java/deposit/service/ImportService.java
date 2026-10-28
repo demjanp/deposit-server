@@ -86,7 +86,7 @@ public final class ImportService extends ActionService {
             Outcome outcome=action("deposit.import.analyze",request,false,"editor",()->{
                 Map<String,Object> src=ValueCodec.map(request.get("source"));fields(src,"packageResourceId");String packageId=RequestContext.uuid(src.get("packageResourceId"));
                 Path staged=copyAuthorizedPackage(packageId);retained[0]=staged;
-                Map<String,Object> summary=withValidatedPackage(staged,pkg->{if(!"namespace".equals(pkg.manifest().get("scope")))throw ExceptionHandler.fail("VALIDATION_FAILED","Import source must be a complete validated snapshot");return analyzeSnapshot(pkg,rules);});
+                Map<String,Object> summary=withValidatedPackage(staged,pkg->{Object scope=pkg.manifest().get("scope");if(!"namespace".equals(scope)&&!"subgraph".equals(scope))throw ExceptionHandler.fail("VALIDATION_FAILED","Import source must be a complete Namespace or subgraph snapshot");return analyzeSnapshot(pkg,rules);});
                 String id=UUID.randomUUID().toString(),relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/');long now=resources.now();long targetRevision=repo.sequence(c.namespaceId);String rulesJson=Json.write(rules),summaryJson=Json.write(summary);
                 Node plan=initializePlan(id,packageId,relative,targetRevision,now,now+24L*60*60*1000,rulesJson,summaryJson);retainStagingUntilCommit(staged);
                 return new Change(new Outcome(null,null,Json.map("planId",id,"targetRevision",plan.getProperty("targetRevision"),"groups",summary.get("groups"),"summary",summary.get("summary"))),false);

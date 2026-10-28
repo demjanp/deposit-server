@@ -109,15 +109,31 @@ class ResourceAndGeometryIT {
         var commands=List.of(BatchMutationIT.command("g","deposit.set.descriptor",m("objectId",object,"name","G","value",m("type","DGeometry","value",geometry("POINT (1 2)",null,2)))),BatchMutationIT.command("bad","deposit.set.object",m("id",UUID.randomUUID().toString())));
         error("NOT_FOUND",()->mutate("deposit.apply.batch",m("commands",commands)));assertEquals(before,seq());assertEquals(0,query("MATCH (g:DGeometry {namespaceId:$ns}) RETURN count(g) AS n",m("ns",ns)).getFirst().get("n").asInt());
     }
+    static String pruneDiagnostics(String id,String prune) {return query("MATCH (l:DepositResourceLocation {id:$id}) OPTIONAL MATCH (i:DepositPruneItem {jobId:$prune,resourceId:$id}) RETURN l.leaseUntil AS leaseUntil,l.orphanSince AS orphanSince,l.stagingPath AS stagingPath,l.deleting AS deleting,l.collected AS collected,i.state AS itemState,i.deletionBytes AS deletionBytes,i.reclaimedBytes AS reclaimedBytes",m("id",id,"prune",prune)).stream().map(org.neo4j.driver.Record::asMap).toList().toString();}
     @Test void pruneSchedulingRollbackReplayStatusAndReadProtection()throws Exception {
         String id=upload(ABC,"collect");descriptor("F","DResource",m("resourceId",id));
         var dry=call("deposit.admin.pruneResources",m("minimumAgeHours",0L),ctx(token));assertFalse(dry.get("data").get("candidateIds").asList().contains(id));
         mutate("deposit.set.descriptor",m("objectId",object,"name","F","value",null));assertStored(id);
-        // Independent fixture expires the lease and dates an orphan; production clocks remain unmodified.
-        query("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0,l.orphanSince=0",m("id",id));
-        awaitStagingCleanup(id);long expectedPhysical=physicalBytes(id);var req=m("dryRun",false,"minimumAgeHours",0L);var context=op();
-        try(var s=driver.session();var tx=s.beginTransaction()){tx.run("CALL deposit.admin.pruneResources($r,$c)",m("r",req,"c",context)).consume();tx.rollback();}assertTrue(Files.exists(resourcePath(id)));
-        var job=call("deposit.admin.pruneResources",req,context).get("data");assertEquals(job,call("deposit.admin.pruneResources",req,context).get("data"));String prune=job.get("pruneId").asString();String operation=(String)context.get("operationId");
+        awaitStagingCleanup(id);long expectedPhysical=physicalBytes(id);
+        // The dry run holds the existing Namespace/resource locks until fixture expiry commits,
+        // so maintenance cannot clear orphanSince using protection read before the fixture update.
+        // Production clocks remain unmodified.
+        try(var s=driver.session();var tx=s.beginTransaction()) {
+            tx.run("CALL deposit.admin.pruneResources($r,$c)",m("r",m("minimumAgeHours",0L),"c",ctx(token))).consume();
+            tx.run("MATCH (l:DepositResourceLocation {id:$id}) SET l.leaseUntil=0,l.orphanSince=0",m("id",id)).consume();
+            tx.commit();
+        }
+        assertEquals(List.of(id),call("deposit.admin.pruneResources",m("minimumAgeHours",0L),ctx(token)).get("data").get("candidateIds").asList(),()->pruneDiagnostics(id,""));
+        var req=m("dryRun",false,"minimumAgeHours",0L);var context=op();String rolledPrune;
+        try(var s=driver.session();var tx=s.beginTransaction()) {
+            var rolled=tx.run("CALL deposit.admin.pruneResources($r,$c)",m("r",req,"c",context)).single().get("data");
+            assertEquals(List.of(id),rolled.get("candidateIds").asList());assertEquals(1L,rolled.get("counts").asLong());
+            rolledPrune=rolled.get("pruneId").asString();tx.rollback();
+        }
+        assertEquals(0L,query("MATCH (j:DepositPruneJob {id:$prune}) RETURN count(j) AS n",m("prune",rolledPrune)).getFirst().get("n").asLong());
+        assertEquals(0L,query("MATCH (i:DepositPruneItem {jobId:$prune}) RETURN count(i) AS n",m("prune",rolledPrune)).getFirst().get("n").asLong());
+        assertTrue(Files.exists(resourcePath(id)));
+        var job=call("deposit.admin.pruneResources",req,context).get("data");assertEquals(List.of(id),job.get("candidateIds").asList(),()->pruneDiagnostics(id,job.get("pruneId").asString()));assertEquals(1L,job.get("counts").asLong());assertEquals(job,call("deposit.admin.pruneResources",req,context).get("data"));String prune=job.get("pruneId").asString();String operation=(String)context.get("operationId");
         String bindingActor=query("MATCH (b:DepositOperationBinding {operationId:$operation}) RETURN b.actorId AS actor",m("operation",operation)).getFirst().get("actor").asString();
         query("MATCH (b:DepositOperationBinding {actorId:$actor,operationId:$operation}) SET b.scope='server'",m("actor",bindingActor,"operation",operation));
         error("SCOPE_MISMATCH",()->call("deposit.admin.pruneResources",req,context));
@@ -135,7 +151,7 @@ class ResourceAndGeometryIT {
         assertEquals(jobsBefore,query("MATCH (j:DepositPruneJob {scope:$scope}) RETURN count(j) AS n",m("scope",ns)).getFirst().get("n").asLong());
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);org.neo4j.driver.Value status;
         do{status=call("deposit.admin.pruneResourcesStatus",m("pruneId",prune),ctx(token)).get("data");if(status.get("state").asString().equals("completed"))break;Thread.sleep(50);}while(System.nanoTime()<deadline);
-        assertEquals("completed",status.get("state").asString());assertEquals(expectedPhysical,status.get("reclaimedBytes").asLong());assertFalse(Files.exists(resourcePath(id)));
+        assertEquals("completed",status.get("state").asString(),()->pruneDiagnostics(id,prune));assertEquals("completed",query("MATCH (i:DepositPruneItem {jobId:$prune,resourceId:$id}) RETURN i.state AS state",m("prune",prune,"id",id)).getFirst().get("state").asString(),()->pruneDiagnostics(id,prune));assertEquals(expectedPhysical,status.get("reclaimedBytes").asLong(),()->pruneDiagnostics(id,prune));assertFalse(Files.exists(resourcePath(id)));
     }
     @Test void persistRecoveryFixture()throws Exception {
         String resource=upload(ABC,"persist.txt");var g=descriptor("G","DGeometry",geometry("POINT Z (12 34 56)",4326L,3));descriptor("F","DResource",m("resourceId",resource));

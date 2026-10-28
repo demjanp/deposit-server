@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('Smoke','Core','Gateway','Domain')][string]$Selection,
+    [Parameter(Mandatory=$true)][ValidateSet('Smoke','Core','Gateway','Domain','Workflows')][string]$Selection,
     [Parameter(Mandatory=$true)][string]$PythonRoot,
     [Parameter(Mandatory=$true)][string]$PythonEnvironment,
     [Parameter(Mandatory=$true)][string]$Root,
@@ -30,9 +30,11 @@ $tests=@($test)
 $stage2Test=Join-Path $PythonRoot 'tests\integration\test_stage2_store.py'
 $stage3Test=Join-Path $PythonRoot 'tests\integration\test_stage3_gateway.py'
 $stage4Test=Join-Path $PythonRoot 'tests\integration\test_stage4_domain.py'
+$stage5Test=Join-Path $PythonRoot 'tests\integration\test_stage5_workflows.py'
 if($Selection -in @('Core','Gateway','Domain')){$tests+= $stage2Test}
 if($Selection -eq 'Gateway'){$tests+= $stage3Test}
 if($Selection -eq 'Domain'){$tests+= $stage3Test; $tests+= $stage4Test}
+if($Selection -eq 'Workflows'){$tests+= $stage2Test; $tests+= $stage3Test; $tests+= $stage4Test; $tests+= $stage5Test}
 if(!(Test-Path -LiteralPath $python -PathType Leaf) -or @($tests|Where-Object {!(Test-Path -LiteralPath $_ -PathType Leaf)}).Count){throw 'Installed Python environment or selected Python acceptance test is missing.'}
 $IdentityRecordPath=[IO.Path]::GetFullPath($IdentityRecordPath)
 Assert-HarnessPlainPath $IdentityRecordPath
@@ -59,10 +61,17 @@ Assert-HarnessPlainPath $testWork
 $stdout=Join-Path $logs ("python-$($Selection.ToLowerInvariant())-$IdentityPhase.stdout.log")
 $stderr=Join-Path $logs ("python-$($Selection.ToLowerInvariant())-$IdentityPhase.stderr.log")
 $secrets=@($env:DEPOSIT_TEST_PASSWORD)
+$previousPythonPath=$env:PYTHONPATH
+$previousAcceptanceTimeout=$env:DEPOSIT_ACCEPTANCE_TIMEOUT_SECONDS
+$diagnosticPath=Join-Path $PythonRoot 'tests\integration'
+$env:PYTHONPATH=if($previousPythonPath){$diagnosticPath+[IO.Path]::PathSeparator+$previousPythonPath}else{$diagnosticPath}
+$env:DEPOSIT_ACCEPTANCE_TIMEOUT_SECONDS=[string]$TimeoutSeconds
 try {
-    $arguments=@('-m','pytest','-q','--import-mode=importlib')+$tests
+    $arguments=@('-m','pytest','-v','--tb=short','--maxfail=1','--import-mode=importlib','-p','acceptance_diagnostics')+$tests
     $result=Invoke-RunnerProcess -FilePath $python -Arguments $arguments -WorkingDirectory $testWork -StandardOutputPath $stdout -StandardErrorPath $stderr -TimeoutSeconds $TimeoutSeconds -Secrets $secrets
 } finally {
+    [Environment]::SetEnvironmentVariable('PYTHONPATH',$previousPythonPath,'Process')
+    [Environment]::SetEnvironmentVariable('DEPOSIT_ACCEPTANCE_TIMEOUT_SECONDS',$previousAcceptanceTimeout,'Process')
     Remove-Item Env:\DEPOSIT_TEST_PASSWORD -ErrorAction SilentlyContinue
     Remove-Item Env:\DEPOSIT_TEST_URI,Env:\DEPOSIT_EXPECTED_VERSION,Env:\DEPOSIT_IDENTITY_PHASE,Env:\DEPOSIT_IDENTITY_RECORD_PATH,Env:\DEPOSIT_PYTHON_SOURCE_ROOT,Env:\DEPOSIT_STAGE2_RECOVERY_ROOT,Env:\DEPOSIT_STAGE2_ADMIN_PASSWORD -ErrorAction SilentlyContinue
     Remove-Module PythonRunnerProcess -ErrorAction SilentlyContinue

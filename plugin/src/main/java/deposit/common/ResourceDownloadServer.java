@@ -23,6 +23,8 @@ public final class ResourceDownloadServer implements AutoCloseable {
     private HttpServer listener;
     private ExecutorService executor;
     private volatile boolean stopping;
+    private volatile boolean started;
+    private final java.util.concurrent.locks.ReentrantLock publicationGate = new java.util.concurrent.locks.ReentrantLock();
     private final Object drainMonitor = new Object();
     private final Set<HttpExchange> activeExchanges = ConcurrentHashMap.newKeySet();
     private final Set<BrowserDownloadService.ResourceRead> activeReads = ConcurrentHashMap.newKeySet();
@@ -46,7 +48,24 @@ public final class ResourceDownloadServer implements AutoCloseable {
     }
 
     public String publicBaseUrl() { return publicBase.toASCIIString(); }
-    public void start() { if (stopping) throw new IllegalStateException("Download listener is stopping"); listener.start(); }
+    public void start() {
+        publicationGate.lock();
+        try { if (stopping) throw new IllegalStateException("Download listener is stopping"); listener.start(); started = true; }
+        finally { publicationGate.unlock(); }
+    }
+    public boolean accepting() { return started && !stopping; }
+    static RuntimeException linksUnavailable() { return ExceptionHandler.fail("VALIDATION_FAILED", "Resource download listener is unavailable"); }
+    /** Held only during final publication, never serialization or shutdown drain. */
+    public static final class LinkPublication implements AutoCloseable {
+        private final java.util.concurrent.locks.ReentrantLock gate;
+        private LinkPublication(java.util.concurrent.locks.ReentrantLock gate) { this.gate = gate; }
+        @Override public void close() { gate.unlock(); }
+    }
+    LinkPublication acquireLinkPublication() {
+        publicationGate.lock();
+        if (!accepting()) { publicationGate.unlock(); throw linksUnavailable(); }
+        return new LinkPublication(publicationGate);
+    }
 
     private static HttpsServer createHttps(Properties config) throws Exception {
         HttpsServer https = HttpsServer.create(new InetSocketAddress(InetAddress.getByName(config.getProperty("download.listenAddress")), Integer.parseInt(config.getProperty("download.port"))), 64);
@@ -176,7 +195,12 @@ public final class ResourceDownloadServer implements AutoCloseable {
     private void clearSession(HttpExchange exchange) { exchange.getResponseHeaders().add("Set-Cookie", clearCookie(SESSION_COOKIE, true, "Lax")); exchange.getResponseHeaders().add("Set-Cookie", clearCookie(LOGIN_CSRF_COOKIE, false, "Strict")); }
     private void redirectLogin(HttpExchange exchange, String returnPath) throws IOException { clearSession(exchange); BrowserHttpSupport.redirect(exchange, prefix + "/login?return=" + URLEncoder.encode(returnPath, StandardCharsets.UTF_8)); }
 
-    public void stopAccepting() { synchronized (drainMonitor) { if (stopping) return; stopping = true; } if (listener != null) listener.stop(0); }
+    public void stopAccepting() {
+        publicationGate.lock();
+        try { synchronized (drainMonitor) { if (stopping) return; stopping = true; } }
+        finally { publicationGate.unlock(); }
+        if (listener != null) listener.stop(0);
+    }
     int activeReaderCount() { return activeReads.size(); }
     int activeHandlerCount() { return activeExchanges.size(); }
 

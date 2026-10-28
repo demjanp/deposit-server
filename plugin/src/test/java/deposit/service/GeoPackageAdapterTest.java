@@ -68,4 +68,22 @@ class GeoPackageAdapterTest {
             Path loaded=root.resolve("loaded.json");var metadata=GeoPackageAdapter.load(result.getFirst().path(),loaded,Json.map("layer","specimens","geometryColumn","geometry"),Map.of(),Map.of(),".",()->{});assertEquals(1L,metadata.get("rowCount"));assertTrue(Boolean.TRUE.equals(metadata.get("valid")));Map<String,Object> staged=Json.read(Files.readString(loaded));Map<String,Object> row=ValueCodec.map(((List<?>)staged.get("rows")).getFirst());Map<String,Object> values=ValueCodec.map(row.get("values"));assertEquals("A-1",values.get("code"));assertEquals("POINT (1.25 2.5)",ValueCodec.map(values.get("geometry")).get("wkt"));
         }finally{try(var files=Files.walk(root)){files.sorted(Comparator.reverseOrder()).forEach(path->{try{Files.deleteIfExists(path);}catch(Exception ignored){}});}}
     }
+    @Test void failedLaterPartCleansAllOwnedPrivateOutputs(@org.junit.jupiter.api.io.TempDir Path root)throws Exception {
+        Path table=root.resolve("table.json"),sentinel=root.resolve("unrelated.bin");Files.writeString(sentinel,"retain");
+        var columns=List.of(Json.map("name","attachment","type","DResource"),Json.map("name","geometryValue","type","DGeometry"));
+        var rows=new ArrayList<Map<String,Object>>();
+        for(int srid:List.of(3857,4326))rows.add(Json.map("rowId",Integer.toString(srid),
+            "values",Json.map("attachment",Json.map("resourceId",UUID.randomUUID().toString()),"geometryValue",Json.map("wkt","POINT (1 2)","srid",srid)),
+            "presence",Json.map("attachment",true,"geometryValue",true)));
+        Files.writeString(table,Json.write(Json.map("columns",columns,"rows",rows)));
+        var rendered=new java.util.concurrent.atomic.AtomicInteger();
+        assertThrows(deposit.common.ExceptionHandler.DepositException.class,()->GeoPackageAdapter.write(table,columns,"parts.gpkg","data",root,()->{},value->{
+            if(rendered.incrementAndGet()==2)throw deposit.common.ExceptionHandler.fail("VALIDATION_FAILED","Resource download listener is unavailable");
+            return "[attachment](http://localhost/resource)";
+        }));
+        assertEquals(2,rendered.get(),"One output finishes before the later part fails");
+        try(var files=Files.list(root)){assertEquals(Set.of(table,sentinel),files.collect(java.util.stream.Collectors.toSet()),"Delete only this call's completed and partial private outputs");}
+        assertEquals("retain",Files.readString(sentinel));
+    }
+
 }

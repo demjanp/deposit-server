@@ -51,8 +51,19 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public volatile StorageManager storage;
     private volatile java.util.function.Consumer<String> storageObserver=point->{};
     public void storagePoint(String point){storageObserver.accept(point);}
+    void storageObserverForTesting(java.util.function.Consumer<String> observer){storageObserver=observer;}
     public GraphDatabaseAPI database() {return database;}
     void attachDownloadsForTesting(ResourceDownloadServer server) { downloads=server; }
+    public void requireResourceLinks() {
+        ResourceDownloadServer current = downloads;
+        if (stopping || current == null || !current.accepting()) throw ResourceDownloadServer.linksUnavailable();
+    }
+    public ResourceDownloadServer.LinkPublication resourceLinkPublication(boolean required) {
+        if (!required) return null;
+        ResourceDownloadServer current = downloads;
+        if (stopping || current == null) throw ResourceDownloadServer.linksUnavailable();
+        return current.acquireLinkPublication();
+    }
     private final ConcurrentMap<String,Semaphore> storageLocks=new ConcurrentHashMap<>();
     public void holdStorage(TxState state,String key) {
         if(!state.storageKeys.add(key))return;
