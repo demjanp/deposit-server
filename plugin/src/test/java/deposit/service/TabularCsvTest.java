@@ -42,4 +42,22 @@ class TabularCsvTest {
         var value=Map.of("itemType","Integer","items",java.util.Arrays.asList(Long.MIN_VALUE,null,Long.MAX_VALUE));
         assertEquals("{\"itemType\":\"Integer\",\"items\":[\"-9223372036854775808\",null,\"9223372036854775807\"]}",TabularValueCodec.exportText("List",value));
     }
+    @Test void exportsStoredCanonicalNestedIntegerJson(){
+        var typed=Map.of("itemType","DDict","items",List.of(
+            Map.of("list",Map.of("type","List","value",Map.of("itemType","Integer","items",java.util.Arrays.asList(Long.MIN_VALUE,0L,Long.MAX_VALUE))),
+                   "dict",Map.of("type","DDict","value",Map.of("max",Map.of("type","Integer","value",Long.MAX_VALUE)))),
+            Map.of("nested",Map.of("type","List","value",Map.of("itemType","DDict","items",List.of(Map.of("min",Map.of("type","Integer","value",Long.MIN_VALUE))))))));
+        Object normalized=deposit.common.ValueCodec.normalize("List",typed);
+        String stored=(String)deposit.common.ValueCodec.storage("List",normalized);
+        assertEquals("{\"itemType\":\"DDict\",\"items\":[{\"dict\":{\"type\":\"DDict\",\"value\":{\"max\":{\"type\":\"Integer\",\"value\":\"9223372036854775807\"}}},\"list\":{\"type\":\"List\",\"value\":{\"itemType\":\"Integer\",\"items\":[\"-9223372036854775808\",\"0\",\"9223372036854775807\"]}}},{\"nested\":{\"type\":\"List\",\"value\":{\"itemType\":\"DDict\",\"items\":[{\"min\":{\"type\":\"Integer\",\"value\":\"-9223372036854775808\"}}]}}}]}",stored);
+        assertEquals(stored,TabularValueCodec.exportText("List",stored));
+        var dictionary=Map.of("minimum",Map.of("type","Integer","value",Long.MIN_VALUE),"maximum",Map.of("type","Integer","value",Long.MAX_VALUE));
+        String storedDictionary=(String)deposit.common.ValueCodec.storage("DDict",deposit.common.ValueCodec.normalize("DDict",dictionary));
+        assertEquals("{\"maximum\":{\"type\":\"Integer\",\"value\":\"9223372036854775807\"},\"minimum\":{\"type\":\"Integer\",\"value\":\"-9223372036854775808\"}}",storedDictionary);
+        assertEquals(storedDictionary,TabularValueCodec.exportText("DDict",storedDictionary));
+    }
+    @Test void rejectsMalformedStoredNestedIntegerJson(){
+        var failure=assertThrows(deposit.common.ExceptionHandler.DepositException.class,()->TabularValueCodec.exportText("List","{\"itemType\":\"Integer\",\"items\":[\"9223372036854775808\"]}"));
+        assertTrue(failure.getMessage().contains("TYPE_CONFLICT"));
+    }
 }
