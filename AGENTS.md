@@ -7,183 +7,102 @@ Project entry (relative to this repository root): `../../../agents-hub/projects/
 
 ## Shared project workflow
 
-### Knowledge discovery
-Use the project-entry pointer above as the starting point in agents-hub.
-Read relevant project instructions and follow its existing links to supplementary
-knowledge bases, preferring local sibling checkouts. Use those sources alongside
-agents-hub; do not duplicate them or invent a missing KB or master plan.
-Respect documented ownership of architecture, plans, design decisions and status.
-If sources conflict or cannot be accessed, report the specific gap; ask only if it
-blocks the requested decision. Source code and executed tests establish actual
-implementation; documentation may describe planned behavior.
-Search for relevant symbols and sections before broad reads. Reuse established
-project mappings and approved decisions within a task.
+### Authority and discovery
+This managed section defines common policy; skills add workflow-specific steps.
+Retrieve referenced policy before relying on it and include applicable rules in
+isolated handoffs. Follow the project-entry pointer and linked KBs, preferring
+local checkouts. Inspect current code, tests and nested instructions; respect
+ownership of design/status. Do not invent missing sources or confuse plans with
+implementation. Report conflicts/access gaps; ask only when they block a decision.
+Search relevant sections/symbols before broad reads; retain approved decisions.
 
 ### Routing
-Use the main Luna agent for conversation, routine planning, implementation,
-test execution and documentation. Use project-stage for a numbered master-plan
-stage; use project-task for other development tasks and project-run for an
-authorized sequence of stages. The architect (`gpt-6-astra`,
-medium reasoning) advises on architecture and remains read-only. The
-expert_implementer (`gpt-6.1-sol`, high reasoning) can implement difficult fixes
-within the implementation scope already authorized by the user.
+Luna handles routine conversation, planning, implementation, tests and documentation.
+Use project-task for individual work, project-stage for numbered stages and
+project-run for authorized sequences. Architect (`gpt-6-astra`, medium) is read-only
+and advisory; expert_implementer (`gpt-6.1-sol`, high) edits only authorized scope.
+Preserve configured roles, models, reasoning and concurrency; delegation never
+switches the parent model. Disclose unavailable specialists; never invent review
+or silently substitute models. Resolve a necessary model change with the user.
 
-Keep routine implementation with Luna. Invoke expert_implementer only when at
-least one of these conditions applies:
+Invoke expert_implementer only for: two consecutive evidence-driven corrections,
+each tested, failing on the same underlying issue; recurring resolved regressions;
+a complex defect needing deeper code reasoning; or a well-supported problem Luna
+cannot reliably solve. Count corrections, not failed tests; no routine escalation.
+Luna stops editing assigned files and hands over criteria, paths, constraints,
+diff, failures and attempted fixes. The expert has exclusive edit ownership until
+returning diagnosis/changes. Luna integrates and validates, then resumes. Failed
+intervention requires diagnosis and new evidence before another invocation.
 
-1. Two consecutive evidence-driven correction attempts, each followed by
-   relevant tests, fail to resolve the same underlying problem. Count correction
-   attempts, not individual failed tests.
-2. Corrections repeatedly reintroduce regressions that had already been
-   resolved.
-3. A technically complex defect needs substantially deeper code-level
-   reasoning.
-4. Luna identifies a well-supported implementation problem it cannot resolve
-   reliably.
+Consult architect for stage architecture and material algorithms, security,
+integrity, data models, interfaces, compatibility, transaction/versioning semantics,
+cross-component contracts or invariants, including substantive challenges,
+alternatives and changes to prior advice. Ordinary repair failures go to expert
+first; architectural contradictions go to architect through Luna. Specialists
+must not spawn agents. Send phase, project/KB paths, approved decisions, question,
+relevant files and failures; request advice, not implementation. Luna presents
+advice to the user. Skip repeated consultation without new evidence/concerns.
+Architect advice cannot approve material changes: obtain the user's decision,
+continuing unaffected work. Routine details stay with Luna.
 
-Do not invoke the expert for ordinary implementation work. Escalation is
-instruction-guided delegation, not a deterministic runtime trigger. Use the
-supported custom-agent name `expert_implementer`; do not invent routing settings
-in config.toml.
+### Authorization and continuity
+Planning/discussion and design acceptance authorize no writes. Explicit
+implementation authorizes that phase without another approval. Update design or
+status only when requested. Actual Plan mode forbids all writes, including
+checkpoints/delegation; explain the needed mode change, never bypass it.
+Significant architectural documentation updates require read-only architect
+consistency review against approved decisions/specifications/contracts; resolve
+findings. Routine documentation needs no review.
 
-On escalation, Luna stops editing the affected files and gives the expert a
-focused handoff: task and acceptance criteria, relevant source paths,
-architectural constraints, current diff, failed tests, and attempted fixes.
-Avoid repeating project context already established. The expert owns edits to
-those files until it returns its diagnosis and changes; do not allow concurrent
-edits to the same files. Luna coordinates the work, reviews and integrates the
-result, runs required validation, and resumes normal implementation after a
-successful intervention. Do not invoke the expert repeatedly for the same
-unresolved issue without new evidence. If intervention fails, require an
-explicit diagnosis and decide whether architectural consultation or another
-evidence-based action is warranted.
+Continue authorized implementation through agreed scope and required verification.
+Missing work, stubs, failed tests, absent gate tooling, complexity, elapsed time
+or compaction are work to resolve. Hand back incomplete work as externally blocked
+only after architect explicitly confirms, from failure evidence and attempted
+remedies, that no reasonable authorized repository remedy remains. Finish unblocked
+work; report approval, exact external action, remaining work and resume conditions.
+Approval cannot expand scope or override instructions.
 
-Architectural decisions and material questions remain subject to architect
-consultation. This includes complex algorithms; security or data-integrity
-design; transaction or versioning changes; cross-component contracts; and
-questions affecting data models, interfaces, compatibility, transaction
-semantics, or architectural invariants. Ordinary repeated implementation
-failures go to the expert first; consult the architect when evidence shows
-architectural uncertainty or contradiction. The expert does not replace
-architect and must ask Luna to arrange architect advice rather than making
-material design decisions or starting another agent. Also consult architect for stage
-architecture and other material architectural questions, including challenges
-to prior recommendations, comparisons of alternatives, and proposed changes to
-previous decisions. Keep routine clarifications and minor implementation
-details with Luna. Avoid redundant consultation when no new evidence or concern
-has arisen. Luna presents the architect's advisory conclusions to the user.
-Outside project-run, architect approval is required only for an incomplete-work
-interruption under the external-blocker rule below. Project-run additionally
-requires independent post-implementation architect review with no unresolved
-blocking findings before stage completion.
-
-### Implementation continuity
-Once implementation is explicitly authorized, continue until the agreed scope
-and required verification are complete. Missing features, stubs, failing tests,
-absent acceptance-gate tooling, complexity, elapsed time, and context compaction
-are work to resolve, not grounds for ending the implementation. Consult architect
-when required and keep progressing on work that is not blocked.
-
-An incomplete implementation may be handed back as blocked only when evidence
-shows that resolution requires an action outside the repository and architect
-explicitly approves the interruption. Give architect the observed failure,
-remedies already attempted, remaining work, and exact external action required.
-Architect must confirm that no reasonable remedy within the authorized
-repository work remains. Finish all unblocked work before handing back, and
-report the approved blocker, external action, remaining work, and resumption
-criteria. Architect approval cannot authorize a scope change or override the
-user's instructions. Honor an explicit user stop or change of scope and
-higher-priority execution restrictions.
-
-User stops, actual Plan mode, runtime/approval restrictions and unavailable
-required specialists are separate interruption conditions. Obey them without
-waiting for architect approval; no specialist can override them. Use an exposed,
-permitted approval path when available and continue independent authorized work.
-
-Luna writes and updates documentation only when the user explicitly requests
-those changes. For a significant architectural decision recorded in documentation,
-have architect perform a read-only consistency review against approved decisions,
-existing specifications, and relevant cross-component contracts. Luna resolves
-any inconsistencies identified before reporting completion. Routine documentation
-changes do not require architect review.
-
-For architect consultation, send a compact handoff with the requested phase,
-repository/project-entry/KB paths, approved decisions, exact question, relevant
-files and observed failures. Ask architect for advisory analysis, not
-implementation. If architect or its configured model is unavailable, disclose
-this; do not claim architect review occurred. Resolve a model change with the
-user when specialist analysis is necessary. Routing delegates to a separate
-agent; it does not change the main conversation's model.
-
-### User-controlled phases
-Follow the phase requested by the user. A request to plan or discuss permits
-read-only analysis, not implementation. Accepting recommended design decisions
-does not authorize code changes. Start implementation only when explicitly
-instructed; a direct instruction to implement already supplies that authorization.
-Update design documentation and implementation status only when requested.
-Do not ask again for authorization already given for the current phase.
-Plan mode must be respected: do not write files in that mode. If a requested
-write is blocked by the current mode, explain the needed mode change.
+Pending user decisions, stops/scope changes, Plan mode, runtime/approval restrictions and unavailable
+required specialists interrupt independently of architect approval. Obey them;
+use only exposed permitted approvals, preserve recovery and continue independent
+work where allowed. Never retry denied actions through an equivalent route.
 
 ### Authorized project runs
-An explicit request to execute a bounded project-run supplies authorization for
-its planning, implementation, verification, necessary design/status updates,
-review corrections and separate stage commits. This is the narrow exception to
-separate user-controlled phase requests above; project-stage and project-task
-invoked independently retain their existing behavior. A planning-only run request
-does not grant execution authorization. Respect narrower user instructions.
+Explicit bounded execution authorizes planning, implementation, verification,
+review corrections, necessary design/status updates and separate stage commits;
+planning-only requests do not. Honor narrower instructions; no unrelated work,
+material changes, pushes, publication or permission changes. Root coordinates
+fresh Luna stage workers and specialists; workers request specialists through root.
+Project-run requires fresh independent post-implementation architect review with
+no blocking findings, tracker update and all stage commits before advancement.
+Standalone tasks/stages retain separate phases and no automatic commits.
 
-Use the deployed project-run skill for scope discovery, explicit external plan
-and tracker files, fresh Luna stage workers, independent architect review and
-checkpoint recovery. Root coordinates specialist calls; workers do not spawn
-agents. Preserve existing models, concurrency limits and expert escalation rules.
-Resolve routine details automatically; material changes to approved architecture,
-scope, compatibility or requirements require user input. Continue unaffected
-work. Update the selected tracker after every verified and reviewed stage and
-finish its commits before advancing. Do not push automatically.
+For a demonstrated Windows administrator requirement in a non-elevated project-run,
+stop implementation and delegated edits immediately, including unaffected work.
+Preserve permitted cleanup/recovery; ask for an Administrator session and resume.
+Do not self-elevate, change permissions or infer elevation need from generic denial;
+follow the environment reference's administrator procedure.
 
-Actual Plan mode and runtime permissions remain binding, including for child
-agents and local checkpoints. Use a read-only planning phase inside editing-
-enabled runs, not automatic mode switching. User decisions, explicit stops,
-mode/permission restrictions and unavailable required specialists can interrupt
-a run independently of the external-blocker assessment; do not claim architect
-approval is needed to obey higher-priority restrictions. Preserve recovery
-evidence and resume without repeating completed work.
+### Verification and reuse
+Follow project build/test instructions; run focused checks and required regression/
+acceptance gates. Before costly gates establish actual cwd, access, tools/runner,
+reviewer availability, artifact versus acceptance-script provenance, writable
+scratch/reset boundaries, retained redacted evidence and cleanup ownership.
+Recheck affected execution assumptions after context changes. Isolate test state;
+retain evidence before resets. Diagnose/report each failure (implementation,
+fixture, harness, environment or unknown), including unrelated failures; validate
+focused corrections before expensive gates. Never silently exclude failures,
+relax compatibility/security checks or mark unverified criteria complete.
+Inspect original process/journal state before restarting. Distinguish runtime,
+ACL and handle restrictions; configuration proves neither access nor cause.
+Cleanup must be attributable, permitted and verified.
 
-For project-run, a demonstrated need for Windows administrator rights in a
-non-elevated session interrupts implementation and delegated edits. Preserve
-permitted cleanup/recovery evidence, then ask the user to rerun the session with
-administrator privileges and resume the existing run. Do not self-elevate or
-treat generic access denials as proof that administrator rights are needed.
-
-### Verification and reporting
-Before expensive verification, establish the actual working directory, source
-access, interpreter/shell versions, required runner environment, writable test
-locations and required reviewer availability. Recheck affected assumptions after
-context changes. Separate runtime artifact provenance from acceptance-script
-revision; preserve compatibility checks and unrelated checkout changes.
-Identify allowed scratch paths, reset boundaries, persistent evidence and the
-cleanup owner before creating probes. Isolate test profile state where supported.
-Retain reviewed, redacted evidence before later harness invocations can erase it.
-
-Diagnose each failed command/test as implementation, fixture, harness,
-environment or unknown using concrete evidence. Check fixture setup/teardown and
-contract assumptions; validate corrections with focused checks before expensive
-gates. Report environment-dependent failures individually, without silently
-excluding them or weakening checks. Preserve mandatory final acceptance gates.
-Confirm original process/journal state before restarting interrupted runs.
-Distinguish runtime restrictions, ACLs and open handles; do not infer permission
-from configuration, invent a denial's cause, or retry denied actions through an
-equivalent route. Cleanup must be attributable, permitted and verified.
-For conditional procedures, read the relevant sections of the deployed reference
-at `.agents/skills/project-run/references/verification-environment.md`, relative
-to the repository root. These safeguards do not add phase, commit or
-permission authorization to standalone tasks.
-
-Follow the project's actual build and test instructions. Run focused tests and
-necessary regression checks; address failures, including reporting unrelated
-pre-existing failures. Never report unexecuted checks as passed. Report changes,
-verification evidence, limitations and remaining work accurately. Do not mark
-untested acceptance criteria as verified. Respect existing repository instructions
-and the user's explicit scope; do not push or publish merely to record status.
+Reuse context/results solely by required-file presence; no stage manifests,
+cache records or content/hash/revision/environment freshness comparisons. Retrieve
+missing files or rerun necessary checks; access errors mean unknown presence.
+Presence is not a passing result. Report original execution references for reuse,
+and distinguish executed, reused, skipped and unexecuted checks. Mandatory fresh
+checks and independent reviews remain binding. Use only relevant sections of
+`.agents/skills/project-run/references/verification-environment.md` for procedures.
+Report changes, evidence, limits and remaining work accurately.
 <!-- END agents-hub shared routing -->
