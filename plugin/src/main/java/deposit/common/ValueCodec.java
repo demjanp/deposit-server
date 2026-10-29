@@ -15,6 +15,8 @@ public final class ValueCodec {
         return s;
     }
     public static Object normalize(String type,Object value) {return normalize(type,value,0,false);}
+    /** Normalizes a typed value whose nested collection payload came from JSON text. */
+    public static Object normalizeJson(String type,Object value) {return normalize(type,value,0,true);}
     private static Object normalize(String type,Object value,int depth,boolean json) {
         type(type);
         if(depth>0 && Set.of("DGeometry","DResource").contains(type))throw ExceptionHandler.fail("VALIDATION_FAILED","Geometry/resources cannot occur in collections");

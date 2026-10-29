@@ -78,7 +78,7 @@ public final class BrowserDownloadService {
                 long size=ResourceRepository.number(resource,"bytes",0);Range range=parseRange(rangeHeader,size);
                 pin=server.pinResource(id);location.removeProperty("orphanSince");
                 resources.accessible(resource,c.actorId,role,true);
-                ResourceStorage.Content content=resources.content(location);String filename=(String)resource.getProperty("filename","download");String media=(String)resource.getProperty("mediaType","application/octet-stream");String checksum=(String)resource.getProperty("checksum");
+                ResourceStorage.Content content=resources.content(location);String filename=content.storedFilename();String media=(String)resource.getProperty("mediaType","application/octet-stream");String checksum=(String)resource.getProperty("checksum");
                 tx.commit();if(!server.touchBrowserSession(token,c.session))throw failure(401,"AUTH_FAILED");
                 InputStream stream=server.storage.content.open(content,range.offset,range.length);
                 ResourceRead result=new ResourceRead(stream,pin,filename,media,checksum,size,range);pin=null;return result;
