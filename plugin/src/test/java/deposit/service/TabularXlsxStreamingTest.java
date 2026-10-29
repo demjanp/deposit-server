@@ -65,6 +65,16 @@ class TabularXlsxStreamingTest {
         assertEquals("DEPOSIT_ERROR {\"code\":\"VALIDATION_FAILED\",\"details\":{},\"message\":\"Header names must be nonempty and unique\",\"requestId\":null,\"retryable\":false}",failure.getMessage());
     }
 
+    @Test void emptyMappedNumericCellStaysBlankWhileWhitespaceRemainsSupplied()throws Exception{
+        Path source=temp.resolve("typed-blank.xlsx"),staged=temp.resolve("typed-blank.json");writeSmallWorkbook(source,"amount","note","","  ");
+        var parsed=XlsxTableReader.parseXlsx(source,staged,Map.of("sheet","Rows"),1,Map.of("amount","Integer"),Map.of(),".",()->{});
+        assertTrue(Boolean.TRUE.equals(parsed.get("valid")));
+        try(Json.ArrayReader rows=new Json.ArrayReader(staged,"rows")){
+            Map<String,Object> row=rows.next();assertEquals(Map.of("amount","","note","  "),ValueCodec.map(row.get("values")));
+            assertEquals(Map.of("amount",true,"note",true),ValueCodec.map(row.get("presence")));assertNull(rows.next());
+        }
+    }
+
     @Test void xlsxProjectsTypeBeforeExtractingTheNextHeaderCell()throws Exception{
         Path source=temp.resolve("invalid-type-before-next-cell.xlsx");writeMalformedSecondHeaderWorkbook(source);
         var failure=assertThrows(RuntimeException.class,()->XlsxTableReader.parseXlsx(source,temp.resolve("type-first.json"),Map.of("sheet","Rows"),1,Map.of("amount","not-a-descriptor-type"),Map.of(),".",()->{}));

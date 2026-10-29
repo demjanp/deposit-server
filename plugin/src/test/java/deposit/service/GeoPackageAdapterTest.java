@@ -34,6 +34,29 @@ class GeoPackageAdapterTest {
             assertThrows(java.io.IOException.class,()->load(source,root.resolve("bad.json"),Json.map("layer","attributes","geometryColumn","geom")));assertEquals(1L,load(source,root.resolve("ok.json"),Json.map("layer","attributes")).get("rowCount"));
         }finally{deleteTree(root);}
     }
+    @Test void emptyGeoPackageTextRemainsBlankBeforeTypedCellValidation()throws Exception {
+        Path source=temp.resolve("blank-attributes.gpkg");featureFixture(source,false,false,false);
+        try(Connection db=DriverManager.getConnection("jdbc:sqlite:"+source);Statement sql=db.createStatement()){
+            sql.execute("INSERT INTO gpkg_contents(table_name,data_type,identifier,description,last_change,srs_id) VALUES('attributes','attributes','attributes','','2026-01-01T00:00:00.000Z',NULL)");
+            sql.execute("CREATE TABLE attributes(fid INTEGER PRIMARY KEY,amount TEXT,blank_amount TEXT,note TEXT)");
+            sql.execute("INSERT INTO attributes VALUES(1,NULL,'','  ')");
+            sql.execute("INSERT INTO attributes VALUES(2,'12',NULL,'')");
+            sql.execute("INSERT INTO attributes VALUES(3,'not-a-number','','kept')");
+        }
+        Path staged=temp.resolve("blank-attributes.json");
+        var metadata=GeoPackageAdapter.load(source,staged,Json.map("layer","attributes"),Map.of("amount","Integer","blank_amount","Integer"),Map.of(),".",()->{});
+        assertEquals(3L,metadata.get("rowCount"));assertFalse((Boolean)metadata.get("valid"));
+        List<Map<String,Object>> diagnostics=((List<?>)metadata.get("diagnostics")).stream().map(ValueCodec::map).toList();
+        assertEquals(1,diagnostics.size());assertEquals("3",diagnostics.getFirst().get("rowId"));assertEquals("amount",diagnostics.getFirst().get("column"));assertEquals("CELL_CONVERSION",diagnostics.getFirst().get("code"));
+        try(Json.ArrayReader rows=new Json.ArrayReader(staged,"rows")){
+            Map<String,Object> first=rows.next(),second=rows.next(),third=rows.next();
+            Map<String,Object> firstValues=ValueCodec.map(first.get("values")),firstPresence=ValueCodec.map(first.get("presence"));
+            assertNull(firstValues.get("amount"));assertEquals("",firstValues.get("blank_amount"));assertEquals("  ",firstValues.get("note"));
+            assertTrue(Boolean.TRUE.equals(firstPresence.get("amount")));assertTrue(Boolean.TRUE.equals(firstPresence.get("blank_amount")));
+            Map<String,Object> secondValues=ValueCodec.map(second.get("values"));assertEquals(12L,secondValues.get("amount"));assertNull(secondValues.get("blank_amount"));assertEquals("",secondValues.get("note"));
+            assertEquals("not-a-number",ValueCodec.map(third.get("values")).get("amount"));assertNull(rows.next());
+        }
+    }
     @Test void outputSeparatesMixedUnknownAndNullGeometryCrsAndPreservesFieldIdentity()throws Exception {
         Path root=Files.createTempDirectory("deposit-gpkg-split-");try{
             List<Map<String,Object>> columns=List.of(Json.map("name","first","type","DGeometry"),Json.map("name","second","type","DGeometry"));Object xy=geometry("POINT (1 2)",4326L,null,2),projected=geometry("POINT (3 4)",32633L,null,2),z=geometry("POINT Z (5 6 7)",-1L,5703L,3);

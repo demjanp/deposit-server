@@ -66,6 +66,14 @@ class CsvTableFormatTest {
         Map<String,Object> row=rows(staged).getFirst();assertEquals(Map.of("first","","second",""),ValueCodec.map(row.get("values")));assertEquals(Map.of("first",true,"second",true),ValueCodec.map(row.get("presence")));
     }
 
+    @Test void emptyMappedNumericFieldStaysBlankWhileWhitespaceRemainsSupplied()throws Exception{
+        Path source=temp.resolve("typed-blank.csv"),staged=temp.resolve("typed-blank.json");Files.writeString(source,"amount,note\r\n,  \r\n");
+        var parsed=CsvTableFormat.read(source,staged,',',1,Map.of("amount","Integer"),Map.of(),".",()->{});
+        assertTrue(Boolean.TRUE.equals(parsed.get("valid")));Map<String,Object> row=rows(staged).getFirst();
+        assertEquals(Map.of("amount","","note","  "),ValueCodec.map(row.get("values")));
+        assertEquals(Map.of("amount",true,"note",true),ValueCodec.map(row.get("presence")));
+    }
+
     @Test void diagnosticsCapRetainsExactBoundaryAndFirstAndLastPayloads()throws Exception{
         for(int errors:List.of(999,1000,1001)){
             Path source=temp.resolve("errors-"+errors+".csv"),staged=temp.resolve("errors-"+errors+".json");
