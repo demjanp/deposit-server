@@ -14,12 +14,19 @@ final class PackageWorkspace implements AutoCloseable {
     private final javax.crypto.Mac placement;private long probes;
     long probeCount(){return probes;}
     private final RandomAccessFile nodes;private final Runnable checkpoint;private int reads;
+    private final ExportRecords.StorageBudget budget;
     private final List<DiskMap<?>> indexes=new ArrayList<>();
     private final DiskMap<Long> fields;
-    PackageWorkspace(Path parent)throws IOException{this(parent,()->{});}
-    PackageWorkspace(Path parent,Runnable checkpoint)throws IOException{this.checkpoint=checkpoint;directory=Files.createTempDirectory(parent,"semantic-");nodes=new RandomAccessFile(directory.resolve("nodes").toFile(),"rw");nodes.writeByte(0);try{placement=javax.crypto.Mac.getInstance("HmacSHA256");byte[] secret=new byte[32];new SecureRandom().nextBytes(secret);placement.init(new javax.crypto.spec.SecretKeySpec(secret,"HmacSHA256"));}catch(GeneralSecurityException e){throw new IOException("Unable to initialize private spill index",e);}fields=map();}
+    PackageWorkspace(Path parent)throws IOException{this(parent,()->{},null);}
+    PackageWorkspace(Path parent,Runnable checkpoint)throws IOException{this(parent,checkpoint,null);}
+    PackageWorkspace(Path parent,Runnable checkpoint,ExportRecords.StorageBudget budget)throws IOException{this.checkpoint=checkpoint;this.budget=budget;directory=Files.createTempDirectory(parent,"semantic-");nodes=new RandomAccessFile(directory.resolve("nodes").toFile(),"rw");appendNodeByte(0);try{placement=javax.crypto.Mac.getInstance("HmacSHA256");byte[] secret=new byte[32];new SecureRandom().nextBytes(secret);placement.init(new javax.crypto.spec.SecretKeySpec(secret,"HmacSHA256"));}catch(GeneralSecurityException e){throw new IOException("Unable to initialize private spill index",e);}fields=map();}
+    private void reserve(long bytes)throws IOException{if(budget!=null)budget.reserve(bytes);}
+    private void materialized(long bytes)throws IOException{if(budget!=null)budget.materialized(bytes);}
+    private void appendNodeByte(int value)throws IOException{reserve(1);nodes.writeByte(value);materialized(1);}
+    private void appendNode(byte[] bytes)throws IOException{reserve(bytes.length);nodes.write(bytes);materialized(bytes.length);}
+    private void appendNode(byte[] bytes,int offset,int length)throws IOException{reserve(length);nodes.write(bytes,offset,length);materialized(length);}
     private void cancelled()throws InterruptedIOException{checkpoint.run();if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Package validation cancelled");}
-    private long allocate(int type)throws IOException{cancelled();long at=nodes.length();nodes.seek(at);nodes.write(new byte[HEADER]);nodes.seek(at);nodes.writeByte(type);return at;}
+    private long allocate(int type)throws IOException{cancelled();long at=nodes.length();nodes.seek(at);appendNode(new byte[HEADER]);nodes.seek(at);nodes.writeByte(type);return at;}
     private void number(long at,int field,long value)throws IOException{nodes.seek(at+field);nodes.writeLong(value);}
     private long number(long at,int field)throws IOException{nodes.seek(at+field);return nodes.readLong();}
     private int count(long at)throws IOException{nodes.seek(at+1);return nodes.readInt();}
@@ -53,8 +60,8 @@ final class PackageWorkspace implements AutoCloseable {
         if(value instanceof Number n){long at=string(n.toString());nodes.seek(at);nodes.writeByte('d');return at;}
         throw new IOException("Unsupported staged value");
     }
-    private long detach(long at)throws IOException{byte[] header=new byte[HEADER];nodes.seek(at);nodes.readFully(header);long copy=nodes.length();nodes.seek(copy);nodes.write(header);number(copy,13,0);if(type(at)=='o')number(copy,21,number(at,21)==0?at:number(at,21));return copy;}
-    private long string(String text)throws IOException{long at=allocate('s');number(at,29,nodes.length());nodes.seek(nodes.length());for(int start=0;start<text.length();){int count=Math.min(text.length()-start,textBuffer.length/2);for(int i=0;i<count;i++){char value=text.charAt(start+i);textBuffer[i*2]=(byte)(value>>>8);textBuffer[i*2+1]=(byte)value;}nodes.write(textBuffer,0,count*2);start+=count;}number(at,21,text.length());return at;}
+    private long detach(long at)throws IOException{byte[] header=new byte[HEADER];nodes.seek(at);nodes.readFully(header);long copy=nodes.length();nodes.seek(copy);appendNode(header);number(copy,13,0);if(type(at)=='o')number(copy,21,number(at,21)==0?at:number(at,21));return copy;}
+    private long string(String text)throws IOException{long at=allocate('s');number(at,29,nodes.length());nodes.seek(nodes.length());for(int start=0;start<text.length();){int count=Math.min(text.length()-start,textBuffer.length/2);for(int i=0;i<count;i++){char value=text.charAt(start+i);textBuffer[i*2]=(byte)(value>>>8);textBuffer[i*2+1]=(byte)value;}appendNode(textBuffer,0,count*2);start+=count;}number(at,21,text.length());return at;}
     private Object read(long at)throws IOException{return read(at,false);}
     private Object read(long at,boolean payload)throws IOException{if((++reads&1023)==0)cancelled();return switch(type(at)){case 'n'->null;case 't'->true;case 'f'->false;case 'o'->new TreeMapView(at,payload);case 'a'->new TreeListView(at,payload);case 's'->payload||number(at,21)<=32768?text(at):new Text(at);case 'd'->{String s=text(at);try{yield s.indexOf('.')>=0||s.indexOf('e')>=0||s.indexOf('E')>=0?Double.valueOf(s):(Object)Long.valueOf(s);}catch(NumberFormatException e){throw new IOException("Invalid JSON number",e);}}default->throw new IOException("Invalid staged token");};}
     /** Lazy application view: only each requested scalar is materialized, never the full JSON tree. */
@@ -118,7 +125,7 @@ final class PackageWorkspace implements AutoCloseable {
         private static final int SLOT=24;
         private RandomAccessFile table;private Path path;private int capacity=1024,size=0,used=0;
         private final byte[] slotBytes=new byte[SLOT];
-        DiskMap()throws IOException{path=Files.createTempFile(directory,"index-",".bin");table=new RandomAccessFile(path.toFile(),"rw");table.setLength(capacity*(long)SLOT);}
+        DiskMap()throws IOException{path=Files.createTempFile(directory,"index-",".bin");table=new RandomAccessFile(path.toFile(),"rw");long bytes=capacity*(long)SLOT;reserve(bytes);table.setLength(bytes);materialized(bytes);}
         private long field(int offset){long value=0;for(int i=offset;i<offset+8;i++)value=value<<8|(slotBytes[i]&255L);return value;}
         private void field(int offset,long value){for(int i=offset+7;i>=offset;i--){slotBytes[i]=(byte)value;value>>>=8;}}
         private void readSlot(RandomAccessFile file,int index)throws IOException{file.seek(index*(long)SLOT);file.readFully(slotBytes);}
@@ -129,10 +136,10 @@ final class PackageWorkspace implements AutoCloseable {
         public int size(){return size;}
         @SuppressWarnings("unchecked") public T put(String key,T value){try{long hash=placementHash(key);int index=slot(key,hash);readSlot(table,index);long existing=field(8),prior=field(16);T old=existing>0?(T)read(prior):null;if(used*2>=capacity){grow();index=slot(key,hash);readSlot(table,index);existing=field(8);}long k=existing>0?existing:string(key),v=write(value);writeSlot(index,hash,k,v);if(existing<=0){size++;if(existing==0)used++;}return old;}catch(IOException e){throw unchecked(e);}}
         @SuppressWarnings("unchecked") public T remove(Object key){if(!(key instanceof String s))return null;try{long hash=placementHash(s);int index=slot(s,hash);readSlot(table,index);if(field(8)<=0)return null;T old=(T)read(field(16));writeSlot(index,hash,-1,0);size--;return old;}catch(IOException e){throw unchecked(e);}}
-        private void grow()throws IOException{var previous=table;Path oldPath=path;int oldCapacity=capacity;capacity=Math.multiplyExact(capacity,2);path=Files.createTempFile(directory,"index-",".bin");table=new RandomAccessFile(path.toFile(),"rw");table.setLength(capacity*(long)SLOT);used=size;
+        private void grow()throws IOException{var previous=table;Path oldPath=path;int oldCapacity=capacity;capacity=Math.multiplyExact(capacity,2);path=Files.createTempFile(directory,"index-",".bin");table=new RandomAccessFile(path.toFile(),"rw");long bytes=capacity*(long)SLOT;reserve(bytes);table.setLength(bytes);materialized(bytes);used=size;
             try{for(int i=0;i<oldCapacity;i++){if((i&1023)==0)cancelled();readSlot(previous,i);long hash=field(0),key=field(8),value=field(16);if(key>0){int index=(int)hash&(capacity-1);while(true){if((++probes&1023)==0)cancelled();readSlot(table,index);if(field(8)==0)break;index=(index+1)&(capacity-1);}writeSlot(index,hash,key,value);}}}finally{previous.close();Files.delete(oldPath);}}
         public Set<Entry<String,T>> entrySet(){return new AbstractSet<>(){public int size(){return size;}public Iterator<Entry<String,T>> iterator(){return new Iterator<>(){int index=0;Entry<String,T> pending;@SuppressWarnings("unchecked") private void advance(){try{while(pending==null&&index<capacity){if((index&1023)==0)cancelled();readSlot(table,index++);long key=field(8),value=field(16);if(key>0)pending=new SimpleImmutableEntry<>(PackageWorkspace.this.key(key),(T)read(value));}}catch(IOException e){throw unchecked(e);}}public boolean hasNext(){advance();return pending!=null;}public Entry<String,T> next(){advance();if(pending==null)throw new NoSuchElementException();var row=pending;pending=null;return row;}};}};}
-        public void clear(){try{table.setLength(0);capacity=1024;size=used=0;table.setLength(capacity*(long)SLOT);}catch(IOException e){throw unchecked(e);}}
+        public void clear(){try{table.setLength(0);capacity=1024;size=used=0;long bytes=capacity*(long)SLOT;reserve(bytes);table.setLength(bytes);materialized(bytes);}catch(IOException e){throw unchecked(e);}}
         void dispose()throws IOException{close();Files.deleteIfExists(path);indexes.removeIf(index->index==this);}
         public void close()throws IOException{table.close();}
     }
@@ -155,8 +162,8 @@ final class PackageWorkspace implements AutoCloseable {
         void literal(String tail)throws IOException{for(int i=0;i<tail.length();i++)if(reader.read()!=tail.charAt(i))throw new IOException("Invalid JSON literal");}
         long quoted()throws IOException{long at=allocate('s'),position=nodes.length();number(at,29,position);nodes.seek(position);int length=0;byte[] buffer=new byte[8192];int used=0;
             while(true){int ch=reader.read();if(ch==-1)throw new IOException("Unterminated JSON String");if(ch=='"')break;if(ch<32)throw new IOException("Unescaped JSON control character");if(ch=='\\'){ch=reader.read();ch=switch(ch){case '"','\\','/'->ch;case 'b'->8;case 'f'->12;case 'n'->10;case 'r'->13;case 't'->9;case 'u'->{int decoded=0;for(int i=0;i<4;i++){int digit=Character.digit(reader.read(),16);if(digit<0)throw new IOException("Invalid unicode escape");decoded=decoded*16+digit;}yield decoded;}default->throw new IOException("Invalid JSON escape");};}
-                buffer[used++]=(byte)(ch>>>8);buffer[used++]=(byte)ch;length++;if(used==buffer.length){cancelled();nodes.write(buffer);used=0;}}
-            if(used>0)nodes.write(buffer,0,used);number(at,21,length);return at;
+                buffer[used++]=(byte)(ch>>>8);buffer[used++]=(byte)ch;length++;if(used==buffer.length){cancelled();appendNode(buffer);used=0;}}
+            if(used>0)appendNode(buffer,0,used);number(at,21,length);return at;
         }
     }
     @Override public void close()throws IOException{IOException failure=null;for(var index:indexes)try{index.close();}catch(IOException e){failure=e;}try{nodes.close();}catch(IOException e){failure=e;}try(var paths=Files.walk(directory)){for(Path path:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(path);}if(failure!=null)throw failure;}

@@ -19,10 +19,13 @@ import org.apache.poi.openxml4j.util.ZipSecureFile;
 
 /** Bounded XLSX parsing; preflight, XML security and temporary storage share one owner. */
 final class XlsxTableReader {
+    // Keep existing XLSX parser safeguards independent from Exchange package capacity policy.
+    private static final int XLSX_MAX_ENTRIES=100_000;
+    private static final long XLSX_MAX_EXPANDED=2L*1024*1024*1024;
     private XlsxTableReader() {}
     static Map<String,Object> parseXlsx(Path file,Path destination,Map<String,Object> options,int headerRow,Map<String,Object> types,Map<String,Object> formats,String decimal,Runnable check)throws IOException{
-        preflightXlsx(file,check,ExchangePackageCodec.MAX_ENTRIES,ExchangePackageCodec.MAX_EXPANDED);
-        ZipSecureFile.setMaxEntrySize(ExchangePackageCodec.MAX_EXPANDED);ZipSecureFile.setMinInflateRatio(0.01);
+        preflightXlsx(file,check,XLSX_MAX_ENTRIES,XLSX_MAX_EXPANDED);
+        ZipSecureFile.setMaxEntrySize(XLSX_MAX_EXPANDED);ZipSecureFile.setMinInflateRatio(0.01);
         Path workspace=Files.createTempDirectory(destination.getParent(),"xlsx-");
         try(OPCPackage container=OPCPackage.open(file.toFile(),org.apache.poi.openxml4j.opc.PackageAccess.READ);OutputStream output=Files.newOutputStream(destination,StandardOpenOption.CREATE_NEW)){
             XSSFReader reader=new XSSFReader(container);StylesTable styles=reader.getStylesTable();boolean date1904=workbookUses1904(reader);String selected=Objects.toString(options.get("sheet"), "");
@@ -35,7 +38,7 @@ final class XlsxTableReader {
     }
 
     static void preflightXlsx(Path file,Runnable check,int maximumEntries,long maximumExpandedBytes)throws IOException{
-        long expanded=0;int entries=0;try(var zip=new java.util.zip.ZipFile(file.toFile())){var all=zip.entries();while(all.hasMoreElements()){var entry=all.nextElement();if(++entries>maximumEntries)throw ExceptionHandler.fail("LIMIT_EXCEEDED","XLSX entry limit exceeded");try(InputStream in=zip.getInputStream(entry)){byte[] buffer=new byte[64*1024];int n;while((n=in.read(buffer))!=-1){check.run();expanded+=n;if(expanded>maximumExpandedBytes)throw ExceptionHandler.fail("LIMIT_EXCEEDED","XLSX expanded size limit exceeded");}}}}
+        long expanded=0;int entries=0;try(var zip=new java.util.zip.ZipFile(file.toFile())){var all=zip.entries();while(all.hasMoreElements()){var entry=all.nextElement();if(++entries>maximumEntries)throw ExceptionHandler.fail("LIMIT_EXCEEDED","XLSX entry limit exceeded");try(InputStream in=zip.getInputStream(entry)){byte[] buffer=new byte[64*1024];int n;while((n=in.read(buffer))!=-1){check.run();try{expanded=Math.addExact(expanded,(long)n);}catch(ArithmeticException overflow){throw new IOException("XLSX expanded size is not representable",overflow);}if(expanded>maximumExpandedBytes)throw ExceptionHandler.fail("LIMIT_EXCEEDED","XLSX expanded size limit exceeded");}}}}
     }
 
     private static XMLReader xmlReader()throws SAXException,javax.xml.parsers.ParserConfigurationException{
@@ -49,7 +52,7 @@ final class XlsxTableReader {
         private final RandomAccessFile values,index;private final LinkedHashMap<Integer,String> cache=new LinkedHashMap<>(64,.75f,true){protected boolean removeEldestEntry(Map.Entry<Integer,String> eldest){return size()>256;}};private int count;
         SharedStringStore(Path directory)throws IOException{values=new RandomAccessFile(directory.resolve("shared-strings.dat").toFile(),"rw");index=new RandomAccessFile(directory.resolve("shared-strings.idx").toFile(),"rw");}
         void add(String value)throws IOException{byte[] bytes=value.getBytes(StandardCharsets.UTF_8);index.writeLong(values.length());index.writeInt(bytes.length);values.seek(values.length());values.write(bytes);count++;}
-        String get(int id)throws IOException{if(id<0||id>=count)throw new IOException("Invalid shared string index");String value=cache.get(id);if(value!=null)return value;index.seek((long)id*12);long offset=index.readLong();int length=index.readInt();if(length<0||length>ExchangePackageCodec.MAX_EXPANDED)throw new IOException("Shared string exceeds XLSX bounds");byte[] bytes=new byte[length];values.seek(offset);values.readFully(bytes);value=new String(bytes,StandardCharsets.UTF_8);cache.put(id,value);return value;}
+        String get(int id)throws IOException{if(id<0||id>=count)throw new IOException("Invalid shared string index");String value=cache.get(id);if(value!=null)return value;index.seek((long)id*12);long offset=index.readLong();int length=index.readInt();if(length<0||length>XLSX_MAX_EXPANDED)throw new IOException("Shared string exceeds XLSX bounds");byte[] bytes=new byte[length];values.seek(offset);values.readFully(bytes);value=new String(bytes,StandardCharsets.UTF_8);cache.put(id,value);return value;}
         public void close()throws IOException{try{index.close();}finally{values.close();}}
     }
     private static void parseSharedStrings(InputStream input,SharedStringStore store,Runnable check)throws IOException,SAXException{

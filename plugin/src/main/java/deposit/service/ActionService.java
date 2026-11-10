@@ -39,10 +39,11 @@ public abstract class ActionService extends BaseService {
         if(change.changed()) {
             if(serverScope) {c.state.serverChanged=true;c.revision=c.server.revision(c.state);}
             else {repo.advanceNamespace(scope,c.actorId);c.revision=repo.sequence(scope);}
-            if(c.journal!=null){c.journal.checkpoint(history.capture(scope));Revision revision=history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp);change.outcome().data().put("revisionId",revision.id());}
-        } else change.outcome().data().put("changed",false);
+            if(c.journal!=null){c.journal.checkpoint(history.capture(scope));Revision revision=history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp);if(!isImportResult(change.outcome().data()))change.outcome().data().put("revisionId",revision.id());}
+        } else if(!isImportResult(change.outcome().data()))change.outcome().data().put("changed",false);
         if(scientific){c.server.storagePoint("history-before-receipt");c.state.afterCommit.add(()->c.server.storagePoint("history-after-commit"));}
         repo.saveReceipt(c,scope,hash,change.outcome());return change.outcome();
     }
+    private static boolean isImportResult(Map<String,Object> data){return "deposit.import-result/1".equals(data.get("format"));}
     protected Outcome outcome(Node node) {return new Outcome(node,null,repo.data(node));}
 }

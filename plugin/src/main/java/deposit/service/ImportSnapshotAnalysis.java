@@ -20,8 +20,7 @@ final class ImportSnapshotAnalysis {
 
 
 Map<String,Object> analyze(ExchangePackageCodec.PackageData pkg,Map<String,Object> rules){
-    long deadline=System.nanoTime()+30_000_000_000L;
-    try(var indexes=new ImportScratch(scratchRoot,()->{c.state.kernel.assertOpen();if(System.nanoTime()-deadline>=0)c.fail("LIMIT_EXCEEDED","Import matching exceeded its fixed time limit");});var solutions=new DiskJsonList(indexes.directory,"optimal-")){
+    try(var indexes=new ImportScratch(scratchRoot,()->c.state.kernel.assertOpen());var solutions=new DiskJsonList(indexes.directory,"optimal-")){
     Map<String,Object> graph=pkg.graph();
     var conflicts=new ArrayList<Map<String,Object>>();var groups=new ArrayList<Map<String,Object>>();var schema=repo.namespaceSchema(c.namespaceId);
     Map<String,String> mapped=new HashMap<>();for(Object raw:(List<?>)graph.get("classes")){var clazz=ValueCodec.map(raw);String source=(String)clazz.get("name"),target=source;mapped.put(source,target);Map<String,String> declarations=schema.computeIfAbsent(target,k->new TreeMap<>());for(Object rd:(List<?>)clazz.get("descriptors")){var d=ValueCodec.map(rd);String old=declarations.putIfAbsent((String)d.get("name"),(String)d.get("type"));if(old!=null&&!old.equals(d.get("type")))conflicts.add(Json.map("kind","schema","className",target,"descriptor",d.get("name"),"sourceType",d.get("type"),"targetType",old));}}

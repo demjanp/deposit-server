@@ -1,6 +1,7 @@
 package org.deposit.runtime;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -23,7 +24,7 @@ public class Discovery {
     public static class Info {
         public final Map<String, Object> data;
         public Info(String version) {
-            data = Map.of("version", version);
+            data = Map.of("version", version, "importResultFormats", List.of(1));
         }
     }
 }

@@ -57,6 +57,13 @@ class OcflResourceStorageTest {
             var bad=new ResourceStorage.Content(ID,NAME,3,"0".repeat(64));assertThrows(IOException.class,()->storage.publish(bad,source));storage.verify(content());
         }
     }
+    @Test void immutableMetadataDoesNotApplyAResourceSizePolicyCeiling()throws Exception{
+        try(var storage=new OcflResourceStorage(root,work)){
+            var large=new ResourceStorage.Content(ID,NAME,2L*1024*1024*1024+1,"0".repeat(64));
+            var failure=assertThrows(IOException.class,()->storage.publish(large,source));
+            assertEquals("Invalid publication source",failure.getMessage());
+        }
+    }
     @Test void payloadInventoryAndUnexpectedVersionCorruptionAreRejected()throws Exception{
         Path payload;byte[] inventory;
         try(var storage=new OcflResourceStorage(root,work)){

@@ -6,8 +6,6 @@ import java.util.*;
 
 /** Portable Deposit exchange ZIP writer and bounded, independent archive validator. */
 public final class ExchangePackageCodec {
-    public static final int MAX_ENTRIES=100_000;
-    public static final long MAX_EXPANDED=2L*1024*1024*1024;
     public record ValidationSummary(String packageId,String sourceNamespaceId,String scope,long exportedRevision,boolean includeHistory,Map<String,Long> counts) {}
     public static ValidationSummary validateSummary(Path archive)throws IOException{return validateSummary(archive,()->{});}
     public static ValidationSummary validateSummary(Path archive,Runnable checkpoint)throws IOException{return validate(archive,true,checkpoint,pkg->{var counts=new TreeMap<String,Long>();pkg.graph().forEach((key,value)->{if(value instanceof List<?> rows)counts.put(key,(long)rows.size());});return new ValidationSummary((String)pkg.manifest().get("packageId"),(String)pkg.manifest().get("sourceNamespaceId"),(String)pkg.manifest().get("scope"),((Number)pkg.manifest().get("exportedRevision")).longValue(),pkg.history()!=null,Collections.unmodifiableMap(counts));});}

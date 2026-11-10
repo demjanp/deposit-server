@@ -8,6 +8,15 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ExportRecordsTest {
     @TempDir Path temp;
+    @Test void stagedWritesReserveBeforeMaterializingSpoolAndSemanticIndexes()throws Exception{
+        long[] reserved={0},written={0};ExportRecords.StorageBudget budget=new ExportRecords.StorageBudget(){public void reserve(long bytes){reserved[0]+=bytes;}public void materialized(long bytes){written[0]+=bytes;}};
+        try(var records=new ExportRecords(temp,()->{},budget)){
+            for(int i=0;i<500;i++)records.add("rows",Json.map("id","row-"+i,"value","payload-".repeat(20)));
+            Map<String,Object> index=records.index();for(int i=0;i<500;i++)index.put("Object:"+i,(long)i);
+        }
+        assertTrue(reserved[0]>=written[0]);assertTrue(written[0]>0);
+        try(var children=Files.list(temp)){assertEquals(0,children.count());}
+    }
     @Test void fixedRevisionRangesKeepEpochBaselinesAndNestedRowsSeparateAfterLaterAppends()throws Exception {
         try(var records=new ExportRecords(temp)){
             records.addRevision("history-revisions",Json.map("revisionId","closed-baseline","changes",List.of(Json.map("entityId","first-object")),"touches",Json.map("Object\u0000first-object",List.of("*")),"dependencies",List.of("Class\u0000first-class")));

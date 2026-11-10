@@ -1,14 +1,12 @@
 package deposit.service;
 
 import static org.junit.jupiter.api.Assertions.*;
-import deposit.common.ResourceFiles;
 import org.junit.jupiter.api.Test;
 
 class TabularLimitsTest {
-    @Test void encodedContentLimitAcceptsTheBoundaryAndRejectsTheNextByte(){
-        assertDoesNotThrow(()->TabularService.requireContentLimit(ResourceFiles.MAX_BYTES,"content limit"));
-        var failure=assertThrows(RuntimeException.class,()->TabularService.requireContentLimit(ResourceFiles.MAX_BYTES+1,"content limit"));
-        assertTrue(failure.getMessage().contains("LIMIT_EXCEEDED"));
+    @Test void generatedResourceContentHasNoPolicySizeCeiling(){
+        assertDoesNotThrow(()->TabularService.requireContentLimit(Long.MAX_VALUE,"content limit"));
+        assertThrows(IllegalArgumentException.class,()->TabularService.requireContentLimit(-1,"content limit"));
     }
 
     @Test void xlsxDimensionsIncludeTheHeaderAndEnforceBothAxes(){

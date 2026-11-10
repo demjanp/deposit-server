@@ -48,7 +48,7 @@ public final class OcflResourceStorage implements ResourceStorage {
     }
     private static void metadata(Content content)throws IOException {
         id(content.resourceId());String name=content.storedFilename();
-        if(name==null||name.isEmpty()||!name.matches("[a-zA-Z0-9._-]+")||name.equals(".")||name.equals("..")||content.bytes()<0||content.bytes()>ResourceFiles.MAX_BYTES
+        if(name==null||name.isEmpty()||!name.matches("[a-zA-Z0-9._-]+")||name.equals(".")||name.equals("..")||content.bytes()<0
             ||content.checksum()==null||!content.checksum().matches("[0-9a-f]{64}"))throw new IOException("Invalid immutable storage metadata");
     }
     private Path objectRoot(String resourceId)throws IOException {
@@ -95,7 +95,7 @@ public final class OcflResourceStorage implements ResourceStorage {
         if(!object.containsFile(content.storedFilename()))throw new IOException("OCFL payload name differs");
         try(var in=object.getFile(content.storedFilename()).getStream()){
             MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[64*1024];long size=0;int n;
-            while((n=in.read(buffer))!=-1){size+=n;if(size>content.bytes())throw new IOException("OCFL payload length differs");digest.update(buffer,0,n);}
+            while((n=in.read(buffer))!=-1){try{size=Math.addExact(size,(long)n);}catch(ArithmeticException e){throw new IOException("OCFL payload length is not representable",e);}if(size>content.bytes())throw new IOException("OCFL payload length differs");digest.update(buffer,0,n);}
             if(size!=content.bytes()||!HexFormat.of().formatHex(digest.digest()).equals(content.checksum()))throw new IOException("OCFL payload integrity differs");
         }catch(IOException e){throw e;}catch(Exception e){throw new IOException("OCFL verification failed",e);}
     }
@@ -134,7 +134,7 @@ public final class OcflResourceStorage implements ResourceStorage {
     }
     @Override public long physicalBytes(String resourceId)throws IOException {
         Path path=objectRoot(resourceId);if(!Files.exists(path,LinkOption.NOFOLLOW_LINKS))return 0;checkTree(path);
-        long result=0;try(var paths=Files.walk(path)){for(Path file:paths.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).toList())result+=Files.size(file);}return result;
+        long result=0;try(var paths=Files.walk(path)){for(Path file:paths.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).toList())try{result=Math.addExact(result,Files.size(file));}catch(ArithmeticException overflow){throw new IOException("OCFL physical size is not representable",overflow);}}return result;
     }
     @Override public void purge(String resourceId)throws IOException {
         Path path=objectRoot(resourceId);checkTree(path);

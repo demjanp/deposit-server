@@ -9,7 +9,7 @@ import java.util.*;
 
 /** Deposit staging and pure validation. Completed content belongs to ResourceStorage. */
 public final class ResourceFiles {
-    public static final long MAX_BYTES=2L*1024*1024*1024,LEASE=86_400_000L;
+    public static final long LEASE=86_400_000L;
     public static final int CHUNK=1024*1024,MAX_CHUNK=4*CHUNK;
     public final Path root,exports;
     public ResourceFiles() {
@@ -52,11 +52,18 @@ public final class ResourceFiles {
     }
     private static String generate(String s,String hash) {int dot=s.lastIndexOf('.');return dot>0&&dot<s.length()-1?s.substring(0,dot)+"-"+hash+s.substring(dot):s+"-"+hash;}
     public void append(String location,long offset,byte[] bytes)throws IOException {
+        if(offset<0)throw new IOException("Negative resource offset");
+        try{Math.addExact(offset,(long)bytes.length);}catch(ArithmeticException e){throw new IOException("Resource length is not representable",e);}
         Path p=path(location);Files.createDirectories(p.getParent());path(location);
         try(var channel=FileChannel.open(p,StandardOpenOption.CREATE,StandardOpenOption.WRITE)) {
             if(channel.size()<offset)throw new IOException("Missing committed upload bytes");channel.truncate(offset);channel.position(offset);
             ByteBuffer buffer=ByteBuffer.wrap(bytes);while(buffer.hasRemaining())channel.write(buffer);channel.force(true);
         }
+    }
+    public void truncate(String location,long length)throws IOException {
+        if(length<0)throw new IOException("Negative staged resource length");Path p=path(location);
+        if(!Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS))throw new IOException("Staged resource is unavailable");
+        try(var channel=FileChannel.open(p,StandardOpenOption.WRITE)){if(channel.size()<length)throw new IOException("Staged resource is shorter than its committed offset");channel.truncate(length);channel.force(true);}
     }
     public void verify(String location,long bytes,String checksum)throws IOException {Path p=path(location);if(!Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)||Files.size(p)!=bytes||!checksum(p).equals(checksum))throw new IOException("Resource content unavailable");}
 }

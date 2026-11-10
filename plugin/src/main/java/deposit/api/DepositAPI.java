@@ -227,6 +227,12 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p108(@Name("source") Object a0,@Name("rules") Map<String,Object> a1,@Name("token") String token) { return invokePublic(token,"deposit.import.analyze",Arrays.asList(a0,a1)).map(PublicResults::data); }
  @Procedure(name="deposit.get.importPlan",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p109(@Name("planId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.importPlan",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.importResultV1",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p123(@Name("resultId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultV1",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.importResultPageV1",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p124(@Name("resultId") String a0,@Name("collection") String a1,@Name("cursor") String a2,@Name("limit") Long a3,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultPageV1",Arrays.asList(a0,a1,a2,a3)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.importResultEntryV1",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p125(@Name("resultId") String a0,@Name("collection") String a1,@Name("key") String a2,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultEntryV1",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
  @Procedure(name="deposit.import.apply",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p110(@Name("planId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.import.apply",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.import.namespaceData",mode=Mode.WRITE)

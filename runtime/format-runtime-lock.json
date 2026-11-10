@@ -308,8 +308,35 @@
                                                    ],
                              "artifactId":  "SparseBitSet",
                              "file":  "SparseBitSet-1.3.jar"
+                         },
+                         {
+                             "groupId":  "net.java.dev.jna",
+                             "artifactId":  "jna",
+                             "version":  "5.18.1",
+                             "url":  "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar",
+                             "file":  "jna-5.18.1.jar",
+                             "sha256":  "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557",
+                             "ship":  true,
+                             "providedByRuntime":  [
+
+                                                   ],
+                             "providedByExistingLock":  [
+
+                                                        ],
+                             "licenses":  [
+                                              {
+                                                  "name":  "LGPL-2.1-or-later",
+                                                  "url":  "https://www.gnu.org/licenses/old-licenses/lgpl-2.1",
+                                                  "pomSha256":  "98b62ae6ff280d747fb359fc42e48fed113d45bc3729a823dc30b8308a806645"
+                                              },
+                                              {
+                                                  "name":  "Apache-2.0",
+                                                  "url":  "https://www.apache.org/licenses/LICENSE-2.0.txt",
+                                                  "pomSha256":  "98b62ae6ff280d747fb359fc42e48fed113d45bc3729a823dc30b8308a806645"
+                                              }
+                                          ]
                          }
                      ],
     "formatAdapters":  "poi-ooxml 5.5.1, sqlite-jdbc 3.53.4.0",
-    "sourcePomSha256":  "174a7c6f152928f0f00a7d7f0542bc312188ab0597762b93eef9bf6038f6dfbb"
+    "sourcePomSha256":  "0e965a2e6ff14456d8fb6062013a34d52d26b7acdf95e05f8470c0a5a7a16bf3"
 }

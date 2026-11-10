@@ -87,9 +87,11 @@ final class StorageMaintenanceJobs {
             Node plan = core.find("DepositImportPlan", "id", id);
             if (plan == null || number(plan, "expiresAt", 0) > now) continue;
             String path = plan.hasProperty("stagingPath") ? text(plan, "stagingPath") : null;
+            String admissionId=plan.hasProperty("admissionId")?text(plan,"admissionId"):null;
             if (path != null) Files.deleteIfExists(files.path(path));
             plan.delete();
             tx.commit();
+            if(admissionId!=null)try{server.storage.admission.close(server.storage.admission.resume(admissionId));}catch(IOException failure){diagnostic.accept("Expired import storage admission cleanup pending");}
         }
     }
 
@@ -146,16 +148,20 @@ final class StorageMaintenanceJobs {
     }
 
     void collect(String itemId) {
+        StorageAdmission.Reservation reservation;
+        try{reservation=server.storage.admission.acquire("maintenance-prune",itemId,null,"prune-maintenance",Map.of(files.root,64L*1024),Json.map("phase","prepare","itemId",itemId));}
+        catch(IOException|StorageAdmission.StoragePressureException pressure){diagnostic.accept("Collection admission pending: "+pressure.getClass().getSimpleName());return;}
+        boolean[] resolved={false};
         try (var tx = db.beginTx()) {
             CoreRepository core = core(tx);
             ResourceRepository resources = new ResourceRepository(tx, core);
             Node item = core.find("DepositPruneItem", "id", itemId);
-            if (item == null || !Set.of("pending", "deleting", "failed").contains(text(item, "state"))) return;
+            if (item == null || !Set.of("pending", "deleting", "failed").contains(text(item, "state"))) {resolved[0]=true;return;}
             String resource = text(item, "resourceId");
             Node loc = resources.location(resource);
             Node job = core.find("DepositPruneJob", "id", item.getProperty("jobId"));
             if (loc == null || Boolean.TRUE.equals(loc.getProperty("collected", false))) {
-                item.setProperty("state", "completed"); tx.commit(); return;
+                item.setProperty("state", "completed"); tx.commit();resolved[0]=true;return;
             }
             core.lockNamespace(text(loc, "namespaceId"));
             resources.lock(resource);
@@ -163,15 +169,15 @@ final class StorageMaintenanceJobs {
             if ("failed".equals(item.getProperty("state")))
                 item.setProperty("state", itemId.equals(loc.getProperty("deleting", null)) ? "deleting" : "pending");
             if (text(item, "state").equals("pending")) {
-                if (!resources.eligible(loc, age)) { item.setProperty("state", "skipped"); tx.commit(); return; }
+                if (!resources.eligible(loc, age)) { item.setProperty("state", "skipped"); tx.commit();resolved[0]=true;return; }
                 loc.setProperty("deleting", itemId);
                 item.setProperty("state", "deleting");
                 item.setProperty("deletionBytes", physicalBytes(loc));
-                tx.commit(); return;
+                tx.commit();resolved[0]=true;return;
             }
             if (!itemId.equals(loc.getProperty("deleting", null))) throw new IllegalStateException("Collection intent mismatch");
             if (resources.protectedContent(loc) || resources.now() - number(loc, "orphanSince", resources.now()) < age) {
-                loc.removeProperty("deleting"); item.setProperty("state", "skipped"); tx.commit(); return;
+                loc.removeProperty("deleting"); item.setProperty("state", "skipped"); tx.commit();resolved[0]=true;return;
             }
             server.storagePoint("collection-before");
             content.get().purge(resource);
@@ -181,7 +187,7 @@ final class StorageMaintenanceJobs {
             loc.setProperty("collected", true); loc.removeProperty("deleting"); loc.removeProperty("stagingPath"); loc.setProperty("leaseUntil", 0L);
             Node publicResource = resources.resource(text(loc, "namespaceId"), resource);
             if (publicResource != null) publicResource.setProperty("state", "collected");
-            item.setProperty("reclaimedBytes", number(item, "deletionBytes", 0)); item.setProperty("state", "completed"); item.removeProperty("diagnostic"); tx.commit();
+            item.setProperty("reclaimedBytes", number(item, "deletionBytes", 0)); item.setProperty("state", "completed"); item.removeProperty("diagnostic"); tx.commit();resolved[0]=true;
         } catch (Exception e) {
             String message = "Collection failed: " + e.getClass().getSimpleName();
             diagnostic.accept(message);
@@ -190,7 +196,7 @@ final class StorageMaintenanceJobs {
                 if (item != null) { item.setProperty("state", "failed"); item.setProperty("diagnostic", message); }
                 tx.commit();
             } catch (Exception ignored) { }
-        }
+        } finally {if(resolved[0])try{server.storage.admission.close(reservation);}catch(IOException failure){diagnostic.accept("Collection admission cleanup pending");}}
     }
 
     void discoverOrphans() {
@@ -236,7 +242,7 @@ final class StorageMaintenanceJobs {
 
     private long physicalBytes(Node loc) throws IOException {
         long bytes = content.get().physicalBytes(CoreRepository.id(loc));
-        if (loc.hasProperty("stagingPath")) { Path path = files.path(text(loc, "stagingPath")); if (Files.exists(path)) bytes += Files.size(path); }
+        if (loc.hasProperty("stagingPath")) { Path path = files.path(text(loc, "stagingPath")); if (Files.exists(path)) try { bytes = Math.addExact(bytes, Files.size(path)); } catch (ArithmeticException overflow) { throw new IOException("Resource physical size is not representable", overflow); } }
         return bytes;
     }
 }

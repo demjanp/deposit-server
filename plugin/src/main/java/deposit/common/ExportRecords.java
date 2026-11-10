@@ -5,19 +5,23 @@ import java.util.*;
 
 /** Immutable staged source records; category lists load one source record at a time. */
 public final class ExportRecords implements AutoCloseable {
+    public interface StorageBudget {void reserve(long bytes)throws IOException;void materialized(long bytes)throws IOException;}
+    private static final StorageBudget NO_BUDGET=new StorageBudget(){public void reserve(long bytes){}public void materialized(long bytes){}};
     private final Runnable checkpoint;
+    private final StorageBudget budget;
     private final Path directory;private final RandomAccessFile input;private final FileOutputStream file;private final BufferedOutputStream output;
     private final PackageWorkspace indexes;
     private final Map<String,Category> categories=new HashMap<>();
-    public ExportRecords(Path parent)throws IOException{this(parent,()->{});}
-    public ExportRecords(Path parent,Runnable checkpoint)throws IOException{this.checkpoint=checkpoint;Files.createDirectories(parent);directory=Files.createTempDirectory(parent,"snapshot-");Path data=directory.resolve("records.json");file=new FileOutputStream(data.toFile());output=new BufferedOutputStream(file,65536);input=new RandomAccessFile(data.toFile(),"r");indexes=new PackageWorkspace(directory,checkpoint);}
+    public ExportRecords(Path parent)throws IOException{this(parent,()->{},NO_BUDGET);}
+    public ExportRecords(Path parent,Runnable checkpoint)throws IOException{this(parent,checkpoint,NO_BUDGET);}
+    public ExportRecords(Path parent,Runnable checkpoint,StorageBudget budget)throws IOException{this.checkpoint=checkpoint;this.budget=budget;Files.createDirectories(parent);directory=Files.createTempDirectory(parent,"snapshot-");Path data=directory.resolve("records.json");file=new FileOutputStream(data.toFile());OutputStream accounted=new OutputStream(){public void write(int value)throws IOException{budget.reserve(1);file.write(value);budget.materialized(1);}public void write(byte[] bytes,int offset,int length)throws IOException{if(length==0)return;budget.reserve(length);file.write(bytes,offset,length);budget.materialized(length);}public void flush()throws IOException{file.flush();}public void close()throws IOException{file.close();}};output=new BufferedOutputStream(accounted,65536);input=new RandomAccessFile(data.toFile(),"r");indexes=new PackageWorkspace(directory,checkpoint,budget);}
     public void add(String category,Map<String,Object> row)throws IOException{
         Category list=categories.get(category);if(list==null){list=new Category(category);categories.put(category,list);}output.flush();long start=file.getChannel().position();
         // ObjectMapper closes this view, while the shared record spool remains open.
         var scalar=new LinkedHashMap<>(row);var references=new LinkedHashMap<String,Object>();
         for(var entry:row.entrySet())if(entry.getValue() instanceof StagedRows rows){scalar.remove(entry.getKey());references.put(entry.getKey(),Json.map("category",rows.category,"start",(long)rows.start,"end",(long)rows.end));}
         Json.write(new OutputStream(){public void write(int value)throws IOException{checkpoint.run();output.write(value);}public void write(byte[] bytes,int offset,int length)throws IOException{checkpoint.run();output.write(bytes,offset,length);}public void close()throws IOException{output.flush();}},Json.map("record",scalar,"slices",references));output.flush();long length=file.getChannel().position()-start;
-        if(length>ExchangePackageCodec.MAX_EXPANDED)throw new IOException("Source record exceeds package limit");list.index.seek(list.count*16L);list.index.writeLong(start);list.index.writeLong(length);list.count++;
+        long indexOffset;try{indexOffset=Math.multiplyExact((long)list.count,16L);}catch(ArithmeticException e){throw new IOException("Source record index is not representable",e);}budget.reserve(16);list.index.seek(indexOffset);list.index.writeLong(start);list.index.writeLong(length);budget.materialized(16);if(list.count==Integer.MAX_VALUE)throw new IOException("Source record count exceeds Java list addressability");list.count++;
     }
     public Map<String,Object> journal(String json)throws IOException{return indexes.parse(new StringReader(json));}
     public void addValue(String category,Object value)throws IOException{add(category,Json.map("value",value));}

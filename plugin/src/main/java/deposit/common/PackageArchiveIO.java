@@ -21,10 +21,9 @@ final class PackageArchiveIO {
                 if(!hash.equals(actual))throw new IOException("Resource checksum mismatch");String path="resources/"+hash;contentFiles.put(path,file);fileInfo.put(path,Json.map("bytes",Files.size(file),"sha256",hash));
             }
             for(var entry:generated.entrySet())fileInfo.put(entry.getKey(),Json.map("bytes",Files.size(entry.getValue()),"sha256",ResourceFiles.checksum(entry.getValue())));
-            long expanded=0;for(Path file:generated.values())expanded+=Files.size(file);for(Path file:contentFiles.values())expanded+=Files.size(file);
-            if(contentFiles.size()+generated.size()+1>ExchangePackageCodec.MAX_ENTRIES||expanded>ExchangePackageCodec.MAX_EXPANDED)throw new IOException("Package entry or expanded size limit exceeded");
+            long expanded=0;for(Path file:generated.values())expanded=checkedAdd(expanded,Files.size(file));for(Path file:contentFiles.values())expanded=checkedAdd(expanded,Files.size(file));
             var finalManifest=new LinkedHashMap<>(manifest);finalManifest.put("files",fileInfo);finalManifest.put("includeHistory",history!=null);Path manifestFile=workspace.resolve("manifest.json");try(OutputStream out=Files.newOutputStream(manifestFile)){Json.write(out,finalManifest);}
-            if(expanded+Files.size(manifestFile)>ExchangePackageCodec.MAX_EXPANDED)throw new IOException("Package expanded size limit exceeded");
+            expanded=checkedAdd(expanded,Files.size(manifestFile));
             var all=new TreeMap<String,Path>();all.putAll(generated);all.putAll(contentFiles);all.put("manifest.json",manifestFile);
             try(var out=new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(destination,StandardOpenOption.CREATE_NEW)))) {byte[] buffer=new byte[64*1024];for(var entry:all.entrySet()){var zip=new ZipEntry(entry.getKey());zip.setTime(0);out.putNextEntry(zip);try(var in=Files.newInputStream(entry.getValue())){int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);}out.closeEntry();}}
         } finally {try(var paths=Files.walk(workspace)){paths.sorted(Comparator.reverseOrder()).forEach(path->{try{Files.deleteIfExists(path);}catch(IOException ignored){}});}}
@@ -33,11 +32,10 @@ final class PackageArchiveIO {
     record Contents(Set<String> paths,Map<String,String> hashes,Map<String,Long> sizes,Map<String,Path> jsonFiles) {}
     static Contents read(Path archive,PackageValidationContext context)throws IOException {
         var seen=new HashSet<String>();var hashes=new HashMap<String,String>();var sizes=new HashMap<String,Long>();
-        var jsonFiles=new HashMap<String,Path>();long expanded=0;int count=0;
+        var jsonFiles=new HashMap<String,Path>();long expanded=0;
         try(var raw=Files.newInputStream(archive);var zip=new ZipInputStream(new BufferedInputStream(raw))) {
             ZipEntry entry;
             while((entry=zip.getNextEntry())!=null) {
-                if(++count>ExchangePackageCodec.MAX_ENTRIES)throw new IOException("Package entry limit exceeded");
                 String name=entry.getName();safePath(name);
                 if(!Set.of("manifest.json","graph.json","history.json").contains(name)&&!name.matches("resources/[a-f0-9]{64}"))throw new IOException("Unsupported package entry");
                 if(!seen.add(name))throw new IOException("Duplicate package entry");
@@ -47,7 +45,7 @@ final class PackageArchiveIO {
                 if(name.equals("manifest.json")||name.equals("graph.json")||name.equals("history.json")){jsonFile=context.directory.resolve(name);json=Files.newOutputStream(jsonFile,StandardOpenOption.CREATE_NEW);}
                 byte[] buffer=new byte[64*1024];long size=0;int n;
                 try {while((n=zip.read(buffer))!=-1) {
-                    context.checkpoint();size+=n;expanded+=n;if(expanded>ExchangePackageCodec.MAX_EXPANDED)throw new IOException("Package expanded size limit exceeded");
+                    context.checkpoint();size=checkedAdd(size,n);expanded=checkedAdd(expanded,n);
                     digest.update(buffer,0,n);if(json!=null)json.write(buffer,0,n);
                 }} finally {if(json!=null)json.close();}
                 String hash=HexFormat.of().formatHex(digest.digest());hashes.put(name,hash);
@@ -61,6 +59,7 @@ final class PackageArchiveIO {
         if(!jsonFiles.containsKey("manifest.json")||!jsonFiles.containsKey("graph.json"))throw new IOException("Package requires manifest.json and graph.json");
         return new Contents(seen,hashes,sizes,jsonFiles);
     }
+    static long checkedAdd(long left,long right)throws IOException {try{return Math.addExact(left,right);}catch(ArithmeticException e){throw new IOException("Package size is not representable",e);}}
     private static void safePath(String name)throws IOException {
         if(name==null||name.isBlank()||name.startsWith("/")||name.startsWith("\\")||name.matches("^[A-Za-z]:.*")||name.indexOf('\\')>=0)throw new IOException("Unsafe package path");
         for(String part:name.split("/",-1))if(part.isBlank()||part.equals(".")||part.equals(".."))throw new IOException("Unsafe package path");

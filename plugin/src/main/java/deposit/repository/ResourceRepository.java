@@ -64,8 +64,9 @@ public final class ResourceRepository {
     public void changed(Node r){Node loc=location(CoreRepository.id(r));orphan(loc);}
     /** Internal authority for resources created by one materialization, never a public access grant. */
     public ImportedResources beginImport(String namespace,String actor) {
-        requireImportWriter(namespace,actor);return new ImportedResources(this,namespace,actor);
+        requireImportWriter(namespace,actor);return new ImportedResources(this,namespace,actor,null);
     }
+    public ImportedResources beginImport(String namespace,String actor,StorageAdmission.Reservation reservation){requireImportWriter(namespace,actor);return new ImportedResources(this,namespace,actor,reservation);}
     private void requireImportWriter(String namespace,String actor) {
         ((InternalTransaction)tx).kernelTransaction().assertOpen();
         String role=core.resourceWriteRole(actor,namespace);
@@ -74,10 +75,11 @@ public final class ResourceRepository {
     public static final class ImportedResources implements AutoCloseable {
         private final ResourceRepository owner;
         private final String namespace,actor;
+        private final StorageAdmission.Reservation reservation;
         private final Map<String,ImportedResource> created=new HashMap<>();
-        private boolean closed;
+        private boolean closed,publicationStarted,publicationFailed;
         private record ImportedResource(ResourceStorage.Content content,String filename,String mediaType) {}
-        private ImportedResources(ResourceRepository owner,String namespace,String actor){this.owner=owner;this.namespace=namespace;this.actor=actor;}
+        private ImportedResources(ResourceRepository owner,String namespace,String actor,StorageAdmission.Reservation reservation){this.owner=owner;this.namespace=namespace;this.actor=actor;this.reservation=reservation;}
         private void scope(ResourceRepository repository,String destination,String writer) {
             if(closed||repository.tx!=owner.tx||!namespace.equals(destination)||!actor.equals(writer))throw ExceptionHandler.fail("FORBIDDEN","Imported resource authority is outside its scope");
             repository.requireImportWriter(destination,writer);
@@ -89,7 +91,7 @@ public final class ResourceRepository {
             String id=UUID.randomUUID().toString(),stored=ResourceFiles.filename(filename,checksum);
             owner.lock(id);
             if(owner.location(id)!=null||owner.resource(namespace,id)!=null)throw new IllegalStateException("Fresh resource identity already exists");
-            var content=new ResourceStorage.Content(id,stored,bytes,checksum);owner.storage.publish(content,staged);owner.storage.verify(content);
+            var content=new ResourceStorage.Content(id,stored,bytes,checksum);if(reservation==null)throw new IOException("Import publication has no storage admission");owner.server.storage.admission.grow(reservation,Map.of(owner.files.root,bytes));publicationStarted=true;try{owner.publish(content,staged,reservation);}catch(IOException|RuntimeException failure){publicationFailed=true;throw failure;}
             owner.record("DepositResourceLocation",id,Json.map("namespaceId",namespace,"storedFilename",stored,"bytes",bytes,"checksum",checksum,"leaseUntil",owner.now()+ResourceFiles.LEASE,"everAttached",false,"published",true));
             owner.record("DResource",id,Json.map("namespaceId",namespace,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"state","ready","createdBy",actor,"updatedBy",actor,"createdAt",timestamp,"updatedAt",timestamp));
             created.put(id,new ImportedResource(content,filename,mediaType));return id;
@@ -106,6 +108,8 @@ public final class ResourceRepository {
             repository.verify(location);return resource;
         }
         @Override public void close(){closed=true;created.clear();}
+        public boolean publicationFailed(){return publicationFailed;}
+        public boolean publicationStarted(){return publicationStarted;}
     }
     boolean writeImported(Node descriptor,Object payload,String actor,ImportedResources imported) {
         if(imported==null)throw ExceptionHandler.fail("FORBIDDEN","Imported resource authority required");
@@ -129,6 +133,14 @@ public final class ResourceRepository {
     }
     public ResourceStorage.Content content(Node loc){return new ResourceStorage.Content(CoreRepository.id(loc),text(loc,"storedFilename"),number(loc,"bytes",0),text(loc,"checksum"));}
     public ResourceStorage.Content verify(Node loc){try{var value=content(loc);storage.verify(value);return value;}catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Resource content unavailable");}}
+    public void growPublication(StorageAdmission.Reservation reservation,long bytes)throws IOException{
+        String volume=server.storage.admission.volumeId(files.root);long held=reservation.commitments().getOrDefault(volume,0L);if(bytes>held)server.storage.admission.grow(reservation,Map.of(files.root,bytes-held));
+    }
+    /** Publish only after capacity was prepared in the operation's existing reservation. */
+    public void publish(ResourceStorage.Content content,Path staged,StorageAdmission.Reservation reservation)throws IOException{
+        if(storage.exists(content.resourceId())){storage.verify(content);return;}
+        storage.publish(content,staged);storage.verify(content);server.storage.admission.materialized(reservation,files.root,content.bytes());
+    }
     public Map<String,Object> info(Node r){String url=server.downloadPublicBaseUrl==null?null:ResourceLinkEncoder.url(server.downloadPublicBaseUrl,(String)r.getProperty("namespaceId"),CoreRepository.id(r));return Json.map("resourceId",CoreRepository.id(r),"filename",r.getProperty("filename"),"storedFilename",r.getProperty("storedFilename"),"downloadUrl",url,"bytes",r.getProperty("bytes"),"checksum",r.getProperty("checksum"),"mediaType",r.getProperty("mediaType"),"state",r.getProperty("state"));}
     public void expire(Node loc) {
         String id=CoreRepository.id(loc);lock(id);if(loc.hasProperty("deleting")||Boolean.TRUE.equals(loc.getProperty("collected",false)))return;

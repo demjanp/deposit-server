@@ -40,6 +40,7 @@ public final class ResourceService extends BaseService {
         }
         Map<String,Object> result;
         try {result=switch(method){case "beginUpload"->new ResourceTransferRepository(c,resources).begin(request);case "uploadChunk"->new ResourceTransferRepository(c,resources).chunk(request,transfer(request.get("uploadId"),true));case "finishUpload"->new ResourceTransferRepository(c,resources).finish(request,transfer(request.get("uploadId"),true));case "abortUpload"->new ResourceTransferRepository(c,resources).abort(request,transfer(request.get("uploadId"),false));default->throw new IllegalArgumentException();};}
+        catch(StorageAdmission.StoragePressureException e){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Insufficient available storage for the requested operation");}
         catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Transfer storage unavailable");}
         repo.saveReceipt(c,c.namespaceId,hash,new Outcome(null,null,result));return result;
     }
@@ -74,7 +75,7 @@ public final class ResourceService extends BaseService {
         }
         List<Node> locations=repo.nodes("DepositResourceLocation",scope.equals("all")?Map.of():Map.of("namespaceId",c.namespaceId));
         for(String ns:locations.stream().map(n->text(n,"namespaceId")).distinct().sorted().toList())repo.lockNamespace(ns);
-        var candidates=new ArrayList<String>();long bytes=0;for(Node loc:locations){resources.lock(CoreRepository.id(loc));if(resources.eligible(loc,age)){candidates.add(CoreRepository.id(loc));bytes+=number(loc,"bytes",0);}}
+        var candidates=new ArrayList<String>();long bytes=0;for(Node loc:locations){resources.lock(CoreRepository.id(loc));if(resources.eligible(loc,age)){candidates.add(CoreRepository.id(loc));try{bytes=Math.addExact(bytes,number(loc,"bytes",0));}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}}}
         if(dryRun)return Json.map("candidateIds",candidates,"counts",(long)candidates.size(),"eligibleBytes",bytes);
         String job=UUID.randomUUID().toString();resources.record("DepositPruneJob",job,Json.map("scope",bindingScope,"actorId",c.actorId,"minimumAge",age,"createdAt",resources.now()));
         for(String id:candidates)resources.record("DepositPruneItem",job+"/"+id,Json.map("jobId",job,"resourceId",id,"state","pending","reclaimedBytes",0L));
@@ -87,7 +88,7 @@ public final class ResourceService extends BaseService {
     }
     public static Map<String,Object> jobStatus(CoreRepository repo,String id) {
         long pending=0,completed=0,failed=0,bytes=0;var diagnostics=new ArrayList<String>();
-        for(Node item:repo.nodes("DepositPruneItem",Map.of("jobId",id))) {switch(text(item,"state")){case "completed","skipped"->completed++;case "failed"->{failed++;diagnostics.add((String)item.getProperty("diagnostic","Collection failed"));}default->pending++;}bytes+=number(item,"reclaimedBytes",0);}
+        for(Node item:repo.nodes("DepositPruneItem",Map.of("jobId",id))) {switch(text(item,"state")){case "completed","skipped"->completed++;case "failed"->{failed++;diagnostics.add((String)item.getProperty("diagnostic","Collection failed"));}default->pending++;}try{bytes=Math.addExact(bytes,number(item,"reclaimedBytes",0));}catch(ArithmeticException overflow){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Reclaimed resource size is not representable");}}
         return Json.map("pruneId",id,"state",pending>0?"pending":failed>0?"failed":"completed","pending",pending,"completed",completed,"failed",failed,"reclaimedBytes",bytes,"diagnostics",diagnostics);
     }
 }

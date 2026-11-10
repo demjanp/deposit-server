@@ -30,6 +30,12 @@ class ResourceTransferRepositoryTest {
         assertError(integerFailure, "Expected Integer");
     }
 
+    @Test void uploadSizeValidationHasNoTwoGiBPolicyCeiling() {
+        assertEquals(2L*1024*1024*1024+1, ResourceTransferRepository.validateUploadBytes(2L*1024*1024*1024+1));
+        var failure=assertThrows(ExceptionHandler.DepositException.class,()->ResourceTransferRepository.validateUploadBytes(-1));
+        assertTrue(failure.getMessage().contains("Upload size cannot be negative"));
+    }
+
     private static void assertError(ExceptionHandler.DepositException failure, String message) {
         assertTrue(failure.getMessage().contains("\"code\":\"VALIDATION_FAILED\""), failure.getMessage());
         assertTrue(failure.getMessage().contains("\"message\":\"" + message + "\""), failure.getMessage());

@@ -38,6 +38,9 @@ final class OperationReceiptRepository {
         receipt.setProperty("actorId", context.actorId);
         receipt.setProperty("requestHash", hash);
         receipt.setProperty("outcome", Json.write(outcome.data()));
+        Object format = outcome.data().get("format"), resultId = outcome.data().get("resultId");
+        if ("deposit.import-result/1".equals(format) && resultId instanceof String id)
+            receipt.setProperty("importResultId", id);
         receipt.setProperty("revision", context.revision);
         receipt.setProperty("administrativeMode", context.state.scoped ? context.state.administrative : (context.session != null && context.session.administrative));
         if (outcome.node() != null) {
