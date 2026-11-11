@@ -16,7 +16,7 @@ final class ImportSnapshotMaterializer {
 
     ImportSnapshotMaterializer(RequestContext c,CoreRepository repo,ResourceRepository resources){this.c=c;this.repo=repo;this.resources=resources;}
 
-    Map<String,Object> apply(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,Map<String,Object> rules){applyFormScopes(pkg.graph(),namespace,objectMappings,rules);return materialize(pkg,archive,namespace,classMap,objectMappings);}
+    Map<String,Object> apply(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,Map<String,Object> rules){applyFormScopes(pkg.graph(),namespace,objectMappings,rules);return materialize(pkg,archive,namespace,classMap,objectMappings,ResourceSelection.CURRENT_DESCRIPTOR_WRITES);}
 
     private void applyFormScopes(Map<String,Object> graph,String namespace,Map<String,Object> mappings,Map<String,Object> rules){
         Object raw=rules.get("_formRootSource");if(!(raw instanceof String source))return;
@@ -35,13 +35,17 @@ final class ImportSnapshotMaterializer {
         if(geometry!=null)try(var edges=geometry.getRelationships()){for(var edge:edges)budget.reserveBeforeMutation(edge);}
     }
 
-Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings){
+Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings){return materialize(pkg,archive,namespace,classMap,objectMappings,ResourceSelection.ALL_PACKAGE_RECORDS);}
+
+private enum ResourceSelection { ALL_PACKAGE_RECORDS, CURRENT_DESCRIPTOR_WRITES }
+
+private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,ResourceSelection selection){
     Map<String,Object> graph=pkg.graph();ImportScratch mappings;
     var scratchBudget=ImportWriteBudget.forRequest(c).scratchLease();
     try{mappings=new ImportScratch(resources.files.path("staging/imports"),()->c.state.kernel.assertOpen(),scratchBudget::reserve,scratchBudget::close);}
     catch(IOException failure){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to create private import mapping index");}
     c.state.release.add(()->{try{mappings.close();}catch(IOException failure){c.server.storage.diagnostic="Private import mapping cleanup pending";}});
-    Set<String> currentResourceIds=currentDescriptorResourceIds(graph,mappings);long stagedBytes=0;
+    Map<String,String> resourceRecords=resourceRecordIndex(graph,mappings);Set<String> currentResourceIds=selection==ResourceSelection.ALL_PACKAGE_RECORDS?allResourceIds(graph,mappings):resourcesForDescriptorWrites(graph,namespace,objectMappings,mappings,resourceRecords);long stagedBytes=0;
     for(Object raw:(List<?>)graph.get("resources")){var resource=ValueCodec.map(raw);if(currentResourceIds.contains(resource.get("id")))try{stagedBytes=Math.addExact(stagedBytes,((Number)resource.get("bytes")).longValue());}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Import resource size is not representable");}}
     StorageAdmission.Reservation admission;try{admission=c.server.storage.admission.acquire("import-apply",ImportWriteBudget.reservationOwnerId(c.namespaceId,c.actorId,c.operationId),c.operationId,"import-resource-materialization",Map.of(resources.files.root,stagedBytes),Json.map("phase","resource-expansion","namespaceId",namespace,"receiptScope",c.namespaceId,"actorId",c.actorId,"operationId",c.operationId,"expectedBytes",stagedBytes));}catch(StorageAdmission.StoragePressureException pressure){c.fail("LIMIT_EXCEEDED",pressure.getMessage());return Map.of();}catch(IOException failure){c.fail("RESOURCE_CORRUPT","Unable to prepare import storage admission");return Map.of();}
     boolean[] committed={false};ResourceRepository.ImportedResources[] importedOwner={null};
@@ -64,7 +68,7 @@ Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive
         }catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to materialize package resource");}finally{if(staged!=null)try{Files.deleteIfExists(staged);}catch(IOException ignored){}}}
     for(Object raw:(List<?>)graph.get("objects")){var source=ValueCodec.map(raw);String sourceId=(String)source.get("id"),classId=classes.get((String)source.get("classId"));if(classId==null)c.fail("VALIDATION_FAILED","Object Class is outside the package");Object selected=objectMappings.get(sourceId);Node object=selected instanceof String targetId?repo.entity("Object",namespace,targetId):null;if(selected instanceof String&&object==null)c.fail("PLAN_STALE","A selected matching Object is no longer available");if(object==null){object=repo.create("Object",namespace,c.actorId,Json.map("position",source.getOrDefault("position",List.of(0.0,0.0))));repo.assign(object,repo.entity("Class",namespace,classId),c.actorId);createdObjects++;}else if(!Objects.equals(CoreRepository.id(repo.objectClass(object)),classId))c.fail("PLAN_STALE","A selected matching Object changed Class");String targetId=CoreRepository.id(object);objects.put(sourceId,targetId);mapping.put(sourceId,targetId);}
     for(Object raw:(List<?>)graph.get("memberships")){var m=ValueCodec.map(raw);String objectId=objects.get(m.get("objectId"));Node object=objectId==null?null:repo.entity("Object",namespace,objectId);if(object==null)c.fail("VALIDATION_FAILED","Membership Object is outside the package");memberships.put((String)m.get("id"),CoreRepository.id(repo.membership(object)));}
-    for(Object raw:(List<?>)graph.get("descriptors")){var source=ValueCodec.map(raw);String sourceObject=(String)source.get("objectId"),targetObject=objects.get(sourceObject);if(targetObject==null)c.fail("VALIDATION_FAILED","Descriptor owner is outside the package");Node object=repo.entity("Object",namespace,targetObject),clazz=repo.objectClass(object);String name=(String)source.get("name");Node declaration=repo.declaration(clazz,name);if(declaration==null)c.fail("VALIDATION_FAILED","Descriptor declaration is missing");String type=(String)declaration.getProperty("type");Object incoming=ExchangePackageCodec.decodeValue(type,source.get("value")),value=incoming;if("DResource".equals(type)&&value!=null){String mappedResource=resourcesMap.get((String)ValueCodec.map(value).get("resourceId"));if(mappedResource==null)c.fail("RESOURCE_CORRUPT","Package resource reference is missing");value=Json.map("resourceId",mappedResource);}Node descriptor=repo.descriptor(object,name);if(descriptor==null){descriptor=repo.attach("Descriptor",object,c.actorId,Json.map("name",name));repo.writeImportedValue(descriptor,type,value,c.actorId,imported);}else {boolean equal="DResource".equals(type)?ImportSemantics.resourceEquivalent(resources,incoming,repo.descriptorValue(descriptor),graph,namespace):Objects.equals(repo.descriptorValue(descriptor),value);if(!equal){c.fail("PLAN_STALE","Matched Descriptor changed after analysis");}}descriptors.put((String)source.get("id"),CoreRepository.id(descriptor));if("DGeometry".equals(type)&&source.get("geometryId") instanceof String sourceGeometry){Node geometry=new GeometryRepository(c.tx,repo).geometry(descriptor);if(geometry!=null){String targetId=CoreRepository.id(geometry);geometriesMap.put(sourceGeometry,targetId);mapping.put(sourceGeometry,targetId);}} }
+    for(Object raw:(List<?>)graph.get("descriptors")){var source=ValueCodec.map(raw);String sourceObject=(String)source.get("objectId"),targetObject=objects.get(sourceObject);if(targetObject==null)c.fail("VALIDATION_FAILED","Descriptor owner is outside the package");Node object=repo.entity("Object",namespace,targetObject),clazz=repo.objectClass(object);String name=(String)source.get("name");Node declaration=repo.declaration(clazz,name);if(declaration==null)c.fail("VALIDATION_FAILED","Descriptor declaration is missing");String type=(String)declaration.getProperty("type");Object incoming=ExchangePackageCodec.decodeValue(type,source.get("value")),value=incoming;Node descriptor=repo.descriptor(object,name);if(descriptor==null){if("DResource".equals(type)&&value!=null){String mappedResource=resourcesMap.get((String)ValueCodec.map(value).get("resourceId"));if(mappedResource==null)c.fail("RESOURCE_CORRUPT","Package resource reference is missing");value=Json.map("resourceId",mappedResource);}descriptor=repo.attach("Descriptor",object,c.actorId,Json.map("name",name));repo.writeImportedValue(descriptor,type,value,c.actorId,imported);}else {Object existingValue=repo.descriptorValue(descriptor);boolean equal;if("DResource".equals(type)){equal=incoming==null?existingValue==null:resourceEquivalent(resourceRecords.get((String)ValueCodec.map(incoming).get("resourceId")),existingValue,namespace);}else equal=Objects.equals(existingValue,value);if(!equal){c.fail("PLAN_STALE","Matched Descriptor changed after analysis");}}descriptors.put((String)source.get("id"),CoreRepository.id(descriptor));if("DGeometry".equals(type)&&source.get("geometryId") instanceof String sourceGeometry){Node geometry=new GeometryRepository(c.tx,repo).geometry(descriptor);if(geometry!=null){String targetId=CoreRepository.id(geometry);geometriesMap.put(sourceGeometry,targetId);mapping.put(sourceGeometry,targetId);}} }
     for(Object raw:(List<?>)graph.get("relationships")){var edge=ValueCodec.map(raw);Node source=repo.entity("Object",namespace,objects.get(edge.get("sourceId"))),target=repo.entity("Object",namespace,objects.get(edge.get("targetId")));if(source==null||target==null)c.fail("VALIDATION_FAILED","Relationship endpoint is outside the package");var relation=repo.relationship(source,target,(String)edge.get("label"));if(relation==null)relation=repo.createRelationship(source,target,(String)edge.get("label"),edge.containsKey("weight")?Json.map("weight",edge.get("weight")):Map.of(),c.actorId);relationships.put((String)edge.get("id"),CoreRepository.id(relation));}
     for(Object raw:(List<?>)graph.get("classRelationships")){var edge=ValueCodec.map(raw);Node source=repo.entity("Class",namespace,classes.get(edge.get("sourceId"))),target=repo.entity("Class",namespace,classes.get(edge.get("targetId")));if(source==null||target==null)c.fail("VALIDATION_FAILED","Class Relationship endpoint is outside the package");var relation=repo.relationship(source,target,(String)edge.get("label"));if(relation==null)relation=repo.createRelationship(source,target,(String)edge.get("label"),Map.of(),c.actorId);classRelationships.put((String)edge.get("id"),CoreRepository.id(relation));}
     Map<String,String> mappedNames=new AbstractMap<>(){@Override public String get(Object key){Object value=classMap.get(key);return value instanceof String text?text:null;}@Override public Set<Entry<String,String>> entrySet(){return Collections.emptySet();}};for(Object raw:(List<?>)graph.get("patterns")){var p=ValueCodec.map(raw);Map<String,Object> definition=ImportSemantics.mapPatternClasses(ValueCodec.map(p.get("definition")),mappedNames);Node existing=repo.find("Pattern",Map.of("namespaceId",namespace,"name",p.get("name")));if(existing==null)existing=repo.create("Pattern",namespace,c.actorId,Json.map("name",p.get("name"),"definition",Json.write(definition),"comment",p.getOrDefault("comment","")));else if(!ImportSemantics.samePatternDefinition((String)existing.getProperty("definition"),definition,ImportSemantics.namespaceSchema(repo,namespace))||!Objects.equals(existing.getProperty("comment",""),p.getOrDefault("comment","")))c.fail("IMPORT_CONFLICT","Pattern name conflicts");patterns.put((String)p.get("id"),CoreRepository.id(existing));}
@@ -75,6 +79,45 @@ Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive
 
 private static long longCount(Map<?,?> values){long count=0;for(Object ignored:values.keySet())count=Math.addExact(count,1);return count;}
 private static long longSize(Collection<?> values){return values instanceof LongSized sized?sized.longSize():values.size();}
+
+private Set<String> allResourceIds(Map<String,Object> graph,ImportScratch scratch){
+    Map<String,Boolean> selected=scratch.map();for(Object raw:(List<?>)graph.get("resources")){var resource=ValueCodec.map(raw);selected.put((String)resource.get("id"),true);}return stringSet(selected);
+}
+
+private Map<String,String> resourceRecordIndex(Map<String,Object> graph,ImportScratch scratch){Map<String,String> records=scratch.map();for(Object raw:(List<?>)graph.get("resources")){var resource=ValueCodec.map(raw);records.put((String)resource.get("id"),Json.write(resource));}return records;}
+
+/** Select only package resources that a current Descriptor write will attach. */
+private Set<String> resourcesForDescriptorWrites(Map<String,Object> graph,String namespace,Map<String,Object> objectMappings,ImportScratch scratch,Map<String,String> records){
+    Map<String,String> declarations=scratch.map(),objectClasses=scratch.map();Map<String,Boolean> selected=scratch.map();
+    for(Object raw:(List<?>)graph.get("classes")){var clazz=ValueCodec.map(raw);String classId=(String)clazz.get("id");for(Object fieldRaw:(List<?>)clazz.get("descriptors")){var field=ValueCodec.map(fieldRaw);declarations.put(Json.write(List.of(classId,field.get("name"))),(String)field.get("type"));}}
+    for(Object raw:(List<?>)graph.get("objects")){var object=ValueCodec.map(raw);objectClasses.put((String)object.get("id"),(String)object.get("classId"));}
+    for(Object raw:(List<?>)graph.get("descriptors")){
+        var source=ValueCodec.map(raw);String sourceObject=(String)source.get("objectId"),classId=objectClasses.get(sourceObject);
+        String type=classId==null?null:declarations.get(Json.write(List.of(classId,source.get("name"))));
+        if(!"DResource".equals(type)||source.get("value")==null)continue;
+        Object decoded=ExchangePackageCodec.decodeValue(type,source.get("value"));Object rawResourceId=ValueCodec.map(decoded).get("resourceId");if(!(rawResourceId instanceof String resourceId))continue;
+        Object selectedObject=objectMappings.get(sourceObject);if(!(selectedObject instanceof String targetObjectId)){selected.put(resourceId,true);continue;}
+        Node targetObject=repo.entity("Object",namespace,targetObjectId);if(targetObject==null)c.fail("PLAN_STALE","A selected matching Object is no longer available");
+        Node existing=repo.descriptor(targetObject,(String)source.get("name"));if(existing==null){selected.put(resourceId,true);continue;}
+        Object current=repo.descriptorValue(existing);if(!resourceEquivalent(records.get(resourceId),current,namespace))c.fail("PLAN_STALE","Matched Descriptor changed after analysis");
+    }
+    return stringSet(selected);
+}
+
+private boolean resourceEquivalent(String sourceJson,Object targetValue,String namespace){
+    if(sourceJson==null||targetValue==null)return false;Object targetId=ValueCodec.map(targetValue).get("resourceId");if(!(targetId instanceof String id))return false;
+    Map<String,Object> source=Json.read(sourceJson);Node destination=resources.resource(namespace,id);return destination!=null
+        &&Objects.equals(source.get("sha256"),destination.getProperty("checksum",null))
+        &&Objects.equals(source.get("bytes"),destination.getProperty("bytes",null))
+        &&Objects.equals(source.get("mediaType"),destination.getProperty("mediaType",null))
+        &&Objects.equals(source.get("filename"),destination.getProperty("filename",null));
+}
+
+private static Set<String> stringSet(Map<String,Boolean> values){return new AbstractSet<>(){
+    @Override public boolean contains(Object value){return values.containsKey(value);}
+    @Override public int size(){return values.size();}
+    @Override public Iterator<String> iterator(){var rows=values.entrySet().iterator();return new Iterator<>(){public boolean hasNext(){return rows.hasNext();}public String next(){return rows.next().getKey();}};}
+};}
 
 /** Existing-Namespace imports publish only resources reachable from current typed Descriptor values. */
 static Set<String> currentDescriptorResourceIds(Map<String,Object> graph){

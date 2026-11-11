@@ -78,6 +78,18 @@ class ExchangePackageCodecTest {
         assertTrue(error.getMessage().contains("content-addressed"),error.getMessage());
     }
 
+    @Test void historyOnlyResourceContentMustMatchItsContentAddressedEntry()throws Exception{
+        var manifest=manifest();manifest.put("historyMode","persistent");String ns=(String)manifest.get("sourceNamespaceId"),resourceId=UUID.randomUUID().toString(),clazz=UUID.randomUUID().toString(),object=UUID.randomUUID().toString(),descriptor=UUID.randomUUID().toString();byte[] content="historical resource payload".getBytes(StandardCharsets.UTF_8);String checksum=ResourceFiles.checksum(content);Path source=temp.resolve("history-resource.bin");Files.write(source,content);
+        var currentGraph=graph();currentGraph.put("resources",List.of(Json.map("kind","DResource","id",resourceId,"filename","history-resource.bin","bytes",(long)content.length,"mediaType","application/octet-stream","sha256",checksum,"entry","resources/"+checksum)));
+        var images=List.of(historicalImage(ns,"Namespace",ns,"name","N","description",""),historicalImage(ns,"Class",clazz,"name","Thing"),historicalImage(ns,"Object",object),historicalImage(ns,"Membership",UUID.randomUUID().toString(),"objectId",object,"classId",clazz),historicalImage(ns,"ClassDescriptor",UUID.randomUUID().toString(),"classId",clazz,"name","File","type","DResource"),historicalImage(ns,"Descriptor",descriptor,"objectId",object,"name","File","value",Json.map("resourceId",resourceId)));
+        var history=bundle(ns,images);Path valid=temp.resolve("history-only-resource-valid.zip");ExchangePackageCodec.write(valid,manifest,currentGraph,history,Map.of(checksum,source));assertTrue(((List<?>)currentGraph.get("descriptors")).isEmpty());assertDoesNotThrow(()->ExchangePackageCodec.validate(valid));
+        Path corrupted=temp.resolve("history-only-resource-corrupt.zip");rewriteCorruptResource(valid,corrupted,"resources/"+checksum);var error=assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validate(corrupted));assertTrue(error.getMessage().contains("content-addressed"),error.getMessage());
+    }
+
+    private void rewriteCorruptResource(Path source,Path destination,String corruptEntry)throws Exception{
+        try(var input=new ZipFile(source.toFile());var output=new ZipOutputStream(Files.newOutputStream(destination))){var entries=input.entries();while(entries.hasMoreElements()){var entry=entries.nextElement();byte[] bytes;try(var content=input.getInputStream(entry)){bytes=content.readAllBytes();}if(entry.getName().equals(corruptEntry)){assertFalse(bytes.length==0);bytes[0]^=1;}output.putNextEntry(new ZipEntry(entry.getName()));output.write(bytes);output.closeEntry();}}
+    }
+
     @Test void duplicateArchiveEntriesAreRejected() throws Exception {
         Path archive=temp.resolve("duplicates.zip");
         try(var zip=new ZipOutputStream(Files.newOutputStream(archive))){
