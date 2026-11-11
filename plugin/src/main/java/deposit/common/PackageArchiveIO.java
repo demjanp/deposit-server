@@ -68,7 +68,9 @@ final class PackageArchiveIO {
         for(String field:List.of("packageId","sourceNamespaceId","name","description","depositVersion","historyMode","exportedRevision","createdAt","rootIds","scope","files","includeHistory"))if(!manifest.containsKey(field))throw new IOException("Missing manifest field: "+field);
         if(!Set.of("packageId","sourceNamespaceId","name","description","depositVersion","historyMode","exportedRevision","createdAt","rootIds","scope","files","includeHistory","maxHops","rootClassBoundary","boundaryReferences","omittedEdgeCount").containsAll(manifest.keySet()))throw new IOException("Unknown manifest field");
         try{PackageIdentity.canonical((String)manifest.get("packageId"));PackageIdentity.canonical((String)manifest.get("sourceNamespaceId"));}catch(RuntimeException e){throw new IOException("Invalid manifest identity");}
-        for(String field:List.of("name","description","depositVersion","createdAt"))if(!(manifest.get(field) instanceof String))throw new IOException("Invalid manifest text");
+        for(String field:List.of("name","description","createdAt"))if(!(manifest.get(field) instanceof String))throw new IOException("Invalid manifest text");
+        Object depositVersion=manifest.get("depositVersion");
+        if(depositVersion!=null&&(!(depositVersion instanceof String version)||!version.matches("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?")))throw new IOException("Invalid manifest deposit version");
         if(!(manifest.get("includeHistory") instanceof Boolean))throw new IOException("Invalid history flag");
         if(!Set.of("disabled","transient","persistent").contains(manifest.get("historyMode")))throw new IOException("Invalid Namespace history mode");
         PackageValueCodec.metadataInteger(manifest.get("exportedRevision"));

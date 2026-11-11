@@ -35,7 +35,7 @@ final class ExchangeSnapshot {
             "userTools",wholeNamespace?data("UserTool"):List.of(),"resources",resourceRecords);
         if(repo.sequence(c.namespaceId)!=pinned)c.fail("REVISION_CONFLICT","Namespace changed during export collection");
         var manifest=Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",c.namespaceId,
-            "name",ns.getProperty("name"),"description",ns.getProperty("description",""),"depositVersion",ns.getProperty("depositVersion",""),"historyMode",ns.getProperty("historyMode","disabled"),
+            "name",ns.getProperty("name"),"description",ns.getProperty("description",""),"depositVersion",DepositInfo.version(),"historyMode",ns.getProperty("historyMode","disabled"),
             "exportedRevision",pinned,"createdAt",c.timestamp.toString(),"rootIds",List.of(),"scope",wholeNamespace?"namespace":"subgraph","files",Map.of());
         return Json.map("manifest",manifest,"graph",graph);
     }

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ExchangePackageStreamingTest {
     @TempDir Path temp;
-    private Map<String,Object> manifest(){return Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",UUID.randomUUID().toString(),"name","Streaming","description","","depositVersion","test","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace","includeHistory",false);}
+    private Map<String,Object> manifest(){return Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",UUID.randomUUID().toString(),"name","Streaming","description","","depositVersion","2.0.0","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace","includeHistory",false);}
     private Path archive(Path graph,Map<String,Object> manifest)throws Exception{
         manifest.put("files",Json.map("graph.json",Json.map("bytes",Files.size(graph),"sha256",ResourceFiles.checksum(graph))));Path archive=temp.resolve(UUID.randomUUID()+".zip");
         try(var zip=new ZipOutputStream(Files.newOutputStream(archive))){zip.putNextEntry(new ZipEntry("graph.json"));Files.copy(graph,zip);zip.closeEntry();zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(Json.write(manifest).getBytes(StandardCharsets.UTF_8));zip.closeEntry();}return archive;

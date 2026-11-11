@@ -24,6 +24,45 @@ class ExchangePackageCodecTest {
         assertEquals("namespace",ExchangePackageCodec.validateSummary(archive).scope());
     }
 
+    @Test void depositVersionMayBeNullOrAValidServerVersionButNotEmptyOrMalformed() throws Exception {
+        var detached=manifest();detached.put("depositVersion",null);
+        Path detachedArchive=temp.resolve("detached.zip");ExchangePackageCodec.write(detachedArchive,detached,graph(),null,Map.of());
+        assertDoesNotThrow(()->ExchangePackageCodec.validateSummary(detachedArchive));
+        var serverPackage=manifest();serverPackage.put("depositVersion","2.4.1-rc.2");
+        Path serverArchive=temp.resolve("server.zip");ExchangePackageCodec.write(serverArchive,serverPackage,graph(),null,Map.of());
+        assertDoesNotThrow(()->ExchangePackageCodec.validateSummary(serverArchive));
+        var empty=manifest();empty.put("depositVersion","");reject(empty,graph(),null);
+        var malformed=manifest();malformed.put("depositVersion","unknown");reject(malformed,graph(),null);
+    }
+
+    @Test void manifestRejectsProducerAndNamespaceCreationProvenance() throws Exception {
+        var producer=manifest();producer.put("producerComponent","server");reject(producer,graph(),null);
+        var namespaceVersion=manifest();namespaceVersion.put("namespaceDepositVersion","1.0.0");reject(namespaceVersion,graph(),null);
+    }
+
+    @Test void sharedPythonTransportFixturesLeaveDomainAcceptanceToServer() throws Exception {
+        Path fixturePath=Path.of("..","..","test_harness","deposit-python","fixtures","stage3_server_semantic_boundary.json");
+        assertTrue(Files.isRegularFile(fixturePath),"Shared cross-language semantic fixture is missing: "+fixturePath);
+        Map<String,Object> fixture=Json.read(Files.readString(fixturePath));
+        Map<String,Object> baseManifest=ValueCodec.map(fixture.get("manifest"));
+        for(Object raw:(List<?>)fixture.get("scenarios")) {
+            Map<String,Object> scenario=ValueCodec.map(raw);
+            var sourceManifest=new LinkedHashMap<>(baseManifest);
+            sourceManifest.putAll(ValueCodec.map(scenario.getOrDefault("manifest",Map.of())));
+            Map<String,Object> sourceGraph=ValueCodec.map(scenario.get("graph"));
+            Map<String,Object> history=scenario.containsKey("history")?ValueCodec.map(scenario.get("history")):null;
+            Path archive=temp.resolve((String)scenario.get("name")+".zip");
+            ExchangePackageCodec.write(archive,sourceManifest,sourceGraph,history,Map.of());
+            if(Boolean.TRUE.equals(scenario.get("validOnServer"))) {
+                assertDoesNotThrow(()->ExchangePackageCodec.validateSummary(archive), (String)scenario.get("name"));
+                assertDoesNotThrow(()->ExchangePackageCodec.validate(archive), (String)scenario.get("name"));
+            } else {
+                assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validateSummary(archive), (String)scenario.get("name"));
+                assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validate(archive), (String)scenario.get("name"));
+            }
+        }
+    }
+
     @Test void archiveTraversalIsRejected() throws Exception {
         Path archive=temp.resolve("unsafe.zip");
         try(var zip=new ZipOutputStream(Files.newOutputStream(archive))) {
@@ -197,7 +236,7 @@ class ExchangePackageCodecTest {
     private void reject(Map<String,Object> manifest,Map<String,Object> graph,Map<String,Object> history)throws Exception{Path path=temp.resolve(UUID.randomUUID()+".zip");ExchangePackageCodec.write(path,manifest,graph,history,Map.of());assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validateSummary(path));assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validate(path));}
 
     private Map<String,Object> declaration(String ns,String clazz,String name,String type){return Json.map("kind","ClassDescriptor","id",UUID.randomUUID().toString(),"namespaceId",ns,"classId",clazz,"name",name,"type",type);}
-    private Map<String,Object> manifest(){return Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",UUID.randomUUID().toString(),"name","empty","description","","depositVersion","test","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");}
+    private Map<String,Object> manifest(){return Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",UUID.randomUUID().toString(),"name","empty","description","","depositVersion","2.0.0","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");}
     private Map<String,Object> graph(){return Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());}
     private void writeFixture(Path archive,Map<String,Object> sourceManifest,Map<String,Object> graph,Map<String,byte[]> extra)throws Exception{
         var entries=new TreeMap<String,byte[]>(extra);entries.put("graph.json",Json.write(graph).getBytes(StandardCharsets.UTF_8));
