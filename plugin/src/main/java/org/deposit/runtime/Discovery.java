@@ -24,7 +24,7 @@ public class Discovery {
     public static class Info {
         public final Map<String, Object> data;
         public Info(String version) {
-            data = Map.of("version", version, "importResultFormats", List.of(1));
+            data = Map.of("version", version, "capabilities", List.of("pagedImportResults"));
         }
     }
 }

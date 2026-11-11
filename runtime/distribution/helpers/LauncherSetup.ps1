@@ -37,7 +37,7 @@ function Setup([string[]]$Arguments,[string]$PackageRoot,[string]$StatePath,$Man
     Set-Neo4jSetting $neo4jConfig 'server.jvm.additional' "-Ddeposit.config=$depositConfigForward"
     $serviceName='DepositNeo4j-'+([guid]::NewGuid().ToString('N').Substring(0,8))
     Set-Neo4jSetting $neo4jConfig 'server.windows_service_name' $serviceName
-    $state=[ordered]@{schemaVersion=1;mode='local';neo4jHome=$neo4j;javaHome=$java;dataRoot=$data;exportRoot=$exports;secretRoot=$secretRoot;serviceName=$serviceName;distributionHome=$PackageRoot;neo4jVersion=[string]$Manifest.neo4jVersion;createdUtc=[DateTime]::UtcNow.ToString('o')}
+    $state=[ordered]@{mode='local';neo4jHome=$neo4j;javaHome=$java;dataRoot=$data;exportRoot=$exports;secretRoot=$secretRoot;serviceName=$serviceName;distributionHome=$PackageRoot;neo4jVersion=[string]$Manifest.neo4jVersion;createdUtc=[DateTime]::UtcNow.ToString('o')}
     $copied=@()
     try {
         foreach($jar in $releaseJars){Copy-Item -LiteralPath $jar.FullName -Destination $pluginDir; $copied+=Join-Path $pluginDir $jar.Name}

@@ -6,11 +6,23 @@ import java.util.*;
 public final class ChangeSet {
     public final Map<String,Map<String,Object>> before;
     public Map<String,Map<String,Object>> after;
-    public final Map<String,Set<String>> touches=new TreeMap<>();
-    public final Set<String> dependencies=new TreeSet<>();
-    public final Map<String,String> kinds=new TreeMap<>();
-    public ChangeSet(Map<String,Map<String,Object>> state) {before=HistoryCodec.copy(state);after=HistoryCodec.copy(state);}
+    public final Map<String,Set<String>> touches;
+    public final Set<String> dependencies;
+    public final Map<String,String> kinds;
+    private final Storage storage;
+    /** A transaction-owned disk index can supply the same journal without copying its states. */
+    public interface Storage {
+        Map<String,Map<String,Object>> before();
+        Map<String,Map<String,Object>> after();
+        Map<String,Set<String>> touches();
+        Set<String> dependencies();
+        Map<String,String> kinds();
+        void checkpoint(Map<String,Map<String,Object>> state);
+    }
+    public ChangeSet(Map<String,Map<String,Object>> state) {storage=null;before=HistoryCodec.copy(state);after=HistoryCodec.copy(state);touches=new TreeMap<>();dependencies=new TreeSet<>();kinds=new TreeMap<>();}
+    public ChangeSet(Storage storage) {this.storage=Objects.requireNonNull(storage);before=storage.before();after=storage.after();touches=storage.touches();dependencies=storage.dependencies();kinds=storage.kinds();}
     public void checkpoint(Map<String,Map<String,Object>> state) {
+        if(storage!=null){storage.checkpoint(state);after=storage.after();return;}
         for(String id:HistoryCodec.union(after.keySet(),state.keySet())) {
             var a=after.get(id);var b=state.get(id);var fields=HistoryCodec.fields(a,b);
             if(fields.isEmpty())continue;

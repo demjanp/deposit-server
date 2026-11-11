@@ -23,6 +23,8 @@ import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
 /** Standalone storage maintenance transactions and filesystem reconciliation jobs. */
 final class StorageMaintenanceJobs {
+    private static final int TRANSFER_CHUNK_CLEANUP_BATCH = 256;
+    private static final String DELETE_TERMINAL_TRANSFER_CHUNKS = "MATCH (transfer:DepositTransfer) WHERE transfer.state IN ['finished','aborted','expired'] MATCH (chunk:DepositTransferChunk {uploadId: transfer.id}) WITH chunk LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
     private final ServerContext server;
     private final GraphDatabaseAPI db;
     private final ResourceFiles files;
@@ -92,6 +94,17 @@ final class StorageMaintenanceJobs {
             plan.delete();
             tx.commit();
             if(admissionId!=null)try{server.storage.admission.close(server.storage.admission.resume(admissionId));}catch(IOException failure){diagnostic.accept("Expired import storage admission cleanup pending");}
+        }
+        try(var tx=db.beginTx()){
+            collectTerminalTransferChunks(tx,TRANSFER_CHUNK_CLEANUP_BATCH);
+            tx.commit();
+        }catch(RuntimeException failure){diagnostic.accept("Upload chunk metadata cleanup pending: "+failure.getClass().getSimpleName());}
+    }
+
+    static long collectTerminalTransferChunks(Transaction tx,int batchSize){
+        if(batchSize<1)throw new IllegalArgumentException("Chunk cleanup batch must be positive");
+        try(var result=tx.execute(DELETE_TERMINAL_TRANSFER_CHUNKS,Map.of("batchSize",batchSize))){
+            return ((Number)result.next().get("deleted")).longValue();
         }
     }
 

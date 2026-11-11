@@ -90,6 +90,12 @@ public final class OcflResourceStorage implements ResourceStorage {
             verify(content);
         }catch(IOException e){throw e;}catch(RuntimeException e){throw new IOException("OCFL publication failed",e);}
     }
+    @Override public synchronized void assertWorkClean()throws IOException {
+        checkTree(work);
+        try(var entries=Files.list(work)){
+            if(entries.findAny().isPresent())throw new IOException("OCFL publication workspace still contains temporary files");
+        }
+    }
     @Override public void verify(Content content)throws IOException {
         metadata(content);var object=profile(content.resourceId());
         if(!object.containsFile(content.storedFilename()))throw new IOException("OCFL payload name differs");

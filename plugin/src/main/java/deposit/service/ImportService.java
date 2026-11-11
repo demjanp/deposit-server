@@ -6,7 +6,6 @@ import deposit.repository.*;
 import java.io.*;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
-import java.util.function.BiConsumer;
 import java.util.*;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
@@ -21,9 +20,9 @@ public final class ImportService extends ActionService {
         return switch(procedure){
             case "deposit.import.analyze"->analyze(request);
             case "deposit.get.importPlan"->getPlan(request);
-            case "deposit.get.importResultV1"->importResults.envelope(RequestContext.uuid(request.get("resultId")));
-            case "deposit.get.importResultPageV1"->importResults.page(request);
-            case "deposit.get.importResultEntryV1"->importResults.entry(request);
+            case "deposit.get.importResult"->importResults.envelope(RequestContext.uuid(request.get("resultId")));
+            case "deposit.get.importResultPage"->importResults.page(request);
+            case "deposit.get.importResultEntry"->importResults.entry(request);
             case "deposit.import.apply"->apply(request);
             case "deposit.import.dataByPattern"->dataByPattern(request);
             case "deposit.import.namespaceData"->cloneNamespace(request);
@@ -47,11 +46,17 @@ public final class ImportService extends ActionService {
                 else {tableId=RequestContext.uuid(source.get("tableId"));Node table=repo.find("DepositTabularTable","id",tableId);if(table!=null&&!c.namespaceId.equals(table.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Table belongs to another Namespace");if(table==null||number(table,"expiresAt",0)<=resources.now()||(!c.actorId.equals(table.getProperty("creatorId"))&& !"owner".equals(effectiveRole(c.namespaceId))))c.fail("NOT_FOUND","Table is unavailable");if(!Boolean.TRUE.equals(table.getProperty("valid")))c.fail("VALIDATION_FAILED","Invalid staged table cannot be imported");table.setProperty("lastAccessAt",resources.now());table.setProperty("expiresAt",resources.now()+ResourceFiles.LEASE);columns=(List<Map<String,Object>>)(List<?>)Json.readList((String)table.getProperty("columnsJson"));try{tableRows=expander.newRowSource(resources.files.path((String)table.getProperty("path")));}catch(IOException e){throw new UncheckedIOException(e);}rows=tableRows;}
                 try {
                     try(ImportRowExpansion.TabularExpansion expansion=expander.tabularPackage(rows,columns,targets,relationships,rules)){
-                        Map<String,Object> expanded=expansion.data();Map<String,Object> manifest=ValueCodec.map(expanded.get("manifest")),graph=ValueCodec.map(expanded.get("graph"));Map<String,Object> rowIds=ValueCodec.map(expanded.get("rowIds")),clears=ValueCodec.map(expanded.get("clears"));Map<String,Object> effectiveRules=tabularRules(rules,rowIds,ValueCodec.map(expanded.get("blanks")),clears);
+                        Map<String,Object> expanded=expansion.data();Map<String,Object> manifest=ValueCodec.map(expanded.get("manifest")),graph=ValueCodec.map(expanded.get("graph"));Map<String,Object> rowIds=ValueCodec.map(expanded.get("rowIds"));Map<String,Object> effectiveRules=tabularRules(rules,rowIds,ValueCodec.map(expanded.get("blanks")));
                         String id=UUID.randomUUID().toString();Path staged=stagedPath("staging/imports/rows-"+id+".zip");retained[0]=staged;long expected=estimatePackageBytes(manifest,graph);StorageAdmission.Reservation admission=c.server.storage.admission.acquire("import-plan",id,c.operationId,"tabular-import-plan",Map.of(resources.files.root,expected),Json.map("phase","package-create","stagingPath",c.server.storage.files.root.relativize(staged).toString().replace('\\','/'),"expectedBytes",expected));retainedAdmission[0]=admission;
-                        ImportRowExpansion.writeTabularPackage(staged,manifest,graph);long actual=Files.size(staged);if(actual>expected)throw new IOException("Tabular import package exceeded its prepared storage estimate");c.server.storage.admission.materialized(admission,resources.files.root,actual);c.server.storage.admission.release(admission,Map.of(resources.files.root,expected-actual));Map<String,Object> summary=withValidatedPackage(staged,pkg->analyzeSnapshot(pkg,effectiveRules));
-                        var advertised=new LinkedHashMap<String,Object>();for(var entry:rowIds.entrySet()){Object target=ValueCodec.map(summary.get("objectMappings")).get(entry.getKey());advertised.put((String)entry.getValue(),target);}
-                        summary.put("rowMappings",advertised);summary.put("_rowIds",rowIds);String relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/');long now=resources.now(),expires=now+ResourceFiles.LEASE;long targetRevision=repo.sequence(c.namespaceId);String rulesJson=Json.write(effectiveRules);Map<String,Object> result=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,tableId==null?"tabular-inline":tableId,relative,targetRevision,now,expires,rulesJson,"{}");plan.setProperty("resultId",result.get("resultId"));plan.setProperty("admissionId",admission.id);if(tableId!=null)plan.setProperty("tableId",tableId);retainStagingUntilCommit(staged,admission);
+                        ImportRowExpansion.writeTabularPackage(staged,manifest,graph);long actual=Files.size(staged);if(actual>expected)throw new IOException("Tabular import package exceeded its prepared storage estimate");c.server.storage.admission.materialized(admission,resources.files.root,actual);c.server.storage.admission.release(admission,Map.of(resources.files.root,expected-actual));String relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/');long now=resources.now(),expires=now+ResourceFiles.LEASE;long targetRevision=repo.sequence(c.namespaceId);String rulesJson=Json.write(rules),selectedTableId=tableId;
+                        Map<String,Object> result=withValidatedPackage(staged,pkg->analyzeSnapshot(pkg,effectiveRules,summary->{
+                            if(!((Collection<?>)summary.get("conflicts")).isEmpty()){
+                                Map<String,Object> diagnostic=importResults.save(c.operationId,"diagnostic",null,targetRevision,now+30L*24*60*60*1000,Json.map("conflicts",summary.get("conflicts")));
+                                discardStagingAfterCommit(staged,admission);return diagnostic;
+                            }
+                            Map<String,Object> objectMappings=ValueCodec.map(summary.get("objectMappings"));Map<String,Object> advertised=expansion.indexes().orderedMap();for(var entry:rowIds.entrySet())advertised.put((String)entry.getValue(),objectMappings.get(entry.getKey()));
+                            summary.put("rowMappings",advertised);summary.put("_rowIds",rowIds);summary.put("_tabularBlanks",ValueCodec.map(expanded.get("blanks")));Map<String,Object> saved=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,selectedTableId==null?"tabular-inline":selectedTableId,relative,targetRevision,now,expires,rulesJson);plan.setProperty("resultId",saved.get("resultId"));plan.setProperty("admissionId",admission.id);if(selectedTableId!=null)plan.setProperty("tableId",selectedTableId);retainStagingUntilCommit(staged,admission);return saved;
+                        }));
                         return new Change(new Outcome(null,null,result),false);
                     }
                 } catch(IOException e){throw new UncheckedIOException(e);} finally {if(tableRows!=null)try{tableRows.close();}catch(IOException e){throw new UncheckedIOException(e);}}
@@ -74,8 +79,14 @@ public final class ImportService extends ActionService {
                 if(pattern==null)c.fail("NOT_FOUND","Pattern not found");
                 ImportFormExpansion.FormSnapshot form;try{form=new ImportFormExpansion(c,repo,resources).expand(pattern,ValueCodec.map(request.get("values")),rules,this::stageFormResource);}catch(IOException failure){throw new UncheckedIOException(failure);}
                 Path staged=form.path();retained[0]=staged;Map<String,Object> effective=form.rules();
-                Map<String,Object> summary=withValidatedPackage(staged,pkg->analyzeSnapshot(pkg,effective));
-                    String id=UUID.randomUUID().toString();long now=resources.now();String relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/');long targetRevision=repo.sequence(c.namespaceId);String rulesJson=Json.write(effective),summaryJson=Json.write(summary);Node plan=initializePlan(id,"pattern-form",relative,targetRevision,now,now+ResourceFiles.LEASE,rulesJson,summaryJson);retainStagingUntilCommit(staged);return new Change(new Outcome(null,null,Json.map("planId",id,"targetRevision",plan.getProperty("targetRevision"),"groups",summary.get("groups"),"summary",summary.get("summary"))),false);
+                String id=UUID.randomUUID().toString();long now=resources.now(),targetRevision=repo.sequence(c.namespaceId),expires=now+ResourceFiles.LEASE;String relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/'),rulesJson=Json.write(effective);
+                Map<String,Object> result=withValidatedPackage(staged,pkg->analyzeSnapshot(pkg,effective,summary->{
+                    if(!((Collection<?>)summary.get("conflicts")).isEmpty()){
+                        Map<String,Object> diagnostic=importResults.save(c.operationId,"diagnostic",null,targetRevision,now+30L*24*60*60*1000,Json.map("conflicts",summary.get("conflicts")));
+                        discardStagingAfterCommit(staged,null);return diagnostic;
+                    }
+                    Map<String,Object> saved=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,"pattern-form",relative,targetRevision,now,expires,rulesJson);plan.setProperty("resultId",saved.get("resultId"));retainStagingUntilCommit(staged);return saved;
+                }));return new Change(new Outcome(null,null,result),false);
             });
             if(c.replayed){if(retained[0]!=null)Files.deleteIfExists(retained[0]);}else retained[0]=null;return outcome.data();
         }catch(IOException|UncheckedIOException error){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to stage Pattern form");}finally{if(retained[0]!=null)try{Files.deleteIfExists(retained[0]);}catch(IOException ignored){}}
@@ -91,9 +102,14 @@ public final class ImportService extends ActionService {
             Outcome outcome=action("deposit.import.analyze",request,false,"editor",()->{
                 Map<String,Object> src=ValueCodec.map(request.get("source"));fields(src,"packageResourceId");String packageId=RequestContext.uuid(src.get("packageResourceId"));
                 String id=UUID.randomUUID().toString();AuthorizedPackage copied=copyAuthorizedPackage(packageId,"import-plan",id);Path staged=copied.path();retained[0]=staged;retainedAdmission[0]=copied.reservation();
-                Map<String,Object> summary=withValidatedPackage(staged,pkg->{Object scope=pkg.manifest().get("scope");if(!"namespace".equals(scope)&&!"subgraph".equals(scope))throw ExceptionHandler.fail("VALIDATION_FAILED","Import source must be a complete Namespace or subgraph snapshot");return analyzeSnapshot(pkg,rules);});
                 String relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/');long now=resources.now();long targetRevision=repo.sequence(c.namespaceId),expires=now+24L*60*60*1000;String rulesJson=Json.write(rules);
-                Map<String,Object> result=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,packageId,relative,targetRevision,now,expires,rulesJson,"{}");plan.setProperty("resultId",result.get("resultId"));plan.setProperty("admissionId",copied.reservation().id);retainStagingUntilCommit(staged,copied.reservation());
+                Map<String,Object> result=withValidatedPackage(staged,pkg->{Object scope=pkg.manifest().get("scope");if(!"namespace".equals(scope)&&!"subgraph".equals(scope))throw ExceptionHandler.fail("VALIDATION_FAILED","Import source must be a complete Namespace or subgraph snapshot");return analyzeSnapshot(pkg,rules,summary->{
+                    if(!((Collection<?>)summary.get("conflicts")).isEmpty()){
+                        Map<String,Object> diagnostic=importResults.save(c.operationId,"diagnostic",null,targetRevision,now+30L*24*60*60*1000,Json.map("conflicts",summary.get("conflicts")));
+                        discardStagingAfterCommit(staged,copied.reservation());return diagnostic;
+                    }
+                    Map<String,Object> saved=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,packageId,relative,targetRevision,now,expires,rulesJson);plan.setProperty("resultId",saved.get("resultId"));plan.setProperty("admissionId",copied.reservation().id);retainStagingUntilCommit(staged,copied.reservation());return saved;
+                });});
                 return new Change(new Outcome(null,null,result),false);
             });
             retained[0]=null;retainedAdmission[0]=null;return outcome.data();
@@ -114,17 +130,16 @@ public final class ImportService extends ActionService {
             if(plan==null||number(plan,"expiresAt",0)<=resources.now()||!"ready".equals(plan.getProperty("state")))c.fail("NOT_FOUND","Unapplied import plan is unavailable");
             if(!c.actorId.equals(plan.getProperty("actorId"))&&!"owner".equals(effectiveRole(c.namespaceId)))c.fail("FORBIDDEN","Import plan belongs to another actor");
             if(repo.sequence(c.namespaceId)!=number(plan,"targetRevision",-1))c.fail("PLAN_STALE","Receiving Namespace changed after import analysis");
-            Path path=stagedPath((String)plan.getProperty("stagingPath"));Map<String,Object> rules=Json.read((String)plan.getProperty("rules"));String savedSummary=(String)plan.getProperty("summary");
-            Map<String,Object> result=withValidatedPackage(path,pkg->{
-                try(var indexes=scratch();var candidates=new DiskJsonList(indexes.directory,"candidates-");var conflictRows=new DiskJsonList(indexes.directory,"conflicts-")){
-                Map<String,Object> resolved=plan.hasProperty("resultId")?Json.map("classMap",importResults.mappingView((String)plan.getProperty("resultId"),"classMap"),"objectMappings",importResults.mappingView((String)plan.getProperty("resultId"),"objectMappings"),"conflicts",List.of()):ImportPlanSummary.applicationSummary(savedSummary,candidates,conflictRows,indexes::check);
-                List<?> conflicts=(List<?>)resolved.get("conflicts");if(!conflicts.isEmpty())c.fail("IMPORT_CONFLICT","Import has unresolved analysis conflicts");
+            if(!plan.hasProperty("resultId"))c.fail("RESOURCE_CORRUPT","Import plan has no receipt-owned analysis result");
+            String resultId=(String)plan.getProperty("resultId");Path path=stagedPath((String)plan.getProperty("stagingPath"));Map<String,Object> rules=Json.read((String)plan.getProperty("rules"));Map<String,Object> rowIds=importResults.mappingView(resultId,"_rowIds");Map<String,Object> blanks=importResults.mappingView(resultId,"_tabularBlanks");rules.put("_tabularIds",rowIds);rules.put("_tabularBlanks",blanks);
+            long expiry=resources.now()+30L*24*60*60*1000;Map<String,Object> result=withValidatedPackage(path,pkg->{
+                try(var indexes=scratch()){
+                Map<String,Object> resolved=Json.map("classMap",importResults.mappingView(resultId,"classMap"),"objectMappings",importResults.mappingView(resultId,"objectMappings"),"conflicts",List.of());
                 Map<String,Object> applied=applySnapshot(pkg,rules,resolved,path);
-                if(plan.hasProperty("resultId")){Map<String,Object> rowIds=importResults.mappingView((String)plan.getProperty("resultId"),"_rowIds");if(!rowIds.isEmpty()){Map<String,Object> objectIds=ValueCodec.map(ValueCodec.map(applied.get("identityMappings")).get("Object"));var rowMappings=new LinkedHashMap<String,Object>();for(var entry:rowIds.entrySet()){c.state.kernel.assertOpen();rowMappings.put((String)entry.getValue(),objectIds.get(entry.getKey()));}applied.put("rowMappings",rowMappings);}}else if(plan.hasProperty("rowIdsJson")){Map<String,Object> objectIds=ValueCodec.map(ValueCodec.map(applied.get("identityMappings")).get("Object"));var rowMappings=new LinkedHashMap<String,Object>();jsonEntries((String)plan.getProperty("rowIdsJson"),(internal,temp)->{c.state.kernel.assertOpen();rowMappings.put((String)temp,objectIds.get(internal));});applied.put("rowMappings",rowMappings);}
-                return applied;
+                if(!rowIds.isEmpty()){Map<String,Object> objectIds=ValueCodec.map(ValueCodec.map(applied.get("identityMappings")).get("Object"));Map<String,Object> rowMappings=indexes.orderedMap();for(var entry:rowIds.entrySet()){c.state.kernel.assertOpen();rowMappings.put((String)entry.getValue(),objectIds.get(entry.getKey()));}applied.put("rowMappings",rowMappings);}
+                return importResults.save(c.operationId,"apply",id,Math.addExact(c.revision,1),expiry,applied);
                 }catch(IOException failure){throw new UncheckedIOException(failure);}
             });
-            long expiry=resources.now()+30L*24*60*60*1000;Map<String,Object> applied=importResults.save(c.operationId,"apply",id,Math.addExact(c.revision,1),expiry,result);result=applied;
             plan.setProperty("state","applied");plan.setProperty("lastActivity",resources.now());plan.setProperty("expiresAt",expiry);
             releasePlanStagingAfterCommit(plan,path);
             return new Change(new Outcome(null,null,result),true);
@@ -147,13 +162,13 @@ public final class ImportService extends ActionService {
         }).data();
     }
 
-    private Map<String,Object> analyzeSnapshot(ExchangePackageCodec.PackageData pkg,Map<String,Object> rules){
-        return new ImportSnapshotAnalysis(c,repo,resources,stagedPath("staging/imports")).analyze(pkg,rules);
+    private <T> T analyzeSnapshot(ExchangePackageCodec.PackageData pkg,Map<String,Object> rules,java.util.function.Function<Map<String,Object>,T> persist){
+        return new ImportSnapshotAnalysis(c,repo,resources,stagedPath("staging/imports")).analyze(pkg,rules,persist);
     }
 
     /** Write only the fields common to every durable import-plan source. */
-    private Node initializePlan(String id,String sourcePackageId,String stagingPath,long targetRevision,long now,long expiresAt,String rules,String summary){
-        Node plan=c.tx.createNode(Label.label("DepositImportPlan"));plan.setProperty("id",id);plan.setProperty("namespaceId",c.namespaceId);plan.setProperty("actorId",c.actorId);plan.setProperty("sourcePackageId",sourcePackageId);plan.setProperty("stagingPath",stagingPath);plan.setProperty("targetRevision",targetRevision);plan.setProperty("createdAt",now);plan.setProperty("lastActivity",now);plan.setProperty("expiresAt",expiresAt);plan.setProperty("state","ready");plan.setProperty("rules",rules);plan.setProperty("summary",summary);return plan;
+    private Node initializePlan(String id,String sourcePackageId,String stagingPath,long targetRevision,long now,long expiresAt,String rules){
+        var properties=Json.map("id",id,"namespaceId",c.namespaceId,"actorId",c.actorId,"sourcePackageId",sourcePackageId,"stagingPath",stagingPath,"targetRevision",targetRevision,"createdAt",now,"lastActivity",now,"expiresAt",expiresAt,"state","ready","rules",rules);ImportWriteBudget.forRequest(c).reserveRecord(properties);Node plan=c.tx.createNode(Label.label("DepositImportPlan"));properties.forEach(plan::setProperty);return plan;
     }
 
     /** Newly-created staging belongs to this transaction until its commit. */
@@ -162,6 +177,9 @@ public final class ImportService extends ActionService {
     }
     private void retainStagingUntilCommit(Path staged,StorageAdmission.Reservation reservation){
         boolean[] committed={false};c.state.afterCommit.add(()->committed[0]=true);c.state.release.add(()->{if(!committed[0]){deleteStaging(staged);closeAdmission(reservation);}});
+    }
+    private void discardStagingAfterCommit(Path staged,StorageAdmission.Reservation reservation){
+        c.state.release.add(()->{deleteStaging(staged);closeAdmission(reservation);});
     }
     private void releasePlanStagingAfterCommit(Node plan,Path staged){
         String admissionId=(String)plan.getProperty("admissionId",null);if(admissionId==null)return;
@@ -184,10 +202,9 @@ public final class ImportService extends ActionService {
     }
 
     Map<String,Object> planData(Node plan){
-        if(plan.hasProperty("resultId")){Map<String,Object> analysis=importResults.envelopeForPlan((String)plan.getProperty("resultId"),CoreRepository.id(plan),(String)plan.getProperty("namespaceId"));return planData(plan,analysis);}
-        Map<String,Object> summary=Json.read((String)plan.getProperty("summary"));var data=Json.map("planId",CoreRepository.id(plan),"state",plan.getProperty("state"),"targetRevision",plan.getProperty("targetRevision"),"expiresAt",plan.getProperty("expiresAt"),"groups",summary.get("groups"),"summary",summary.get("summary"));if(summary.containsKey("rowMappings"))data.put("rowMappings",summary.get("rowMappings"));return data;
+        if(!plan.hasProperty("resultId"))c.fail("RESOURCE_CORRUPT","Import plan has no receipt-owned analysis result");Map<String,Object> analysis=importResults.envelopeForPlan((String)plan.getProperty("resultId"),CoreRepository.id(plan),(String)plan.getProperty("namespaceId"));return planData(plan,analysis);
     }
-    static Map<String,Object> planData(Node plan,Map<String,Object> analysis){Map<String,Object> lifecycle=Json.map("planId",CoreRepository.id(plan),"namespaceId",plan.getProperty("namespaceId"),"state",plan.getProperty("state"),"targetRevision",plan.getProperty("targetRevision"),"expiresAt",plan.getProperty("expiresAt"));return Json.map("format","deposit.import-plan/1","plan",lifecycle,"analysisResult",analysis);}
+    static Map<String,Object> planData(Node plan,Map<String,Object> analysis){Map<String,Object> lifecycle=Json.map("planId",CoreRepository.id(plan),"namespaceId",plan.getProperty("namespaceId"),"state",plan.getProperty("state"),"targetRevision",plan.getProperty("targetRevision"),"expiresAt",plan.getProperty("expiresAt"));return Json.map("plan",lifecycle,"analysisResult",analysis);}
     private AuthorizedPackage copyAuthorizedPackage(String packageId,String ownerKind,String ownerId){
         Path path=null;StorageAdmission.Reservation reservation=null;try{Node location=resources.location(packageId);if(location==null)c.fail("NOT_FOUND","Package resource not found");String sourceNs=(String)location.getProperty("namespaceId",null);Node resource=sourceNs==null?null:resources.resource(sourceNs,packageId);if(resource==null||!"ready".equals(resource.getProperty("state",null)))c.fail("NOT_FOUND","Package resource not found");resources.lock(packageId);String role=repo.role(c.actorId,sourceNs);if(!resources.accessible(resource,c.actorId,role,false))c.fail("NOT_FOUND","Package resource not found");ResourceStorage.Content content=resources.verify(location);path=resources.files.path("staging/imports/"+UUID.randomUUID()+".zip");String receiptScope="namespace-clone".equals(ownerKind)?"server":c.namespaceId;reservation=c.server.storage.admission.acquire(ownerKind,ownerId,c.operationId,"import-package-copy",Map.of(resources.files.root,content.bytes()),Json.map("phase","package-copy","packageId",packageId,"receiptScope",receiptScope,"stagingPath",c.server.storage.files.root.relativize(path).toString().replace('\\','/'),"expectedBytes",content.bytes()));Files.createDirectories(path.getParent());try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)){in.transferTo(out);}if(Files.size(path)!=content.bytes())throw new IOException("Incomplete package staging copy");c.server.storage.admission.materialized(reservation,resources.files.root,content.bytes());c.server.storage.admission.clearWriteIntent(reservation);return new AuthorizedPackage(path,reservation);}catch(IOException|RuntimeException failure){if(path!=null)try{Files.deleteIfExists(path);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(reservation!=null)try{c.server.storage.admission.close(reservation);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(failure instanceof IOException io)throw new UncheckedIOException(io);throw (RuntimeException)failure;}
     }
@@ -195,19 +212,14 @@ public final class ImportService extends ActionService {
     private ExchangePackageCodec.PackageData validate(Path path){try{return ExchangePackageCodec.validate(path);}catch(IOException e){throw new UncheckedIOException(e);}}
     private <T> T withValidatedPackage(Path path,java.util.function.Function<ExchangePackageCodec.PackageData,T> action){try{return ExchangePackageCodec.withValidatedPackage(path,()->c.state.kernel.assertOpen(),action);}catch(IOException e){throw new UncheckedIOException(e);}}
     private static String encode(Object value){return ImportSemantics.encode(value);}
-    private static void jsonEntries(String source,BiConsumer<String,Object> consumer){
-        var mapper=new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_LONG_FOR_INTS);
-        try(var parser=mapper.createParser(source)){if(parser.nextToken()!=com.fasterxml.jackson.core.JsonToken.START_OBJECT)throw new IOException("Expected object");while(parser.nextToken()!=com.fasterxml.jackson.core.JsonToken.END_OBJECT){String key=parser.currentName();parser.nextToken();consumer.accept(key,mapper.readValue(parser,Object.class));}}
-        catch(IOException failure){throw new UncheckedIOException(failure);}
-    }
     private Path stagedPath(String relative){try{return resources.files.path(relative);}catch(IOException e){throw new UncheckedIOException(e);}}
     private static long estimatePackageBytes(Map<String,Object> manifest,Map<String,Object> graph)throws IOException{
         final long[] length={0};OutputStream counter=new OutputStream(){public void write(int value)throws IOException{length[0]=Math.addExact(length[0],1L);}public void write(byte[] bytes,int offset,int count)throws IOException{length[0]=Math.addExact(length[0],(long)count);}};
         try{Json.write(counter,manifest);Json.write(counter,graph);long estimate=Math.addExact(Math.multiplyExact(length[0],2L),64L*1024);return estimate;}catch(ArithmeticException overflow){throw new IOException("Tabular package estimate is not representable",overflow);}
     }
-    private ImportScratch scratch()throws IOException{return new ImportScratch(stagedPath("staging/imports"),()->c.state.kernel.assertOpen());}
+    private ImportScratch scratch()throws IOException{var budget=ImportWriteBudget.forRequest(c).scratchLease();return new ImportScratch(stagedPath("staging/imports"),()->c.state.kernel.assertOpen(),budget::reserve,budget::close);}
     /** Blank and public row IDs are internal immutable matching metadata. */
-    private Map<String,Object> tabularRules(Map<String,Object> rules,Map<String,Object> rowIds,Map<String,Object> blanks,Map<String,Object> clears){
+    private Map<String,Object> tabularRules(Map<String,Object> rules,Map<String,Object> rowIds,Map<String,Object> blanks){
         var effective=new LinkedHashMap<>(rules);effective.put("_tabularBlanks",blanks);effective.put("_tabularIds",rowIds);return effective;
     }
     private void validateRules(Map<String,Object> rules){validateRules(rules,false);}

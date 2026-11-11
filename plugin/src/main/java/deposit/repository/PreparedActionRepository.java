@@ -11,7 +11,7 @@ public final class PreparedActionRepository {
     public Node find(String actor,String key){try(var nodes=tx.findNodes(Label.label("DepositPreparedAction"),Map.of("actorId",actor,"recoveryKey",key))){return nodes.hasNext()?nodes.next():null;}}
     public void lock(Node action){tx.acquireWriteLock(action);}
     public Node create(String actor,String key,Map<String,Object> properties){
-        Node n=tx.createNode(Label.label("DepositPreparedAction"));n.setProperty("actorId",actor);n.setProperty("recoveryKey",key);n.setProperty("formatVersion",1L);
+        Node n=tx.createNode(Label.label("DepositPreparedAction"));n.setProperty("actorId",actor);n.setProperty("recoveryKey",key);
         properties.forEach(n::setProperty);return n;
     }
     public Map<String,Object> state(Node action,CoreRepository core){

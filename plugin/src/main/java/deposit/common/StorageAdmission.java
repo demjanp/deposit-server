@@ -20,7 +20,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** Dynamic future-space commitments shared by all Server storage writers. */
 public final class StorageAdmission implements AutoCloseable {
-    private static final String FORMAT="deposit.storage-admission/1";
     private static final int MAX_RECORD_BYTES=64*1024;
     private static final long BOOKKEEPING_BYTES=MAX_RECORD_BYTES;
     private final Path root,directory;
@@ -92,6 +91,7 @@ public final class StorageAdmission implements AutoCloseable {
     /** Close only after the owning operation is resolved; materialized artifacts remain owned by their domain. */
     public void close(Reservation reservation)throws IOException {
         lockForAdmission();try{
+        if(reservation!=null&&reservation.closed)return;
         requireActive(reservation);Path record=recordPath(reservation.id);Files.deleteIfExists(record);reservations.remove(reservation.id);reservation.closed=true;
         }finally{stateLock.unlock();}
     }
@@ -122,10 +122,14 @@ public final class StorageAdmission implements AutoCloseable {
             for(Path file:entries.toList()){
                 if(!file.getFileName().toString().endsWith(".json"))continue;
                 if(Files.isSymbolicLink(file)||Files.size(file)>MAX_RECORD_BYTES)throw new IOException("Invalid storage reservation record");
-                Map<String,Object> saved=Json.read(Files.readString(file));if(!FORMAT.equals(saved.get("format"))||!"active".equals(saved.get("state")))throw new IOException("Unsupported storage reservation format or state");
+                Map<String,Object> saved=Json.read(Files.readString(file));
+                if(!saved.keySet().equals(java.util.Set.of("id","ownerKind","ownerId","serverRunId","operationId","purpose","state","volumes","writeIntent"))||!"active".equals(saved.get("state")))throw new IOException("Invalid storage reservation record");
                 String id=(String)saved.get("id");var refs=new LinkedHashMap<String,VolumeRef>();var commitments=new LinkedHashMap<String,Long>();
-                for(Object raw:(List<?>)saved.get("volumes")){var row=ValueCodec.map(raw);String device=(String)row.get("deviceId");refs.put(device,new VolumeRef(device,(String)row.get("volumeGuid"),(String)row.get("ownerRoot")));long bytes=((Number)row.get("commitment")).longValue();if(bytes<0)throw new IOException("Invalid storage commitment");if(bytes>0)commitments.put(device,bytes);}
+                if(!(saved.get("volumes") instanceof List<?> volumeRows)||!(saved.get("writeIntent") instanceof Map<?,?>)||saved.get("ownerKind") instanceof String ownerKind&&ownerKind.isBlank()||saved.get("ownerId") instanceof String ownerId&&ownerId.isBlank()||saved.get("serverRunId") instanceof String runId&&runId.isBlank()||saved.get("purpose") instanceof String purpose&&purpose.isBlank()||saved.get("operationId")!=null&&!(saved.get("operationId") instanceof String))throw new IOException("Invalid storage reservation record");
+                for(Object raw:volumeRows){var row=ValueCodec.map(raw);if(!row.keySet().equals(java.util.Set.of("deviceId","volumeGuid","ownerRoot","commitment")))throw new IOException("Invalid storage volume record");String device=(String)row.get("deviceId");String volumeGuid=(String)row.get("volumeGuid"),ownerRoot=(String)row.get("ownerRoot");if(device==null||volumeGuid==null||ownerRoot==null||refs.containsKey(device))throw new IOException("Invalid storage volume identity");refs.put(device,new VolumeRef(device,volumeGuid,ownerRoot));long bytes=((Number)row.get("commitment")).longValue();if(bytes<0)throw new IOException("Invalid storage commitment");if(bytes>0)commitments.put(device,bytes);}
+                if(refs.isEmpty())throw new IOException("Storage reservation has no volume bindings");
                 var reservation=new Reservation(id,(String)saved.get("ownerKind"),(String)saved.get("ownerId"),(String)saved.get("operationId"),(String)saved.get("purpose"),(String)saved.get("serverRunId"),refs,commitments,new LinkedHashMap<>(ValueCodec.map(saved.get("writeIntent"))),false);
+                if(id==null||!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")||!file.getFileName().toString().equals(id+".json")||reservation.ownerKind==null||reservation.ownerId==null||reservation.serverRunId==null||reservation.purpose==null)throw new IOException("Invalid storage reservation ownership");
                 reservations.put(id,reservation);
             }
         }
@@ -148,7 +152,7 @@ public final class StorageAdmission implements AutoCloseable {
 
     private void persist(Reservation reservation)throws IOException {
         var rows=new ArrayList<Map<String,Object>>();for(var ref:reservation.volumes.values())rows.add(Json.map("deviceId",ref.deviceId,"volumeGuid",ref.volumeGuid,"ownerRoot",ref.ownerRoot,"commitment",reservation.commitments.getOrDefault(ref.deviceId,0L)));
-        var record=Json.map("format",FORMAT,"id",reservation.id,"ownerKind",reservation.ownerKind,"ownerId",reservation.ownerId,"serverRunId",reservation.serverRunId,"operationId",reservation.operationId,"purpose",reservation.purpose,"state","active","volumes",rows,"writeIntent",reservation.writeIntent);
+        var record=Json.map("id",reservation.id,"ownerKind",reservation.ownerKind,"ownerId",reservation.ownerId,"serverRunId",reservation.serverRunId,"operationId",reservation.operationId,"purpose",reservation.purpose,"state","active","volumes",rows,"writeIntent",reservation.writeIntent);
         byte[] bytes=Json.write(record).getBytes(java.nio.charset.StandardCharsets.UTF_8);if(bytes.length>MAX_RECORD_BYTES)throw new IOException("Storage reservation metadata exceeds its bounded record size");Path target=recordPath(reservation.id),temporary=directory.resolve(reservation.id+".tmp");
         try(FileChannel channel=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE)){channel.write(java.nio.ByteBuffer.wrap(bytes));channel.force(true);}
         try{Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(java.nio.file.AtomicMoveNotSupportedException failure){Files.deleteIfExists(temporary);throw new IOException("Atomic reservation update is unavailable",failure);}

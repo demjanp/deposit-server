@@ -30,7 +30,7 @@ class OcflResourceStorageTest {
         try(var storage=new OcflResourceStorage(root,work)){
             storage.publish(content(),source);storage.publish(content(),null);storage.verify(content());
             var inventory=new ObjectMapper().readTree(Files.readString(object(ID).resolve("inventory.json")));
-            assertEquals(ID,inventory.get("id").asText());assertEquals("v1",inventory.get("head").asText());assertEquals(1,inventory.get("versions").size());
+            storage.assertWorkClean();assertEquals(ID,inventory.get("id").asText());assertEquals("v1",inventory.get("head").asText());assertEquals(1,inventory.get("versions").size());
             assertEquals("sha256",inventory.get("digestAlgorithm").asText());assertEquals(NAME,inventory.at("/versions/v1/state/"+HASH+"/0").asText());
             assertEquals("abc",Files.readString(source));assertTrue(Files.exists(root.resolve("0=ocfl_1.1")));assertTrue(storage.physicalBytes(ID)>3);
         }

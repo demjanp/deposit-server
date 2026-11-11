@@ -20,7 +20,7 @@ public final class ResourceTransferRepository {
         String upload=UUID.randomUUID().toString(),id=UUID.randomUUID().toString(),stored=ResourceFiles.filename(filename,checksum),staging="staging/"+c.namespaceId+"/"+upload+".part";
         StorageAdmission.Reservation reservation=admission("upload",upload,"resource-upload",Map.of(resources.files.root.resolve(staging),bytes,transactionVolume(),64L*1024),Json.map("resourceId",id,"stagingPath",staging,"expectedBytes",bytes,"nextOffset",0L));
         resources.lock(id);
-        Node t=resources.record("DepositTransfer",upload,Json.map("namespaceId",c.namespaceId,"actorId",c.actorId,"resourceId",id,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"nextOffset",0L,"chunks","{}","state","uploading","expires",resources.now()+ResourceFiles.LEASE,"admissionId",reservation.id));
+        Node t=resources.record("DepositTransfer",upload,Json.map("namespaceId",c.namespaceId,"actorId",c.actorId,"resourceId",id,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"nextOffset",0L,"state","uploading","expires",resources.now()+ResourceFiles.LEASE,"admissionId",reservation.id));
         resources.record("DepositResourceLocation",id,Json.map("namespaceId",c.namespaceId,"uploadId",upload,"storedFilename",stored,"stagingPath",staging,"bytes",bytes,"checksum",checksum,"leaseUntil",resources.now()+ResourceFiles.LEASE,"everAttached",false,"admissionId",reservation.id));return beginResult(t);
     }
     public Map<String,Object> chunk(Map<String,Object> request,Node t)throws IOException {
@@ -31,8 +31,8 @@ public final class ResourceTransferRepository {
         byte[] bytes;try{bytes=Base64.getDecoder().decode(encoded);}catch(IllegalArgumentException e){throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid Base64");}
         if(bytes.length==0||bytes.length>ResourceFiles.MAX_CHUNK)c.fail("LIMIT_EXCEEDED","Invalid chunk length");
         String checksum=ResourceFiles.hash(request.get("chunkSha256"));if(!checksum.equals(ResourceFiles.checksum(bytes)))c.fail("VALIDATION_FAILED","Chunk checksum mismatch");
-        Map<String,Object> chunks=Json.read(text(t,"chunks"));var old=chunks.get(Long.toString(offset));
-        if(old!=null){var m=ValueCodec.map(old);if(!checksum.equals(m.get("checksum"))||((Number)m.get("length")).longValue()!=bytes.length)c.fail("OPERATION_MISMATCH","Chunk input changed");resources.renew(t);return Json.map("nextOffset",m.get("nextOffset"));}
+        String uploadId=CoreRepository.id(t);Node old=resources.core.find("DepositTransferChunk",Map.of("uploadId",uploadId,"offset",offset));
+        if(old!=null){Map<String,Object> replay=retryResult(old,checksum,bytes.length);resources.renew(t);return replay;}
         if(offset<0||offset!=number(t,"nextOffset",0)||bytes.length>number(t,"bytes",0)-offset)c.fail("VALIDATION_FAILED","Chunk must continue the committed offset within declared size");
         Node loc=resources.location(text(t,"resourceId"));String staging=text(loc,"stagingPath");StorageAdmission.Reservation reservation=admission(t,loc,number(t,"bytes",0)-number(t,"nextOffset",0));long argumentBytes=encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         t.setProperty("admissionId",reservation.id);loc.setProperty("admissionId",reservation.id);
@@ -41,7 +41,16 @@ public final class ResourceTransferRepository {
         boolean[] committed={false};c.state.afterCommit.add(()->committed[0]=true);c.state.release.add(()->finishChunkAdmission(reservation,staging,bytes.length,transactionVolume(),argumentBytes,committed[0]));
         resources.files.append(staging,offset,bytes);
         c.server.storagePoint("chunk-flushed");
-        long next;try{next=Math.addExact(offset,(long)bytes.length);}catch(ArithmeticException e){c.fail("LIMIT_EXCEEDED","Upload offset is not representable");return Map.of();}chunks.put(Long.toString(offset),Json.map("checksum",checksum,"length",(long)bytes.length,"nextOffset",next));t.setProperty("chunks",Json.write(chunks));t.setProperty("nextOffset",next);resources.renew(t);return Json.map("nextOffset",next);
+        long next;try{next=Math.addExact(offset,(long)bytes.length);}catch(ArithmeticException e){c.fail("LIMIT_EXCEEDED","Upload offset is not representable");return Map.of();}
+        resources.record("DepositTransferChunk",UUID.randomUUID().toString(),Json.map("uploadId",uploadId,"offset",offset,"length",(long)bytes.length,"checksum",checksum,"nextOffset",next));
+        t.setProperty("nextOffset",next);resources.renew(t);return Json.map("nextOffset",next);
+    }
+
+    static Map<String,Object> retryResult(Node committedChunk,String checksum,long length){
+        long offset=number(committedChunk,"offset",-1),recordedLength=number(committedChunk,"length",-1),next=number(committedChunk,"nextOffset",-1);
+        if(offset<0||recordedLength<=0||next<0||next-offset!=recordedLength)throw ExceptionHandler.fail("RESOURCE_CORRUPT","Committed upload chunk metadata is invalid");
+        if(!checksum.equals(text(committedChunk,"checksum"))||recordedLength!=length)throw ExceptionHandler.fail("OPERATION_MISMATCH","Chunk input changed");
+        return Json.map("nextOffset",next);
     }
     public Map<String,Object> finish(Map<String,Object> request,Node t)throws IOException {
         fields(request,"uploadId");String id=text(t,"resourceId");

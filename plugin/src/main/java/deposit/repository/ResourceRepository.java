@@ -76,9 +76,7 @@ public final class ResourceRepository {
         private final ResourceRepository owner;
         private final String namespace,actor;
         private final StorageAdmission.Reservation reservation;
-        private final Map<String,ImportedResource> created=new HashMap<>();
         private boolean closed,publicationStarted,publicationFailed;
-        private record ImportedResource(ResourceStorage.Content content,String filename,String mediaType) {}
         private ImportedResources(ResourceRepository owner,String namespace,String actor,StorageAdmission.Reservation reservation){this.owner=owner;this.namespace=namespace;this.actor=actor;this.reservation=reservation;}
         private void scope(ResourceRepository repository,String destination,String writer) {
             if(closed||repository.tx!=owner.tx||!namespace.equals(destination)||!actor.equals(writer))throw ExceptionHandler.fail("FORBIDDEN","Imported resource authority is outside its scope");
@@ -91,23 +89,21 @@ public final class ResourceRepository {
             String id=UUID.randomUUID().toString(),stored=ResourceFiles.filename(filename,checksum);
             owner.lock(id);
             if(owner.location(id)!=null||owner.resource(namespace,id)!=null)throw new IllegalStateException("Fresh resource identity already exists");
-            var content=new ResourceStorage.Content(id,stored,bytes,checksum);if(reservation==null)throw new IOException("Import publication has no storage admission");owner.server.storage.admission.grow(reservation,Map.of(owner.files.root,bytes));publicationStarted=true;try{owner.publish(content,staged,reservation);}catch(IOException|RuntimeException failure){publicationFailed=true;throw failure;}
-            owner.record("DepositResourceLocation",id,Json.map("namespaceId",namespace,"storedFilename",stored,"bytes",bytes,"checksum",checksum,"leaseUntil",owner.now()+ResourceFiles.LEASE,"everAttached",false,"published",true));
+            var content=new ResourceStorage.Content(id,stored,bytes,checksum);if(reservation==null)throw new IOException("Import publication has no storage admission");publicationStarted=true;try{owner.publish(content,staged,reservation);}catch(IOException|RuntimeException failure){publicationFailed=true;throw failure;}
+            owner.record("DepositResourceLocation",id,Json.map("namespaceId",namespace,"storedFilename",stored,"bytes",bytes,"checksum",checksum,"leaseUntil",owner.now()+ResourceFiles.LEASE,"everAttached",false,"published",true,"importOperationId",reservation.operationId));
             owner.record("DResource",id,Json.map("namespaceId",namespace,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"state","ready","createdBy",actor,"updatedBy",actor,"createdAt",timestamp,"updatedAt",timestamp));
-            created.put(id,new ImportedResource(content,filename,mediaType));return id;
+            return id;
         }
         private Node resolve(ResourceRepository repository,Node descriptor,String id,String writer) {
             scope(repository,(String)descriptor.getProperty("namespaceId"),writer);
-            ImportedResource imported=created.get(id);
-            if(imported==null)throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
+            if(reservation==null||!reservation.operationId.equals(repository.location(id)==null?null:repository.location(id).getProperty("importOperationId",null)))throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
             repository.lock(id);Node resource=repository.resource(namespace,id),location=repository.location(id);
             if(resource==null||location==null||!namespace.equals(location.getProperty("namespaceId",null))||location.hasProperty("deleting")||!"ready".equals(resource.getProperty("state",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource is unavailable");
-            var content=imported.content();
-            for(Node node:List.of(resource,location))if(!content.storedFilename().equals(node.getProperty("storedFilename",null))||!content.checksum().equals(node.getProperty("checksum",null))||!Long.valueOf(content.bytes()).equals(node.getProperty("bytes",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource metadata changed");
-            if(!actor.equals(resource.getProperty("createdBy",null))||!imported.filename().equals(resource.getProperty("filename",null))||!imported.mediaType().equals(resource.getProperty("mediaType",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource identity changed");
+            for(String field:List.of("storedFilename","checksum","bytes"))if(!Objects.equals(resource.getProperty(field,null),location.getProperty(field,null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource metadata changed");
+            if(!actor.equals(resource.getProperty("createdBy",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource identity changed");
             repository.verify(location);return resource;
         }
-        @Override public void close(){closed=true;created.clear();}
+        @Override public void close(){closed=true;}
         public boolean publicationFailed(){return publicationFailed;}
         public boolean publicationStarted(){return publicationStarted;}
     }
@@ -134,12 +130,24 @@ public final class ResourceRepository {
     public ResourceStorage.Content content(Node loc){return new ResourceStorage.Content(CoreRepository.id(loc),text(loc,"storedFilename"),number(loc,"bytes",0),text(loc,"checksum"));}
     public ResourceStorage.Content verify(Node loc){try{var value=content(loc);storage.verify(value);return value;}catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Resource content unavailable");}}
     public void growPublication(StorageAdmission.Reservation reservation,long bytes)throws IOException{
-        String volume=server.storage.admission.volumeId(files.root);long held=reservation.commitments().getOrDefault(volume,0L);if(bytes>held)server.storage.admission.grow(reservation,Map.of(files.root,bytes-held));
+        // This reservation can also carry credit for later staged resources. Publication
+        // needs an additive peak allowance; treating the total commitment as publication
+        // credit would consume that staging allowance when the current item is published.
+        server.storage.admission.grow(reservation,Map.of(files.root,bytes));
     }
     /** Publish only after capacity was prepared in the operation's existing reservation. */
     public void publish(ResourceStorage.Content content,Path staged,StorageAdmission.Reservation reservation)throws IOException{
         if(storage.exists(content.resourceId())){storage.verify(content);return;}
-        storage.publish(content,staged);storage.verify(content);server.storage.admission.materialized(reservation,files.root,content.bytes());
+        final long peak;
+        try{peak=Math.multiplyExact(content.bytes(),2L);}catch(ArithmeticException overflow){throw new IOException("OCFL publication capacity is not representable",overflow);}
+        // The pinned OCFL 2.2.3 updater first copies the input into its work directory,
+        // then installs the immutable object in the OCFL root. Reserve both payload
+        // writes on the resolved filesystem before calling it.
+        growPublication(reservation,peak);
+        storage.publish(content,staged);storage.verify(content);
+        storage.assertWorkClean();
+        server.storage.admission.materialized(reservation,files.root,content.bytes());
+        server.storage.admission.release(reservation,Map.of(files.root,content.bytes()));
     }
     public Map<String,Object> info(Node r){String url=server.downloadPublicBaseUrl==null?null:ResourceLinkEncoder.url(server.downloadPublicBaseUrl,(String)r.getProperty("namespaceId"),CoreRepository.id(r));return Json.map("resourceId",CoreRepository.id(r),"filename",r.getProperty("filename"),"storedFilename",r.getProperty("storedFilename"),"downloadUrl",url,"bytes",r.getProperty("bytes"),"checksum",r.getProperty("checksum"),"mediaType",r.getProperty("mediaType"),"state",r.getProperty("state"));}
     public void expire(Node loc) {

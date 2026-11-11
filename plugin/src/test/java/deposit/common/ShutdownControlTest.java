@@ -52,14 +52,16 @@ class ShutdownControlTest {
         try(var control=new ShutdownControl(server,secrets,database,temporary,calls::incrementAndGet)){
             var identity=identity(secrets);
             Path run=secrets.resolve("deposit-control").resolve((String)identity.get("incarnation"));
-            for(String key:List.of("incarnation","databaseId","installation","pid","startMillis","version")){
-                var stale=new LinkedHashMap<>(identity);stale.put(key,key.equals("version")?2:"stale");String id=UUID.randomUUID().toString();stale.put("requestId",id);Files.writeString(run.resolve("request-"+id+".json"),Json.write(stale));
+            for(String key:List.of("incarnation","databaseId","installation","pid","startMillis")){
+                var stale=new LinkedHashMap<>(identity);stale.put(key,"stale");String id=UUID.randomUUID().toString();stale.put("requestId",id);Files.writeString(run.resolve("request-"+id+".json"),Json.write(stale));
             }
+            assertFalse(identity.containsKey("version"));
+            var extraField=new LinkedHashMap<>(identity);extraField.put("protocolVersion",1L);String extraId=UUID.randomUUID().toString();extraField.put("requestId",extraId);Files.writeString(run.resolve("request-"+extraId+".json"),Json.write(extraField));
             Files.writeString(run.resolve("request-"+UUID.randomUUID()+".json"),"{");
             Files.writeString(run.resolve("request-"+UUID.randomUUID()+".json"),"x".repeat(ShutdownControl.MAX_BYTES+1));
             control.poll();assertEquals(0,calls.get());
-            assertThrows(IllegalArgumentException.class,()->ShutdownControl.readRequest("{\"version\":1,\"version\":1}"));
-            var wrongType=new LinkedHashMap<>(identity);String id=UUID.randomUUID().toString();wrongType.put("requestId",id);wrongType.put("version","1");assertFalse(ShutdownControl.validRequest(wrongType,identity,id));
+            assertThrows(IllegalArgumentException.class,()->ShutdownControl.readRequest("{\"requestId\":\"x\",\"requestId\":\"x\"}"));
+            var wrongType=new LinkedHashMap<>(identity);String id=UUID.randomUUID().toString();wrongType.put("requestId",id);wrongType.put("pid",String.valueOf(identity.get("pid")));assertFalse(ShutdownControl.validRequest(wrongType,identity,id));
         }finally{server.shutdown();ServerContext.detach(database);}
     }
     @Test void failedCleanupStaysClosedAndDuplicateRequestsReceiveFailure()throws Exception{

@@ -260,6 +260,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public final List<Runnable> release=new ArrayList<>();
         public final Set<String> storageKeys=new HashSet<>();
         public final Map<String,org.neo4j.gis.spatial.EditableLayer> geometryLayers=new HashMap<>();
+        public ImportWriteBudget importWriteBudget;
         public final Set<String> requestIds=ConcurrentHashMap.newKeySet();
         private final Object identityToken=new Object();
         TxState(KernelTransaction kernel) {this.kernel=kernel;}

@@ -106,6 +106,14 @@ class ExchangePackageStreamingTest {
     @Test void nestedDiskViewsPreserveLookupAndReusableCollectionLinks()throws Exception{
         try(var workspace=new PackageWorkspace(temp)){Map<String,Object> map=workspace.map();map.put("first",Json.map("items",List.of(Json.map("name","A"),Json.map("name","B"))));var original=ValueCodec.map(map.get("first"));var items=(List<?>)original.get("items");assertEquals("A",ValueCodec.map(items.getFirst()).get("name"));map.put("second",Json.map("reused",items));assertEquals(items,ValueCodec.map(map.get("second")).get("reused"));assertTrue(ValueCodec.map(((List<?>)ValueCodec.map(map.get("second")).get("reused")).getFirst()).containsKey("name"));map.put("first",Json.map("items",List.of(Json.map("name","C"))));assertEquals("A",ValueCodec.map(items.getFirst()).get("name"));}
     }
+    @Test void workspaceCollectionCountersUseLongStorageAndExposeLongSizedViews()throws Exception{
+        try(var workspace=new PackageWorkspace(temp)){
+            Map<String,Object> parsed=workspace.parse(new StringReader("{\"rows\":[1,2,3],\"metadata\":{\"a\":1,\"b\":2}}"));
+            var rows=(Collection<?>)parsed.get("rows");var metadata=(Map<?,?>)parsed.get("metadata");
+            assertEquals(3L,((LongSized)rows).longSize());assertEquals(2L,((LongSized)metadata).longSize());
+            assertEquals(3,rows.size());assertEquals(2,metadata.size());
+        }
+    }
     private static String collidingKey(int value){var key=new StringBuilder();for(int bit=0;bit<13;bit++)key.append((value&(1<<bit))==0?"Aa":"BB");return key.toString();}
     @Test void deliberateJavaHashCollisionsHaveBoundedProbesAndExactContents()throws Exception{
         assertEquals(collidingKey(0).hashCode(),collidingKey(8191).hashCode());

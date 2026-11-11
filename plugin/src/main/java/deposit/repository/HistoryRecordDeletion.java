@@ -5,18 +5,16 @@ import org.neo4j.graphdb.*;
 
 /** Bounded history-record deletion using the caller's existing transaction. */
 final class HistoryRecordDeletion {
-    private static final List<String> NAMESPACE_RECORDS = List.of("DepositSnapshot", "RevisionTag", "Revision", "DepositHistoryEpoch");
+    private static final List<String> NAMESPACE_RECORDS = List.of("DepositSnapshot", "RevisionTag", "RevisionTouch", "RevisionDependency", "Revision", "DepositHistoryEpoch");
     private final Transaction tx;
 
     HistoryRecordDeletion(Transaction tx) { this.tx = Objects.requireNonNull(tx); }
 
     void deleteNamespace(String namespace) {
         for (String label : NAMESPACE_RECORDS) {
-            List<Node> records;
             try (ResourceIterator<Node> nodes = tx.findNodes(Label.label(label), "namespaceId", namespace)) {
-                records = nodes.stream().toList();
+                while(nodes.hasNext())delete(nodes.next());
             }
-            for (Node record : records) delete(record);
         }
     }
 

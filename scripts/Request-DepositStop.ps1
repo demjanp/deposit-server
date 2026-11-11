@@ -84,11 +84,11 @@ function Assert-DepositStopIdentity($Identity) {
     $control=Join-Path $secrets 'deposit-control';Assert-DepositControlPath $control $allowed
     $runDirectory=Join-Path $control ([string]$Identity.incarnation);Assert-DepositControlPath $runDirectory $allowed
     $descriptor=Read-DepositControlRecord (Join-Path $control 'run.json') $allowed
-    foreach($key in @('version','installation','databaseId','pid','startMillis','incarnation')){if([string]$descriptor.$key -cne [string]$Identity.$key){throw 'Deposit runtime incarnation changed after drain acknowledgement'}}
+    foreach($key in @('installation','databaseId','pid','startMillis','incarnation')){if([string]$descriptor.$key -cne [string]$Identity.$key){throw 'Deposit runtime incarnation changed after drain acknowledgement'}}
     $requestPath=Join-Path $runDirectory "request-$($Identity.requestId).json"
     $request=Read-DepositControlRecord $requestPath $allowed
     $ack=Read-DepositControlRecord (Join-Path $runDirectory "ack-$($Identity.requestId).json") $allowed
-    foreach($key in @('version','installation','databaseId','pid','startMillis','incarnation','requestId')){
+    foreach($key in @('installation','databaseId','pid','startMillis','incarnation','requestId')){
         if([string]$request.$key -cne [string]$Identity.$key -or [string]$ack.$key -cne [string]$Identity.$key){throw 'Deposit request or acknowledgement no longer matches the drained runtime'}
     }
     if($ack.state -ne 'complete' -or $ack.transactions -ne 0 -or $ack.readers -ne 0 -or $ack.handlers -ne 0 -or $ack.storageClosed -ne $true){throw 'Deposit runtime no longer has a complete drain acknowledgement'}
@@ -115,13 +115,13 @@ function Request-DepositStop {
     Assert-DepositControlPath $secrets $allowed
     $control=Join-Path $secrets 'deposit-control';Assert-DepositControlPath $control $allowed
     $descriptor=Read-DepositControlRecord (Join-Path $control 'run.json') $allowed
-    if($descriptor.version -ne 1 -or $descriptor.pid -ne $TargetProcessId -or $descriptor.startMillis -ne $startMillis -or
+    if($descriptor.pid -ne $TargetProcessId -or $descriptor.startMillis -ne $startMillis -or
        ![string]::Equals([string]$descriptor.installation,$installation,[StringComparison]::OrdinalIgnoreCase) -or
        [string]$descriptor.incarnation -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' -or
        [string]$descriptor.databaseId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') {throw 'Stale or unsupported Deposit control descriptor'}
     $runDirectory=Join-Path $control $descriptor.incarnation;Assert-DepositControlPath $runDirectory $allowed
     $requestId=[guid]::NewGuid().ToString()
-    $request=[ordered]@{version=1;installation=$descriptor.installation;databaseId=$descriptor.databaseId;pid=$TargetProcessId;startMillis=$startMillis;incarnation=$descriptor.incarnation;requestId=$requestId}
+    $request=[ordered]@{installation=$descriptor.installation;databaseId=$descriptor.databaseId;pid=$TargetProcessId;startMillis=$startMillis;incarnation=$descriptor.incarnation;requestId=$requestId}
     $path=Join-Path $runDirectory "request-$requestId.json";$partial=$path+'.'+[guid]::NewGuid().ToString('N')+'.partial'
     try{
         [IO.File]::WriteAllText($partial,($request|ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
@@ -137,7 +137,7 @@ function Request-DepositStop {
             if($ack.state -eq 'failed'){throw 'Deposit cleanup failed; the runtime was not signalled'}
             if($ack.state -eq 'complete'){
                 if($ack.transactions -ne 0 -or $ack.readers -ne 0 -or $ack.handlers -ne 0 -or $ack.storageClosed -ne $true){throw 'Incomplete Deposit cleanup acknowledgement'}
-                $result=[pscustomobject]@{installation=$installation;databaseId=[string]$descriptor.databaseId;version=1;pid=$TargetProcessId;startMillis=$startMillis;incarnation=[string]$descriptor.incarnation;requestId=$requestId;runtimeSid=$runtimeSid;operatorSid=$operatorSid}
+                $result=[pscustomobject]@{installation=$installation;databaseId=[string]$descriptor.databaseId;pid=$TargetProcessId;startMillis=$startMillis;incarnation=[string]$descriptor.incarnation;requestId=$requestId;runtimeSid=$runtimeSid;operatorSid=$operatorSid}
                 if($ServiceName){$result|Add-Member -NotePropertyName serviceName -NotePropertyValue $ServiceName;$result|Add-Member -NotePropertyName serviceAccount -NotePropertyValue $ServiceAccount}
                 [void](Assert-DepositStopIdentity $result)
                 Write-Verbose "Deposit cleanup complete for request $requestId."

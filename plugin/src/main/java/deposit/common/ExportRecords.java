@@ -23,7 +23,6 @@ public final class ExportRecords implements AutoCloseable {
         Json.write(new OutputStream(){public void write(int value)throws IOException{checkpoint.run();output.write(value);}public void write(byte[] bytes,int offset,int length)throws IOException{checkpoint.run();output.write(bytes,offset,length);}public void close()throws IOException{output.flush();}},Json.map("record",scalar,"slices",references));output.flush();long length=file.getChannel().position()-start;
         long indexOffset;try{indexOffset=Math.multiplyExact((long)list.count,16L);}catch(ArithmeticException e){throw new IOException("Source record index is not representable",e);}budget.reserve(16);list.index.seek(indexOffset);list.index.writeLong(start);list.index.writeLong(length);budget.materialized(16);if(list.count==Integer.MAX_VALUE)throw new IOException("Source record count exceeds Java list addressability");list.count++;
     }
-    public Map<String,Object> journal(String json)throws IOException{return indexes.parse(new StringReader(json));}
     public void addValue(String category,Object value)throws IOException{add(category,Json.map("value",value));}
     /** Store revision envelopes separately from their potentially Namespace-sized changes. */
     public void addRevision(String category,Map<String,Object> revision)throws IOException{

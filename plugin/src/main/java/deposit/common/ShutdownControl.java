@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 
 /** Pinned launcher coordination. Authority is the protected Windows filesystem ACL, never a client session. */
 final class ShutdownControl implements AutoCloseable {
-    static final int VERSION=1, MAX_BYTES=4096;
+    static final int MAX_BYTES=4096;
     private final ServerContext server;
     private final Runnable awaitInitialization;
     private final Path directory,runDirectory;
@@ -45,7 +45,7 @@ final class ShutdownControl implements AutoCloseable {
         if(!Files.exists(directory,LinkOption.NOFOLLOW_LINKS)){Files.createDirectory(directory);ensureOwner(directory,runtimeIdentity);}
         validatePath(directory);validateAcl(directory,allowedIdentities);
         String incarnation=UUID.randomUUID().toString();runDirectory=directory.resolve(incarnation);Files.createDirectory(runDirectory);ensureOwner(runDirectory,runtimeIdentity);validateAcl(runDirectory,allowedIdentities);
-        identity=Map.of("version",VERSION,"installation",installation.toRealPath().toString(),"databaseId",database.toString(),
+        identity=Map.of("installation",installation.toRealPath().toString(),"databaseId",database.toString(),
             "pid",ProcessHandle.current().pid(),"startMillis",ProcessHandle.current().info().startInstant().orElseThrow().toEpochMilli(),"incarnation",incarnation);
         publishDescriptor();
     }

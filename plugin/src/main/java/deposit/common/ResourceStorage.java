@@ -10,6 +10,8 @@ public interface ResourceStorage extends AutoCloseable {
     record Content(String resourceId, String storedFilename, long bytes, String checksum) {}
     /** A guarded staging input is copied; publication never consumes the only recovery source. */
     void publish(Content content, Path stagedFile) throws IOException;
+    /** Assert that the private publication workspace no longer owns payload copies. */
+    void assertWorkClean() throws IOException;
     void verify(Content content) throws IOException;
     InputStream open(Content content, long offset, long length) throws IOException;
     boolean exists(String resourceId) throws IOException;

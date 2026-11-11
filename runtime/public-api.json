@@ -1779,6 +1779,41 @@
     "action": false
   },
   {
+    "name": "deposit.get.importResult",
+    "args": [
+      {"name": "resultId", "type": "String", "binding": "resultId"}
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.importResultPage",
+    "args": [
+      {"name": "resultId", "type": "String", "binding": "resultId"},
+      {"name": "collection", "type": "String", "binding": "collection"},
+      {"name": "cursor", "type": "String", "binding": "cursor"},
+      {"name": "limit", "type": "Long", "binding": "limit"}
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
+    "name": "deposit.get.importResultEntry",
+    "args": [
+      {"name": "resultId", "type": "String", "binding": "resultId"},
+      {"name": "collection", "type": "String", "binding": "collection"},
+      {"name": "key", "type": "String", "binding": "key"}
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false
+  },
+  {
     "name": "deposit.import.apply",
     "args": [
       {"name": "planId", "type": "String", "binding": "planId"}
