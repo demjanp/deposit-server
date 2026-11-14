@@ -13,7 +13,7 @@ final class ImportSemantics {
 
     static boolean forcedClass(String className,Map<String,Object> rules){for(Object raw:(List<?>)rules.getOrDefault("alwaysCreate",List.of()))if(className.equals(BaseService.name(raw)))return true;return false;}
 
-    static Set<String> connectedRoles(String root,Map<String,Object> roles){var visited=new HashSet<String>();var queue=new ArrayDeque<String>();visited.add(root);queue.add(root);while(!queue.isEmpty()){String role=queue.remove();for(var entry:roles.entrySet())for(Object raw:(List<?>)ValueCodec.map(entry.getValue()).get("relationships")){String target=(String)ValueCodec.map(raw).get("targetName"),next=entry.getKey().equals(role)?target:target.equals(role)?entry.getKey():null;if(next!=null&&visited.add(next))queue.add(next);}}return visited;}
+    static Set<String> connectedRoles(String root,Map<String,Object> roles){var visited=new HashSet<String>();var queue=new ArrayDeque<String>();visited.add(root);queue.add(root);while(!queue.isEmpty()){String role=queue.remove();for(var entry:roles.entrySet())for(Object raw:(List<?>)ValueCodec.map(entry.getValue()).getOrDefault("relationships",List.of())){String target=(String)ValueCodec.map(raw).get("targetName"),next=entry.getKey().equals(role)?target:target.equals(role)?entry.getKey():null;if(next!=null&&visited.add(next))queue.add(next);}}return visited;}
 
     static TreeMap<String,Map<String,String>> namespaceSchema(CoreRepository repo,String namespace){return repo.namespaceSchema(namespace);}
 
