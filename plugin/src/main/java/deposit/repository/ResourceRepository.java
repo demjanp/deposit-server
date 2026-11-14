@@ -39,8 +39,9 @@ public final class ResourceRepository {
     }
     public boolean accessible(Node resource,String actor,String role,boolean renew) {
         String id=CoreRepository.id(resource);Node loc=location(id);if(loc==null||loc.hasProperty("deleting"))return false;
-        if(live(id))return true;
-        if(Set.of("viewer","editor","owner").contains(role)&&retained(id))return true;
+        boolean namespaceReader=role!=null&&Set.of("viewer","editor","owner").contains(role);
+        if(namespaceReader&&live(id))return true;
+        if(namespaceReader&&retained(id))return true;
         // The creator lease is an upload recovery path only. Generated exports are
         // authorized exclusively by their actor-bound DepositExportGrant.
         if(loc.hasProperty("uploadId")&&actor.equals(resource.getProperty("createdBy"))&&number(loc,"leaseUntil",0)>now()) {
@@ -50,7 +51,7 @@ public final class ResourceRepository {
             }
         }
         for(Node grant:core.nodes("DepositExportGrant",Map.of("resourceId",id,"namespaceId",resource.getProperty("namespaceId"),"actorId",actor))) {
-            if(number(grant,"expires",0)>now()&&(!Boolean.TRUE.equals(grant.getProperty("history",false))||role.equals("owner"))) {
+            if(number(grant,"expires",0)>now()&&(!Boolean.TRUE.equals(grant.getProperty("history",false))||Objects.equals(role,"owner"))) {
                 if(renew){grant.setProperty("expires",now()+ResourceFiles.LEASE);loc.removeProperty("orphanSince");}return true;
             }
         }return false;

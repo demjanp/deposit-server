@@ -56,4 +56,6 @@ public final class ExchangePackageCodec {
     public static Object encodeValue(String type,Object value){return PackageValueCodec.encodeValue(type,value);}
     /** Decode declaration-directed wire forms for repository writes. */
     public static Object decodeValue(String type,Object value){return PackageValueCodec.decodeValue(type,value);}
+    /** Decode typed history values into canonical repository form while retaining lazy collection views. */
+    public static Object decodeHistoryValue(String type,Object value)throws IOException{return PackageValueCodec.validateValue(type,value);}
 }

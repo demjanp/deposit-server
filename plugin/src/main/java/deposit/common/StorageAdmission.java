@@ -96,6 +96,14 @@ public final class StorageAdmission implements AutoCloseable {
         }finally{stateLock.unlock();}
     }
 
+    /** Close a reservation by its durable id; terminal-owner cleanup is idempotent across restart. */
+    public void closeIfPresent(String id)throws IOException {
+        lockForAdmission();try{
+        Reservation reservation=reservations.get(id);if(reservation==null)return;
+        Path record=recordPath(reservation.id);Files.deleteIfExists(record);reservations.remove(reservation.id);reservation.closed=true;
+        }finally{stateLock.unlock();}
+    }
+
     public void reconcile(OwnerResolver resolver)throws IOException {
         stateLock.lock();try{
         for(Reservation reservation:new ArrayList<>(reservations.values())){

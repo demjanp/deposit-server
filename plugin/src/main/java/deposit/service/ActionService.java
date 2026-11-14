@@ -20,7 +20,7 @@ public abstract class ActionService extends BaseService {
         if(serverScope)c.server.lockServer(c.state);
         if(!serverScope) {repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);}
         String scope=serverScope?"server":c.namespaceId;
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)?null:c.expectedRevision)));
+        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||depositCloneAction(procedure))?null:c.expectedRevision)));
         Node binding=repo.binding(c.actorId,c.operationId);
         if(binding!=null)OperationalGuards.bindingScope(c,scope,binding.getProperty("scope"));
         Node receipt=repo.receipt(scope,c.operationId);
@@ -58,6 +58,9 @@ public abstract class ActionService extends BaseService {
         try{var workspace=new HistoryWorkspace(c.server.storage.files.path("staging/imports"),()->c.state.kernel.assertOpen(),lease::reserve,()->{lease.close();cleaned[0]=true;},budget::ownHistoryWorkspace);c.state.release.add(()->{try{workspace.close();}catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();c.server.storage.diagnostic="Private history index cleanup pending";throw new UncheckedIOException(failure);}});return workspace;}
         catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();throw new UncheckedIOException(failure);}
         catch(RuntimeException failure){if(!cleaned[0])budget.retainForScratchCleanup();throw failure;}
+    }
+    private static boolean depositCloneAction(String procedure) {
+        return Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload").contains(procedure);
     }
     private static boolean isImportResult(Map<String,Object> data){return ImportResultContract.FORMAT.equals(data.get("format"));}
     protected Outcome outcome(Node node) {return new Outcome(node,null,repo.data(node));}

@@ -236,12 +236,18 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     }
     public List<String> deleteNamespace(String namespace) {
         var deleted=new TreeSet<String>();
-        new HistoryRecordDeletion(tx).deleteNamespace(namespace);
         // Remove owned values while ownership/declarations still exist; operational records survive.
         for(Node descriptor:nodes("Descriptor",Map.of("namespaceId",namespace))) {var ids=new ArrayList<String>();removeValue(descriptor,ids);deleted.addAll(ids);}
         geometry().deleteLayers(namespace);
-        for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))) {loc.setProperty("leaseUntil",0L);loc.setProperty("everAttached",true);resources().orphan(loc);}
         for(Node grant:nodes("DepositExportGrant",Map.of("namespaceId",namespace)))grant.setProperty("expires",0L);
+        for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))) {loc.setProperty("leaseUntil",0L);loc.setProperty("everAttached",true);resources().orphan(loc);}
+        // Epoch heads plus complete before/after snapshot chains are retained until
+        // deletion commits; this also keeps the clone-only history identities intact.
+        new HistoryRecordDeletion(tx).deleteNamespace(namespace);
+        for(Node resource:nodes("DResource",Map.of("namespaceId",namespace))) {
+            try(var edges=resource.getRelationships()) {for(Relationship edge:edges)edge.delete();}
+            deleted.add(id(resource));resource.delete();
+        }
         // Receipts and operation bindings intentionally survive deletion, without native links.
         for(String label:List.of("Object","Descriptor","ClassDescriptor","Class","Pattern","UserTool")) {
             for(Node node:nodes(label,Map.of("namespaceId",namespace))) {

@@ -43,8 +43,15 @@ public final class ImportWriteBudget {
     }
 
     public static ImportWriteBudget forRequest(RequestContext context) {
+        String scope=context.namespaceId==null?"server":context.namespaceId;
+        return forRequest(context,scope,context.namespaceId);
+    }
+
+    /** Reserve this action under its receipt scope while retaining its destination Namespace separately. */
+    public static ImportWriteBudget forRequest(RequestContext context,String receiptScope,String resultNamespaceId) {
         ImportWriteBudget current=context.state.importWriteBudget;
         if(current!=null)return current;
+        if(receiptScope==null||receiptScope.isBlank())throw new IllegalArgumentException("Import receipt scope is required");
         // Lightweight ServerContext fixtures used by isolated repository tests do not
         // initialize resource admission; a live Server cannot accept requests before this exists.
         if(context.server.storage==null||context.server.database()==null){
@@ -56,10 +63,11 @@ public final class ImportWriteBudget {
         Map<Path,Long> initial=paths(0,0,database,logs);
         StorageAdmission.Reservation reservation;
         try {
-            reservation=context.server.storage.admission.acquire("import-write",reservationOwnerId(context.namespaceId,context.actorId,context.operationId),
+            reservation=context.server.storage.admission.acquire("import-write",reservationOwnerId(receiptScope,resultNamespaceId,context.actorId,context.operationId),
                 context.operationId,"import-database-and-result",initial,
-                Json.map("phase","import-write","receiptScope",context.namespaceId,
-                    "operationId",context.operationId,"actorId",context.actorId,"namespaceId",context.namespaceId));
+                Json.map("phase","import-write","receiptScope",receiptScope,
+                    "operationId",context.operationId,"actorId",context.actorId,"namespaceId",resultNamespaceId,
+                    "resultNamespaceId",resultNamespaceId));
         } catch(StorageAdmission.StoragePressureException pressure) {
             context.fail("LIMIT_EXCEEDED",pressure.getMessage());return null;
         } catch(IOException failure) {
@@ -204,6 +212,14 @@ public final class ImportWriteBudget {
             byte[] digest=MessageDigest.getInstance("SHA-256").digest(identity);
             return "import-"+java.util.HexFormat.of().formatHex(digest);
         } catch(NoSuchAlgorithmException unavailable) { throw new IllegalStateException("SHA-256 is unavailable",unavailable); }
+    }
+
+    public static String reservationOwnerId(String receiptScope,String resultNamespaceId,String actorId,String operationId) {
+        if(java.util.Objects.equals(receiptScope,resultNamespaceId))return reservationOwnerId(receiptScope,actorId,operationId);
+        try {
+            byte[] identity=(receiptScope+"\u0000"+resultNamespaceId+"\u0000"+actorId+"\u0000"+operationId).getBytes(StandardCharsets.UTF_8);
+            return "import-"+java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(identity));
+        } catch(NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
     private static long checkedAdd(long left,long right) {
         try{return Math.addExact(left,right);}catch(ArithmeticException overflow){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Import storage estimate is not representable");}

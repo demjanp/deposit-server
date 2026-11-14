@@ -91,7 +91,19 @@ public final class SessionActionService extends BaseService {
         boolean deleted=c.procedure.equals("deposit.delete.namespace")&&receipt!=null;
         if(!deleted)authorize(c.procedure,c.actionScope,action.hasProperty("authorizationRole")?(String)action.getProperty("authorizationRole"):null);
         if(c.procedure.equals("deposit.delete.namespace")&&!deleted){String target=(String)action.getProperty("namespaceId");if(!target.equals(scopeRules.active()))c.fail("SCOPE_MISMATCH","Deletion target changed");requireRole(target,"owner");}
-        if(receipt==null&&c.actionScope.equals("server")&&!c.server.runId.equals(action.getProperty("runId")))c.fail("REVISION_CONFLICT","Server restarted; refresh and prepare a new action");
+        // Clone/staging actions are durable start/resume operations, not
+        // observation cursors. Keep existing run checks for ordinary actions.
+        if(receipt==null&&c.actionScope.equals("server")&&!depositCloneProcedure(c.procedure)&&
+                !c.server.runId.equals(action.getProperty("runId")))c.fail("REVISION_CONFLICT","Server restarted; refresh and prepare a new action");
+        // Server-scoped clone actions are non-operational and their durable prepared
+        // revision survives restart. Reauthorize and bind the refreshed server
+        // observation instead of rejecting the pre-restart revision forever.
+        if(depositCloneProcedure(c.procedure)) {
+            c.operational=false;c.expectedRevision=c.server.revision(c.state);
+        }
+    }
+    static boolean depositCloneProcedure(String procedure){
+        return Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload").contains(procedure);
     }
     public void observe(){
         if(c.session==null||cancellation(c.procedure)||c.procedure.startsWith("deposit.action.")||Set.of("deposit.get.session","deposit.get.lastOperation","deposit.utils.refresh").contains(c.procedure))return;

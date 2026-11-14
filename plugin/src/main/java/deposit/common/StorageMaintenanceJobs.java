@@ -24,7 +24,12 @@ import org.neo4j.kernel.internal.GraphDatabaseAPI;
 /** Standalone storage maintenance transactions and filesystem reconciliation jobs. */
 final class StorageMaintenanceJobs {
     private static final int TRANSFER_CHUNK_CLEANUP_BATCH = 256;
+    private static final int CLONE_UPLOAD_CLEANUP_BATCH = 256;
+    private static final int CLONE_UPLOAD_CANDIDATE_BATCH = 64;
+    private static final Set<String> CLONE_UPLOAD_PROCEDURES = Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload",
+            "deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload");
     private static final String DELETE_TERMINAL_TRANSFER_CHUNKS = "MATCH (transfer:DepositTransfer) WHERE transfer.state IN ['finished','aborted','expired'] MATCH (chunk:DepositTransferChunk {uploadId: transfer.id}) WITH chunk LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
+    private static final String DELETE_CLONE_UPLOAD_CHUNKS = "MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId}) WITH chunk ORDER BY chunk.offset LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
     private final ServerContext server;
     private final GraphDatabaseAPI db;
     private final ResourceFiles files;
@@ -69,6 +74,83 @@ final class StorageMaintenanceJobs {
             if (loc != null) new ResourceRepository(tx, core).orphan(loc);
             tx.commit();
         }
+    }
+
+    void expireCloneUploads() throws IOException {
+        long now=server.sessionTime();List<String> candidates=new ArrayList<>(CLONE_UPLOAD_CANDIDATE_BATCH);
+        String select="MATCH (upload:DepositCloneUpload) WHERE upload.expires <= $now RETURN upload.id AS id ORDER BY coalesce(upload.cleanupAttempts,0), upload.id LIMIT $limit";
+        try(var tx=db.beginTx();var rows=tx.execute(select,Map.of("now",now,"limit",CLONE_UPLOAD_CANDIDATE_BATCH))){while(rows.hasNext())candidates.add((String)rows.next().get("id"));}
+        for(String id:candidates)cleanupCloneUpload(id);
+    }
+
+    private void cleanupCloneUpload(String id)throws IOException {
+        String admissionId=null;boolean pathRemoved=false,chunksRemoved=false;
+        try(var tx=db.beginTx()){
+            CoreRepository core=core(tx);Node upload=core.find("DepositCloneUpload","id",id);if(upload==null)return;
+            server.storagePoint("clone-upload-expiry-before-lock");tx.acquireWriteLock(upload);upload=core.find("DepositCloneUpload","id",id);server.storagePoint("clone-upload-expiry-after-lock");if(upload==null)return;
+            String state=text(upload,"state");long now=server.sessionTime();
+            if(Set.of("uploading","finished").contains(state)){
+                if(number(upload,"expires",0)>now)return;
+                if(hasUnresolvedCloneAction(core,text(upload,"actorId")))return;
+                upload.setProperty("state","expired");upload.setProperty("expires",0L);state="expired";
+            }
+            if(!Set.of("consumed","aborted","expired").contains(state)||number(upload,"expires",0)>server.sessionTime())return;
+            if("consumed".equals(state)&&!hasCommittedCloneReceipt(core,upload))return;
+            Files.deleteIfExists(files.path(text(upload,"stagingPath")));
+            upload.setProperty("cleanupPathRemoved",true);pathRemoved=true;
+            try(var result=tx.execute(DELETE_CLONE_UPLOAD_CHUNKS,Map.of("uploadId",id,"batchSize",CLONE_UPLOAD_CLEANUP_BATCH))){result.next();}
+            chunksRemoved=!hasCloneChunks(tx,id);
+            if(chunksRemoved)upload.setProperty("cleanupChunksRemoved",true);
+            upload.setProperty("cleanupAttempts",number(upload,"cleanupAttempts",0)+1);
+            admissionId=upload.hasProperty("admissionId")?text(upload,"admissionId"):null;
+            tx.commit();
+        }
+        if(!pathRemoved||!chunksRemoved)return;
+        if(admissionId!=null)try{server.storage.admission.closeIfPresent(admissionId);}catch(IOException failure){diagnostic.accept("Terminal clone upload admission cleanup pending");return;}
+        try(var tx=db.beginTx()){
+            CoreRepository core=core(tx);Node upload=core.find("DepositCloneUpload","id",id);if(upload==null)return;
+            tx.acquireWriteLock(upload);upload=core.find("DepositCloneUpload","id",id);if(upload==null)return;
+            if(!Set.of("consumed","aborted","expired").contains(text(upload,"state"))
+                    ||!Boolean.TRUE.equals(upload.getProperty("cleanupPathRemoved",false))
+                    ||!Boolean.TRUE.equals(upload.getProperty("cleanupChunksRemoved",false))
+                    ||Files.exists(files.path(text(upload,"stagingPath")))||hasCloneChunks(tx,id))return;
+            if(admissionId!=null&&Files.exists(files.root.resolve("admission").resolve(admissionId+".json")))return;
+            upload.delete();tx.commit();
+        }
+    }
+
+    private boolean hasUnresolvedCloneAction(CoreRepository core,String actor){
+        for(Node action:core.nodes("DepositPreparedAction",Map.of("actorId",actor)))
+            if(CLONE_UPLOAD_PROCEDURES.contains(action.getProperty("procedure",""))
+                    &&core.receipt("server",(String)action.getProperty("operationId"))==null)return true;
+        return false;
+    }
+
+    private boolean hasCommittedCloneReceipt(CoreRepository core,Node upload){
+        Object operation=upload.getProperty("consumedOperationId",null),actor=upload.getProperty("consumedActorId",null);
+        Object expectedResult=upload.getProperty("consumedResultId",null),expectedNamespace=upload.getProperty("consumedNamespaceId",null);
+        if(!(operation instanceof String operationId)||!(actor instanceof String actorId)
+                ||!(expectedResult instanceof String resultId)||!(expectedNamespace instanceof String namespaceId)
+                ||!actorId.equals(upload.getProperty("actorId",null)))return false;
+        Node receipt=core.receipt("server",operationId);if(receipt==null
+                ||!operationId.equals(receipt.getProperty("operationId",null))
+                ||!actorId.equals(receipt.getProperty("actorId",null)))return false;
+        Object storedResult=receipt.getProperty("importResultId",null);if(!resultId.equals(storedResult))return false;
+        Node result=core.find("DepositImportResult","id",resultId);if(result==null
+                ||!"clone".equals(result.getProperty("kind",null))
+                ||!operationId.equals(result.getProperty("operationId",null))
+                ||!actorId.equals(result.getProperty("actorId",null))
+                ||!namespaceId.equals(result.getProperty("namespaceId",null)))return false;
+        try{
+            Map<String,Object> outcome=Json.read((String)receipt.getProperty("outcome"));
+            return resultId.equals(outcome.get("resultId"))
+                    &&ImportResultContract.FORMAT.equals(outcome.get("format"))
+                    &&namespaceId.equals(outcome.get("namespaceId"));
+        }catch(RuntimeException invalid){return false;}
+    }
+
+    private boolean hasCloneChunks(Transaction tx,String uploadId){
+        try(var rows=tx.execute("MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId}) RETURN chunk.id AS id LIMIT 1",Map.of("uploadId",uploadId))){return rows.hasNext();}
     }
 
     private boolean protectedByReadyPlan(CoreRepository core, String tableId, long now) {

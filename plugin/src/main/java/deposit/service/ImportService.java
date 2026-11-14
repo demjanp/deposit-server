@@ -25,7 +25,10 @@ public final class ImportService extends ActionService {
             case "deposit.get.importResultEntry"->importResults.entry(request);
             case "deposit.import.apply"->apply(request);
             case "deposit.import.dataByPattern"->dataByPattern(request);
-            case "deposit.import.namespaceData"->cloneNamespace(request);
+            case "deposit.import.cloneNamespace"->cloneNamespace(request);
+            case "deposit.get.cloneResult"->cloneResult(request);
+            case "deposit.get.cloneResultPage"->importResults.clonePage(request);
+            case "deposit.get.cloneResultEntry"->importResults.cloneEntry(request);
             default->{c.fail("VALIDATION_FAILED","Unsupported import operation");yield Map.of();}
         };
     }
@@ -147,20 +150,49 @@ public final class ImportService extends ActionService {
     }
 
     private Map<String,Object> cloneNamespace(Map<String,Object> request){
-        fields(request,"packageResourceId");String id=RequestContext.uuid(request.get("packageResourceId"));
-        return action("deposit.import.namespaceData",request,true,"viewer",()->{
-            AuthorizedPackage copied=copyAuthorizedPackage(id,"namespace-clone",UUID.randomUUID().toString());Path path=copied.path();try{
-                ExchangePackageCodec.PackageData pkg=validate(path);Map<String,Object> manifest=pkg.manifest();if(!"namespace".equals(manifest.get("scope")))c.fail("VALIDATION_FAILED","Namespace cloning requires a full-Namespace package");
+        fields(request,"source");Map<String,Object> source=ValueCodec.map(request.get("source"));fields(source,"resourceId","uploadId","sha256");if(source.containsKey("resourceId")==source.containsKey("uploadId"))c.fail("VALIDATION_FAILED","Clone source must select one staged package or package resource");
+        String id=RequestContext.uuid(source.containsKey("resourceId")?source.get("resourceId"):source.get("uploadId"));
+        return action("deposit.import.cloneNamespace",request,true,"viewer",()->{
+            AuthorizedPackage copied=source.containsKey("resourceId")?copyAuthorizedPackage(id,"namespace-clone",UUID.randomUUID().toString()):copyCloneUpload(id,source.get("sha256"));Path path=copied.path();try{return withValidatedPackage(path,()->{c.state.kernel.assertOpen();c.server.storagePoint("clone-validation");},pkg->{
+                Map<String,Object> manifest=pkg.manifest();if(!"namespace".equals(manifest.get("scope")))c.fail("VALIDATION_FAILED","Namespace cloning requires a full-Namespace package");
                 if(repo.find("Namespace","name",manifest.get("name"))!=null)c.fail("DUPLICATE","Namespace name already exists");
                 Node ns=repo.create("Namespace",null,c.actorId,Json.map("name",manifest.get("name"),"description",manifest.get("description"),"depositVersion",DepositInfo.version(),"historyMode",manifest.get("historyMode"),"sequence",0L));String nsId=CoreRepository.id(ns);repo.setRole(c.actorId,nsId,"owner");
                 Map<String,Object> result=new ImportSnapshotMaterializer(c,repo,resources).materialize(pkg,path,nsId,Map.of(),Map.of());
-                if("persistent".equals(manifest.get("historyMode"))){var resourceMap=new HashMap<String,String>();ValueCodec.map(result.get("resourceMapping")).forEach((source,target)->{if(target instanceof String mappedId)resourceMap.put(source,mappedId);});new HistoryCloneService(c.tx,repo,nsId,c.actorId,c.server.runId,ValueCodec.map(result.get("identityMappings")),resourceMap).importHistory(pkg.history());ns.setProperty("sequence",((Number)manifest.get("exportedRevision")).longValue());}
+                if("persistent".equals(manifest.get("historyMode"))){
+                    @SuppressWarnings("unchecked") Map<String,String> resourceMap=(Map<String,String>)result.get("resourceMapping");
+                    Map<String,Object> identityMappings=ValueCodec.map(result.get("identityMappings"));
+                    new HistoryCloneService(c,nsId,identityMappings,resourceMap).importHistory(pkg.history());
+                    ns.setProperty("sequence",((Number)manifest.get("exportedRevision")).longValue());
+                }
                 else if("transient".equals(manifest.get("historyMode")))new HistoryRepository(c.tx,repo).baseline(nsId,c.actorId,0,c.server.runId,c.timestamp);
-                result.put("namespaceId",nsId);result.put("name",manifest.get("name"));registerTemporaryPackageCleanup(path,copied.reservation());return new Change(new Outcome(ns,null,result),true);
-            }catch(RuntimeException|Error failure){try{c.server.storage.admission.close(copied.reservation());}catch(IOException cleanup){failure.addSuppressed(cleanup);}throw failure;}
-            finally{try{Files.deleteIfExists(path);}catch(IOException ignored){}}
+                result.put("namespaceId",nsId);result.put("name",manifest.get("name"));
+                // Public identity maps paged by entity kind; scalar metadata
+                // remains one receipt-owned mapping rather than mixed kinds.
+                var clonedMappings=ValueCodec.map(result.get("identityMappings"));
+                @SuppressWarnings({"unchecked","rawtypes"}) Map<String,Object> lazyIdentity=(Map)new java.util.AbstractMap<String,Object>() {
+                    public Object get(Object key) {return clonedMappings.get(key);}
+                    private boolean cloneValue(Object key) {return clonedMappings.containsKey(key);}
+                    public boolean containsKey(Object key) {return cloneValue(key);}
+                    public java.util.Set<Map.Entry<String,Object>> entrySet() {return new java.util.AbstractSet<>() {
+                        public int size() {return clonedMappings.size();}
+                        public java.util.Iterator<Map.Entry<String,Object>> iterator() {
+                            var iterator=clonedMappings.entrySet().iterator();
+                            return new java.util.Iterator<>() {
+                                public boolean hasNext() {return iterator.hasNext();}
+                                public java.util.Map.Entry<String,Object> next() {return iterator.next();}
+                            };
+                        }
+                    };}
+                };
+                result.put("identityMappings",lazyIdentity);
+                Map<String,Object> saved=importResults.saveClone(c.operationId,nsId,0,resources.now()+30L*24*60*60*1000,result);if(copied.temporary())registerTemporaryPackageCleanup(path,copied.reservation());if(copied.upload()!=null)registerCloneUploadCleanup(copied.upload(),saved);c.server.storagePoint("clone-after-result-save");return new Change(new Outcome(null,null,saved),true);
+            });
+            }catch(RuntimeException|Error failure){if(copied.temporary())try{c.server.storage.admission.close(copied.reservation());}catch(IOException cleanup){failure.addSuppressed(cleanup);}throw failure;}
+            finally{if(copied.temporary())try{Files.deleteIfExists(path);}catch(IOException ignored){}}
         }).data();
     }
+
+    private Map<String,Object> cloneResult(Map<String,Object> request){fields(request,"resultId");return importResults.cloneEnvelope(RequestContext.uuid(request.get("resultId")));}
 
     private <T> T analyzeSnapshot(ExchangePackageCodec.PackageData pkg,Map<String,Object> rules,java.util.function.Function<Map<String,Object>,T> persist){
         return new ImportSnapshotAnalysis(c,repo,resources,stagedPath("staging/imports")).analyze(pkg,rules,persist);
@@ -206,11 +238,14 @@ public final class ImportService extends ActionService {
     }
     static Map<String,Object> planData(Node plan,Map<String,Object> analysis){Map<String,Object> lifecycle=Json.map("planId",CoreRepository.id(plan),"namespaceId",plan.getProperty("namespaceId"),"state",plan.getProperty("state"),"targetRevision",plan.getProperty("targetRevision"),"expiresAt",plan.getProperty("expiresAt"));return Json.map("plan",lifecycle,"analysisResult",analysis);}
     private AuthorizedPackage copyAuthorizedPackage(String packageId,String ownerKind,String ownerId){
-        Path path=null;StorageAdmission.Reservation reservation=null;try{Node location=resources.location(packageId);if(location==null)c.fail("NOT_FOUND","Package resource not found");String sourceNs=(String)location.getProperty("namespaceId",null);Node resource=sourceNs==null?null:resources.resource(sourceNs,packageId);if(resource==null||!"ready".equals(resource.getProperty("state",null)))c.fail("NOT_FOUND","Package resource not found");resources.lock(packageId);String role=repo.role(c.actorId,sourceNs);if(!resources.accessible(resource,c.actorId,role,false))c.fail("NOT_FOUND","Package resource not found");ResourceStorage.Content content=resources.verify(location);path=resources.files.path("staging/imports/"+UUID.randomUUID()+".zip");String receiptScope="namespace-clone".equals(ownerKind)?"server":c.namespaceId;reservation=c.server.storage.admission.acquire(ownerKind,ownerId,c.operationId,"import-package-copy",Map.of(resources.files.root,content.bytes()),Json.map("phase","package-copy","packageId",packageId,"receiptScope",receiptScope,"stagingPath",c.server.storage.files.root.relativize(path).toString().replace('\\','/'),"expectedBytes",content.bytes()));Files.createDirectories(path.getParent());try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)){in.transferTo(out);}if(Files.size(path)!=content.bytes())throw new IOException("Incomplete package staging copy");c.server.storage.admission.materialized(reservation,resources.files.root,content.bytes());c.server.storage.admission.clearWriteIntent(reservation);return new AuthorizedPackage(path,reservation);}catch(IOException|RuntimeException failure){if(path!=null)try{Files.deleteIfExists(path);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(reservation!=null)try{c.server.storage.admission.close(reservation);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(failure instanceof IOException io)throw new UncheckedIOException(io);throw (RuntimeException)failure;}
+        Path path=null;StorageAdmission.Reservation reservation=null;try{Node location=resources.location(packageId);if(location==null)c.fail("NOT_FOUND","Package resource not found");String sourceNs=(String)location.getProperty("namespaceId",null);Node resource=sourceNs==null?null:resources.resource(sourceNs,packageId);if(resource==null||!"ready".equals(resource.getProperty("state",null)))c.fail("NOT_FOUND","Package resource not found");resources.lock(packageId);String role=repo.role(c.actorId,sourceNs);if(!resources.accessible(resource,c.actorId,role,false))c.fail("NOT_FOUND","Package resource not found");ResourceStorage.Content content=resources.verify(location);path=resources.files.path("staging/imports/"+UUID.randomUUID()+".zip");String receiptScope="namespace-clone".equals(ownerKind)?"server":c.namespaceId;reservation=c.server.storage.admission.acquire(ownerKind,"namespace-clone".equals(ownerKind)?ImportWriteBudget.reservationOwnerId("server","server",c.actorId,c.operationId):ownerId,c.operationId,"import-package-copy",Map.of(resources.files.root,content.bytes()),Json.map("phase","package-copy","packageId",packageId,"receiptScope",receiptScope,"stagingPath",c.server.storage.files.root.relativize(path).toString().replace('\\','/'),"expectedBytes",content.bytes()));Files.createDirectories(path.getParent());try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)){in.transferTo(out);}if(Files.size(path)!=content.bytes())throw new IOException("Incomplete package staging copy");c.server.storage.admission.materialized(reservation,resources.files.root,content.bytes());c.server.storage.admission.clearWriteIntent(reservation);return new AuthorizedPackage(path,reservation,null,true);}catch(IOException|RuntimeException failure){if(path!=null)try{Files.deleteIfExists(path);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(reservation!=null)try{c.server.storage.admission.close(reservation);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(failure instanceof IOException io)throw new UncheckedIOException(io);throw (RuntimeException)failure;}
     }
-    private record AuthorizedPackage(Path path,StorageAdmission.Reservation reservation){}
+    private AuthorizedPackage copyCloneUpload(String uploadId,Object requestedChecksum){Node upload=repo.find("DepositCloneUpload","id",uploadId);if(upload==null)c.fail("NOT_FOUND","Clone package staging is unavailable");c.tx.acquireWriteLock(upload);upload=repo.find("DepositCloneUpload","id",uploadId);if(upload==null||!c.actorId.equals(upload.getProperty("actorId"))||!"finished".equals(upload.getProperty("state"))||((Number)upload.getProperty("expires")).longValue()<=resources.now())c.fail("NOT_FOUND","Clone package staging is unavailable");String checksum=ResourceFiles.hash(requestedChecksum);if(!checksum.equals(upload.getProperty("sha256")))c.fail("OPERATION_MISMATCH","Clone package digest changed");String relative=(String)upload.getProperty("stagingPath");Path path=stagedPath(relative);try{resources.files.verify(relative,((Number)upload.getProperty("bytes")).longValue(),checksum);StorageAdmission.Reservation reservation=c.server.storage.admission.resume((String)upload.getProperty("admissionId"));return new AuthorizedPackage(path,reservation,upload,false);}catch(IOException failure){throw new UncheckedIOException(failure);}}
+    private record AuthorizedPackage(Path path,StorageAdmission.Reservation reservation,Node upload,boolean temporary){}
+    private void registerCloneUploadCleanup(Node upload,Map<String,Object> result){upload.setProperty("state","consumed");upload.setProperty("consumedOperationId",c.operationId);upload.setProperty("consumedActorId",c.actorId);upload.setProperty("consumedResultId",result.get("resultId"));upload.setProperty("consumedNamespaceId",result.get("namespaceId"));upload.setProperty("cleanupAttempts",0L);}
     private ExchangePackageCodec.PackageData validate(Path path){try{return ExchangePackageCodec.validate(path);}catch(IOException e){throw new UncheckedIOException(e);}}
-    private <T> T withValidatedPackage(Path path,java.util.function.Function<ExchangePackageCodec.PackageData,T> action){try{return ExchangePackageCodec.withValidatedPackage(path,()->c.state.kernel.assertOpen(),action);}catch(IOException e){throw new UncheckedIOException(e);}}
+    private <T> T withValidatedPackage(Path path,java.util.function.Function<ExchangePackageCodec.PackageData,T> action){return withValidatedPackage(path,()->c.state.kernel.assertOpen(),action);}
+    private <T> T withValidatedPackage(Path path,Runnable checkpoint,java.util.function.Function<ExchangePackageCodec.PackageData,T> action){try{return ExchangePackageCodec.withValidatedPackage(path,checkpoint,action);}catch(IOException e){throw new UncheckedIOException(e);}}
     private static String encode(Object value){return ImportSemantics.encode(value);}
     private Path stagedPath(String relative){try{return resources.files.path(relative);}catch(IOException e){throw new UncheckedIOException(e);}}
     private static long estimatePackageBytes(Map<String,Object> manifest,Map<String,Object> graph)throws IOException{

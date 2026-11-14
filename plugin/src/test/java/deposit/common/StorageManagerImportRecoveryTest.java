@@ -60,6 +60,26 @@ class StorageManagerImportRecoveryTest {
         assertFalse(Files.exists(storage.files.root.resolve("admission").resolve(committed.id+".json")));
     }
 
+    @Test void startupReconcilesCloneImportAndResourceReservationsAgainstServerReceiptAndTargetNamespace()throws Exception {
+        String actor=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString(),targetNamespace=UUID.randomUUID().toString();
+        var write=cloneReservation("import-write",actor,operation,targetNamespace);writeCloneReceipt("server",actor,operation,targetNamespace);
+        String resourceOperation=UUID.randomUUID().toString(),resourceNamespace=UUID.randomUUID().toString();var resource=cloneReservation("import-apply",actor,resourceOperation,resourceNamespace);writeCloneReceipt("server",actor,resourceOperation,resourceNamespace);
+        storage.recover();
+        assertFalse(Files.exists(storage.files.root.resolve("admission").resolve(write.id+".json")),"clone database/result reservation binds server receipt to the created Namespace");
+        assertFalse(Files.exists(storage.files.root.resolve("admission").resolve(resource.id+".json")),"clone resource reservation binds server receipt to its created Namespace");
+    }
+
+    @Test void expiryWaitsForUploadOwnerAndRechecksItsRenewedLease()throws Exception {
+        String uploadId=UUID.randomUUID().toString(),actor=UUID.randomUUID().toString(),relative="staging/imports/clone-uploads/"+UUID.randomUUID()+".zip";Path staged=storage.files.path(relative);Files.createDirectories(staged.getParent());Files.writeString(staged,"package");
+        try(var tx=database.beginTx()){Node upload=tx.createNode(Label.label("DepositCloneUpload"));upload.setProperty("id",uploadId);upload.setProperty("actorId",actor);upload.setProperty("bytes",7L);upload.setProperty("nextOffset",7L);upload.setProperty("sha256",ResourceFiles.checksum(staged));upload.setProperty("state","uploading");upload.setProperty("expires",0L);upload.setProperty("stagingPath",relative);tx.commit();}
+        var started=new java.util.concurrent.CountDownLatch(1);var acquired=new java.util.concurrent.CountDownLatch(1);var failed=new java.util.concurrent.atomic.AtomicReference<Throwable>();var observer=ServerContext.class.getDeclaredMethod("storageObserverForTesting",java.util.function.Consumer.class);observer.setAccessible(true);observer.invoke(server,(java.util.function.Consumer<String>)point->{if("clone-upload-expiry-before-lock".equals(point))started.countDown();if("clone-upload-expiry-after-lock".equals(point))acquired.countDown();});
+        var owner=database.beginTx();Node upload=owner.findNode(Label.label("DepositCloneUpload"),"id",uploadId);owner.acquireWriteLock(upload);
+        Thread maintenance=new Thread(()->{try{storage.recover();}catch(Throwable failure){failed.set(failure);}});maintenance.start();assertTrue(started.await(10,java.util.concurrent.TimeUnit.SECONDS),"expiry candidate reached the shared upload lock boundary");
+        upload.setProperty("state","finished");upload.setProperty("expires",System.currentTimeMillis()+60_000L);owner.commit();assertTrue(acquired.await(10,java.util.concurrent.TimeUnit.SECONDS),"maintenance re-acquired the upload record before deciding whether to delete it");maintenance.join(20_000L);observer.invoke(server,(java.util.function.Consumer<String>)point->{});
+        assertFalse(maintenance.isAlive(),"maintenance completed after the owner released the upload lock");assertNull(failed.get());assertTrue(Files.exists(staged));
+        try(var tx=database.beginTx()){Node retained=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertNotNull(retained);assertEquals("finished",retained.getProperty("state"));assertTrue(((Number)retained.getProperty("expires")).longValue()>System.currentTimeMillis());tx.rollback();}
+    }
+
     @Test void failedInitialDatabaseBudgetGrowthReleasesEarlierResourceReservationOnRollback()throws Exception {
         var fileStore=Files.getFileStore(storage.files.root);long free=fileStore.getUsableSpace();assertTrue(free>4L*1024*1024);
         var blocker=storage.admission.acquire("test-blocker","fills-capacity",null,"test",Map.of(storage.files.root,free-512L*1024),Map.of());
@@ -105,16 +125,52 @@ class StorageManagerImportRecoveryTest {
         storage.recover();assertFalse(Files.exists(scratch));assertFalse(Files.exists(storage.files.root.resolve("admission").resolve(owner.id+".json")));
     }
 
+    @Test void restartKeepsAbortedCloneUploadAdmissionUntilExpiryDeletesStaging()throws Exception{
+        Path root=storage.files.root;storage.close();var old=new StorageAdmission(root,"previous-process");String uploadId=UUID.randomUUID().toString(),actor=UUID.randomUUID().toString();byte[] payload="partial clone upload".getBytes(java.nio.charset.StandardCharsets.UTF_8);String relative="staging/imports/clone-uploads/"+uploadId+".zip";Path staged=root.resolve(relative);Files.createDirectories(staged.getParent());Files.write(staged,payload);
+        var reservation=old.acquire("clone-upload",uploadId,UUID.randomUUID().toString(),"namespace-clone-upload",Map.of(root,0L),Json.map("phase","upload","uploadId",uploadId,"actorId",actor,"bytes",(long)payload.length,"nextOffset",(long)payload.length,"sha256",ResourceFiles.checksum(payload),"stagingPath",relative));
+        try(var tx=database.beginTx()){Node upload=tx.createNode(Label.label("DepositCloneUpload"));upload.setProperty("id",uploadId);upload.setProperty("actorId",actor);upload.setProperty("bytes",payload.length);upload.setProperty("nextOffset",payload.length);upload.setProperty("sha256",ResourceFiles.checksum(payload));upload.setProperty("state","aborted");upload.setProperty("expires",System.currentTimeMillis()+60_000L);upload.setProperty("stagingPath",relative);upload.setProperty("admissionId",reservation.id);tx.commit();}
+        old.close();storage=new StorageManager(server,database);server.storage=storage;
+        storage.recover();
+        var resumed=storage.admission.resume(reservation.id);assertEquals(server.runId,resumed.serverRunId());assertTrue(Files.exists(staged),"an aborted upload remains admission-owned until expiry deletes its bytes");
+        try(var tx=database.beginTx()){tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId).setProperty("expires",0L);tx.commit();}
+        storage.recover();assertFalse(Files.exists(staged));assertFalse(Files.exists(storage.files.root.resolve("admission").resolve(reservation.id+".json")));assertNull(storage.diagnostic);
+    }
+
+    @Test void restartKeepsConsumedCloneUploadUntilReceiptBoundExpiryCleanup()throws Exception{
+        Path root=storage.files.root;storage.close();var old=new StorageAdmission(root,"previous-process");String uploadId=UUID.randomUUID().toString(),actor=UUID.randomUUID().toString(),cloneOperation=UUID.randomUUID().toString(),resultId=UUID.randomUUID().toString(),namespaceId=UUID.randomUUID().toString();byte[] payload="consumed clone package".getBytes(java.nio.charset.StandardCharsets.UTF_8);String relative="staging/imports/clone-uploads/"+uploadId+".zip";Path staged=root.resolve(relative);Files.createDirectories(staged.getParent());Files.write(staged,payload);
+        var reservation=old.acquire("clone-upload",uploadId,UUID.randomUUID().toString(),"namespace-clone-upload",Map.of(root,0L),Json.map("phase","upload","uploadId",uploadId,"actorId",actor,"bytes",(long)payload.length,"nextOffset",(long)payload.length,"sha256",ResourceFiles.checksum(payload),"stagingPath",relative));
+        try(var tx=database.beginTx()){Node upload=tx.createNode(Label.label("DepositCloneUpload"));upload.setProperty("id",uploadId);upload.setProperty("actorId",actor);upload.setProperty("bytes",payload.length);upload.setProperty("nextOffset",payload.length);upload.setProperty("sha256",ResourceFiles.checksum(payload));upload.setProperty("state","consumed");upload.setProperty("expires",System.currentTimeMillis()+60_000L);upload.setProperty("stagingPath",relative);upload.setProperty("admissionId",reservation.id);upload.setProperty("consumedOperationId",cloneOperation);upload.setProperty("consumedActorId",actor);upload.setProperty("consumedResultId",resultId);upload.setProperty("consumedNamespaceId",namespaceId);
+            Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId",namespaceId);result.setProperty("scope","server");result.setProperty("actorId",actor);result.setProperty("operationId",cloneOperation);result.setProperty("kind","clone");
+            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope","server");receipt.setProperty("operationId",cloneOperation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("outcome",Json.write(Json.map("format",ImportResultContract.FORMAT,"resultId",resultId,"namespaceId",namespaceId)));tx.commit();}
+        old.close();storage=new StorageManager(server,database);server.storage=storage;
+        storage.recover();
+        var resumed=storage.admission.resume(reservation.id);assertEquals(server.runId,resumed.serverRunId());assertTrue(Files.exists(staged),"a consumed upload is retained until its package bytes are actually deleted");
+        try(var tx=database.beginTx()){tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId).setProperty("expires",0L);tx.commit();}
+        storage.recover();assertFalse(Files.exists(staged));assertFalse(Files.exists(storage.files.root.resolve("admission").resolve(reservation.id+".json")));assertNull(storage.diagnostic);
+    }
+
     private StorageAdmission.Reservation reservation(String scope,String actor,String operation)throws Exception {
         String owner=ImportWriteBudget.reservationOwnerId(scope,actor,operation);
         return storage.admission.acquire("import-write",owner,operation,"database-result",Map.of(database.databaseLayout().databaseDirectory(),4096L),Json.map("phase","import-write","receiptScope",scope,"namespaceId",scope,"actorId",actor,"operationId",operation));
+    }
+
+    private StorageAdmission.Reservation cloneReservation(String ownerKind,String actor,String operation,String targetNamespace)throws Exception {
+        String scope="server",owner=ImportWriteBudget.reservationOwnerId(scope,targetNamespace,actor,operation);
+        return storage.admission.acquire(ownerKind,owner,operation,"clone-write",Map.of(database.databaseLayout().databaseDirectory(),4096L),Json.map("phase","import-write","receiptScope",scope,"namespaceId",targetNamespace,"resultNamespaceId",targetNamespace,"actorId",actor,"operationId",operation));
+    }
+
+    private void writeCloneReceipt(String scope,String actor,String operation,String resultNamespace) {
+        String resultId=UUID.randomUUID().toString();try(var tx=database.beginTx()){
+            Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId",resultNamespace);result.setProperty("scope","server");result.setProperty("actorId",actor);result.setProperty("operationId",operation);result.setProperty("kind","clone");
+            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("outcome",Json.write(Json.map("format",ImportResultContract.FORMAT,"resultId",resultId)));tx.commit();
+        }
     }
 
     private void writeReceipt(StorageAdmission.Reservation reservation,String resultMode) {writeReceipt(reservation,resultMode,(String)reservation.writeIntent().get("actorId"));}
     private void writeReceipt(StorageAdmission.Reservation reservation,String resultMode,String receiptActor) {
         String scope=(String)reservation.writeIntent().get("receiptScope"),operation=reservation.operationId,resultId=UUID.randomUUID().toString();
         try(var tx=database.beginTx()){
-            if(!"missing-result".equals(resultMode)){Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId","mismatched-result-scope".equals(resultMode)?UUID.randomUUID().toString():scope);result.setProperty("operationId",operation);}
+            if(!"missing-result".equals(resultMode)){Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId","mismatched-result-scope".equals(resultMode)?UUID.randomUUID().toString():scope);result.setProperty("scope","server".equals(scope)?"server":"namespace");result.setProperty("actorId",receiptActor);result.setProperty("operationId",operation);}
             Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",receiptActor);receipt.setProperty("importResultId",resultId);
             Map<String,Object> outcome=Json.map("format",ImportResultContract.FORMAT,"resultId",resultId);receipt.setProperty("outcome",Json.write(outcome));tx.commit();
         }

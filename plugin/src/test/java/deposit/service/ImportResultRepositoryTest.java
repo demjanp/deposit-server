@@ -50,12 +50,58 @@ class ImportResultRepositoryTest {
         }
     }
 
+    @Test void cloneResultIsPagedFromTheServerReceiptAndBoundToItsActor() {
+        String cloneOperation=UUID.randomUUID().toString(),cloneNamespace=UUID.randomUUID().toString(),cloneResult;
+        try(var tx=database.beginTx()) {
+            var context=context(tx,actor);context.operationId=cloneOperation;context.namespaceId=null;context.revision=0;
+            var repository=new ImportResultRepository(context);
+            var envelope=repository.saveClone(cloneOperation,cloneNamespace,0,System.currentTimeMillis()+60_000,
+                    Json.map("name","Cloned","mapping",Json.map("source-a","target-a"),"identityMappings",Json.map("Namespace",Json.map("namespace-a",cloneNamespace),"Object",Json.map("source-a","target-a","source-b","target-b")),
+                            "resourceMapping",Json.map("source-resource","target-resource"),"createdObjects",1L));
+            cloneResult=(String)envelope.get("resultId");
+            new CoreRepository(tx,context.timestamp).saveReceipt(context,"server","clone-request-hash",new Outcome(null,null,envelope));
+            tx.commit();
+        }
+        try(var tx=database.beginTx()) {
+            var context=context(tx,actor);context.namespaceId=null;var repository=new ImportResultRepository(context);
+            assertEquals(cloneNamespace,repository.cloneEnvelope(cloneResult).get("namespaceId"));
+            assertEquals(Set.of("identityMappings","mapping","metadata","resourceMapping"),ValueCodec.map(repository.cloneEnvelope(cloneResult).get("collections")).keySet());
+            assertEquals(2L,ValueCodec.map(ValueCodec.map(repository.cloneEnvelope(cloneResult).get("collections")).get("metadata")).get("count"));
+            var first=repository.clonePage(Json.map("resultId",cloneResult,"collection","identityMappings","cursor",null,"limit",1));
+            assertEquals(1,((List<?>)first.get("entries")).size());assertNotNull(first.get("nextCursor"));
+            var second=repository.clonePage(Json.map("resultId",cloneResult,"collection","identityMappings","cursor",first.get("nextCursor"),"limit",1));
+            assertEquals(1,((List<?>)second.get("entries")).size());assertNull(second.get("nextCursor"));
+            var byKindPage=repository.clonePage(Json.map("resultId",cloneResult,"collection","identityMappings","cursor",null,"limit",128));
+            var firstKind=ValueCodec.map(((List<?>)byKindPage.get("entries")).get(0));
+            var firstValue=ValueCodec.map(firstKind.get("value"));
+            assertEquals("mapping",firstValue.get("type"));
+            var nestedEntry=repository.cloneEntry(Json.map("resultId",cloneResult,"collection",firstValue.get("collection"),"key","namespace-a"));
+            assertEquals(cloneNamespace,ValueCodec.map(nestedEntry.get("value")).get("value"));
+            assertEquals("Namespace",ValueCodec.map(firstKind.get("key")).get("value"));
+            assertEquals(2,((List<?>)repository.clonePage(Json.map("resultId",cloneResult,"collection","metadata","cursor",null,"limit",128)).get("entries")).size());
+            assertNotEquals(first.get("entries"),second.get("entries"));
+            var entry=repository.cloneEntry(Json.map("resultId",cloneResult,"collection","resourceMapping","key","source-resource"));
+            assertEquals("target-resource",ValueCodec.map(entry.get("value")).get("value"));tx.commit();
+        }
+        try(var tx=database.beginTx()) {
+            var context=context(tx,UUID.randomUUID().toString());context.namespaceId=null;
+            assertThrows(ExceptionHandler.DepositException.class,()->new ImportResultRepository(context).cloneEnvelope(cloneResult));tx.rollback();
+        }
+    }
+
     @Test void pageCursorsBindResultCollectionAndPositionAndLimitsAreBounded(){
         try(var tx=database.beginTx()){
-            var repo=new ImportResultRepository(context(tx,actor));Map<String,Object> first=repo.page(Json.map("resultId",resultId,"collection","groups","cursor",null,"limit",1L));String cursor=(String)first.get("nextCursor");assertNotNull(cursor);assertEquals(1,((List<?>)first.get("entries")).size());assertEquals(Set.of("resultId","collection","entries","nextCursor"),first.keySet());
-            Map<String,Object> second=repo.page(Json.map("resultId",resultId,"collection","groups","cursor",cursor,"limit",1L));assertEquals(1,((List<?>)second.get("entries")).size());assertNotNull(second.get("nextCursor"));
-            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","nested","cursor",cursor,"limit",1L)));
-            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","groups","cursor",null,"limit",257L)));tx.rollback();
+            var repo=new ImportResultRepository(context(tx,actor));Map<String,Object> first=repo.page(Json.map("resultId",resultId,"collection","groups","cursor",null,"limit",1));Map<String,Object> cursor=ValueCodec.map(first.get("nextCursor"));assertNotNull(cursor);assertEquals(1,((List<?>)first.get("entries")).size());assertEquals(Set.of("resultId","collection","entries","nextCursor"),first.keySet());
+            Map<String,Object> second=repo.page(Json.map("resultId",resultId,"collection","groups","cursor",cursor,"limit",1));assertEquals(1,((List<?>)second.get("entries")).size());assertNotNull(second.get("nextCursor"));
+            assertEquals(Set.of("resultId","collection","position","integrity"),cursor.keySet());
+            Map<String,Object> third=repo.page(Json.map("resultId",resultId,"collection","groups","cursor",second.get("nextCursor"),"limit",1));
+            assertTrue(ValueCodec.map(((List<?>)third.get("entries")).getFirst()).containsKey("collection"));
+            assertNull(third.get("nextCursor"));
+            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","nested","cursor",cursor,"limit",1)));
+            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","groups","cursor",new LinkedHashMap<>(cursor){{put("integrity","malformed");}},"limit",1)));
+            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","groups","cursor",Json.map("resultId",resultId,"collection","groups","position",2L),"limit",1)));
+            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","groups","cursor","opaque-legacy-token","limit",1)));
+            assertThrows(ExceptionHandler.DepositException.class,()->repo.page(Json.map("resultId",resultId,"collection","groups","cursor",null,"limit",257)));tx.rollback();
         }
     }
 
@@ -121,6 +167,7 @@ class ImportResultRepositoryTest {
         try(var tx=database.beginTx()){
             var view=new ImportResultRepository(context(tx,actor)).mappingView(diagnosticResult,"_tabularBlanks");var iterator=view.entrySet().iterator();int count=0;String first=null,last=null;while(iterator.hasNext()){String key=iterator.next().getKey();if(count==0)first=key;last=key;count++;}
             assertEquals(600,count);assertEquals("source-0",first);assertEquals("source-599",last);
+            assertTrue(view.containsKey("source-599"),"the final hash-key bucket must remain readable without full collection scans");
             String explain="EXPLAIN MATCH (row:DepositImportResultEntry {resultId:$resultId,collectionId:$collectionId}) WHERE row.position >= $position RETURN row ORDER BY row.position LIMIT $limit";
             var query=tx.execute(explain,Map.of("resultId",diagnosticResult,"collectionId","fixture","position",0L,"limit",128L));String detail=query.getExecutionPlanDescription().toString();query.close();assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("NodeByLabelScan"),detail);tx.rollback();
         }

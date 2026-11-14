@@ -7,6 +7,6 @@ class DiscoveryInfoTest {
     @Test void advertisesTheSupportedLazyImportResultProtocol() {
         var info = new Discovery.Info("1.2.3");
         assertEquals("1.2.3", info.data.get("version"));
-        assertEquals(java.util.List.of("pagedImportResults"), info.data.get("capabilities"));
+        assertEquals(java.util.List.of("fullNamespaceClone", "pagedImportResults"), info.data.get("capabilities"));
     }
 }

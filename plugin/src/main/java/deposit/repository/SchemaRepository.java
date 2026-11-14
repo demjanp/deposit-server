@@ -38,6 +38,9 @@ public final class SchemaRepository {
             tx.execute("CREATE INDEX deposit_import_result_collection_name IF NOT EXISTS FOR (n:DepositImportResultCollection) ON (n.resultId,n.name)").close();
             tx.execute("CREATE INDEX deposit_import_result_entry_position IF NOT EXISTS FOR (n:DepositImportResultEntry) ON (n.resultId,n.collectionId,n.position)").close();
             tx.execute("CREATE INDEX deposit_import_result_entry_key IF NOT EXISTS FOR (n:DepositImportResultEntry) ON (n.resultId,n.collectionId,n.mapKeyHash)").close();
+            tx.execute("CREATE INDEX deposit_import_result_entry_position_key IF NOT EXISTS FOR (n:DepositImportResultEntry) ON (n.resultId,n.collectionId,n.position,n.mapKeyHash)").close();
+            tx.execute("CREATE INDEX deposit_clone_upload_expiry IF NOT EXISTS FOR (n:DepositCloneUpload) ON (n.expires)").close();
+            tx.execute("CREATE CONSTRAINT deposit_clone_upload_chunk_coordinate IF NOT EXISTS FOR (n:DepositCloneUploadChunk) REQUIRE (n.uploadId,n.offset) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_binding IF NOT EXISTS FOR (n:DepositOperationBinding) REQUIRE (n.actorId,n.operationId) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_prepared_action IF NOT EXISTS FOR (n:DepositPreparedAction) REQUIRE (n.actorId,n.recoveryKey) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_transfer_chunk_coordinate IF NOT EXISTS FOR (n:DepositTransferChunk) REQUIRE (n.uploadId,n.offset) IS UNIQUE").close();
@@ -46,7 +49,7 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_init IF NOT EXISTS FOR (n:DepositInitialization) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_actor_lock IF NOT EXISTS FOR (n:DepositActorLock) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_objects IF NOT EXISTS FOR (n:Object) ON (n.namespaceId)").close();
-            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositTransferChunk","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem","DepositImportPlan"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
+            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositTransferChunk","DepositCloneUpload","DepositCloneUploadChunk","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem","DepositImportPlan"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
             tx.commit();
         }
         try(var tx=db.beginTx()) {

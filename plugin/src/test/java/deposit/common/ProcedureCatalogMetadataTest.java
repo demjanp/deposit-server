@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class ProcedureCatalogMetadataTest {
@@ -29,6 +30,49 @@ class ProcedureCatalogMetadataTest {
             assertCatalogEntryMatchesImplementation(entry);
         }
         assertEquals(ProcedureCatalog.names(), names);
+    }
+
+    @Test void finalImportReadsMatchJavaSignaturesAndMetadata() throws Exception {
+        var catalog = new ObjectMapper().readTree(Files.readString(repositoryRoot().resolve("runtime/public-api.json")));
+        assertEquals("READ", find(catalog, "deposit.get.importPlan").path("mode").asText());
+        for (String name : List.of("deposit.get.importResultPage", "deposit.get.cloneResultPage")) {
+            JsonNode entry = find(catalog, name);
+            assertEquals("Map<String,Object>", argument(entry, "cursor").path("type").asText());
+            assertEquals("Long", argument(entry, "limit").path("type").asText());
+            var method = java.util.Arrays.stream(deposit.api.DepositAPI.class.getDeclaredMethods())
+                .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
+                    && name.equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))
+                .findFirst().orElseThrow();
+            assertEquals(Map.class, method.getParameters()[2].getType());
+            assertEquals(Long.class, method.getParameters()[3].getType());
+            assertEquals(org.neo4j.procedure.Mode.READ,
+                method.getAnnotation(org.neo4j.procedure.Procedure.class).mode());
+        }
+        var method = java.util.Arrays.stream(deposit.api.DepositAPI.class.getDeclaredMethods())
+            .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
+                && "deposit.get.importPlan".equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))
+            .findFirst().orElseThrow();
+        assertEquals(org.neo4j.procedure.Mode.READ, method.getAnnotation(org.neo4j.procedure.Procedure.class).mode());
+    }
+
+    @Test void publicPageLimitIsAcceptedByNeo4jProcedureTypeChecker() throws Exception {
+        var checker = new org.neo4j.procedure.impl.Cypher5TypeCheckers();
+        for (String name : List.of("deposit.get.importResultPage", "deposit.get.cloneResultPage")) {
+            var method = java.util.Arrays.stream(deposit.api.DepositAPI.class.getDeclaredMethods())
+                .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
+                    && name.equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))
+                .findFirst().orElseThrow();
+            for (var parameter : method.getParameters()) {
+                // Neo4j rejects java.lang.Integer but supports Long and primitive long.
+                checker.converterFor(parameter.getParameterizedType());
+            }
+        }
+    }
+
+    private static JsonNode argument(JsonNode entry, String name) {
+        for (JsonNode arg : entry.path("args")) if (name.equals(arg.path("name").asText())) return arg;
+        fail("missing argument " + name + " in " + entry.path("name").asText());
+        return null;
     }
 
     @Test void staleLoadClassificationFixturesAreRejected() throws Exception {

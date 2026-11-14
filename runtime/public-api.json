@@ -1774,7 +1774,7 @@
       {"name": "planId", "type": "String", "binding": "planId"}
     ],
     "output": "data",
-    "mode": "WRITE",
+    "mode": "READ",
     "scope": "namespace",
     "action": false
   },
@@ -1793,7 +1793,7 @@
     "args": [
       {"name": "resultId", "type": "String", "binding": "resultId"},
       {"name": "collection", "type": "String", "binding": "collection"},
-      {"name": "cursor", "type": "String", "binding": "cursor"},
+      {"name": "cursor", "type": "Map<String,Object>", "binding": "cursor"},
       {"name": "limit", "type": "Long", "binding": "limit"}
     ],
     "output": "data",
@@ -1833,16 +1833,6 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
-  },
-  {
-    "name": "deposit.import.namespaceData",
-    "args": [
-      {"name": "packageResourceId", "type": "String", "binding": "packageResourceId"}
-    ],
-    "output": "data",
-    "mode": "WRITE",
-    "scope": "server",
     "action": true
   },
   {
@@ -1994,5 +1984,167 @@
     "mode": "WRITE",
     "scope": "namespace",
     "action": true
+  },
+  {
+    "name": "deposit.import.abortCloneUpload",
+    "args": [
+      {
+        "name": "uploadId",
+        "type": "String",
+        "binding": "uploadId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.import.beginCloneUpload",
+    "args": [
+      {
+        "name": "filename",
+        "type": "String",
+        "binding": "filename"
+      },
+      {
+        "name": "bytes",
+        "type": "Long",
+        "binding": "bytes"
+      },
+      {
+        "name": "sha256",
+        "type": "String",
+        "binding": "sha256"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.import.cloneNamespace",
+    "args": [
+      {
+        "name": "source",
+        "type": "Map<String,Object>",
+        "binding": "source"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.import.cloneUploadChunk",
+    "args": [
+      {
+        "name": "uploadId",
+        "type": "String",
+        "binding": "uploadId"
+      },
+      {
+        "name": "offset",
+        "type": "Long",
+        "binding": "offset"
+      },
+      {
+        "name": "bytesBase64",
+        "type": "String",
+        "binding": "bytesBase64"
+      },
+      {
+        "name": "chunkSha256",
+        "type": "String",
+        "binding": "chunkSha256"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.import.finishCloneUpload",
+    "args": [
+      {
+        "name": "uploadId",
+        "type": "String",
+        "binding": "uploadId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "scope": "server",
+    "action": true
+  },
+  {
+    "name": "deposit.get.cloneResult",
+    "args": [
+      {
+        "name": "resultId",
+        "type": "String",
+        "binding": "resultId"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.cloneResultEntry",
+    "args": [
+      {
+        "name": "resultId",
+        "type": "String",
+        "binding": "resultId"
+      },
+      {
+        "name": "collection",
+        "type": "String",
+        "binding": "collection"
+      },
+      {
+        "name": "key",
+        "type": "String",
+        "binding": "key"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
+  },
+  {
+    "name": "deposit.get.cloneResultPage",
+    "args": [
+      {
+        "name": "resultId",
+        "type": "String",
+        "binding": "resultId"
+      },
+      {
+        "name": "collection",
+        "type": "String",
+        "binding": "collection"
+      },
+      {
+        "name": "cursor",
+        "type": "Map<String,Object>",
+        "binding": "cursor"
+      },
+      {
+        "name": "limit",
+        "type": "Long",
+        "binding": "limit"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
+    "scope": "server",
+    "action": false
   }
 ]
