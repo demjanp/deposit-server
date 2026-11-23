@@ -47,6 +47,8 @@ public abstract class BaseAPI {
             var error=Json.read(failure.getMessage().substring("DEPOSIT_ERROR ".length()));
             return ExceptionHandler.error((String)error.get("code"),(String)error.get("message"),c,Boolean.TRUE.equals(error.get("retryable")),ValueCodec.map(error.get("details")));
         }
+        if(failure instanceof StorageAdmission.StoragePressureException)
+            return ExceptionHandler.error("LIMIT_EXCEEDED",failure.getMessage(),c,false,Map.of());
         if(failure instanceof org.neo4j.graphdb.TransactionTerminatedException) return ExceptionHandler.error("CANCELLED","Transaction terminated",c,false,Map.of());
         String reference=UUID.randomUUID().toString();log.error("Deposit internal failure reference="+reference+" requestId="+(c==null?"unknown":c.requestId)+" exception="+failure.getClass().getName());
         return ExceptionHandler.error("INTERNAL_ERROR","Internal error; consult restricted diagnostics",c,false,Map.of("diagnosticReference",reference));

@@ -150,6 +150,27 @@ class OperationAttemptTest {
         assertEquals("FAILED_ROLLED_BACK",state(status(a,id,a.namespace)));
     }
 
+    @Test void publicStoragePressureReportsBackpressureAndRollback() {
+        Actor a=actor();
+        String id=operationId(clock.get());
+        String name="Pressure "+id;
+        assertEquals("REGISTERED",state(begin(a,id,a.namespace,"deposit.create.class",List.of(name,Map.of()))));
+        server.storageObserverForTesting(point->{
+            if(point.equals("operation-before-final-fence"))
+                throw new StorageAdmission.StoragePressureException("Storage admission is busy");
+        });
+        try {
+            var failure=assertThrows(RuntimeException.class,()->cypher(a.execution,
+                "CALL deposit.create.class($name,$patch,$id,$token) YIELD node RETURN node.id AS id",
+                Json.map("id",id,"name",name,"patch",Map.of(),"token",a.token)));
+            assertTrue(failure.getMessage().contains("LIMIT_EXCEEDED"),failure.getMessage());
+            assertTrue(failure.getMessage().contains("Storage admission is busy"),failure.getMessage());
+        } finally {
+            server.storageObserverForTesting(point->{});
+        }
+        assertEquals("FAILED_ROLLED_BACK",state(status(a,id,a.namespace)));
+    }
+
     @Test void cancellationBeforeTheFinalGateRollsBackTheGraph() throws Exception {
         Actor a=actor();
         String id=operationId(clock.get()), procedure="deposit.create.class";

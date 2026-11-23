@@ -160,6 +160,35 @@ public final class StorageAdmission implements AutoCloseable {
         }
         }finally{stateLock.unlock();}
     }
+
+    /** Runtime resolvers can reclaim only artifacts proven to have a terminal owner. */
+    void reconcileSettled(OwnerResolver resolver)throws IOException {
+        for(String id:List.copyOf(reservations.keySet())){
+            Reservation snapshot;
+            stateLock.lock();
+            try{
+                Reservation current=reservations.get(id);
+                if(current==null)continue;
+                snapshot=current.snapshot();
+            } finally {stateLock.unlock();}
+            // Volume and Neo4j ownership checks can block on a busy installation.
+            // They must not hold the lock used by foreground writers.
+            for(VolumeRef ref:snapshot.volumes.values())
+                volumes.reResolve(ref.deviceId,ref.volumeGuid,Path.of(ref.ownerRoot));
+            OwnerState state=resolver.resolve(snapshot);
+            if(state==null||!state.authoritative||state.active)continue;
+            stateLock.lock();
+            try{
+                Reservation current=reservations.get(snapshot.id);
+                if(current==null||!current.serverRunId.equals(snapshot.serverRunId)
+                        ||!current.volumes.equals(snapshot.volumes)||!current.commitments.equals(snapshot.commitments)
+                        ||!current.writeIntent.equals(snapshot.writeIntent))continue;
+                Files.deleteIfExists(recordPath(current.id));
+                reservations.remove(current.id);
+                current.closed=true;
+            } finally {stateLock.unlock();}
+        }
+    }
     @FunctionalInterface public interface OwnerResolver { OwnerState resolve(Reservation reservation)throws IOException; }
     public record OwnerState(boolean authoritative,boolean active,Map<String,Long> remainingCommitments,Map<String,Object> writeIntent) {
         public OwnerState {remainingCommitments=Map.copyOf(remainingCommitments);writeIntent=Map.copyOf(writeIntent);}
@@ -215,6 +244,10 @@ public final class StorageAdmission implements AutoCloseable {
     public static final class Reservation {
         public final String id,ownerKind,ownerId,operationId,purpose;private String serverRunId;private final Map<String,VolumeRef> volumes;private final Map<String,Long> commitments;private final Map<String,Object> writeIntent;private boolean closed;
         private Reservation(String id,String ownerKind,String ownerId,String operationId,String purpose,String serverRunId,Map<String,VolumeRef> volumes,Map<String,Long> commitments,Map<String,Object> intent,boolean closed){this.id=id;this.ownerKind=ownerKind;this.ownerId=ownerId;this.operationId=operationId;this.purpose=purpose;this.serverRunId=serverRunId;this.volumes=volumes;this.commitments=commitments;this.writeIntent=intent;this.closed=closed;}
+        private Reservation snapshot(){
+            return new Reservation(id,ownerKind,ownerId,operationId,purpose,serverRunId,
+                new LinkedHashMap<>(volumes),new LinkedHashMap<>(commitments),new LinkedHashMap<>(writeIntent),closed);
+        }
         public Map<String,Long> commitments(){return Map.copyOf(commitments);}
         public Map<String,Object> writeIntent(){return Map.copyOf(writeIntent);}
         public String serverRunId(){return serverRunId;}

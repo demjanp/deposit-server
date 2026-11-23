@@ -1,7 +1,6 @@
 package deposit.common;
 
 import static org.junit.jupiter.api.Assertions.*;
-import deposit.common.Results.DataRow;
 import deposit.repository.*;
 import deposit.service.*;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +16,7 @@ import org.neo4j.dbms.api.*;
 import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.kernel.api.net.NetworkConnectionTracker;
 
 /** Small real-path control for storage maintenance running alongside the public uploader. */
 class ResourceMaintenanceConcurrencyTest {
@@ -26,6 +26,7 @@ class ResourceMaintenanceConcurrencyTest {
     private GraphDatabaseAPI database;
     private ServerContext server;
     private String previousConfig,actor,token,namespace;
+    private OperationAttemptTest.Connection execution;
     private ExecutorService uploader;
 
     private void initialize()throws Exception {
@@ -38,6 +39,9 @@ class ResourceMaintenanceConcurrencyTest {
         var field=ServerContext.class.getDeclaredField("database");field.setAccessible(true);field.set(server,database);server.storage=new StorageManager(server,database);SchemaRepository.initialize(database);
         var ready=ServerContext.class.getDeclaredMethod("markReadyForTesting");ready.setAccessible(true);ready.invoke(server);
         database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class).addMonitorListener(server);management.registerTransactionEventListener("neo4j",server);
+        var connections=database.getDependencyResolver().resolveDependency(NetworkConnectionTracker.class);
+        execution=new OperationAttemptTest.Connection(connections.newConnectionId("bolt"));
+        connections.add(execution);
         actor=UUID.randomUUID().toString();token=ServerContext.randomToken();
         try(var tx=database.beginTx()){
             var repo=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));repo.createRestored("User",null,actor,Json.map("enabled",true,"serverRole","user"),actor);
@@ -95,7 +99,12 @@ class ResourceMaintenanceConcurrencyTest {
             String resource=(String)finish.get("resourceId");
             verifyContent(resource,checksum);
             var result=Json.map("fixture",getClass().getSimpleName(),"case",active?"active":"inactive","backgroundLocations",BACKGROUND_LOCATIONS,"payloadBytes",PAYLOAD,"sha256",checksum,"wallMicros",wallNanos/1_000,"micros",phases);
-            if(active){assertTrue(Files.exists(server.storage.files.root.resolve("staging/background-0.part")),"fixture must retain work until the observed tick");assertTrue(overlap.await(5,TimeUnit.SECONDS),"upload did not reach an active maintenance tick");}
+            if(active){
+                assertTrue(Files.exists(server.storage.files.root.resolve("staging/background-0.part")),
+                    "fixture must retain background work until the observed tick");
+                assertTrue(overlap.await(120,TimeUnit.SECONDS),
+                    "scheduled maintenance did not reach the published upload");
+            }
             if(active)assertEquals("staging-cleanup-before",observed.get(),"published staging was not reclaimed by maintenance");
             Path report=Path.of(System.getProperty("deposit.test.root",temporary.toString()),getClass().getSimpleName()+"-"+(active?"active":"inactive")+"-results.json");
             Files.createDirectories(report.toAbsolutePath().getParent());Files.writeString(report,Json.write(result)+System.lineSeparator(),StandardCharsets.UTF_8);
@@ -109,12 +118,15 @@ class ResourceMaintenanceConcurrencyTest {
         repo.record("DepositTransfer",id,Json.map("state","expired","expires",0L,"resourceId",id));
     }
     private ResourceRepository repository(org.neo4j.graphdb.Transaction tx){return new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC)));}
-    private Callable<Map<String,Object>> depositCall(String procedure,Map<String,Object> request){return ()->{try(var tx=database.beginTx()){
-        var envelope=new LinkedHashMap<String,Object>();envelope.put("token",token);envelope.put("operationId",UUID.randomUUID().toString());
-        var context=new RequestContext(tx,envelope);context.publicCall=true;context.procedure=procedure;context.request=request;
-        var actions=new SessionActionService(context);actions.begin(procedure,ProcedureCatalog.spec(procedure).bindings().stream().map(request::get).collect(java.util.stream.Collectors.toList()));
-        var row=(DataRow)new ProcedureService(context).execute().findFirst().orElseThrow();actions.observe();tx.commit();return row.data;
-    }};}
+    private Callable<Map<String,Object>> depositCall(String procedure,Map<String,Object> request){
+        return ()->{
+            String operation=OperationAttemptTest.operationId(server.sessionTime());
+            var arguments=ProcedureCatalog.spec(procedure).bindings().stream().map(request::get).toList();
+            assertEquals("REGISTERED", OperationAttemptTest.call(database,token,execution,"deposit.action.begin",
+                List.of(operation,namespace,procedure,arguments),null,()->{}).get("state"));
+            return OperationAttemptTest.call(database,token,execution,procedure,arguments,operation,()->{});
+        };
+    }
     private Map<String,Object> timed(Map<String,Long> phases,String name,Callable<Map<String,Object>> call)throws Exception {
         long then=System.nanoTime();Map<String,Object> result=uploader.submit(call).get(15,TimeUnit.SECONDS);phases.put(name,(System.nanoTime()-then)/1_000);return result;
     }

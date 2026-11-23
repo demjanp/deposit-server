@@ -69,6 +69,41 @@ class StorageAdmissionTest {
         }
     }
 
+    @Test void runtimeOwnerInspectionDoesNotBlockWritersOrCloseAnUpdatedReservation() throws Exception {
+        var inspecting=new CountDownLatch(1);
+        var finishInspection=new CountDownLatch(1);
+        try(var admission=new StorageAdmission(root,"run-1");
+                var workers=Executors.newFixedThreadPool(2)){
+            var existing=admission.acquire("terminal-candidate","exchange",Map.of(root,1L));
+            var cleanup=workers.submit(()->{
+                admission.reconcileSettled(snapshot->{
+                    inspecting.countDown();
+                    try {
+                        if(!finishInspection.await(30,TimeUnit.SECONDS))throw new java.io.IOException("Inspection timed out");
+                    } catch(InterruptedException failure) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException(failure);
+                    }
+                    return StorageAdmission.OwnerState.absent();
+                });
+                return null;
+            });
+            try{
+                assertTrue(inspecting.await(10,TimeUnit.SECONDS));
+                var second=workers.submit(()->{
+                    admission.grow(existing,Map.of(root,8L));
+                    return admission.acquire("another-writer","resource-upload",Map.of(root,1L));
+                }).get(10,TimeUnit.SECONDS);
+                assertSame(second,admission.existing(second.id));
+            } finally {finishInspection.countDown();}
+            cleanup.get(10,TimeUnit.SECONDS);
+            assertSame(existing,admission.existing(existing.id));
+            admission.reconcileSettled(snapshot->snapshot.id.equals(existing.id)
+                ?StorageAdmission.OwnerState.absent():StorageAdmission.OwnerState.uncertain());
+            assertThrows(java.io.IOException.class,()->admission.existing(existing.id));
+        }
+    }
+
     @Test void restartReconciliationUsesAuthoritativeOwnerStateAndPreservesUncertainOwners()throws Exception {
         String id,volume;
         try(var first=new StorageAdmission(root,"old-run")){

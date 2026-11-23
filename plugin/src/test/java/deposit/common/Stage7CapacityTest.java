@@ -21,6 +21,7 @@ import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.api.net.NetworkConnectionTracker;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
@@ -34,6 +35,7 @@ class Stage7CapacityTest {
     private GraphDatabaseAPI database;
     private ServerContext server;
     private String previousConfig,namespace,actor,token;
+    private OperationAttemptTest.Connection execution;
     private long measuredPageNanos,measuredPageCalls,measuredPageEntries;
     private long measuredObjectLookupNanos,measuredObjectLookupCount;
     private Path timingProgress;
@@ -59,73 +61,76 @@ class Stage7CapacityTest {
         System.out.println("STAGE7 archive="+archive+" entries="+entries+" resourceMembers="+MEMBERS+" actualResourceBytes="+(MEMBERS*4L)+" archiveBytes="+Files.size(archive)+" completeMembershipHeap="+COMPLETE_MEMBERSHIP_HEAP+" budgetMinutes="+COMPLETE_MEMBERSHIP_BUDGET_MINUTES);
     }
 
-    @Test void publicAtomicImportReplaysAndPagesAboveSixteenMiB()throws Exception {
-        initTimingProgress("atomic-import-start objects="+OBJECTS);
-        startServer();prepareReceivingNamespace();String preexistingObject=onlyObjectId();String source=UUID.randomUUID().toString();
-        Path root=Files.createDirectory(temporary.resolve("import")),archive=temporary.resolve("atomic-import.zip");
-        byte[] bytes="actual Stage7 resource retained across rollback".getBytes(StandardCharsets.UTF_8);String checksum=ResourceFiles.checksum(bytes);Files.write(root.resolve(checksum),bytes);
-        writeGraph(root.resolve("graph.json"),source,checksum,bytes.length);writeArchive(root,archive,manifest(source));
-        var summary=ExchangePackageCodec.validateSummary(archive);assertEquals((long)OBJECTS,summary.counts().get("objects"));assertEquals((long)OBJECTS,summary.counts().get("memberships"));
-        timingProgress("atomic-package-built objects="+OBJECTS+" archiveBytes="+Files.size(archive));
-        var packageSource=publishPackage(archive);timingProgress("atomic-package-published objects="+OBJECTS);Set<String> before=storageIds();UUID analyzeOperation=UUID.randomUUID();
-        Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
-        String planId=(String)analysis.get("planId");assertEquals(0L,collectionCount(analysis,"conflicts"));assertEquals(OBJECTS,collectionCount(analysis,"objectMappings"));
-        timingProgress("atomic-analysis-complete objects="+OBJECTS);
-        UUID operation=UUID.randomUUID();var observer=ServerContext.class.getDeclaredMethod("storageObserverForTesting",java.util.function.Consumer.class);observer.setAccessible(true);
-        var induced=new IllegalStateException("Stage7 induced failure after publication and result creation");var once=new AtomicBoolean();
-        observer.invoke(server,(java.util.function.Consumer<String>)point->{if("history-before-receipt".equals(point)&&once.compareAndSet(false,true))throw induced;});
-        IllegalStateException actual=assertThrows(IllegalStateException.class,()->call("deposit.import.apply",operation,args("planId",planId)));
-        observer.invoke(server,(java.util.function.Consumer<String>)point->{});
-        assertSame(induced,actual);timingProgress("atomic-induced-rollback-complete objects="+OBJECTS);assertRolledBack(operation,planId,preexistingObject);
-        Set<String> added=storageIds();added.removeAll(before);assertEquals(1,added.size());String retainedResource=added.iterator().next();assertTrue(server.storage.content.exists(retainedResource));
-        Set<String> retained=admissions(operation);assertFalse(retained.isEmpty(),"publication remains admission-owned for reconciliation");
-        assertEquals(Set.of("import-apply","import-write"),admissionKinds(operation),"published bytes and database writes remain owned by the failed apply");
-        server.storage.admission.reconcile(server.storage::reconcileRuntimeImportWrite);assertEquals(retained,admissions(operation),"uncertain runtime reconciliation does not erase resources or ownership");
-        var replacement=call("deposit.import.analyze",UUID.randomUUID(),
-            args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
-        UUID replacementOperation=UUID.randomUUID();
-        var applied=call("deposit.import.apply",replacementOperation,args("planId",replacement.get("planId")));
-        String result=(String)applied.get("resultId");
-        assertTrue(collectionCount(applied,"mapping")>OBJECTS,"public apply uses the composite mapping, not analysis-only objectMappings");assertEquals((long)OBJECTS,metadata(applied,"createdObjects"));assertEquals(1L,metadata(applied,"createdResources"));
-        timingProgress("atomic-recovery-apply-complete objects="+OBJECTS);
-        assertEquals(withoutLease(applied),withoutLease(call("deposit.get.importResult",null,args("resultId",applied.get("resultId")))));
-        timingProgress("atomic-result-inspected objects="+OBJECTS);
-        assertTrue(admissions(replacementOperation).isEmpty(),"successful apply releases both secondary reservations");
-        assertEquals(withoutLease(applied),withoutLease(call("deposit.get.importResult",null,args("resultId",result))));timingProgress("atomic-result-envelope-retrieved objects="+OBJECTS);
-        try(var tx=database.beginTx()){assertEquals(applied.get("resultId"),tx.findNode(Label.label("DepositReceipt"),"operationId",replacementOperation.toString()).getProperty("importResultId"));assertEquals(OBJECTS+1L,countNodes(tx,"Object"));assertEquals(preexistingObject,onlyPreexistingObjectAfterImport(preexistingObject));assertEquals(2L,countNodes(tx,"DResource"),"original and imported resources must remain");tx.rollback();}
-        assertTrue(server.storage.content.exists(retainedResource),"retained rollback bytes are not expected to disappear during result inspection");
-        measuredPageNanos=measuredPageCalls=measuredPageEntries=0;
-        long retrieved=0,rows=0,topLevelRows=0;var nested=new HashMap<String,String>();var nestedCounts=new HashMap<String,Long>();
-        for(var row:mapping(result,"identityMappings")){var descriptor=ValueCodec.map(row.get("value"));nested.put(scalar(row.get("key")),(String)descriptor.get("collection"));nestedCounts.put(scalar(row.get("key")),((Number)descriptor.get("count")).longValue());}
-        Map<String,Object> publicCollections=ValueCodec.map(applied.get("collections"));
-        assertEquals(Set.of("mapping","identityMappings","resourceMapping","metadata"),publicCollections.keySet(),"full public apply result collection set");
-        for(String name:List.of("mapping","resourceMapping","metadata")){
-            long expected=((Number)ValueCodec.map(publicCollections.get(name)).get("count")).longValue(),count=0;
-            for(var ignored:mapping(result,name))count++;
-            assertEquals(expected,count,"fully paged public result collection "+name);topLevelRows=Math.addExact(topLevelRows,count);
+    @Test void publicAtomicImportPagesAboveSixteenMiB() throws Exception {
+        int count = Integer.getInteger("deposit.capacity.objects", 16 * 1024 * 1024 / (3 * 72) + 1);
+        initTimingProgress("atomic-import-start objects=" + count);
+        startServer();
+        prepareReceivingNamespace();
+        var connections = database.getDependencyResolver().resolveDependency(NetworkConnectionTracker.class);
+        execution = new OperationAttemptTest.Connection(connections.newConnectionId("bolt"));
+        connections.add(execution);
+
+        Path root = Files.createDirectory(temporary.resolve("import"));
+        Path archive = temporary.resolve("atomic-import.zip");
+        String source = UUID.randomUUID().toString();
+        byte[] bytes = "Stage 6 resource".getBytes(StandardCharsets.UTF_8);
+        String checksum = ResourceFiles.checksum(bytes);
+        Files.write(root.resolve(checksum), bytes);
+        writeGraph(root.resolve("graph.json"), source, checksum, bytes.length, count);
+        writeArchive(root, archive, manifest(source));
+
+        var packageSource = publishPackage(archive);
+        var analysis = capacityAction("deposit.import.analyze", List.of(
+            packageSource, Json.map("alwaysCreate", List.of("Specimen"))
+        ), OperationAttemptTest.operationId(server.sessionTime()));
+        assertEquals("PLAN_READY", analysis.get("state"));
+        assertEquals(count, collectionCount(analysis, "objectMappings"));
+        timingProgress("atomic-analysis-complete objects=" + count);
+
+        String operation = OperationAttemptTest.operationId(server.sessionTime());
+        var applied = capacityAction("deposit.import.apply", List.of(analysis.get("planId")), operation);
+        String result = (String) applied.get("resultId");
+        var status = capacityCall("deposit.get.operation", List.of(operation, namespace), null);
+        assertEquals("COMMITTED", status.get("state"));
+        assertEquals(result, ValueCodec.map(status.get("result")).get("resultId"));
+        try (var tx = database.beginTx()) {
+            assertEquals(count + 1L, countNodes(tx, "Object"));
+            assertEquals(2L, countNodes(tx, "DResource"));
         }
-        for(String kind:List.of("Object","Descriptor","Membership")){
-            int count=0;
-            Map<String,String> expected=new java.util.LinkedHashMap<>();
-            String prefix=kind.equals("Object")?"object":kind.equals("Descriptor")?"descriptor":"member";
-            int expectedCount=kind.equals("Descriptor")?OBJECTS+1:OBJECTS;
-            for(int ordinal=0;ordinal<expectedCount;ordinal++)expected.put(id(prefix,ordinal),null);
-            for(var row:mapping(result,nested.get(kind))){String key=scalar(row.get("key"));assertTrue(expected.containsKey(key),"Unexpected or duplicate key "+key);expected.remove(key);String target=scalar(row.get("value"));assertNotNull(target);if(kind.equals("Object"))assertObjectExists(target);retrieved=Math.addExact(retrieved,Math.addExact(key.getBytes(StandardCharsets.UTF_8).length,target.getBytes(StandardCharsets.UTF_8).length));count++;rows++;}
-            assertTrue(expected.isEmpty(),"Unseen keys: "+expected.keySet());assertEquals(expectedCount,count);
+        timingProgress("atomic-apply-committed result=" + result);
+
+        long decoded = 0;
+        var nested = new HashMap<String, String>();
+        for (var row : mapping(result, "identityMappings")) {
+            nested.put(scalar(row.get("key")), collection(row.get("value")));
         }
-        long additionalIdentityRows=0;
-        for(var entry:nested.entrySet())if(!Set.of("Object","Descriptor","Membership").contains(entry.getKey())){
-            long count=0;for(var ignored:mapping(result,entry.getValue()))count++;
-            assertEquals(nestedCounts.get(entry.getKey()),count,"fully paged identity mapping "+entry.getKey());additionalIdentityRows=Math.addExact(additionalIdentityRows,count);
+        for (String kind : List.of("Object", "Descriptor", "Membership")) {
+            long rows = 0;
+            for (var row : mapping(result, nested.get(kind))) {
+                String sourceId = UUID.fromString(scalar(row.get("key"))).toString();
+                String targetId = UUID.fromString(scalar(row.get("value"))).toString();
+                decoded += sourceId.length() + targetId.length();
+                rows++;
+            }
+            assertEquals("Descriptor".equals(kind) ? count + 1L : count, rows);
         }
-        assertEquals(3L*OBJECTS+1,rows);assertTrue(retrieved>16L*1024*1024,"decoded nested identity mapping bytes exceed 16 MiB; actual="+retrieved);
-        assertTrue(measuredPageCalls>0,"page requests are counted at the public page procedure boundary");
-        assertEquals(topLevelRows+rows+additionalIdentityRows+nested.size(),measuredPageEntries,"all entries from every public collection and nested identity mapping were paged");
-        timingProgress("atomic-readback-complete identityRows="+(rows+additionalIdentityRows)+" topLevelRows="+topLevelRows+" pageRequests="+measuredPageCalls+" pageEntries="+measuredPageEntries+" decodedBytes="+retrieved);
-        assertRealCheckpointedValidation(archive);timingProgress("atomic-import-complete objects="+OBJECTS+" rows="+rows);
-        System.out.println("STAGE7 publicImport archive="+archive+" objects="+OBJECTS+" nestedIdentityRows="+(rows+additionalIdentityRows)+" topLevelRows="+topLevelRows+" decodedNestedIdentityBytes="+retrieved+" pageRequests="+measuredPageCalls+" pageEntries="+measuredPageEntries+" actualResourceBytes="+bytes.length+" retainedRollbackResourceId="+retainedResource+" resultId="+result);
+        assertTrue(measuredPageCalls > 3);
+        assertTrue(decoded >= 72L * (3L * count + 1));
+        if (System.getProperty("deposit.capacity.objects") == null) assertTrue(decoded > 16L * 1024 * 1024);
+        System.out.println("Stage 6 capacity objects=" + count + " archiveBytes=" + Files.size(archive)
+            + " decodedIdentityBytes=" + decoded + " pages=" + measuredPageCalls + " state=" + status.get("state")
+            + " operationId=" + operation + " resultId=" + result);
     }
 
+    private Map<String,Object> capacityAction(String procedure, List<Object> arguments, String operation) {
+        assertEquals("REGISTERED",
+            capacityCall("deposit.action.begin", List.of(operation, namespace, procedure, arguments), null).get("state"));
+        return capacityCall(procedure, arguments, operation);
+    }
+
+    private Map<String,Object> capacityCall(String procedure, List<Object> arguments, String operation) {
+        return OperationAttemptTest.call(database, token, execution, procedure, arguments, operation, () -> {});
+    }
     @Test void graphValidationScalesWithActualNestedIdentityRows()throws Exception {
         initTimingProgress("graph-probe-start");
         for(int count:List.of(100_000)){

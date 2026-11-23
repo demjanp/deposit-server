@@ -372,7 +372,7 @@ public final class StorageManager implements AutoCloseable {
             }
             for (String id : ids("DepositPruneItem")) jobs.collect(id);
             // Runtime cleanup is safe only when a durable receipt proves the import transaction committed.
-            admission.reconcile(reservation->Set.of("ocfl-publication","tabular-load","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind)
+            admission.reconcileSettled(reservation->Set.of("ocfl-publication","tabular-load","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind)
                 ?reconcileOutputIntent(reservation):reconcileRuntimeImportWrite(reservation));
             operations.finishCleanup();
         } catch (Exception e) { diagnostic = "Resource maintenance pending: " + e.getClass().getSimpleName(); }
