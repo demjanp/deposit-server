@@ -44,7 +44,7 @@ public final class ResourceService extends BaseService {
             long offset=integer(request.get("offset")),length=integer(request.get("length")),size=number(r,"bytes",0);
             if(offset<0||offset>size||length<1||length>ResourceFiles.MAX_CHUNK)c.fail("VALIDATION_FAILED","Invalid download range");
             int actual=(int)Math.min(length,size-offset);
-            try(var stream=resources.storage.open(resources.content(loc),offset,actual)) {byte[] data=stream.readNBytes(actual);if(data.length!=actual||stream.read()!=-1)throw new IOException("Incomplete resource range");result=Json.map("bytesBase64",Base64.getEncoder().encodeToString(data),"offset",offset,"nextOffset",offset+actual,"eof",offset+actual==size,"chunkSha256",ResourceFiles.checksum(data));}
+            try {byte[] data=resources.storage.readChunk(resources.content(loc),offset,actual);result=Json.map("bytesBase64",Base64.getEncoder().encodeToString(data),"offset",offset,"nextOffset",offset+actual,"eof",offset+actual==size,"chunkSha256",ResourceFiles.checksum(data));}
             catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Resource content unavailable");}
         }
         resources.accessible(r,c.actorId,effectiveRole(c.namespaceId),true);return result;

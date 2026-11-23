@@ -44,6 +44,29 @@ class OcflResourceStorageTest {
             assertThrows(IOException.class,()->storage.open(content(),2,2));
         }
     }
+    @Test void authenticatedChunksVerifyPartialBlocksAndRejectChangedPayloads()throws Exception{
+        byte[] original=new byte[ResourceFiles.CHUNK+3];
+        original[ResourceFiles.CHUNK-1]=1;
+        original[ResourceFiles.CHUNK]=2;
+        Files.write(source,original);
+        var expected=new ResourceStorage.Content(ID,NAME,original.length,ResourceFiles.checksum(original));
+        try(var storage=new OcflResourceStorage(root,work)){
+            storage.publish(expected,source);
+            assertArrayEquals(new byte[]{1,2,0},storage.readChunk(expected,ResourceFiles.CHUNK-1L,3));
+            assertArrayEquals(new byte[0],storage.readChunk(expected,original.length,0));
+            Path payload=object(ID).resolve("v1/content").resolve(NAME);
+            var timestamp=Files.getLastModifiedTime(payload);
+            byte[] corrupt=original.clone();
+            corrupt[ResourceFiles.CHUNK+1]=99;
+            Files.write(payload,corrupt);
+            Files.setLastModifiedTime(payload,timestamp);
+            assertThrows(IOException.class,()->storage.readChunk(expected,ResourceFiles.CHUNK,1));
+            Files.setLastModifiedTime(payload,java.nio.file.attribute.FileTime.fromMillis(timestamp.toMillis()+2000));
+            assertThrows(IOException.class,()->storage.readChunk(expected,0,1));
+            Files.write(payload,original);
+            assertArrayEquals(new byte[]{2,0,0},storage.readChunk(expected,ResourceFiles.CHUNK,3));
+        }
+    }
     @Test void concurrentIdenticalPublicationNeverCreatesAnotherVersion()throws Exception{
         try(var storage=new OcflResourceStorage(root,work);var executor=Executors.newFixedThreadPool(2)){
             var start=new CountDownLatch(1);var a=executor.submit(()->{start.await();storage.publish(content(),source);return true;});var b=executor.submit(()->{start.await();storage.publish(content(),source);return true;});start.countDown();assertTrue(a.get());assertTrue(b.get());storage.verify(content());

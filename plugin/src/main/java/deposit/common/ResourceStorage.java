@@ -14,6 +14,8 @@ public interface ResourceStorage extends AutoCloseable {
     void assertWorkClean() throws IOException;
     void verify(Content content) throws IOException;
     InputStream open(Content content, long offset, long length) throws IOException;
+    /** Return a single bounded range after verifying its stored bytes. */
+    byte[] readChunk(Content content, long offset, int length) throws IOException;
     boolean exists(String resourceId) throws IOException;
     /** Discovery does not create application identity or confer access. */
     List<Content> discover() throws IOException;

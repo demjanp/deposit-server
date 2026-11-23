@@ -8,16 +8,24 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.util.*;
 
 /** The only application class that interprets OCFL inventories and physical layout. */
 public final class OcflResourceStorage implements ResourceStorage {
     private static final String EXTENSION="0004-hashed-n-tuple-storage-layout";
+    private static final int HASH_BYTES=32;
+    private static final int CACHED_BLOCKS=32_768, CACHED_RESOURCES=8;
     private final Path root,work;
     private final OcflRepository repository;
     private final FileChannel ownerChannel;
     private final FileLock owner;
+    private final LinkedHashMap<Content, VerifiedChunks> downloadChecks=new LinkedHashMap<>(16,0.75f,true);
+
+    private record PayloadStamp(Path path,Object fileKey,long bytes,FileTime modified,FileTime created) {}
+    private record VerifiedChunks(PayloadStamp stamp,byte[] blockHashes) {}
 
     public OcflResourceStorage(Path root,Path work) throws IOException {
         this.root=root.toAbsolutePath().normalize();this.work=work.toAbsolutePath().normalize();
@@ -110,6 +118,97 @@ public final class OcflResourceStorage implements ResourceStorage {
         verify(content);if(length==0)return new ByteArrayInputStream(new byte[0]);
         try{return repository.getObject(ObjectVersionId.version(content.resourceId(),"v1")).getFile(content.storedFilename()).getRange(offset,offset+length-1);}
         catch(RuntimeException e){throw new IOException("OCFL read failed",e);}
+    }
+
+    @Override public byte[] readChunk(Content content,long offset,int length)throws IOException {
+        metadata(content);
+        if(offset<0||length<0||length>ResourceFiles.MAX_CHUNK||offset>content.bytes()||length>content.bytes()-offset)
+            throw new IOException("Invalid storage chunk range");
+        long blockCount=content.bytes()/ResourceFiles.CHUNK;
+        if(content.bytes()%ResourceFiles.CHUNK!=0)blockCount++;
+        if(blockCount>CACHED_BLOCKS){
+            try(var input=open(content,offset,length)){return readExactly(input,length);}
+        }
+        try{
+            var object=profile(content.resourceId());
+            if(!object.containsFile(content.storedFilename()))throw new IOException("OCFL payload name differs");
+            var file=object.getFile(content.storedFilename());
+            if(!content.checksum().equals(file.getFixity().get(DigestAlgorithmRegistry.sha256)))
+                throw new IOException("OCFL payload inventory checksum differs");
+            Path path=root.resolve(file.getStorageRelativePath()).normalize();
+            if(!path.startsWith(objectRoot(content.resourceId())))throw new IOException("Invalid OCFL payload path");
+            var stamp=payloadStamp(path,content.bytes());
+            var checked=verifiedChunks(content,file,stamp,(int)blockCount);
+            byte[] output=new byte[length];
+            int copied=0;
+            while(copied<length){
+                long position=offset+copied;
+                int block=(int)(position/ResourceFiles.CHUNK);
+                long blockStart=(long)block*ResourceFiles.CHUNK;
+                int blockLength=(int)Math.min(ResourceFiles.CHUNK,content.bytes()-blockStart);
+                byte[] bytes;
+                try(var range=file.getRange(blockStart,blockStart+blockLength-1)){bytes=readExactly(range,blockLength);}
+                byte[] actual=sha256().digest(bytes);
+                int hashOffset=block*HASH_BYTES;
+                if(!Arrays.equals(actual,0,HASH_BYTES,checked.blockHashes(),hashOffset,hashOffset+HASH_BYTES))
+                    throw new IOException("OCFL payload chunk integrity differs");
+                int withinBlock=(int)(position-blockStart);
+                int count=Math.min(length-copied,blockLength-withinBlock);
+                System.arraycopy(bytes,withinBlock,output,copied,count);
+                copied+=count;
+            }
+            if(!stamp.equals(payloadStamp(path,content.bytes())))throw new IOException("OCFL payload changed during read");
+            return output;
+        }catch(RuntimeException e){throw new IOException("OCFL chunk read failed",e);}
+    }
+
+    private VerifiedChunks verifiedChunks(Content content,OcflObjectVersionFile file,PayloadStamp stamp,int blocks)throws IOException {
+        synchronized(downloadChecks){
+            var cached=downloadChecks.get(content);
+            if(cached!=null&&cached.stamp().equals(stamp))return cached;
+        }
+        // The memo is process-local. Only a complete match with the authoritative digest may seed it.
+        var whole=sha256();
+        var part=sha256();
+        byte[] hashes=new byte[blocks*HASH_BYTES], buffer=new byte[ResourceFiles.CHUNK];
+        long remaining=content.bytes();
+        try(var stream=file.getStream()){
+            for(int block=0;block<blocks;block++){
+                int length=(int)Math.min(buffer.length,remaining);
+                if(stream.readNBytes(buffer,0,length)!=length)throw new IOException("OCFL payload length differs");
+                whole.update(buffer,0,length);
+                part.update(buffer,0,length);
+                System.arraycopy(part.digest(),0,hashes,block*HASH_BYTES,HASH_BYTES);
+                remaining-=length;
+            }
+            if(stream.read()!=-1||!HexFormat.of().formatHex(whole.digest()).equals(content.checksum())
+                ||!stamp.equals(payloadStamp(stamp.path(),content.bytes())))
+                throw new IOException("OCFL payload integrity differs");
+        }
+        var checked=new VerifiedChunks(stamp,hashes);
+        synchronized(downloadChecks){
+            downloadChecks.put(content,checked);
+            if(downloadChecks.size()>CACHED_RESOURCES)downloadChecks.pollFirstEntry();
+        }
+        return checked;
+    }
+
+    private static PayloadStamp payloadStamp(Path path,long size)throws IOException {
+        checkEntry(path);
+        var attrs=Files.readAttributes(path,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);
+        if(!attrs.isRegularFile()||attrs.size()!=size)throw new IOException("OCFL payload length differs");
+        return new PayloadStamp(path,attrs.fileKey(),size,attrs.lastModifiedTime(),attrs.creationTime());
+    }
+
+    private static MessageDigest sha256(){
+        try{return MessageDigest.getInstance("SHA-256");}
+        catch(java.security.NoSuchAlgorithmException e){throw new IllegalStateException(e);}
+    }
+
+    private static byte[] readExactly(InputStream input,int length)throws IOException {
+        byte[] bytes=input.readNBytes(length);
+        if(bytes.length!=length||input.read()!=-1)throw new IOException("Incomplete resource range");
+        return bytes;
     }
     @Override public List<Content> discover()throws IOException {
         var result=new ArrayList<Content>();
