@@ -11,7 +11,7 @@ function Start-Local($State,[string]$PackageRoot) {
     $log=Join-Path $logs 'neo4j.log';$oldLength=if(Test-Path -LiteralPath $log){(Get-Item -LiteralPath $log).Length}else{0}
     $arguments="-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$worker`" -Neo4jHome `"$($State.neo4jHome)`" -JavaHome `"$($State.javaHome)`""
     $proc=Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-    $deadline=[DateTime]::UtcNow.AddSeconds(120)
+    $deadline=[DateTime]::UtcNow.AddMinutes(5)
     while([DateTime]::UtcNow -lt $deadline){$proc.Refresh();if($proc.HasExited){Fail "Neo4j exited during startup. Inspect $err"};if(Test-Path -LiteralPath $log){$stream=[IO.File]::Open($log,'Open','Read','ReadWrite');try{[void]$stream.Seek($oldLength,'Begin');$reader=New-Object IO.StreamReader($stream);$newLog=$reader.ReadToEnd()}finally{$stream.Dispose()};if($newLog -match 'Started\.'){$server=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'"|Where-Object {$_.CommandLine -and $_.CommandLine.Contains([IO.Path]::GetFullPath($State.neo4jHome)) -and $_.CommandLine -match 'org\.neo4j\.server\.(Neo4jCommunity|CommunityEntryPoint)|Neo4jBoot'}|Select-Object -First 1);if($server.Count){@{pid=[int]$server[0].ProcessId;created=$server[0].CreationDate.ToUniversalTime().ToString('o');workerPid=$proc.Id;mode='local'}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $State.neo4jHome 'deposit-process.json') -Encoding UTF8;Write-Output 'Neo4j started.';return}}};Start-Sleep -Milliseconds 500}
     Fail "Neo4j startup timed out. Inspect $log and $err"
 }

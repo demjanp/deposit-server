@@ -8,7 +8,7 @@ public final class ProcedureCatalog {
  static {
   SPECS.put("deposit.exchange.export",new Spec("operational",true,List.of("rootIds","options")));
   SPECS.put("deposit.exchange.beginUpload",new Spec("exchangeUpload",true,List.of("scope","inputKind","metadata")));
-  SPECS.put("deposit.exchange.uploadChunk",new Spec("exchangeUpload",true,List.of("uploadId","member","offset","bytesBase64","chunkSha256")));
+  SPECS.put("deposit.exchange.uploadChunk",new Spec("exchangeUpload",true,List.of("uploadId","member","offset","bytesBase64")));
   SPECS.put("deposit.exchange.finishUpload",new Spec("exchangeUpload",true,List.of("uploadId")));
   SPECS.put("deposit.exchange.abortUpload",new Spec("exchangeUpload",true,List.of("uploadId")));
   SPECS.put("deposit.exchange.inspect",new Spec("server",false,List.of("packageId","grant")));
@@ -122,7 +122,7 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.get.query",new Spec("namespace",false,List.of("query","parameters","+")));
   SPECS.put("deposit.get.queryPage",new Spec("namespace",false,List.of("query","parameters","+")));
   SPECS.put("deposit.resource.beginUpload",new Spec("operational",true,List.of("filename","bytes","sha256","mediaType")));
-  SPECS.put("deposit.resource.uploadChunk",new Spec("operational",true,List.of("uploadId","offset","bytesBase64","chunkSha256")));
+  SPECS.put("deposit.resource.uploadChunk",new Spec("operational",true,List.of("uploadId","offset","bytesBase64")));
   SPECS.put("deposit.resource.finishUpload",new Spec("operational",true,List.of("uploadId")));
   SPECS.put("deposit.resource.abortUpload",new Spec("operational",true,List.of("uploadId")));
   SPECS.put("deposit.resource.info",new Spec("namespace",false,List.of("resourceId")));

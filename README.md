@@ -8,6 +8,8 @@ The alpha uses single-attempt operations. A client registers an operation, execu
 
 The alpha removes prepared-action replay, clone-only staging and resumable uploads. Use the canonical Exchange procedures to stage or export a package, analyze it, and apply it explicitly or clone it atomically. Result readers use short-lived Server leases. Install into a fresh Neo4j database and resource roots for this pre-release format.
 
+The resource and Exchange upload procedures accept contiguous bounded chunks without a checksum argument. Resource publication checks the full declared size and SHA-256. Exchange intake validates complete package and member integrity.
+
 ## Project documentation
 
 - [Deposit Server user guide](doc/README.md)

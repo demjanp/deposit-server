@@ -24,13 +24,12 @@ public final class ResourceTransferRepository {
         resources.record("DepositResourceLocation",id,Json.map("namespaceId",c.namespaceId,"uploadId",upload,"storedFilename",stored,"stagingPath",staging,"bytes",bytes,"checksum",checksum,"leaseUntil",resources.now()+ResourceFiles.LEASE,"everAttached",false,"admissionId",reservation.id));return beginResult(t);
     }
     public Map<String,Object> chunk(Map<String,Object> request,Node t)throws IOException {
-        fields(request,"uploadId","offset","bytesBase64","chunkSha256");
+        fields(request,"uploadId","offset","bytesBase64");
         if(!"uploading".equals(t.getProperty("state")))c.fail("RESOURCE_NOT_READY","Upload already finished");
         long offset=StrictValues.integer(request.get("offset"));String encoded=StrictValues.string(request.get("bytesBase64"));
         if(encoded.length()>4L*((ResourceFiles.MAX_CHUNK+2)/3))c.fail("LIMIT_EXCEEDED","Chunk exceeds limit");
         byte[] bytes;try{bytes=Base64.getDecoder().decode(encoded);}catch(IllegalArgumentException e){throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid Base64");}
         if(bytes.length==0||bytes.length>ResourceFiles.MAX_CHUNK)c.fail("LIMIT_EXCEEDED","Invalid chunk length");
-        String checksum=ResourceFiles.hash(request.get("chunkSha256"));if(!checksum.equals(ResourceFiles.checksum(bytes)))c.fail("VALIDATION_FAILED","Chunk checksum mismatch");
         if(offset<0||offset!=number(t,"nextOffset",0)||bytes.length>number(t,"bytes",0)-offset)c.fail("VALIDATION_FAILED","Chunk must continue the committed offset within declared size");
         Node loc=resources.location(text(t,"resourceId"));String staging=text(loc,"stagingPath");StorageAdmission.Reservation reservation=admission(t,loc,number(t,"bytes",0)-number(t,"nextOffset",0));long argumentBytes=encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         t.setProperty("admissionId",reservation.id);loc.setProperty("admissionId",reservation.id);

@@ -162,7 +162,7 @@ public final class DepositAPI extends BaseAPI {
  @Procedure(name="deposit.resource.beginUpload",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p76(@Name("filename") String a0,@Name("bytes") Long a1,@Name("sha256") String a2,@Name("mediaType") String a3,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.resource.beginUpload",Arrays.asList(a0,a1,a2,a3),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.resource.uploadChunk",mode=Mode.WRITE)
- public Stream<PublicResults.DataRow> p77(@Name("uploadId") String a0,@Name("offset") Long a1,@Name("bytesBase64") String a2,@Name("chunkSha256") String a3,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.resource.uploadChunk",Arrays.asList(a0,a1,a2,a3),operationId).map(PublicResults::data); }
+ public Stream<PublicResults.DataRow> p77(@Name("uploadId") String a0,@Name("offset") Long a1,@Name("bytesBase64") String a2,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.resource.uploadChunk",Arrays.asList(a0,a1,a2),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.resource.finishUpload",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p78(@Name("uploadId") String a0,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.resource.finishUpload",Arrays.asList(a0),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.resource.abortUpload",mode=Mode.WRITE)
@@ -269,8 +269,8 @@ public final class DepositAPI extends BaseAPI {
   return invokePublic(token,"deposit.exchange.beginUpload",Arrays.asList(scope, inputKind, metadata),operationId).map(PublicResults::data);
  }
  @Procedure(name="deposit.exchange.uploadChunk",mode=Mode.WRITE)
- public Stream<PublicResults.DataRow> exchangeUploadchunk(@Name("uploadId") String uploadId, @Name("member") String member, @Name("offset") Long offset, @Name("bytesBase64") String bytesBase64, @Name("chunkSha256") String chunkSha256, @Name("operationId") String operationId, @Name("token") String token) {
-  return invokePublic(token,"deposit.exchange.uploadChunk",Arrays.asList(uploadId, member, offset, bytesBase64, chunkSha256),operationId).map(PublicResults::data);
+ public Stream<PublicResults.DataRow> exchangeUploadchunk(@Name("uploadId") String uploadId, @Name("member") String member, @Name("offset") Long offset, @Name("bytesBase64") String bytesBase64, @Name("operationId") String operationId, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.uploadChunk",Arrays.asList(uploadId, member, offset, bytesBase64),operationId).map(PublicResults::data);
  }
  @Procedure(name="deposit.exchange.finishUpload",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> exchangeFinishupload(@Name("uploadId") String uploadId, @Name("operationId") String operationId, @Name("token") String token) {

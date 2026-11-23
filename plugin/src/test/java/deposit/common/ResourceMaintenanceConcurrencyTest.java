@@ -93,7 +93,7 @@ class ResourceMaintenanceConcurrencyTest {
             long wall=System.nanoTime();
             Map<String,Object> begin=timed(phases,"beginUpload",depositCall("deposit.resource.beginUpload",args("filename","maintenance.zip","bytes",(long)PAYLOAD,"sha256",checksum,"mediaType","application/zip")));
             String upload=(String)begin.get("uploadId");
-            timed(phases,"uploadChunk",depositCall("deposit.resource.uploadChunk",args("uploadId",upload,"offset",0L,"bytesBase64",Base64.getEncoder().encodeToString(bytes),"chunkSha256",ResourceFiles.checksum(bytes))));
+            timed(phases,"uploadChunk",depositCall("deposit.resource.uploadChunk",args("uploadId",upload,"offset",0L,"bytesBase64",Base64.getEncoder().encodeToString(bytes))));
             Map<String,Object> finish=timed(phases,"finishUpload",depositCall("deposit.resource.finishUpload",args("uploadId",upload)));
             long wallNanos=System.nanoTime()-wall;
             String resource=(String)finish.get("resourceId");

@@ -1992,11 +1992,6 @@
         "binding": "bytesBase64"
       },
       {
-        "name": "chunkSha256",
-        "type": "String",
-        "binding": "chunkSha256"
-      },
-      {
         "name": "operationId",
         "type": "String"
       }
@@ -2005,7 +2000,7 @@
     "mode": "WRITE",
     "scope": "operational",
     "action": true,
-    "tokenIndex": 5,
+    "tokenIndex": 4,
     "resultColumns": {
       "data": "Map<String,Object>"
     },
@@ -3346,11 +3341,6 @@
         "binding": "bytesBase64"
       },
       {
-        "name": "chunkSha256",
-        "type": "String",
-        "binding": "chunkSha256"
-      },
-      {
         "name": "operationId",
         "type": "String"
       }
@@ -3359,7 +3349,7 @@
     "mode": "WRITE",
     "scope": "exchangeUpload",
     "action": true,
-    "tokenIndex": 6,
+    "tokenIndex": 5,
     "resultColumns": {
       "data": "Map<String,Object>"
     },

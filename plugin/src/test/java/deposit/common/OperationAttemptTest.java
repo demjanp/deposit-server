@@ -468,6 +468,26 @@ class OperationAttemptTest {
         clock.addAndGet(OperationAttemptRepository.FUTURE_SKEW+1);
     }
 
+    @Test void finishRejectsBytesThatDifferFromTheDeclaredResourceDigest() throws Exception {
+        Actor actor=actor();
+        byte[] expected={1,2}, received={1,3};
+        String upload=(String)tracked(actor,actor.namespace,"deposit.resource.beginUpload",
+            List.of("payload.bin",2L,ResourceFiles.checksum(expected),"application/octet-stream")).get("uploadId");
+        var acknowledged=tracked(actor,actor.namespace,"deposit.resource.uploadChunk",
+            List.of(upload,0L,Base64.getEncoder().encodeToString(received)));
+        assertEquals(2L,acknowledged.get("nextOffset"));
+        String finish="deposit.resource.finishUpload", operation=operationId(clock.get());
+        var arguments=List.<Object>of(upload);
+        begin(actor,operation,actor.namespace,finish,arguments);
+        assertTrue(assertThrows(ExceptionHandler.DepositException.class,()->call(actor,actor.execution,finish,arguments,operation))
+            .getMessage().contains("RESOURCE_CORRUPT"));
+        assertEquals("FAILED_ROLLED_BACK",state(status(actor,operation,actor.namespace)));
+        try(var tx=database.beginTx()){
+            var repo=new CoreRepository(tx,ZonedDateTime.now());
+            assertTrue(repo.nodes("DResource",Map.of("namespaceId",actor.namespace)).isEmpty());
+        }
+    }
+
     @Test void disconnectedUploadCannotAppendAndReplacementStartsAtZero() {
         Actor a=actor();
         String begin="deposit.resource.beginUpload", chunk="deposit.resource.uploadChunk";
@@ -479,7 +499,7 @@ class OperationAttemptTest {
         assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(status(a,id,a.namespace)));
         String upload=(String)result.get("uploadId");
         byte[] first={1};
-        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(first),ResourceFiles.checksum(first));
+        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(first));
         String step=operationId(clock.get());
         begin(a,step,a.namespace,chunk,part);
         assertEquals(1L,call(a,a.execution,chunk,part,step).get("nextOffset"));
@@ -487,7 +507,7 @@ class OperationAttemptTest {
         var newConnection=addConnection();
         var replacement=new Actor(a.id,a.token,a.namespace,newConnection,a.control);
         byte[] second={2};
-        var append=List.<Object>of(upload,1L,Base64.getEncoder().encodeToString(second),ResourceFiles.checksum(second));
+        var append=List.<Object>of(upload,1L,Base64.getEncoder().encodeToString(second));
         assertThrows(ExceptionHandler.DepositException.class,()->begin(replacement,operationId(clock.get()),a.namespace,chunk,append));
         String newId=operationId(clock.get());
         begin(replacement,newId,a.namespace,begin,args);
@@ -746,7 +766,7 @@ class OperationAttemptTest {
         Path staged=server.storage.files.path("staging/"+a.namespace+"/"+upload+".part");
         byte[] bytes={1,2};
         String chunk="deposit.resource.uploadChunk",id=operationId(clock.get());
-        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(bytes),ResourceFiles.checksum(bytes));
+        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(bytes));
         begin(a,id,a.namespace,chunk,part);
         server.storageObserverForTesting(point->{
             if(point.equals("chunk-flushed"))throw new java.io.UncheckedIOException(new java.io.IOException("Simulated staging I/O failure"));
@@ -770,7 +790,7 @@ class OperationAttemptTest {
         begin(a,uploadId,a.namespace,begin,args);
         String upload=(String)call(a,a.execution,begin,args,uploadId).get("uploadId");
         String chunk="deposit.resource.uploadChunk", chunkId=operationId(clock.get());
-        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(bytes),ResourceFiles.checksum(bytes));
+        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(bytes));
         begin(a,chunkId,a.namespace,chunk,part);
         call(a,a.execution,chunk,part,chunkId);
         String finish="deposit.resource.finishUpload", finishId=operationId(clock.get());
@@ -800,7 +820,7 @@ class OperationAttemptTest {
         begin(a,id,a.namespace,begin,args);
         String upload=(String)call(a,a.execution,begin,args,id).get("uploadId");
         String step=operationId(clock.get()),chunk="deposit.resource.uploadChunk";
-        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(bytes),digest);
+        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(bytes));
         begin(a,step,a.namespace,chunk,part);
         assertEquals((long)bytes.length,call(a,a.execution,chunk,part,step).get("nextOffset"));
         String finish=operationId(clock.get()), procedure="deposit.resource.finishUpload";
@@ -1154,7 +1174,7 @@ class OperationAttemptTest {
         String resourceUpload=(String)tracked(source,original,"deposit.resource.beginUpload",
             List.of("history.bin",(long)payload.length,digest,"application/octet-stream")).get("uploadId");
         tracked(source,original,"deposit.resource.uploadChunk",
-            List.of(resourceUpload,0L,Base64.getEncoder().encodeToString(payload),digest));
+            List.of(resourceUpload,0L,Base64.getEncoder().encodeToString(payload)));
         String resource=(String)tracked(source,original,"deposit.resource.finishUpload",List.of(resourceUpload)).get("resourceId");
         var clazz=tracked(source,original,"deposit.create.class",List.of("Historical class",
             Map.of("descriptors",List.of(Map.of("name","Attachment","type","DResource")))));
@@ -1330,7 +1350,7 @@ class OperationAttemptTest {
 
     private void exchangeChunk(Actor actor,String scope,String upload,String member,long offset,byte[] data) {
         var result=tracked(actor,scope,"deposit.exchange.uploadChunk",
-            List.of(upload,member,offset,Base64.getEncoder().encodeToString(data),ResourceFiles.checksum(data)));
+            List.of(upload,member,offset,Base64.getEncoder().encodeToString(data)));
         assertEquals(offset+data.length,result.get("nextOffset"));
     }
 
@@ -1364,7 +1384,7 @@ class OperationAttemptTest {
     private void writeResource(Actor a,String upload) {
         String id=operationId(clock.get()), procedure="deposit.resource.uploadChunk";
         byte[] body={1,2};
-        var args=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(body),ResourceFiles.checksum(body));
+        var args=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(body));
         begin(a,id,a.namespace,procedure,args);
         assertEquals(2L,call(a,a.execution,procedure,args,id).get("nextOffset"));
     }

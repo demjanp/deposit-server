@@ -151,8 +151,6 @@ final class ExchangePackages extends BaseService {
         try {bytes=Base64.getDecoder().decode(encoded);}
         catch(IllegalArgumentException failure){throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid Base64");}
         if(bytes.length>ResourceFiles.MAX_CHUNK)c.fail("LIMIT_EXCEEDED","Exchange chunk exceeds limit");
-        if(!ResourceFiles.hash(request.get("chunkSha256")).equals(ResourceFiles.checksum(bytes)))
-            c.fail("VALIDATION_FAILED","Exchange chunk checksum mismatch");
         Node member=repo.find(MEMBER,Map.of("uploadId",id,"name",name));
         long previous=member==null?0L:(long)member.getProperty("bytes");
         boolean empty=bytes.length==0;
