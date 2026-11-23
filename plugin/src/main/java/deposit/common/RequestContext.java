@@ -17,6 +17,7 @@ public final class RequestContext {
     public Map<String,Object> request;
     public Map<String,Object> selectorBindings=Map.of();
     public long observationGeneration;
+    public String resultSourcePackage;
     public Runnable checkSourceAuthorization=()->{};
     public final ServerContext server;
     public final ServerContext.TxState state;

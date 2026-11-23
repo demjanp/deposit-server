@@ -329,6 +329,18 @@ final class ExchangePackages extends BaseService {
         return stage;
     }
 
+    void authorizeResultSource(String id) {
+        Node stage=repo.find(LABEL,"id",id);
+        if(stage==null)throw unavailable();
+        c.tx.acquireReadLock(stage);
+        if(!SOURCE.equals(stage.getProperty("grantKind",null))
+                || !"ready".equals(stage.getProperty("state",null))
+                || (long)stage.getProperty("expiresAt",0L)<=now())throw unavailable();
+        authorize(stage,stage.getProperty("grant"),"viewer");
+    }
+
+    boolean sourceExport(Node stage) {return SOURCE.equals(stage.getProperty("grantKind",null));}
+
     private Node access(Object rawId,Object rawGrant) {
         Node stage=repo.find(LABEL,"id",RequestContext.uuid(rawId));
         if(stage==null || !c.actorId.equals(stage.getProperty("actorId",null))

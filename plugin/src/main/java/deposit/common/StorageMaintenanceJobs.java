@@ -226,16 +226,57 @@ final class StorageMaintenanceJobs {
                 ||!operationId.equals(receipt.getProperty("operationId",null))
                 ||!actorId.equals(receipt.getProperty("actorId",null)))return false;
         Object storedResult=receipt.getProperty("importResultId",null);if(!resultId.equals(storedResult))return false;
-        Node result=core.find("DepositImportResult","id",resultId);if(result==null
-                ||!"clone".equals(result.getProperty("kind",null))
-                ||!operationId.equals(result.getProperty("operationId",null))
-                ||!actorId.equals(result.getProperty("actorId",null))
-                ||!namespaceId.equals(result.getProperty("namespaceId",null)))return false;
-        return namespaceId.equals(receipt.getProperty("resultNamespaceId",null));
+        return ImportResultContract.verifiesResult(core,receipt,namespaceId);
     }
 
     private boolean hasCloneChunks(Transaction tx,String uploadId){
         try(var rows=tx.execute("MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId}) RETURN chunk.id AS id LIMIT 1",Map.of("uploadId",uploadId))){return rows.hasNext();}
+    }
+
+    void expireImportResults() {
+        // Stateless leases have a fixed maximum deadline. Collect only after that deadline,
+        // holding the result lock against leased readers and already-admitted apply calls.
+        long cutoff=server.sessionTime()-ImportResultContract.READER;
+        try(var tx=db.beginTx()) {
+            String id;
+            try(var candidates=tx.execute("""
+                    MATCH (result:DepositImportResult) WHERE result.expiresAt <= $cutoff
+                    RETURN result.id AS id ORDER BY result.expiresAt LIMIT 1
+                    """,Map.of("cutoff",cutoff))) {
+                if(!candidates.hasNext())return;
+                id=(String)candidates.next().get("id");
+            }
+            Node result=core(tx).find(ImportResultContract.LABEL,"id",id);
+            if(result==null)return;
+            tx.acquireWriteLock(result);
+            result=core(tx).find(ImportResultContract.LABEL,"id",id);
+            if(result==null)return;
+            if(number(result,"expiresAt",Long.MAX_VALUE)>server.sessionTime()-ImportResultContract.READER)return;
+            if(deleteResultSegments(tx,"DepositImportResultEntry",id)<256
+                    && deleteResultSegments(tx,"DepositImportResultCollection",id)<256) {
+                CoreRepository core=core(tx);
+                String namespace=text(result,"namespaceId");
+                String scope="server".equals(text(result,"scope"))?"server":namespace;
+                Node receipt=core.receipt(text(result,"actorId"),scope,text(result,"operationId"));
+                if(receipt!=null && id.equals(receipt.getProperty("importResultId",null))
+                        && ImportResultContract.verifiesResult(core,receipt,namespace)) {
+                    if(!receipt.hasProperty("resultKind")) {
+                        String kind=text(result,"kind");
+                        receipt.setProperty("resultKind","diagnostic".equals(kind)?"analysis":kind);
+                    }
+                    receipt.setProperty("importResultCollected",true);
+                }
+                result.delete();
+            }
+            tx.commit();
+        }
+    }
+
+    private long deleteResultSegments(Transaction tx,String label,String resultId) {
+        try(var rows=tx.execute("MATCH (segment:"+label+" {resultId:$id}) "
+                +"WITH segment LIMIT 256 DELETE segment RETURN count(*) AS deleted",Map.of("id",resultId))) {
+            return (long)rows.next().get("deleted");
+        }
     }
 
     void expireImportPlans() throws IOException {

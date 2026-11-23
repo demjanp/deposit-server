@@ -353,8 +353,8 @@ class ImportHistoryActionTest {
         Map<String,Object> envelope=invokeCloneUpload("deposit.import.cloneNamespace",UUID.randomUUID().toString(),Json.map("source",Json.map("uploadId",uploadId,"sha256",packageChecksum)),true,serverRevision());
         String clonedNamespace=(String)envelope.get("namespaceId"),resultId=(String)envelope.get("resultId");assertNotNull(clonedNamespace);assertNotNull(resultId);
         try(var tx=database.beginTx()){
-            var context=new RequestContext(tx,Json.map("token",token));context.actorId=actor;
-            var page=new ImportResultRepository(context).clonePage(Json.map("resultId",resultId,"collection","resourceMapping","limit",128L));
+            var context=new RequestContext(tx,Json.map("token",token));context.actorId=actor;context.session=server.session(Json.hash(token));
+            var page=new ImportResultRepository(context).page(Json.map("resultId",resultId,"leaseId",envelope.get("leaseId"),"collection","resourceMapping","limit",128L));
             var row=ValueCodec.map(((List<?>)page.get("entries")).getFirst());String clonedResource=(String)ValueCodec.map(row.get("value")).get("value");
             assertEquals(sourceResource,ValueCodec.map(row.get("key")).get("value"));assertNotNull(clonedResource);
             Node resource=tx.findNode(Label.label("DResource"),"id",clonedResource);assertNotNull(resource);assertEquals(clonedNamespace,resource.getProperty("namespaceId"));assertTrue(server.storage.content.exists(clonedResource));
@@ -437,8 +437,8 @@ class ImportHistoryActionTest {
             try(var declarations=tx.findNodes(Label.label("ClassDescriptor"),Map.of("namespaceId",destination,"name","Transition"))){assertTrue(declarations.hasNext());targetTransitionDeclaration=CoreRepository.id(declarations.next());}
             Node object;try(var objects=tx.findNodes(Label.label("Object"),Map.of("namespaceId",destination))){assertTrue(objects.hasNext());object=objects.next();assertFalse(objects.hasNext());}
             CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC));targetMassDescriptor=CoreRepository.id(core.descriptor(object,"Mass"));targetListDescriptor=CoreRepository.id(core.descriptor(object,"Series"));targetTransitionDescriptor=CoreRepository.id(core.descriptor(object,"Transition"));
-            var context=new RequestContext(tx,Json.map("token",token));context.actorId=actor;
-            Map<String,Object> page=new ImportResultRepository(context).clonePage(Json.map("resultId",resultId,"collection","mapping","limit",128L));
+            var context=new RequestContext(tx,Json.map("token",token));context.actorId=actor;context.session=server.session(Json.hash(token));
+            Map<String,Object> page=new ImportResultRepository(context).page(Json.map("resultId",resultId,"leaseId",result.get("leaseId"),"collection","mapping","limit",128L));
             boolean matched=false;for(Object raw:(List<?>)page.get("entries")){var entry=ValueCodec.map(raw);if(sourceDeclaration.equals(ValueCodec.map(entry.get("key")).get("value"))){assertEquals(targetDeclaration,ValueCodec.map(entry.get("value")).get("value"));matched=true;}}
             assertTrue(matched,"clone result must map the source ClassDescriptor to the materialized current declaration");tx.commit();
         }

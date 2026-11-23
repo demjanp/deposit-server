@@ -698,6 +698,159 @@ class OperationAttemptTest {
         }
     }
 
+    @Test void importResultLeaseAndCommitProofOutliveAdmissionIndependently() throws Exception {
+        Actor source=actor(), receiver=receivingNamespace(source);
+        tracked(source,source.namespace,"deposit.create.class",List.of("First mapped class",Map.of()));
+        tracked(source,source.namespace,"deposit.create.class",List.of("Second mapped class",Map.of()));
+        var exported=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        byte[] zip=exchangeBytes(source,exported,inspectExchange(source,exported),"package");
+        String upload=beginExchange(receiver,receiver.namespace,"zip",Map.of());
+        exchangeChunk(receiver,receiver.namespace,upload,"package",0,zip);
+        var received=tracked(receiver,receiver.namespace,"deposit.exchange.finishUpload",List.of(upload));
+        var analysis=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(received),Map.of()));
+        assertEquals("PLAN_READY",analysis.get("state"));
+        String plan=(String)analysis.get("planId");
+        var inspected=call(receiver,receiver.control,"deposit.get.importPlan",List.of(plan),null);
+        var analysisLease=ValueCodec.map(inspected.get("analysisResult"));
+        assertEquals(analysis.get("resultId"),analysisLease.get("resultId"));
+        assertNotEquals(analysis.get("leaseId"),analysisLease.get("leaseId"));
+        assertEquals(2L,ValueCodec.map(ValueCodec.map(analysisLease.get("collections")).get("classMap")).get("count"));
+        Actor owner=actor();
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(owner.id,receiver.namespace,"owner");
+            tx.commit();
+        }
+        Actor otherOwner=renew(new Actor(owner.id,null,receiver.namespace,owner.execution,owner.control));
+        assertEquals(plan,call(otherOwner,otherOwner.control,"deposit.get.importPlanMetadata",List.of(plan),null).get("planId"));
+        assertTrue(assertThrows(ExceptionHandler.DepositException.class,
+            ()->call(otherOwner,otherOwner.control,"deposit.get.importPlan",List.of(plan),null)).getMessage().contains("FORBIDDEN"));
+        var applied=tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(plan));
+        assertEquals("APPLIED",applied.get("state"));
+        String result=(String)applied.get("resultId"), operation=(String)applied.get("operationId");
+        var pageParams=Json.map("id",result,"lease",applied.get("leaseId"),"collection","identityMappings","token",receiver.token);
+        var registeredPage=ValueCodec.map(cypher(receiver.control,
+            "CALL deposit.get.importResultPage($id,$lease,$collection,null,1,$token) YIELD data RETURN data",pageParams).get("data"));
+        var kind=ValueCodec.map(((List<?>)registeredPage.get("entries")).getFirst());
+        assertNotNull(kind.get("key"));
+        var jobs=new StorageMaintenanceJobs(server,database,server.storage.files,()->server.storage.content,message->{});
+        long original=clock.get(), expiry=(long)applied.get("expiresAt");
+        assertEquals(original+ImportResultContract.RETENTION,expiry);
+        try {
+            clock.set(expiry-1);
+            Actor reader=renew(receiver);
+            var lease=call(reader,reader.control,"deposit.get.importResult",List.of(result),null);
+            long deadline=(long)lease.get("leaseExpiresAt");
+            Object leaseId=lease.get("leaseId");
+            var first=call(reader,reader.control,"deposit.get.importResultPage",Arrays.asList(result,leaseId,"identityMappings",null,1L),null);
+            Object cursor=first.get("nextCursor");
+            assertNotNull(cursor);
+            var another=call(reader,reader.control,"deposit.get.importResult",List.of(result),null);
+            assertThrows(ExceptionHandler.DepositException.class,()->call(reader,reader.control,"deposit.get.importResultPage",
+                List.of(result,another.get("leaseId"),"identityMappings",cursor,1L),null));
+            clock.set(expiry);
+            jobs.expireImportResults();
+            assertTrue(assertThrows(ExceptionHandler.DepositException.class,
+                ()->call(reader,reader.control,"deposit.get.importResult",List.of(result),null)).getMessage().contains("RESULT_EXPIRED"));
+            var second=call(reader,reader.control,"deposit.get.importResultPage",List.of(result,leaseId,"identityMappings",cursor,1L),null);
+            assertNotEquals(first.get("entries"),second.get("entries"));
+            var committed=status(reader,operation,receiver.namespace);
+            assertEquals("COMMITTED",state(committed));
+            assertEquals("RESULT_EXPIRED",committed.get("code"));
+            assertEquals(result,ValueCodec.map(committed.get("result")).get("resultId"));
+            clock.set(deadline);
+            Actor renewed=renew(receiver);
+            assertTrue(assertThrows(ExceptionHandler.DepositException.class,
+                ()->call(renewed,renewed.control,"deposit.get.importResultPage",List.of(result,leaseId,"identityMappings",cursor,1L),null))
+                .getMessage().contains("RESULT_EXPIRED"));
+            clock.set(expiry+ImportResultContract.READER);
+            jobs.expireImportResults();
+            jobs.expireImportResults();
+            try(var tx=database.beginTx()) {
+                var core=new CoreRepository(tx,ZonedDateTime.now());
+                assertNull(core.find(ImportResultContract.LABEL,"id",result));
+                assertTrue(core.nodes("DepositImportResultEntry",Map.of("resultId",result)).isEmpty());
+                var receipt=core.receipt(receiver.id,receiver.namespace,operation);
+                assertEquals(result,receipt.getProperty("importResultId"));
+                assertFalse(receipt.hasProperty("outcome"));
+                assertEquals(true,receipt.getProperty("importResultCollected"));
+                assertTrue(ImportResultContract.verifiesResult(core,receipt,receiver.namespace));
+            }
+            assertEquals("COMMITTED",state(status(renewed,operation,receiver.namespace)));
+        } finally {
+            clock.set(original);
+        }
+    }
+
+    @Test void cloneReceiptStaysSanitizedWhenSourceOrDestinationAccessChanges() {
+        Actor source=actor();
+        tracked(source,source.namespace,"deposit.create.class",List.of("Clone specimen",Map.of()));
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).namespace(source.namespace).setProperty("name","renamed-"+source.namespace);
+            tx.commit();
+        }
+        var clone=tracked(source,"server","deposit.import.cloneNamespace",List.of(packageSource(reference)));
+        assertEquals("COMMITTED",clone.get("state"));
+        String target=(String)clone.get("namespaceId"), id=(String)clone.get("operationId");
+        String result=(String)clone.get("resultId");
+        var page=Arrays.asList(result,clone.get("leaseId"),"identityMappings",null,1L);
+        assertEquals(1,((List<?>)call(source,source.control,"deposit.get.importResultPage",page,null).get("entries")).size());
+        Actor outsider=actor();
+        assertEquals("OUTCOME_UNKNOWN",state(status(outsider,id,"server")));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(outsider,outsider.control,"deposit.get.importResultPage",page,null));
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(source.id,target,null);
+            tx.commit();
+        }
+        assertThrows(ExceptionHandler.DepositException.class,()->call(source,source.control,"deposit.get.importResultPage",page,null));
+        assertSanitizedClone(source,id);
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(source.id,target,"owner");
+            tx.commit();
+        }
+        long now=clock.get();
+        try {
+            clock.set((long)reference.get("expiresAt"));
+            Actor renewed=renew(source);
+            assertThrows(ExceptionHandler.DepositException.class,()->call(renewed,renewed.control,"deposit.get.importResult",List.of(result),null));
+            assertSanitizedClone(renewed,id);
+        } finally {
+            clock.set(now);
+        }
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(source.id,source.namespace,null);
+            tx.commit();
+        }
+        assertThrows(ExceptionHandler.DepositException.class,()->call(source,source.control,"deposit.get.importResultPage",page,null));
+        assertSanitizedClone(source,id);
+        String targetName;
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            core.setRole(source.id,source.namespace,"owner");
+            targetName=(String)core.namespace(target).getProperty("name");
+            tx.commit();
+        }
+        assertEquals(result,call(source,source.control,"deposit.get.importResult",List.of(result),null).get("resultId"));
+
+        Actor destination=renew(new Actor(source.id,null,target,addConnection(),addConnection()));
+        tracked(destination,"server","deposit.delete.namespace",List.of(targetName));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(source,source.control,"deposit.get.importResult",List.of(result),null));
+        assertSanitizedClone(source,id);
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).find("User","id",source.id).setProperty("enabled",false);
+            tx.commit();
+        }
+        assertThrows(ExceptionHandler.DepositException.class,()->status(source,id,"server"));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(source,source.control,"deposit.get.importResultPage",page,null));
+    }
+
+    private void assertSanitizedClone(Actor actor,String operation) {
+        var receipt=status(actor,operation,"server");
+        assertEquals("COMMITTED",state(receipt));
+        assertNull(receipt.get("code"));
+        assertNull(receipt.get("result"));
+    }
+
     @Test void exchangeBadCentralDirectoryFencesUploadBeforePublication() throws Exception {
         Actor actor=actor();
         Path archive=directory.resolve("malformed-intake.zip");

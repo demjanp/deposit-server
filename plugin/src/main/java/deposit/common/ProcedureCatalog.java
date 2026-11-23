@@ -49,10 +49,11 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.save.data",new Spec("operational",true,List.of("selection","+")));
   SPECS.put("deposit.load.data",new Spec("namespace",false,List.of("resourceId")));
   SPECS.put("deposit.import.analyze",new Spec("operational",true,List.of("source","rules")));
-  SPECS.put("deposit.get.importPlan",new Spec("namespace",false,List.of("planId","renewLease")));
-  SPECS.put("deposit.get.importResult",new Spec("namespace",false,List.of("resultId")));
-  SPECS.put("deposit.get.importResultPage",new Spec("namespace",false,List.of("resultId","collection","cursor","limit")));
-  SPECS.put("deposit.get.importResultEntry",new Spec("namespace",false,List.of("resultId","collection","key")));
+  SPECS.put("deposit.get.importPlan",new Spec("namespace",false,List.of("planId")));
+  SPECS.put("deposit.get.importPlanMetadata",new Spec("namespace",false,List.of("planId")));
+  SPECS.put("deposit.get.importResult",new Spec("server",false,List.of("resultId")));
+  SPECS.put("deposit.get.importResultPage",new Spec("server",false,List.of("resultId","leaseId","collection","cursor","limit")));
+  SPECS.put("deposit.get.importResultEntry",new Spec("server",false,List.of("resultId","leaseId","collection","key")));
   SPECS.put("deposit.import.apply",new Spec("operational",true,List.of("planId")));
   SPECS.put("deposit.import.dataByPattern",new Spec("operational",true,List.of("pattern","values","rules")));
   SPECS.put("deposit.import.cloneNamespace",new Spec("server",true,List.of("source")));
@@ -60,9 +61,6 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.import.cloneUploadChunk",new Spec("server",true,List.of("uploadId","offset","bytesBase64","chunkSha256")));
   SPECS.put("deposit.import.finishCloneUpload",new Spec("server",true,List.of("uploadId")));
   SPECS.put("deposit.import.abortCloneUpload",new Spec("server",true,List.of("uploadId")));
-  SPECS.put("deposit.get.cloneResult",new Spec("server",false,List.of("resultId")));
-  SPECS.put("deposit.get.cloneResultPage",new Spec("server",false,List.of("resultId","collection","cursor","limit")));
-  SPECS.put("deposit.get.cloneResultEntry",new Spec("server",false,List.of("resultId","collection","key")));
   SPECS.put("deposit.load.csv",new Spec("operational",true,List.of("resourceId","formatOptions")));
   SPECS.put("deposit.load.xlsx",new Spec("operational",true,List.of("resourceId","formatOptions")));
   SPECS.put("deposit.load.gpkg",new Spec("operational",true,List.of("resourceId","formatOptions")));

@@ -45,6 +45,8 @@ public final class SchemaRepository {
             tx.execute("CREATE INDEX deposit_exchange_member_writer IF NOT EXISTS FOR (n:DepositExchangeUploadMember) ON (n.uploadId)").close();
             tx.execute("CREATE INDEX deposit_clone_writer_session IF NOT EXISTS FOR (n:DepositCloneUpload) ON (n.writerSession)").close();
             tx.execute("CREATE CONSTRAINT deposit_import_result_id IF NOT EXISTS FOR (n:DepositImportResult) REQUIRE n.id IS UNIQUE").close();
+            tx.execute("CREATE INDEX deposit_import_result_expiry IF NOT EXISTS FOR (n:DepositImportResult) ON (n.expiresAt)").close();
+            tx.execute("CREATE INDEX deposit_import_result_entry_root IF NOT EXISTS FOR (n:DepositImportResultEntry) ON (n.resultId)").close();
             tx.execute("CREATE CONSTRAINT deposit_import_result_collection_id IF NOT EXISTS FOR (n:DepositImportResultCollection) REQUIRE (n.resultId,n.id) IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_import_result_collection_name IF NOT EXISTS FOR (n:DepositImportResultCollection) ON (n.resultId,n.name)").close();
             tx.execute("CREATE INDEX deposit_import_result_entry_position IF NOT EXISTS FOR (n:DepositImportResultEntry) ON (n.resultId,n.collectionId,n.position)").close();

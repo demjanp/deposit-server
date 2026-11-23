@@ -225,14 +225,16 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p107(@Name("resourceId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.load.data",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.import.analyze",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p108(@Name("source") Map<String,Object> a0,@Name("rules") Map<String,Object> a1,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.analyze",Arrays.asList(a0,a1),operationId).map(PublicResults::data); }
- @Procedure(name="deposit.get.importPlan",mode=Mode.WRITE)
- public Stream<PublicResults.DataRow> p109(@Name("planId") String a0,@Name("token") String token,@Name(value="renewLease",defaultValue="true") Boolean renewLease) { return invokePublic(token,"deposit.get.importPlan",Arrays.asList(a0,renewLease)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.importPlan",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> p109(@Name("planId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.importPlan",Arrays.asList(a0)).map(PublicResults::data); }
+ @Procedure(name="deposit.get.importPlanMetadata",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> importPlanMetadata(@Name("planId") String planId,@Name("token") String token) { return invokePublic(token,"deposit.get.importPlanMetadata",Arrays.asList(planId)).map(PublicResults::data); }
  @Procedure(name="deposit.get.importResult",mode=Mode.READ)
  public Stream<PublicResults.DataRow> p123(@Name("resultId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.importResult",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.get.importResultPage",mode=Mode.READ)
- public Stream<PublicResults.DataRow> p124(@Name("resultId") String a0,@Name("collection") String a1,@Name("cursor") Map<String,Object> a2,@Name("limit") Long a3,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultPage",Arrays.asList(a0,a1,a2,a3)).map(PublicResults::data); }
+ public Stream<PublicResults.DataRow> p124(@Name("resultId") String a0,@Name("leaseId") String leaseId,@Name("collection") String a1,@Name("cursor") Map<String,Object> a2,@Name("limit") Long a3,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultPage",Arrays.asList(a0,leaseId,a1,a2,a3)).map(PublicResults::data); }
  @Procedure(name="deposit.get.importResultEntry",mode=Mode.READ)
- public Stream<PublicResults.DataRow> p125(@Name("resultId") String a0,@Name("collection") String a1,@Name("key") String a2,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultEntry",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
+ public Stream<PublicResults.DataRow> p125(@Name("resultId") String a0,@Name("leaseId") String leaseId,@Name("collection") String a1,@Name("key") String a2,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultEntry",Arrays.asList(a0,leaseId,a1,a2)).map(PublicResults::data); }
  @Procedure(name="deposit.import.apply",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p110(@Name("planId") String a0,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.apply",Arrays.asList(a0),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.import.cloneNamespace",mode=Mode.WRITE)
@@ -245,12 +247,6 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p128(@Name("uploadId") String a0,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.finishCloneUpload",Arrays.asList(a0),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.import.abortCloneUpload",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p129(@Name("uploadId") String a0,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.abortCloneUpload",Arrays.asList(a0),operationId).map(PublicResults::data); }
- @Procedure(name="deposit.get.cloneResult",mode=Mode.READ)
- public Stream<PublicResults.DataRow> p130(@Name("resultId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.get.cloneResult",Arrays.asList(a0)).map(PublicResults::data); }
- @Procedure(name="deposit.get.cloneResultPage",mode=Mode.READ)
- public Stream<PublicResults.DataRow> p131(@Name("resultId") String a0,@Name("collection") String a1,@Name("cursor") Map<String,Object> a2,@Name("limit") Long a3,@Name("token") String token) { return invokePublic(token,"deposit.get.cloneResultPage",Arrays.asList(a0,a1,a2,a3)).map(PublicResults::data); }
- @Procedure(name="deposit.get.cloneResultEntry",mode=Mode.READ)
- public Stream<PublicResults.DataRow> p132(@Name("resultId") String a0,@Name("collection") String a1,@Name("key") String a2,@Name("token") String token) { return invokePublic(token,"deposit.get.cloneResultEntry",Arrays.asList(a0,a1,a2)).map(PublicResults::data); }
  @Procedure(name="deposit.load.csv",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p112(@Name("resourceId") String a0,@Name("formatOptions") Map<String,Object> a1,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.load.csv",Arrays.asList(a0,a1),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.load.xlsx",mode=Mode.WRITE)

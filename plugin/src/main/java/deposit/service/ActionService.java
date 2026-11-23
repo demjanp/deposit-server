@@ -53,7 +53,11 @@ public abstract class ActionService extends BaseService {
             if(c.journal!=null){c.journal.checkpoint(capture(history,scope,workspace));String revisionId=importApply?history.appendId(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp,ImportWriteBudget.forRequest(c)::reserveHistoryRecord):history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp).id();if(!isImportResult(change.outcome().data()))change.outcome().data().put("revisionId",revisionId);}
         } else if(!isImportResult(change.outcome().data()))change.outcome().data().put("changed",false);
         if(scientific){c.server.storagePoint("history-before-receipt");c.state.afterCommit.add(()->c.server.storagePoint("history-after-commit"));}
-        repo.saveReceipt(c,scope,hash,change.outcome());if(ImportResultContract.FORMAT.equals(change.outcome().data().get("format"))&&c.state.importWriteBudget!=null)c.state.importWriteBudget.finish();return change.outcome();
+        boolean importResult=isImportResult(change.outcome().data());
+        if(importResult)new ImportResultRepository(c).publish(change.outcome().data());
+        repo.saveReceipt(c,scope,hash,change.outcome());
+        if(importResult&&c.state.importWriteBudget!=null)c.state.importWriteBudget.finish();
+        return change.outcome();
     }
     private Map<String,Map<String,Object>> capture(deposit.repository.HistoryRepository history,String scope,HistoryWorkspace workspace){return workspace==null?history.capture(scope):history.capture(scope,workspace.newState());}
     private HistoryWorkspace historyWorkspace(){

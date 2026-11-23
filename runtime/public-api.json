@@ -2680,16 +2680,30 @@
         "name": "planId",
         "type": "String",
         "binding": "planId"
-      },
-      {
-        "name": "renewLease",
-        "type": "Boolean",
-        "binding": "renewLease",
-        "default": true
       }
     ],
     "output": "data",
-    "mode": "WRITE",
+    "mode": "READ",
+    "scope": "namespace",
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
+  },
+  {
+    "name": "deposit.get.importPlanMetadata",
+    "args": [
+      {
+        "name": "planId",
+        "type": "String",
+        "binding": "planId"
+      }
+    ],
+    "output": "data",
+    "mode": "READ",
     "scope": "namespace",
     "action": false,
     "tokenIndex": 1,
@@ -2710,14 +2724,14 @@
     ],
     "output": "data",
     "mode": "READ",
-    "scope": "namespace",
+    "scope": "server",
     "action": false,
     "tokenIndex": 1,
     "resultColumns": {
       "data": "Map<String,Object>"
     },
     "batchEligible": false,
-    "invocationOwner": "Store"
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.importResultPage",
@@ -2726,6 +2740,11 @@
         "name": "resultId",
         "type": "String",
         "binding": "resultId"
+      },
+      {
+        "name": "leaseId",
+        "type": "String",
+        "binding": "leaseId"
       },
       {
         "name": "collection",
@@ -2745,14 +2764,14 @@
     ],
     "output": "data",
     "mode": "READ",
-    "scope": "namespace",
+    "scope": "server",
     "action": false,
-    "tokenIndex": 4,
+    "tokenIndex": 5,
     "resultColumns": {
       "data": "Map<String,Object>"
     },
     "batchEligible": false,
-    "invocationOwner": "Store"
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.importResultEntry",
@@ -2761,6 +2780,11 @@
         "name": "resultId",
         "type": "String",
         "binding": "resultId"
+      },
+      {
+        "name": "leaseId",
+        "type": "String",
+        "binding": "leaseId"
       },
       {
         "name": "collection",
@@ -2775,14 +2799,14 @@
     ],
     "output": "data",
     "mode": "READ",
-    "scope": "namespace",
+    "scope": "server",
     "action": false,
-    "tokenIndex": 3,
+    "tokenIndex": 4,
     "resultColumns": {
       "data": "Map<String,Object>"
     },
     "batchEligible": false,
-    "invocationOwner": "Store"
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.import.apply",
@@ -3376,91 +3400,6 @@
     "invocationOwner": "Client",
     "tracked": "always",
     "cancellable": true
-  },
-  {
-    "name": "deposit.get.cloneResult",
-    "args": [
-      {
-        "name": "resultId",
-        "type": "String",
-        "binding": "resultId"
-      }
-    ],
-    "output": "data",
-    "mode": "READ",
-    "scope": "server",
-    "action": false,
-    "tokenIndex": 1,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client"
-  },
-  {
-    "name": "deposit.get.cloneResultEntry",
-    "args": [
-      {
-        "name": "resultId",
-        "type": "String",
-        "binding": "resultId"
-      },
-      {
-        "name": "collection",
-        "type": "String",
-        "binding": "collection"
-      },
-      {
-        "name": "key",
-        "type": "String",
-        "binding": "key"
-      }
-    ],
-    "output": "data",
-    "mode": "READ",
-    "scope": "server",
-    "action": false,
-    "tokenIndex": 3,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client"
-  },
-  {
-    "name": "deposit.get.cloneResultPage",
-    "args": [
-      {
-        "name": "resultId",
-        "type": "String",
-        "binding": "resultId"
-      },
-      {
-        "name": "collection",
-        "type": "String",
-        "binding": "collection"
-      },
-      {
-        "name": "cursor",
-        "type": "Map<String,Object>",
-        "binding": "cursor"
-      },
-      {
-        "name": "limit",
-        "type": "Long",
-        "binding": "limit"
-      }
-    ],
-    "output": "data",
-    "mode": "READ",
-    "scope": "server",
-    "action": false,
-    "tokenIndex": 4,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.info",

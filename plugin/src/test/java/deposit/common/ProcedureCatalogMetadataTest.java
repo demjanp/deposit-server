@@ -104,28 +104,17 @@ class ProcedureCatalogMetadataTest {
 
     @Test void finalImportReadsMatchJavaSignaturesAndMetadata() throws Exception {
         var catalog = new ObjectMapper().readTree(Files.readString(repositoryRoot().resolve("runtime/public-api.json")));
-        assertEquals("WRITE", find(catalog, "deposit.get.importPlan").path("mode").asText());
-        for (String name : List.of("deposit.get.importResultPage", "deposit.get.cloneResultPage")) {
-            JsonNode entry = find(catalog, name);
-            assertEquals("Map<String,Object>", argument(entry, "cursor").path("type").asText());
-            assertEquals("Long", argument(entry, "limit").path("type").asText());
-            var method = java.util.Arrays.stream(deposit.api.DepositAPI.class.getDeclaredMethods())
-                .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
-                    && name.equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))
-                .findFirst().orElseThrow();
-            assertEquals(Map.class, method.getParameters()[2].getType());
-            assertEquals(Long.class, method.getParameters()[3].getType());
-            assertEquals(org.neo4j.procedure.Mode.READ,
-                method.getAnnotation(org.neo4j.procedure.Procedure.class).mode());
+        for (String name : List.of("importPlan","importPlanMetadata","importResult","importResultPage","importResultEntry")) {
+            var entry=find(catalog,"deposit.get."+name);
+            assertEquals("READ",entry.path("mode").asText());
+            if(name.equals("importResultPage") || name.equals("importResultEntry"))
+                assertEquals("leaseId",entry.path("args").get(1).path("name").asText());
+            else assertEquals(1,entry.path("args").size());
         }
-        var method = java.util.Arrays.stream(deposit.api.DepositAPI.class.getDeclaredMethods())
-            .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
-                && "deposit.get.importPlan".equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))
-            .findFirst().orElseThrow();
-        assertEquals(org.neo4j.procedure.Mode.WRITE, method.getAnnotation(org.neo4j.procedure.Procedure.class).mode());
-        assertEquals(Boolean.class, method.getParameters()[2].getType());
-        assertEquals("true", method.getParameters()[2].getAnnotation(org.neo4j.procedure.Name.class).defaultValue());
-        assertEquals("Boolean", argument(find(catalog, "deposit.get.importPlan"), "renewLease").path("type").asText());
+        for(var entry:catalog)assertFalse(entry.path("name").asText().startsWith("deposit.get.cloneResult"));
+        var page=find(catalog,"deposit.get.importResultPage");
+        assertEquals("Map<String,Object>",argument(page,"cursor").path("type").asText());
+        assertEquals("Long",argument(page,"limit").path("type").asText());
     }
 
     @Test void discoveryAdvertisesTheRegisteredOperationControls() throws Exception {
@@ -140,7 +129,7 @@ class ProcedureCatalogMetadataTest {
 
     @Test void publicPageLimitIsAcceptedByNeo4jProcedureTypeChecker() throws Exception {
         var checker = new org.neo4j.procedure.impl.Cypher5TypeCheckers();
-        for (String name : List.of("deposit.get.importResultPage", "deposit.get.cloneResultPage")) {
+        for (String name : List.of("deposit.get.importResultPage", "deposit.get.importResultEntry")) {
             var method = java.util.Arrays.stream(deposit.api.DepositAPI.class.getDeclaredMethods())
                 .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
                     && name.equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))

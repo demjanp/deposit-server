@@ -89,8 +89,8 @@ class Stage7CapacityTest {
         timingProgress("atomic-recovery-apply-complete objects="+OBJECTS);
         assertEquals(applied,call("deposit.import.apply",operation,args("planId",planId)),"same-operation committed receipt replay after the first reply was discarded");timingProgress("atomic-replay-complete objects="+OBJECTS);
         assertTrue(admissions(operation).isEmpty(),"successful replay releases both secondary reservations");
-        assertEquals(applied,call("deposit.get.importResult",null,args("resultId",result)));timingProgress("atomic-result-envelope-retrieved objects="+OBJECTS);
-        try(var tx=database.beginTx()){assertEquals(Json.read((String)tx.findNode(Label.label("DepositReceipt"),"operationId",operation.toString()).getProperty("outcome")),applied);assertEquals(OBJECTS+1L,countNodes(tx,"Object"));assertEquals(preexistingObject,onlyPreexistingObjectAfterImport(preexistingObject));assertEquals(3L,countNodes(tx,"DResource"),"source package plus original plus imported resource must remain");tx.rollback();}
+        assertEquals(withoutLease(applied),withoutLease(call("deposit.get.importResult",null,args("resultId",result))));timingProgress("atomic-result-envelope-retrieved objects="+OBJECTS);
+        try(var tx=database.beginTx()){assertEquals(Json.read((String)tx.findNode(Label.label("DepositReceipt"),"operationId",operation.toString()).getProperty("outcome")),withoutLease(applied));assertEquals(OBJECTS+1L,countNodes(tx,"Object"));assertEquals(preexistingObject,onlyPreexistingObjectAfterImport(preexistingObject));assertEquals(3L,countNodes(tx,"DResource"),"source package plus original plus imported resource must remain");tx.rollback();}
         assertTrue(server.storage.content.exists(retainedResource),"retained rollback bytes are not expected to disappear during replay");
         measuredPageNanos=measuredPageCalls=measuredPageEntries=0;
         long retrieved=0,rows=0,topLevelRows=0;var nested=new HashMap<String,String>();var nestedCounts=new HashMap<String,Long>();
@@ -194,7 +194,7 @@ class Stage7CapacityTest {
         UUID applyOperation=UUID.randomUUID();Map<String,Object> applied=call("deposit.import.apply",applyOperation,args("planId",planId));
         String result=(String)applied.get("resultId");assertTrue(collectionCount(applied,"mapping")>objectCount);
         timingProgress("apply-complete objects="+objectCount+" result="+result);
-        assertEquals(applied,call("deposit.get.importResult",null,args("resultId",result)));
+        assertEquals(withoutLease(applied),withoutLease(call("deposit.get.importResult",null,args("resultId",result))));
         measuredPageNanos=measuredPageCalls=measuredPageEntries=0;
         measuredObjectLookupNanos=measuredObjectLookupCount=0;
         long readbackStarted=System.nanoTime(),rows=0;
@@ -318,14 +318,14 @@ class Stage7CapacityTest {
         long replayStarted=System.nanoTime();
         Map<String,Object> replay=call("deposit.import.apply",operation,args("planId",planId));
         long replayNanos=System.nanoTime()-replayStarted;
-        assertEquals(applied,replay,"committed same-operation replay returns the original result");
+        assertEquals(withoutLease(applied),withoutLease(replay),"committed same-operation replay returns the original result");
         assertTrue(admissions(operation).isEmpty(),"committed replay releases both secondary reservations");
         timingProgress("committed-replay-complete objects="+objectCount+" replayMs="+TimeUnit.NANOSECONDS.toMillis(replayNanos));
 
         long envelopeStarted=System.nanoTime();
         Map<String,Object> envelope=call("deposit.get.importResult",null,args("resultId",result));
         long envelopeNanos=System.nanoTime()-envelopeStarted;
-        assertEquals(applied,envelope,"public result-envelope retrieval returns the committed receipt");
+        assertEquals(withoutLease(applied),withoutLease(envelope),"public result-envelope retrieval returns the committed receipt");
         assertTrue(server.storage.content.exists(retainedResource),"retained rollback bytes survive successful recovery");
         timingProgress("result-envelope-retrieved objects="+objectCount+" retrievalMs="+TimeUnit.NANOSECONDS.toMillis(envelopeNanos));
         System.out.println("STAGE7 A14RollbackReplayTiming objects="+objectCount+
@@ -403,19 +403,25 @@ class Stage7CapacityTest {
     private String uniqueObjectId()throws Exception {try(var tx=database.beginTx()){try(var nodes=tx.findNodes(Label.label("Object"))){assertTrue(nodes.hasNext());String id=CoreRepository.id(nodes.next());assertFalse(nodes.hasNext());return id;}finally{tx.rollback();}}}
     private String onlyPreexistingObjectAfterImport(String previous)throws Exception {try(var tx=database.beginTx()){int seen=0;String remaining=null;try(var nodes=tx.findNodes(Label.label("Object"))){while(nodes.hasNext()){String id=CoreRepository.id(nodes.next());if(id.equals(previous)){remaining=id;seen++;}}}assertEquals(1,seen,"exact pre-existing receiving Object identity must remain");tx.rollback();return remaining;}}
     private String planIdFor(UUID operation)throws Exception {try(var tx=database.beginTx()){String result=(String)tx.findNode(Label.label("DepositImportResult"),"operationId",operation.toString()).getProperty("id");try(var plans=tx.findNodes(Label.label("DepositImportPlan"),"resultId",result)){assertTrue(plans.hasNext());return CoreRepository.id(plans.next());}}}
+    private static Map<String,Object> withoutLease(Map<String,Object> envelope) {
+        var result=new LinkedHashMap<>(envelope);
+        result.remove("leaseId");
+        result.remove("leaseExpiresAt");
+        return result;
+    }
     private record MappingPage(List<?> entries,Map<String,Object> cursor,int total){}
-    private MappingPage page(String result,String collection,Map<String,Object> cursor)throws Exception {
+    private MappingPage page(String result,Object lease,String collection,Map<String,Object> cursor)throws Exception {
         long started=System.nanoTime();
         try{
-            Map<String,Object> page=call("deposit.get.importResultPage",null,args("resultId",result,"collection",collection,"cursor",cursor,"limit",128L));
+            Map<String,Object> page=call("deposit.get.importResultPage",null,args("resultId",result,"leaseId",lease,"collection",collection,"cursor",cursor,"limit",128L));
             List<?> entries=(List<?>)page.get("entries");measuredPageCalls++;measuredPageEntries+=entries.size();
             if(timingProgress!=null&&measuredPageCalls%8==0)timingProgress("mapping-pages requests="+measuredPageCalls+" entries="+measuredPageEntries);
             return new MappingPage(entries,page.get("nextCursor")==null?null:ValueCodec.map(page.get("nextCursor")),cursor==null?0:((Number)cursor.get("position")).intValue());
         }finally{measuredPageNanos+=System.nanoTime()-started;}
     }
-    private Iterable<Map<String,Object>> mapping(String result,String collection)throws Exception {MappingPage first=page(result,collection,null);return ()->new Iterator<>(){
+    private Iterable<Map<String,Object>> mapping(String result,String collection)throws Exception {Object lease=call("deposit.get.importResult",null,args("resultId",result)).get("leaseId");MappingPage first=page(result,lease,collection,null);return ()->new Iterator<>(){
         MappingPage nextPage=first;List<?> batch=List.of();int index;
-        private boolean fill(){if(index<batch.size())return true;if(nextPage==null)return false;try{batch=nextPage.entries;nextPage=nextPage.cursor==null?null:page(result,collection,nextPage.cursor);index=0;return !batch.isEmpty();}catch(Exception failure){throw new UncheckedIOException(new IOException(failure));}}
+        private boolean fill(){if(index<batch.size())return true;if(nextPage==null)return false;try{batch=nextPage.entries;nextPage=nextPage.cursor==null?null:page(result,lease,collection,nextPage.cursor);index=0;return !batch.isEmpty();}catch(Exception failure){throw new UncheckedIOException(new IOException(failure));}}
         public boolean hasNext(){return fill();}public Map<String,Object> next(){if(!fill())throw new NoSuchElementException();return ValueCodec.map(batch.get(index++));}
     };}
     private Object metadata(Map<String,Object> envelope,String name)throws Exception {for(var row:mapping((String)envelope.get("resultId"),"metadata"))if(name.equals(scalar(row.get("key"))))return ValueCodec.map(row.get("value")).get("value");throw new AssertionError("Missing metadata "+name);}

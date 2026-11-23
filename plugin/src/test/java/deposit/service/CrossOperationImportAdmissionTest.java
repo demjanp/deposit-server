@@ -3,7 +3,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import deposit.common.*;
 import deposit.common.Results.DataRow;
 import deposit.repository.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
@@ -38,19 +37,19 @@ class CrossOperationImportAdmissionTest {
   Map<String,Object> applied=call("deposit.import.apply",apply,args("planId",planId));
   String resultId=(String)applied.get("resultId");
 
-  Map<String,Object> byKinds=call("deposit.get.importResultPage",UUID.randomUUID(),args("resultId",resultId,"collection","identityMappings","cursor",null,"limit",128L));
+  Map<String,Object> byKinds=call("deposit.get.importResultPage",UUID.randomUUID(),args("resultId",resultId,"leaseId",applied.get("leaseId"),"collection","identityMappings","cursor",null,"limit",128L));
   String kindCollection=null;
   for(Object raw:(List<?>)byKinds.get("entries")){
    var row=ValueCodec.map(raw);String kind=(String)ValueCodec.map(row.get("key")).get("value");
    if("Object".equals(kind)){kindCollection=(String)ValueCodec.map(row.get("value")).get("collection");break;}
   }
   assertNotNull(kindCollection);
-  Map<String,Object> objectPage=call("deposit.get.importResultPage",UUID.randomUUID(),args("resultId",resultId,"collection",kindCollection,"cursor",null,"limit",128L));
+  Map<String,Object> objectPage=call("deposit.get.importResultPage",UUID.randomUUID(),args("resultId",resultId,"leaseId",applied.get("leaseId"),"collection",kindCollection,"cursor",null,"limit",128L));
   List<?> objectRows=(List<?>)objectPage.get("entries");
   assertEquals(1,objectRows.size(),"one actual Object identity in the apply receipt");
   String target=(String)ValueCodec.map(ValueCodec.map(objectRows.get(0)).get("value")).get("value");assertNotNull(target);
-  assertEquals(applied,call("deposit.import.apply",apply,args("planId",planId)),"same receipt replay must not create new objects");
-  assertEquals(applied,call("deposit.get.importResult",UUID.randomUUID(),args("resultId",resultId)));
+  assertEquals(ImportResultRepositoryTest.withoutLease(applied),call("deposit.import.apply",apply,args("planId",planId)),"same receipt replay must not create new objects");
+  assertEquals(ImportResultRepositoryTest.withoutLease(applied),ImportResultRepositoryTest.withoutLease(call("deposit.get.importResult",UUID.randomUUID(),args("resultId",resultId))));
   Map<String,Object> beforeInspection=planSnapshot(planId);
   Map<String,Object> inspected=readOnlyImportPlan(planId);
   assertEquals("applied",ValueCodec.map(inspected.get("plan")).get("state"));
@@ -87,13 +86,37 @@ class CrossOperationImportAdmissionTest {
   var mem=entity("Membership",source,member,args("objectId",object,"classId",clazz));
   var manifest=args("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",source,"name","Cross","description","","depositVersion",null,"historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");
   var graph=args("classes",List.of(clazzRow),"objects",List.of(obj),"descriptors",List.of(desc),"geometries",List.of(),"memberships",List.of(mem),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());
-  Path archive=temporary.resolve("small.zip");ExchangePackageCodec.write(archive,manifest,graph,null,Map.of());long length=Files.size(archive);String checksum=ResourceFiles.checksum(archive);String upload=(String)call("deposit.resource.beginUpload",UUID.randomUUID(),args("filename","small.zip","bytes",length,"sha256",checksum,"mediaType","application/zip")).get("uploadId");byte[] data=Files.readAllBytes(archive);call("deposit.resource.uploadChunk",UUID.randomUUID(),args("uploadId",upload,"offset",0L,"bytesBase64",Base64.getEncoder().encodeToString(data),"chunkSha256",checksum));return (String)call("deposit.resource.finishUpload",UUID.randomUUID(),args("uploadId",upload)).get("resourceId");
+  Path archive=temporary.resolve("small.zip");
+  ExchangePackageCodec.write(archive,manifest,graph,null,Map.of());
+  long length=Files.size(archive);
+  String checksum=ResourceFiles.checksum(archive),id=UUID.randomUUID().toString();
+  String stored=ResourceFiles.filename("small.zip",checksum);
+  server.storage.content.publish(new ResourceStorage.Content(id,stored,length,checksum),archive);
+  try(var tx=database.beginTx()){
+   var core=new CoreRepository(tx,java.time.ZonedDateTime.now());
+   var repository=new ResourceRepository(tx,core);
+   repository.record("DResource",id,args("namespaceId",namespace,"filename","small.zip","storedFilename",stored,
+       "mediaType","application/zip","bytes",length,"checksum",checksum,"state","ready","createdBy",actor));
+   repository.record("DepositResourceLocation",id,args("namespaceId",namespace,"storedFilename",stored,
+       "bytes",length,"checksum",checksum,"published",true,"everAttached",false));
+   repository.record("DepositExportGrant",UUID.randomUUID().toString(),args("resourceId",id,"namespaceId",namespace,
+       "actorId",actor,"expires",server.sessionTime()+ResourceFiles.LEASE));
+   tx.commit();
+  }
+  return id;
  }
  private long countNodes(String label){try(var tx=database.beginTx()){long count=tx.findNodes(Label.label(label)).stream().count();tx.rollback();return count;}}
  private Map<String,Object> call(String procedure,UUID operation,Map<String,Object> request)throws Exception {try(var tx=database.beginTx()){var context=new RequestContext(tx,args("token",token,"operationId",operation.toString()));context.publicCall=true;context.procedure=procedure;context.request=request;var actions=new SessionActionService(context);actions.begin(procedure,ProcedureCatalog.spec(procedure).bindings().stream().map(request::get).collect(java.util.stream.Collectors.toList()));var row=(DataRow)new ProcedureService(context).execute().findFirst().orElseThrow();actions.observe();tx.commit();return row.data;}}
  private Set<String> admissions(UUID operation)throws Exception {var ids=new TreeSet<String>();try(var paths=Files.list(server.storage.files.root.resolve("admission"))){for(Path p:paths.filter(Files::isRegularFile).toList()){if(operation.toString().equals(Json.read(Files.readString(p)).get("operationId")))ids.add(Json.read(Files.readString(p)).get("ownerKind")+":"+Json.read(Files.readString(p)).get("purpose"));}}return ids;}
  private List<Map<String,Object>> readAdmissionFiles()throws Exception {var rows=new ArrayList<Map<String,Object>>();try(var paths=Files.list(server.storage.files.root.resolve("admission"))){for(Path path:paths.filter(Files::isRegularFile).toList())rows.add(Json.read(Files.readString(path)));}return rows;}
- private long commitments(String volume)throws Exception {long held=0;try(var paths=Files.list(server.storage.files.root.resolve("admission"))){for(Path p:paths.filter(Files::isRegularFile).toList())for(Object raw:(List<?>)Json.read(Files.readString(p)).get("volumes")){Map<String,Object> row=ValueCodec.map(raw);if(volume.equals(row.get("deviceId")))held=Math.addExact(held,((Number)row.get("commitment")).longValue());}}return held;}
+ private long commitments(String volume)throws Exception {
+  long held=0;
+  for(var row:readAdmissionFiles()) {
+   var reservation=server.storage.admission.resume((String)row.get("id"));
+   held=Math.addExact(held,reservation.commitments().getOrDefault(volume,0L));
+  }
+  return held;
+ }
  private static long collectionCount(Map<String,Object> envelope,String name){Object value=ValueCodec.map(envelope.get("collections")).get(name);return value==null?0L:((Number)ValueCodec.map(value).get("count")).longValue();}
  private static Map<String,Object> args(Object... values){var map=new LinkedHashMap<String,Object>();for(int i=0;i<values.length;i+=2)map.put((String)values[i],values[i+1]);return map;}
  private static Map<String,Object> entity(String kind,String source,String id,Map<String,Object> fields){var map=new LinkedHashMap<String,Object>();map.put("kind",kind);map.put("id",id);map.put("namespaceId",source);map.putAll(fields);return map;}

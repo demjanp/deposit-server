@@ -45,12 +45,16 @@ final class OperationReceiptRepository {
         Object format = outcome.data().get("format"), resultId = outcome.data().get("resultId");
         if (ImportResultContract.FORMAT.equals(format) && resultId instanceof String id) {
             receipt.setProperty("importResultId", id);
+            receipt.setProperty("resultKind",outcome.data().get("kind"));
             if (outcome.data().get("namespaceId") instanceof String namespace) receipt.setProperty("resultNamespaceId", namespace);
         }
         receipt.setProperty("revision", context.revision);
         receipt.setProperty("administrativeMode", context.state.scoped ? context.state.administrative : (context.session != null && context.session.administrative));
         if (context.state.operationClaimed) return;
-        receipt.setProperty("outcome", Json.write(outcome.data()));
+        var saved=new LinkedHashMap<>(outcome.data());
+        saved.remove("leaseId");
+        saved.remove("leaseExpiresAt");
+        receipt.setProperty("outcome",Json.write(saved));
         if (outcome.node() != null) {
             receipt.setProperty("nodeKind", CoreRepository.kind(outcome.node()));
             receipt.setProperty("entityId", CoreRepository.id(outcome.node()));

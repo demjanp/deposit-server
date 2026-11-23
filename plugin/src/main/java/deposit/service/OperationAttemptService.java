@@ -70,6 +70,8 @@ final class OperationAttemptService extends BaseService {
         Node node = attempts.find(c.actorId, scope, id);
         if (node != null) {
             c.tx.acquireReadLock(node);
+            if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(node))
+                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure))
             checkSource(node.getAllProperties(),true);
             if (node.hasProperty("procedure") && (!procedure.equals(node.getProperty("procedure"))
                     || !hash.equals(node.getProperty("inputHash")) || !namespace.equals(node.getProperty("authorizationScope"))))
@@ -246,7 +248,9 @@ final class OperationAttemptService extends BaseService {
             }
         }
         authorize(procedure, (String)node.getProperty("authorizationScope"), (String)node.getProperty("role"));
-        checkSource(node.getAllProperties(),true);
+        if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(node))
+                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure))
+            checkSource(node.getAllProperties(),true);
         return false;
     }
 
@@ -268,7 +272,17 @@ final class OperationAttemptService extends BaseService {
                 state = "CANCEL_REQUESTED";
             }
         }
-        if (result != null && state.equals("COMPLETED_NO_DOMAIN_WRITE")) {
+        if(result!=null && ImportResultContract.FORMAT.equals(result.get("format"))) {
+            Node root=repo.find(ImportResultContract.LABEL,"id",result.get("resultId"));
+            if(now>=(long)result.get("expiresAt"))code="RESULT_EXPIRED";
+            else if(root==null || !id.equals(root.getProperty("operationId",null))
+                    || !c.actorId.equals(root.getProperty("actorId",null))
+                    || !Objects.equals(result.get("expiresAt"),root.getProperty("expiresAt",null)))code="RESULT_UNAVAILABLE";
+            else if(root.getProperty("sourcePackageId",null) instanceof String source) {
+                try {new ExchangePackages(c).authorizeResultSource(source);}
+                catch(ExceptionHandler.DepositException denied) {code="RESULT_UNAVAILABLE";}
+            }
+        } else if (result != null && state.equals("COMPLETED_NO_DOMAIN_WRITE")) {
             if (now - (long)values.get("updatedAt") >= OperationAttemptRepository.RETENTION) {
                 code = "RESULT_EXPIRED";
                 result = null;
@@ -424,6 +438,13 @@ final class OperationAttemptService extends BaseService {
             default -> null;
         };
         var result = Json.map("revision", c.revision);
+        if(data!=null && ImportResultContract.FORMAT.equals(data.get("format"))) {
+            result.put("format",ImportResultContract.FORMAT);
+            result.put("revision",data.get("revision"));
+            result.put("kind",data.get("kind"));
+            result.put("state",data.get("state"));
+            result.put("collections",data.get("collections"));
+        }
         if (data != null) {
             for (String key : SUMMARY_KEYS) {
                 Object value = data.get(key);

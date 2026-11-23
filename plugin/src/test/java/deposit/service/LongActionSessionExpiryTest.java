@@ -7,8 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -229,13 +227,19 @@ class LongActionSessionExpiryTest {
                 ()->publicCall("deposit.get.session",List.of())).getMessage().contains("SESSION_EXPIRED"));
     }
 
-    @Test void planReadRefreshesInactiveWindowWithoutReceiptRewrite() throws Exception {
+    @Test void planReadKeepsFixedExpiryAndImmutableAnalysis() throws Exception {
         AtomicLong now=new AtomicLong(server.sessionTime());
         sessionClock(now::get);
-        String ns=createNamespace("Import plan inactivity");
+        String ns;
+        try(var tx=database.beginTx()) {
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            ns=CoreRepository.id(core.create("Namespace",null,actor,
+                Json.map("name","Import plan fixed expiry","sequence",0L,"historyMode","disabled")));
+            tx.commit();
+        }
         grantAdministratorAndNamespace(token,ns);
         String operation=UUID.randomUUID().toString(),planId=UUID.randomUUID().toString();
-        long initialExpiry=now.get()+86_400_000L;
+        long initialActivity=now.get(), expiry=initialActivity+ImportResultContract.RETENTION;
         Map<String,Object> analysis;
         try(var tx=database.beginTx()) {
             var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));
@@ -243,130 +247,34 @@ class LongActionSessionExpiryTest {
             context.namespaceId=ns;
             var core=new CoreRepository(tx,context.timestamp);
             context.revision=core.sequence(ns);
-            analysis=new ImportResultRepository(context).save(operation,"analysis",planId,context.revision,initialExpiry,Map.of());
+            analysis=new ImportResultRepository(context).save(operation,"analysis",planId,context.revision,Map.of());
             core.saveReceipt(context,ns,"analysis-request",new Results.Outcome(null,null,analysis));
             var plan=tx.createNode(Label.label("DepositImportPlan"));
             Json.map("id",planId,"namespaceId",ns,"actorId",actor,"state","ready",
-                    "targetRevision",context.revision,"expiresAt",initialExpiry,"lastActivity",now.get(),
+                    "targetRevision",context.revision,"expiresAt",expiry,"lastActivity",initialActivity,
                     "resultId",analysis.get("resultId")).forEach(plan::setProperty);
             tx.commit();
         }
-
-        now.set(initialExpiry-1);
+        now.set(expiry-1);
         replaceSession(token,ns);
         database.getDependencyResolver().resolveDependency(org.neo4j.kernel.api.procedure.GlobalProcedures.class)
                 .registerProcedure(deposit.api.DepositAPI.class);
-        Map<String,Object> inspected;
-        try(var tx=database.beginTx();
-            var rows=tx.execute("CALL deposit.get.importPlan($planId, $token, false) YIELD data RETURN data",
-                    Map.of("planId",planId,"token",token))) {
-            var noRenew=ValueCodec.map(ValueCodec.map(rows.next().get("data")).get("plan"));
-            assertEquals(initialExpiry,noRenew.get("expiresAt"));
-            assertFalse(rows.hasNext());
-            tx.commit();
-        }
-        try(var tx=database.beginTx()) {
-            var plan=tx.findNode(Label.label("DepositImportPlan"),"id",planId);
-            assertEquals(initialExpiry,plan.getProperty("expiresAt"));
-            assertEquals(now.get()-86_399_999L,plan.getProperty("lastActivity"));
-        }
         try(var tx=database.beginTx();
             var rows=tx.execute("CALL deposit.get.importPlan($planId, $token) YIELD data RETURN data",
                     Map.of("planId",planId,"token",token))) {
-            inspected=ValueCodec.map(rows.next().get("data"));
+            var inspected=ValueCodec.map(rows.next().get("data"));
+            var leased=ValueCodec.map(inspected.get("analysisResult"));
+            assertEquals(expiry,ValueCodec.map(inspected.get("plan")).get("expiresAt"));
+            assertEquals(ImportResultRepositoryTest.withoutLease(analysis),ImportResultRepositoryTest.withoutLease(leased));
+            assertEquals(now.get()+ImportResultContract.READER,leased.get("leaseExpiresAt"));
             assertFalse(rows.hasNext());
             tx.commit();
         }
-        var lifecycle=ValueCodec.map(inspected.get("plan"));
-        assertEquals(planId,lifecycle.get("planId"));
-        assertEquals(analysis,inspected.get("analysisResult"));
         try(var tx=database.beginTx()) {
             var plan=tx.findNode(Label.label("DepositImportPlan"),"id",planId);
-            var core=new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC));
-            assertEquals(lifecycle.get("targetRevision"),core.sequence(ns));
-            assertEquals(analysis,core.replay(core.receipt(ns,operation),ns).data());
-            assertAll(
-                    ()->assertEquals(now.get()+86_400_000L,lifecycle.get("expiresAt"),"expiresAt"),
-                    ()->assertEquals(lifecycle.get("expiresAt"),plan.getProperty("expiresAt"),"persisted expiresAt"),
-                    ()->assertEquals(now.get(),plan.getProperty("lastActivity"),"lastActivity"));
+            assertEquals(expiry,plan.getProperty("expiresAt"));
+            assertEquals(initialActivity,plan.getProperty("lastActivity"));
         }
-    }
-
-    @Test void planExpiryWaitsForRenewalAndRechecksBeforeRemovingStaging() throws Exception {
-        String ns=createNamespace("Import plan expiry lock");
-        grantAdministratorAndNamespace(token,ns);
-        String operation=UUID.randomUUID().toString(),planId=UUID.randomUUID().toString();
-        String stagingPath="staging/imports/"+planId+".zip";
-        Path staging=temporary.resolve("resources").resolve(stagingPath);
-        Files.createDirectories(staging.getParent());
-        Files.writeString(staging,"staged import");
-        long initialExpiry=server.sessionTime()+86_400_000L;
-        try(var tx=database.beginTx()) {
-            var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));
-            context.actorId=actor;
-            context.namespaceId=ns;
-            var core=new CoreRepository(tx,context.timestamp);
-            context.revision=core.sequence(ns);
-            var analysis=new ImportResultRepository(context).save(
-                    operation,"analysis",planId,context.revision,initialExpiry,Map.of());
-            var plan=tx.createNode(Label.label("DepositImportPlan"));
-            Json.map("id",planId,"namespaceId",ns,"actorId",actor,"state","ready",
-                    "targetRevision",context.revision,"expiresAt",initialExpiry,
-                    "stagingPath",stagingPath,"resultId",analysis.get("resultId")).forEach(plan::setProperty);
-            // Plan inspection resolves the result through its real operation receipt.
-            core.saveReceipt(context,ns,"analysis-expiry-lock",new Results.Outcome(null,null,analysis));
-            tx.commit();
-        }
-
-        // The reader reached the plan's last active instant before maintenance's cutoff.
-        Thread reader=Thread.currentThread();
-        sessionClock(()->Thread.currentThread()==reader?initialExpiry-1:initialExpiry);
-        replaceSession(token,ns);
-        database.getDependencyResolver().resolveDependency(org.neo4j.kernel.api.procedure.GlobalProcedures.class)
-                .registerProcedure(deposit.api.DepositAPI.class);
-        var jobsField=StorageManager.class.getDeclaredField("jobs");
-        jobsField.setAccessible(true);
-        Object jobs=jobsField.get(server.storage);
-        var expire=jobs.getClass().getDeclaredMethod("expireImportPlans");
-        expire.setAccessible(true);
-        var cleanup=new FutureTask<Void>(()->{expire.invoke(jobs);return null;});
-        Thread worker=new Thread(cleanup,"import-plan-expiry");
-
-        long renewedExpiry;
-        try(var tx=database.beginTx()) {
-            new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC)).lockNamespace(ns);
-            worker.start();
-            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
-            while(!cleanup.isDone()&&!waitingForNamespaceLock(worker)&&System.nanoTime()<deadline)
-                Thread.sleep(10);
-            if(cleanup.isDone()) cleanup.get();
-            assertTrue(Files.exists(staging),"expiry deleted staging while the reader held the Namespace lock");
-            assertTrue(waitingForNamespaceLock(worker),"expiry did not wait for the Namespace lock");
-
-            try(var rows=tx.execute("CALL deposit.get.importPlan($planId, $token) YIELD data RETURN data",
-                    Map.of("planId",planId,"token",token))) {
-                var lifecycle=ValueCodec.map(ValueCodec.map(rows.next().get("data")).get("plan"));
-                renewedExpiry=((Number)lifecycle.get("expiresAt")).longValue();
-                assertFalse(rows.hasNext());
-            }
-            tx.commit();
-            cleanup.get(10,TimeUnit.SECONDS);
-        } finally {
-            worker.join(10_000);
-            assertFalse(worker.isAlive(),"expiry worker did not finish");
-        }
-        assertEquals(initialExpiry-1+86_400_000L,renewedExpiry);
-        assertEquals("staged import",Files.readString(staging));
-        try(var tx=database.beginTx()) {
-            var plan=tx.findNode(Label.label("DepositImportPlan"),"id",planId);
-            assertNotNull(plan);
-            assertEquals(renewedExpiry,plan.getProperty("expiresAt"));
-        }
-    }
-
-    private static boolean waitingForNamespaceLock(Thread worker) {
-        return Arrays.stream(worker.getStackTrace()).anyMatch(frame->
-                frame.getClassName().equals(CoreRepository.class.getName())&&frame.getMethodName().equals("lockNamespace"));
     }
 
     @Test void unleasedCommitStillExpires() throws Throwable {
