@@ -16,7 +16,6 @@ final class OperationAttemptService extends BaseService {
     private static final Set<String> ADMIN = Set.of("deposit.create.user", "deposit.set.user", "deposit.admin.pruneResources");
     private static final Set<String> SERVER_RECEIPTS = Set.of("deposit.delete.namespace", "deposit.import.cloneNamespace");
     private static final Set<String> RESOURCE_STEPS = Set.of("deposit.resource.uploadChunk", "deposit.resource.finishUpload", "deposit.resource.abortUpload");
-    private static final Set<String> CLONE_STEPS = Set.of("deposit.import.cloneUploadChunk", "deposit.import.finishCloneUpload", "deposit.import.abortCloneUpload");
     private static final Set<String> EXCHANGE_STEPS = Set.of("deposit.exchange.uploadChunk","deposit.exchange.finishUpload","deposit.exchange.abortUpload");
     private static final Set<String> SUMMARY_KEYS = Set.of("id", "namespaceId", "revisionId", "targetRevision",
         "planId", "resultId", "uploadId", "resourceId", "packageId", "tableId", "pruneId", "nextOffset", "bytes", "changed","grant","sha256","expiresAt","memberCount","member","chunkBytes","checksum","state","aborted");
@@ -43,7 +42,7 @@ final class OperationAttemptService extends BaseService {
     }
 
     private static String uploadStepId(String route,List<?> arguments) {
-        if ((RESOURCE_STEPS.contains(route)||CLONE_STEPS.contains(route)||EXCHANGE_STEPS.contains(route)) && !arguments.isEmpty()
+        if ((RESOURCE_STEPS.contains(route)||EXCHANGE_STEPS.contains(route)) && !arguments.isEmpty()
                 && arguments.getFirst() instanceof String id) return id;
         return null;
     }
@@ -97,7 +96,7 @@ final class OperationAttemptService extends BaseService {
         node.setProperty("bindings", Json.write(bindings));
         if (uploadId != null) node.setProperty("uploadId", uploadId);
         if (source != null) {
-            node.setProperty(source.exchange ? "sourceExchange" : source.upload ? "sourceUpload" : "sourcePackage",source.packageId);
+            node.setProperty("sourceExchange",source.packageId);
             if (source.grantId != null) node.setProperty("sourceGrant",source.grantId);
         }
         node.setProperty("claimDeadline", OperationAttemptRepository.idTime(id) + OperationAttemptRepository.RETENTION);
@@ -240,12 +239,6 @@ final class OperationAttemptService extends BaseService {
             var result=Json.read((String)node.getProperty("result"));
             if (!(result.get("namespaceId") instanceof String namespace)) throw unavailable();
             authorize(procedure,namespace,"viewer");
-            if (node.getProperty("sourceUpload",null) instanceof String uploadId) {
-                Node upload=repo.find("DepositCloneUpload","id",uploadId);
-                if (upload==null || !c.actorId.equals(upload.getProperty("actorId",null))
-                    || !node.getProperty("operationId").equals(upload.getProperty("consumedOperationId",null))) throw unavailable();
-                return false;
-            }
         }
         authorize(procedure, (String)node.getProperty("authorizationScope"), (String)node.getProperty("role"));
         if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(node))
@@ -286,7 +279,7 @@ final class OperationAttemptService extends BaseService {
             if (now - (long)values.get("updatedAt") >= OperationAttemptRepository.RETENTION) {
                 code = "RESULT_EXPIRED";
                 result = null;
-            } else if (Set.of("deposit.exchange.export","deposit.exchange.finishUpload").contains(values.get("procedure"))
+            } else if (Set.of("deposit.exchange.export","deposit.exchange.finishUpload","deposit.get.data","deposit.get.namespaceData").contains(values.get("procedure"))
                     && result.get("packageId") instanceof String packageId) {
                 Node stage=repo.find(ExchangePackages.LABEL,"id",packageId);
                 if(stage==null || (long)stage.getProperty("expiresAt",0L)<=now) {code="RESULT_EXPIRED"; result=null;}
@@ -346,14 +339,12 @@ final class OperationAttemptService extends BaseService {
             var packages=new ExchangePackages(c);
             return deposit.repository.CoreRepository.id(packages.writer(arguments.getFirst(),scope,procedure.endsWith("abortUpload")));
         }
-        boolean resource = RESOURCE_STEPS.contains(procedure);
-        if (!resource && !CLONE_STEPS.contains(procedure)) return null;
+        if (!RESOURCE_STEPS.contains(procedure)) return null;
         String id = RequestContext.uuid(arguments.getFirst());
-        Node upload = repo.find(resource ? "DepositTransfer" : "DepositCloneUpload", "id", id);
+        Node upload = repo.find("DepositTransfer", "id", id);
         if (upload == null || !c.actorId.equals(upload.getProperty("actorId", null))
-                || resource && !scope.equals(upload.getProperty("namespaceId", null))) throw unavailable();
-        String writerState = (String)upload.getProperty("state");
-        if (!writerState.equals("uploading") && (resource || !procedure.equals("deposit.import.abortCloneUpload") || !writerState.equals("finished")))
+                || !scope.equals(upload.getProperty("namespaceId", null))) throw unavailable();
+        if (!"uploading".equals(upload.getProperty("state")))
             c.fail("UPLOAD_FENCED", "Upload writer is no longer open");
         UploadBinding.require(c, upload);
         for (Node attempt : repo.nodes("DepositOperationAttempt", Map.of("uploadId", id))) {
@@ -363,28 +354,12 @@ final class OperationAttemptService extends BaseService {
         return id;
     }
 
-    private record SourceBinding(String packageId, String grantId, boolean upload, boolean exchange) {}
+    private record SourceBinding(String packageId, String grantId) {}
 
     private SourceBinding bindSource(String procedure, String scope, Map<String,Object> request) {
-        String packageId;
-        String grantId = null;
-        switch (procedure) {
-            case "deposit.import.analyze" -> {
-                var source=ValueCodec.map(request.get("source"));
-                if(source.containsKey("packageId")||source.containsKey("grant"))return bindExchange(scope,source);
-                packageId = RequestContext.uuid(source.get("packageResourceId"));
-            }
-            case "deposit.import.cloneNamespace" -> {
-                var source = ValueCodec.map(request.get("source"));
-                if(source.containsKey("packageId")||source.containsKey("grant"))return bindExchange(scope,source);
-                if (!source.containsKey("resourceId")) {
-                    String uploadId=RequestContext.uuid(source.get("uploadId"));
-                    Node upload=authorizeCloneUpload(uploadId,true);
-                    if (!ResourceFiles.hash(source.get("sha256")).equals(upload.getProperty("sha256",null))) throw unavailable();
-                    return new SourceBinding(uploadId,null,true,false);
-                }
-                packageId = RequestContext.uuid(source.get("resourceId"));
-            }
+        return switch (procedure) {
+            case "deposit.import.analyze", "deposit.import.cloneNamespace" ->
+                bindExchange(scope,ValueCodec.map(request.get("source")));
             case "deposit.import.apply" -> {
                 Node plan = repo.find("DepositImportPlan","id",RequestContext.uuid(request.get("planId")));
                 if (plan == null || !scope.equals(plan.getProperty("namespaceId",null)) || !c.actorId.equals(plan.getProperty("actorId",null))
@@ -392,41 +367,25 @@ final class OperationAttemptService extends BaseService {
                     throw unavailable();
                 if(!UploadBinding.ownedByConnection(c,plan))
                     c.fail("PLAN_FENCED","Import plan is unavailable. Analyze the original input again");
-                grantId = (String)plan.getProperty("sourceGrantId",null);
-                if (grantId == null) return null;
-                packageId = (String)plan.getProperty("sourcePackageId");
-                if(Boolean.TRUE.equals(plan.getProperty("exchangeSource",false)))
-                    return bindExchange(scope,Map.of("packageId",packageId,"grant",grantId));
+                Object grantId = plan.getProperty("sourceGrantId",null);
+                yield grantId == null ? null : bindExchange(scope,Map.of("packageId",plan.getProperty("sourcePackageId"),"grant",grantId));
             }
-            default -> { return null; }
-        }
-        return new SourceBinding(packageId,new SourcePackageAccess(c).authorize(packageId,grantId,true),false,false);
+            default -> null;
+        };
     }
 
     private SourceBinding bindExchange(String scope,Map<String,Object> raw) {
         var source=ExchangePackages.source(raw);
         String id=RequestContext.uuid(source.get("packageId")), grant=string(source.get("grant"));
         new ExchangePackages(c).input(id,grant,scope,true,false);
-        return new SourceBinding(id,grant,false,true);
+        return new SourceBinding(id,grant);
     }
 
     private void checkSource(Map<String,Object> attempt, boolean acquiring) {
         if(attempt.get("sourceExchange") instanceof String id)
             new ExchangePackages(c).input(id,(String)attempt.get("sourceGrant"),(String)attempt.get("scope"),acquiring,false);
-        if (attempt.get("sourcePackage") instanceof String id)
-            new SourcePackageAccess(c).authorize(id,(String)attempt.get("sourceGrant"),acquiring);
-        if (attempt.get("sourceUpload") instanceof String id)
-            authorizeCloneUpload(id,acquiring);
     }
 
-    private Node authorizeCloneUpload(String id, boolean acquiring) {
-        Node upload=repo.find("DepositCloneUpload","id",id);
-        if (upload==null || !c.actorId.equals(upload.getProperty("actorId",null))) throw unavailable();
-        String stage=(String)upload.getProperty("state",null);
-        if (acquiring ? !"finished".equals(stage) || (long)upload.getProperty("expires",0L)<=c.server.sessionTime()
-                : !Set.of("finished","consumed").contains(stage)) throw unavailable();
-        return upload;
-    }
     private static String scope(Object raw) { return "server".equals(raw) ? "server" : RequestContext.uuid(raw); }
     private String fingerprint(String procedure, List<Object> arguments) {
         return CursorCodec.requestHash(c, Json.map("procedure", procedure, "arguments", arguments));
@@ -458,7 +417,7 @@ final class OperationAttemptService extends BaseService {
     }
 
     private boolean domainWrite(String procedure) {
-        return !scopes.operational(procedure) && !procedure.equals("deposit.import.beginCloneUpload") && !CLONE_STEPS.contains(procedure)
+        return !scopes.operational(procedure)
             || Set.of("deposit.import.apply", "deposit.admin.pruneResources").contains(procedure);
     }
 }

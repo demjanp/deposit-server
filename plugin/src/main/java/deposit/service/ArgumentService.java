@@ -8,8 +8,8 @@ import org.neo4j.graphdb.Node;
 /** Validates the public argument list and resolves domain identities in its captured scope. */
 public final class ArgumentService extends BaseService {
     private final Map<String,Object> bindings;
-    private final boolean replayBindings;
-    public ArgumentService(RequestContext c,Map<String,Object> bindings,boolean replayBindings){super(c);this.bindings=bindings;this.replayBindings=replayBindings;}
+    private final boolean useBindings;
+    public ArgumentService(RequestContext c,Map<String,Object> bindings,boolean useBindings){super(c);this.bindings=bindings;this.useBindings=useBindings;}
     public Map<String,Object> request(String procedure,List<Object> arguments){
         var spec=ProcedureCatalog.spec(procedure);
         if(arguments==null||arguments.size()!=spec.bindings().size())c.fail("VALIDATION_FAILED","Wrong number of domain arguments");
@@ -30,7 +30,7 @@ public final class ArgumentService extends BaseService {
             else result.put(field,value);
         }
         if(procedure.equals("deposit.apply.batch")){
-            if(!replayBindings&&result.get("commands") instanceof List<?> commands){
+            if(!useBindings&&result.get("commands") instanceof List<?> commands){
                 for(int index=0;index<commands.size();index++){
                     if(!(commands.get(index) instanceof Map<?,?> command)||!(command.get("procedure") instanceof String target)||!DomainService.COMMANDS.contains(target)||!(command.get("arguments") instanceof List<?> args))continue;
                     var fields=ProcedureCatalog.spec(target).bindings();
@@ -55,7 +55,7 @@ public final class ArgumentService extends BaseService {
         requireRole(ns,"viewer");return ns;
     }
     private String identity(String kind,Object selector,String path,boolean infer){
-        if(replayBindings&&bindings.containsKey(path))return (String)bindings.get(path);
+        if(useBindings&&bindings.containsKey(path))return (String)bindings.get(path);
         String id=null;Node node=null;
         if(selector instanceof Map<?,?>){
             var map=ValueCodec.map(selector);

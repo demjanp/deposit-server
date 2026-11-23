@@ -10,19 +10,15 @@ final class SessionDiagnostics extends BaseService {
     SessionDiagnostics(RequestContext c) { super(c); }
     Map<String,Object> lastOperation() {
         String id=c.session.lastOperation,scope=c.session.lastScope;
-        if(id!=null&&java.util.UUID.fromString(id).version()==7)
-            return new OperationAttemptService(c).inspect(Json.map("operationId",id,"scope",scope),false);
-        Node receipt=id==null?null:repo.receipt(c.actorId,scope,id);
-        if(scope!=null&&!scope.equals("server"))requireRole(scope,"viewer");
-        return Json.map("operationId",id,"scope",scope,"state",id==null?"none":receipt==null?"unresolved":"committed",
-            "revision",receipt==null?null:receipt.getProperty("revision"),"outcome",receipt==null?null:Json.read((String)receipt.getProperty("outcome")));
+        if(id==null)return Json.map("operationId",null,"scope",null,"state","none","cleanupState","none");
+        return new OperationAttemptService(c).inspect(Json.map("operationId",id,"scope",scope),false);
     }
     Map<String,Object> session() {
         Map<String,Long> observations;synchronized(c.session){observations=Map.copyOf(c.session.baselines);}
         String ns=c.session.namespace;String role=ns==null?null:effectiveRole(ns);
         return Json.map("user",repo.data(repo.find("User","id",c.actorId)),"namespaceId",ns,"role",role,"administrativeMode",administrativeMode(),
             "expiresAt",java.time.Instant.ofEpochMilli(Math.min(c.session.created+28_800_000L,c.session.touched+1_800_000L)).toString(),
-            "observed",observations,"preparedAction",c.session.preparedAction,"serverRevision",c.server.revision(c.state));
+            "observed",observations,"serverRevision",c.server.revision(c.state));
     }
     Map<String,Object> toData(Object entity) {
         if(entity instanceof Node n) {

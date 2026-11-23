@@ -4,7 +4,6 @@ import static deposit.repository.ResourceRepository.*;
 import deposit.repository.CoreRepository;
 import deposit.repository.ResourceRepository;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -24,19 +23,6 @@ import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
 /** Standalone storage maintenance transactions and filesystem reconciliation jobs. */
 final class StorageMaintenanceJobs {
-    private static final int TRANSFER_CHUNK_CLEANUP_BATCH = 256;
-    private static final int CLONE_UPLOAD_CLEANUP_BATCH = 256;
-    private static final int CLONE_UPLOAD_CANDIDATE_BATCH = 64;
-    private static final Set<String> CLONE_UPLOAD_PROCEDURES = Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload",
-            "deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload");
-    // PreparedActionRepository always supplies a recovery key. Its presence lets Cypher use the composite constraint.
-    static final String CLONE_ACTIONS_FOR_ACTOR = """
-            MATCH (n:DepositPreparedAction {actorId: $actor})
-            WHERE n.recoveryKey IS NOT NULL
-            RETURN n
-            """;
-    private static final String DELETE_TERMINAL_TRANSFER_CHUNKS = "MATCH (transfer:DepositTransfer) WHERE transfer.state IN ['finished','aborted','expired'] MATCH (chunk:DepositTransferChunk {uploadId: transfer.id}) WITH chunk LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
-    private static final String DELETE_CLONE_UPLOAD_CHUNKS = "MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId}) WITH chunk ORDER BY chunk.offset LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
     private final ServerContext server;
     private final GraphDatabaseAPI db;
     private final ResourceFiles files;
@@ -154,85 +140,6 @@ final class StorageMaintenanceJobs {
         if(closed!=null)server.storage.admission.closeIfPresent(closed);
     }
 
-    void expireCloneUploads() throws IOException {
-        long now=server.sessionTime();List<String> candidates=new ArrayList<>(CLONE_UPLOAD_CANDIDATE_BATCH);
-        String select="MATCH (upload:DepositCloneUpload) WHERE upload.expires <= $now RETURN upload.id AS id ORDER BY coalesce(upload.cleanupAttempts,0), upload.id LIMIT $limit";
-        try(var tx=db.beginTx();var rows=tx.execute(select,Map.of("now",now,"limit",CLONE_UPLOAD_CANDIDATE_BATCH))){while(rows.hasNext())candidates.add((String)rows.next().get("id"));}
-        for(String id:candidates)cleanupCloneUpload(id);
-        candidates.clear();
-        try (var tx=db.beginTx();var uploading=core(tx).scanNodes("DepositCloneUpload", Map.of("state","uploading"))) {
-            CoreRepository core=core(tx);
-            while (uploading.hasNext() && candidates.size()<CLONE_UPLOAD_CANDIDATE_BATCH) {
-                Node upload=uploading.next();
-                if (UploadBinding.abandoned(server,core,upload)) candidates.add(CoreRepository.id(upload));
-            }
-        }
-        for(String id:candidates)cleanupCloneUpload(id);
-    }
-
-    private void cleanupCloneUpload(String id)throws IOException {
-        String admissionId=null;boolean pathRemoved=false,chunksRemoved=false;
-        try(var tx=db.beginTx()){
-            CoreRepository core=core(tx);Node upload=core.find("DepositCloneUpload","id",id);if(upload==null)return;
-            server.storagePoint("clone-upload-expiry-before-lock");tx.acquireWriteLock(upload);upload=core.find("DepositCloneUpload","id",id);server.storagePoint("clone-upload-expiry-after-lock");if(upload==null)return;
-            String state=text(upload,"state");long now=server.sessionTime();
-            if(Set.of("uploading","finished").contains(state)){
-                if ("uploading".equals(state) && upload.hasProperty("writerIncarnation")) {
-                    if (!UploadBinding.abandoned(server,core,upload)) return;
-                } else if(number(upload,"expires",0)>now || !upload.hasProperty("writerIncarnation") && hasUnresolvedCloneAction(tx,core,text(upload,"actorId")))return;
-                upload.setProperty("state","expired");upload.setProperty("expires",0L);state="expired";
-                if(upload.hasProperty("writerIncarnation")) upload.setProperty("writerFenced",true);
-            }
-            if(!Set.of("consumed","aborted","expired").contains(state)||number(upload,"expires",0)>server.sessionTime())return;
-            if("consumed".equals(state)&&!hasCommittedCloneReceipt(core,upload))return;
-            Files.deleteIfExists(files.path(text(upload,"stagingPath")));
-            upload.setProperty("cleanupPathRemoved",true);pathRemoved=true;
-            try(var result=tx.execute(DELETE_CLONE_UPLOAD_CHUNKS,Map.of("uploadId",id,"batchSize",CLONE_UPLOAD_CLEANUP_BATCH))){result.next();}
-            chunksRemoved=!hasCloneChunks(tx,id);
-            if(chunksRemoved)upload.setProperty("cleanupChunksRemoved",true);
-            upload.setProperty("cleanupAttempts",number(upload,"cleanupAttempts",0)+1);
-            admissionId=upload.hasProperty("admissionId")?text(upload,"admissionId"):null;
-            tx.commit();
-        }
-        if(!pathRemoved||!chunksRemoved)return;
-        if(admissionId!=null)try{server.storage.admission.closeIfPresent(admissionId);}catch(IOException failure){diagnostic.accept("Terminal clone upload admission cleanup pending");return;}
-        try(var tx=db.beginTx()){
-            CoreRepository core=core(tx);Node upload=core.find("DepositCloneUpload","id",id);if(upload==null)return;
-            tx.acquireWriteLock(upload);upload=core.find("DepositCloneUpload","id",id);if(upload==null)return;
-            if(!Set.of("consumed","aborted","expired").contains(text(upload,"state"))
-                    ||!Boolean.TRUE.equals(upload.getProperty("cleanupPathRemoved",false))
-                    ||!Boolean.TRUE.equals(upload.getProperty("cleanupChunksRemoved",false))
-                    ||Files.exists(files.path(text(upload,"stagingPath")))||hasCloneChunks(tx,id))return;
-            if(admissionId!=null&&Files.exists(files.root.resolve("admission").resolve(admissionId+".json")))return;
-            UploadBinding.cleaned(core,id);upload.delete();tx.commit();
-        }
-    }
-
-    private boolean hasUnresolvedCloneAction(Transaction tx, CoreRepository core, String actor) {
-        try (var rows = tx.execute(CLONE_ACTIONS_FOR_ACTOR, Map.of("actor", actor));
-             var actions = rows.<Node>columnAs("n")) {
-            return actions.stream().anyMatch(action -> CLONE_UPLOAD_PROCEDURES.contains(action.getProperty("procedure", ""))
-                    && core.receipt("server", (String) action.getProperty("operationId")) == null);
-        }
-    }
-
-    private boolean hasCommittedCloneReceipt(CoreRepository core,Node upload){
-        Object operation=upload.getProperty("consumedOperationId",null),actor=upload.getProperty("consumedActorId",null);
-        Object expectedResult=upload.getProperty("consumedResultId",null),expectedNamespace=upload.getProperty("consumedNamespaceId",null);
-        if(!(operation instanceof String operationId)||!(actor instanceof String actorId)
-                ||!(expectedResult instanceof String resultId)||!(expectedNamespace instanceof String namespaceId)
-                ||!actorId.equals(upload.getProperty("actorId",null)))return false;
-        Node receipt=core.receipt(actorId,"server",operationId);if(receipt==null
-                ||!operationId.equals(receipt.getProperty("operationId",null))
-                ||!actorId.equals(receipt.getProperty("actorId",null)))return false;
-        Object storedResult=receipt.getProperty("importResultId",null);if(!resultId.equals(storedResult))return false;
-        return ImportResultContract.verifiesResult(core,receipt,namespaceId);
-    }
-
-    private boolean hasCloneChunks(Transaction tx,String uploadId){
-        try(var rows=tx.execute("MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId}) RETURN chunk.id AS id LIMIT 1",Map.of("uploadId",uploadId))){return rows.hasNext();}
-    }
-
     void expireImportResults() {
         // Stateless leases have a fixed maximum deadline. Collect only after that deadline,
         // holding the result lock against leased readers and already-admitted apply calls.
@@ -260,10 +167,6 @@ final class StorageMaintenanceJobs {
                 Node receipt=core.receipt(text(result,"actorId"),scope,text(result,"operationId"));
                 if(receipt!=null && id.equals(receipt.getProperty("importResultId",null))
                         && ImportResultContract.verifiesResult(core,receipt,namespace)) {
-                    if(!receipt.hasProperty("resultKind")) {
-                        String kind=text(result,"kind");
-                        receipt.setProperty("resultKind","diagnostic".equals(kind)?"analysis":kind);
-                    }
                     receipt.setProperty("importResultCollected",true);
                 }
                 result.delete();
@@ -307,26 +210,12 @@ final class StorageMaintenanceJobs {
                 plan.removeProperty("admissionId");
             }
             tx.commit();
-            if(admissionId!=null)try{server.storage.admission.close(server.storage.admission.resume(admissionId));}catch(IOException failure){diagnostic.accept("Import plan storage admission cleanup pending");}
+            if(admissionId!=null)try{server.storage.admission.closeIfPresent(admissionId);}catch(IOException failure){diagnostic.accept("Import plan storage admission cleanup pending");}
         }
-        try(var tx=db.beginTx()){
-            collectTerminalTransferChunks(tx,TRANSFER_CHUNK_CLEANUP_BATCH);
-            tx.commit();
-        }catch(RuntimeException failure){diagnostic.accept("Upload chunk metadata cleanup pending: "+failure.getClass().getSimpleName());}
     }
 
     private boolean abandonedPlan(Node plan) {
         return "ready".equals(plan.getProperty("state",null)) && UploadBinding.abandoned(server,plan);
-    }
-
-    static long collectTerminalTransferChunks(Transaction tx,int batchSize){
-        if(batchSize<1)throw new IllegalArgumentException("Chunk cleanup batch must be positive");
-        try(var result=tx.execute("MATCH (transfer:DepositTransfer) WHERE transfer.state IN ['finished','aborted','expired'] AND EXISTS { MATCH (chunk:DepositTransferChunk {uploadId:transfer.id}) } RETURN transfer.id LIMIT 1",Map.of())){
-            if(!result.hasNext())return 0;
-        }
-        try(var result=tx.execute(DELETE_TERMINAL_TRANSFER_CHUNKS,Map.of("batchSize",batchSize))){
-            return ((Number)result.next().get("deleted")).longValue();
-        }
     }
 
     void process(String id, boolean recovery) {
@@ -337,23 +226,14 @@ final class StorageMaintenanceJobs {
             if (loc == null) return;
             core.lockNamespace(text(loc, "namespaceId"));
             resources.lock(id);
-            if (Boolean.TRUE.equals(loc.getProperty("collected", false)) || loc.hasProperty("deleting")) return;
+            if (Boolean.TRUE.equals(loc.getProperty("collected",false)) || Boolean.TRUE.equals(loc.getProperty("quarantined",false))
+                    || loc.hasProperty("deleting")) return;
             Node upload = loc.hasProperty("uploadId") ? resources.transfer(text(loc, "uploadId")) : null;
             if (upload != null && upload.hasProperty("writerIncarnation")
                     && ("aborted".equals(upload.getProperty("state")) || "uploading".equals(upload.getProperty("state")) && UploadBinding.abandoned(server,core,upload))) {
                 cleanAbandonedResourceUpload(core,resources,loc,upload);
                 tx.commit();
                 return;
-            }
-            if (recovery && upload != null && !upload.hasProperty("writerIncarnation") && "uploading".equals(upload.getProperty("state"))) {
-                Path staged = files.path(text(loc, "stagingPath"));
-                long offset = number(upload, "nextOffset", 0);
-                if (Files.exists(staged)) try (var channel = FileChannel.open(staged, StandardOpenOption.WRITE)) {
-                    if (channel.size() < offset) throw new IOException("Committed upload content missing");
-                    channel.truncate(offset);
-                    channel.force(true);
-                } else if (offset > 0) throw new IOException("Committed upload content missing");
-                if (content.get().exists(id)) content.get().verify(resources.content(loc));
             }
             resources.expire(loc);
             if (Boolean.TRUE.equals(loc.getProperty("published", false))) {
@@ -383,7 +263,10 @@ final class StorageMaintenanceJobs {
         if(!id.equals(upload.getProperty("resourceId")) || !namespace.equals(upload.getProperty("namespaceId"))
                 || resources.resource(namespace,id)!=null || resources.protectedContent(loc)) {
             loc.setProperty("quarantined",true);
-            loc.setProperty("diagnostic","Abandoned upload ownership or reachability requires verification");
+            String message="Abandoned upload ownership or reachability requires verification";
+            loc.setProperty("diagnostic",message);
+            diagnostic.accept(message);
+            UploadBinding.cleanupFailed(core,uploadId);
             return;
         }
         if (loc.hasProperty("stagingPath")) {
@@ -483,9 +366,7 @@ final class StorageMaintenanceJobs {
                 if (table.hasProperty("path")) knownStaging.add(text(table, "path").replace('\\', '/'));
                 if (table.hasProperty("rowIndexPath")) knownStaging.add(text(table, "rowIndexPath").replace('\\', '/'));
             }
-            for (Node upload : core(tx).nodes("DepositCloneUpload", Map.of())) {
-                if(upload.hasProperty("stagingPath")) knownStaging.add(text(upload,"stagingPath"));
-            }
+
         }
         String unknown = "00000000-0000-0000-0000-000000000000";
         try {

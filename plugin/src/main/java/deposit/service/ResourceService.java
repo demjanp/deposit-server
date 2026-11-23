@@ -27,18 +27,6 @@ public final class ResourceService extends BaseService {
     public Map<String,Object> transfer(String method,Map<String,Object> request) {
         scoped("editor");operational();repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,"editor");c.revision=repo.sequence(c.namespaceId);
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.resource."+method,"request",request)));
-        Node binding=repo.legacyBinding(c);if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
-        Node receipt=repo.receipt(c,c.namespaceId);
-        if(receipt!=null) {
-            c.replayed=true;
-            OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
-            OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));
-            var saved=repo.replay(receipt,c.namespaceId).data();
-            if(method.equals("beginUpload")){Node t=transfer(saved.get("uploadId"),true);resources.renew(t);return ResourceTransferRepository.beginResult(t);}
-            if(method.equals("uploadChunk")){Node t=transfer(request.get("uploadId"),true);resources.renew(t);}
-            if(method.equals("finishUpload")){Node t=transfer(request.get("uploadId"),false);if(!"finished".equals(t.getProperty("state")))c.fail("NOT_FOUND","Upload unavailable");if(number(t,"expires",0)>resources.now())resources.renew(t);}
-            return saved;
-        }
         Map<String,Object> result;
         try {result=switch(method){case "beginUpload"->new ResourceTransferRepository(c,resources).begin(request);case "uploadChunk"->new ResourceTransferRepository(c,resources).chunk(request,transfer(request.get("uploadId"),true));case "finishUpload"->new ResourceTransferRepository(c,resources).finish(request,transfer(request.get("uploadId"),true));case "abortUpload"->new ResourceTransferRepository(c,resources).abort(request,transfer(request.get("uploadId"),false));default->throw new IllegalArgumentException();};}
         catch(StorageAdmission.StoragePressureException e){throw ExceptionHandler.fail("LIMIT_EXCEEDED",e.getMessage());}
@@ -70,10 +58,6 @@ public final class ResourceService extends BaseService {
         String bindingScope=scope.equals("all")?"server":c.namespaceId;
         long hours=integer(request.getOrDefault("minimumAgeHours",48L));if(hours<0||hours>Long.MAX_VALUE/3_600_000)c.fail("VALIDATION_FAILED","Invalid minimum age");long age=hours*3_600_000;
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
-        if(!dryRun) {
-            Node binding=repo.legacyBinding(c);if(binding!=null)OperationalGuards.bindingScope(c,bindingScope,binding.getProperty("scope"));
-            Node receipt=repo.receipt(c,bindingScope);if(receipt!=null){OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));return repo.replay(receipt,bindingScope).data();}
-        }
         List<Node> locations=repo.nodes("DepositResourceLocation",scope.equals("all")?Map.of():Map.of("namespaceId",c.namespaceId));
         for(String ns:locations.stream().map(n->text(n,"namespaceId")).distinct().sorted().toList())repo.lockNamespace(ns);
         var candidates=new ArrayList<String>();long bytes=0;for(Node loc:locations){resources.lock(CoreRepository.id(loc));if(resources.eligible(loc,age)){candidates.add(CoreRepository.id(loc));try{bytes=Math.addExact(bytes,number(loc,"bytes",0));}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}}}

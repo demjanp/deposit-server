@@ -19,13 +19,13 @@ public final class ImportResultContract {
         Node result=core.find(LABEL,"id",id);
         String scope="server".equals(receipt.getProperty("scope"))?"server":"namespace";
         Object kind=receipt.getProperty("resultKind",null);
-        if(result==null)return Boolean.TRUE.equals(receipt.getProperty("importResultCollected",false))
-            && (scope.equals("server")?"clone".equals(kind):"apply".equals(kind)||"analysis".equals(kind));
+        if(!(scope.equals("server")?"clone".equals(kind):"apply".equals(kind)||"analysis".equals(kind)))
+            return false;
+        if(result==null)return Boolean.TRUE.equals(receipt.getProperty("importResultCollected",false));
         return scope.equals(result.getProperty("scope",null)) && namespace.equals(result.getProperty("namespaceId",null))
             && receipt.getProperty("actorId").equals(result.getProperty("actorId",null))
             && receipt.getProperty("operationId").equals(result.getProperty("operationId",null))
-            && (kind==null || kind.equals(result.getProperty("kind",null)))
-            && (!scope.equals("server") || "clone".equals(result.getProperty("kind",null)));
+            && kind.equals(result.getProperty("kind",null));
     }
 
 }

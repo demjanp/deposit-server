@@ -29,19 +29,26 @@ public final class DomainService extends ActionService {
         if(repo.declaration(clazz,name)!=null)c.fail("DUPLICATE","Declaration exists");
         return repo.attach("ClassDescriptor",clazz,c.actorId,Json.map("name",name,"type",type,"order",integer(request.getOrDefault("order",0L)),"comment",string(request.getOrDefault("comment",""))));
     }
+    record ExplicitDescriptorValue(String type, Object value) {}
     private record DescriptorWrite(Node descriptor,boolean changed) {}
     private DescriptorWrite descriptor(Node object,String name,Object input,boolean createOnly) {
         Node old=repo.descriptor(object,name);if(old!=null&&createOnly)c.fail("DUPLICATE","Descriptor exists");
         Node declaration=repo.declaration(repo.objectClass(object),name);
-        Object payload=input;
+        ExplicitDescriptorValue explicit=input instanceof ExplicitDescriptorValue typed?typed:null;
+        Object payload=explicit==null?input:explicit.value();
         if(declaration==null) {
-            var typed=ValueCodec.map(input);fields(typed,"type","value");
-            if(!typed.containsKey("value"))c.fail("VALIDATION_FAILED","Undeclared value requires explicit type and value");
-            String type=ValueCodec.type(typed.get("type"));payload=typed.get("value");
+            String type;
+            if(explicit==null) {
+                var typed=ValueCodec.map(input);fields(typed,"type","value");
+                if(!typed.containsKey("value"))c.fail("VALIDATION_FAILED","Undeclared value requires explicit type and value");
+                type=ValueCodec.type(typed.get("type"));payload=typed.get("value");
+            } else type=explicit.type();
             ValueCodec.normalize(type,payload);
             declaration=newDeclaration(repo.objectClass(object),Json.map("name",name,"type",type));
         }
-        String type=(String)declaration.getProperty("type");Object normalized=ValueCodec.normalize(type,payload);
+        String type=(String)declaration.getProperty("type");
+        if(explicit!=null&&!type.equals(explicit.type()))c.fail("VALIDATION_FAILED","Explicit value type differs from the Descriptor declaration");
+        Object normalized=ValueCodec.normalize(type,payload);
         if(old==null){Node descriptor=repo.attach("Descriptor",object,c.actorId,Json.map("name",name));repo.writeValue(descriptor,type,normalized,c.actorId);return new DescriptorWrite(descriptor,true);}
         return new DescriptorWrite(old,repo.writeValue(old,type,normalized,c.actorId));
     }

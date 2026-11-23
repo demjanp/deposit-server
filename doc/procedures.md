@@ -8,49 +8,27 @@ The server checks account status, Namespace selection, and roles on every call. 
 
 Use SHOW PROCEDURES YIELD name WHERE name STARTS WITH 'deposit.' RETURN name ORDER BY name to inspect the installed server. Neo4j built-in procedures are outside this list.
 
-## Actions and recovery
+## Single-attempt operations
 
-### deposit.action.prepare
-Purpose: Prepare a write with a recovery key so the client can safely resolve a lost reply.
-Inputs: recoveryKey (String), procedure (String), arguments (List<Object>), token (String).
-Access: Authenticated Deposit session; original write permissions are checked again when it runs.
-Example:
-
-```cypher
-CALL deposit.action.prepare('00000000-0000-4000-8000-000000000001', 'deposit.set.class', ['Specimen', {comment: 'Example'}], $token) YIELD data RETURN data;
-```
-
-### deposit.action.release
-Purpose: Release the prepared recovery key after the write outcome is known.
-Inputs: token (String).
-Access: Authenticated Deposit session.
-Example:
+Generate a fresh UUIDv7 for each attempt. Register the procedure, exact ordered
+domain arguments and explicit Scope with `deposit.action.begin`. Commit the
+registration before invoking the procedure once on the original authenticated
+Bolt connection in a separate transaction. Use `server` for Server scope and
+the Namespace UUID for Namespace scope.
 
 ```cypher
-CALL deposit.action.release($token) YIELD value RETURN value;
+CALL deposit.action.begin($operationId, $namespaceId, 'deposit.set.class',
+  [{name: 'Specimen'}, {comment: 'Example'}], $operationId, $token) YIELD data RETURN data;
+CALL deposit.set.class({name: 'Specimen'}, {comment: 'Example'}, $operationId, $token)
+  YIELD data RETURN data;
 ```
 
-### deposit.action.resume
-Purpose: Reattach a prepared action after reconnecting.
-Inputs: recoveryKey (String), token (String).
-Access: Authenticated Deposit session; original write permissions are checked again when it runs.
-Example:
-
-```cypher
-CALL deposit.action.resume('00000000-0000-4000-8000-000000000001', $token) YIELD data RETURN data;
-```
-
-### deposit.action.status
-Purpose: Check whether a prepared action has completed.
-Inputs: recoveryKey (String), token (String).
-Access: Authenticated Deposit session; only the actor can inspect their preparation.
-Example:
-
-```cypher
-CALL deposit.action.status('00000000-0000-4000-8000-000000000001', $token) YIELD data RETURN data;
-```
-
-For recovery, prepare before the ordinary write. If the connection drops, check status. After reconnecting, select the original Namespace and call `resume` to reattach the preparation. Then repeat the identical ordinary write to execute it or replay its saved result. Release the preparation when the outcome is known. `prepare` and `resume` do not run the write by themselves.
+Inspect the original attempt with `deposit.get.operation`. On a separate
+connection, request cancellation with
+`deposit.action.cancel(operationId, scope, token)`. Wait for a definitive
+rollback before starting a fresh attempt. A committed operation stays committed.
+An unknown outcome requires inspection of the original operation. Cleanup
+progress is reported separately in `cleanupState`.
 
 ## Administration
 
@@ -78,7 +56,11 @@ CALL deposit.admin.pruneResourcesStatus($pruneId, $token) YIELD data RETURN data
 
 ### deposit.apply.batch
 Purpose: Run supported edit procedures as one action. Each nested procedure still checks its own role and inputs.
-Inputs: commands (List<Object>), token (String). Each command has a `key`, `procedure`, and `arguments` list. `{ref: 'key', field: 'id'}` passes an earlier result ID to a later command.
+Each command supplies a `key`, a `procedure` and an `arguments` list.
+A reference of the form `{ref: 'key', field: 'id'}` passes an earlier result
+ID to a later command. Descriptor writes can supply a `descriptorTypes` map
+keyed by descriptor name. The Server checks each explicit type against the
+declaration in effect when its command runs.
 Access: Namespace editor.
 Example:
 
@@ -503,7 +485,7 @@ Access: Namespace viewer for subgraph or transient/disabled full export; Namespa
 Example:
 
 ```cypher
-CALL deposit.get.namespaceData({}, $token) YIELD data RETURN data;
+CALL deposit.get.namespaceData({}, $operationId, $token) YIELD data RETURN data;
 ```
 
 ### deposit.get.namespacePage
@@ -597,13 +579,12 @@ CALL deposit.get.objectsByPatternPage({id: $patternId}, {specimen: {Code: 'S-04'
 ```
 
 ### deposit.get.operation
-Purpose: Read a saved operation receipt by operation ID and scope.
-Inputs: operationId (String), scope (String), token (String).
-Access: The original actor or Namespace owner for a Namespace receipt; server receipt access follows server-scope rules.
-Example:
+
+Read the authoritative operation state and cleanup state for the original
+actor and explicit Scope. The Server checks current account and Scope access.
 
 ```cypher
-CALL deposit.get.operation($operationId, 'namespace', $token) YIELD data RETURN data;
+CALL deposit.get.operation($operationId, $namespaceId, $token) YIELD data RETURN data;
 ```
 
 ### deposit.get.pattern
@@ -769,61 +750,58 @@ CALL deposit.get.userToolPage(null, {pageSize: 20}, $token) YIELD data RETURN da
 ## Import
 
 ### deposit.import.analyze
-Purpose: Validate a complete exported package against the active target Namespace and create a staged import plan.
-Inputs: source (Object), rules (Map<String,Object>), token (String).
-Access: Namespace editor.
-Example:
+
+Analyze a canonical Exchange package without changing the receiving Namespace.
+The active Namespace requires editor access. Obtain `packageId` and `grant`
+from `deposit.exchange.export` in the source Namespace or from
+`deposit.exchange.finishUpload` after intake in the receiving Scope. A full
+export with persistent history requires source owner access. Register the
+analyze call in the receiving Namespace and then execute it once.
 
 ```cypher
-CALL deposit.save.data(null, {}, $token) YIELD data RETURN data;
+CALL deposit.import.analyze({packageId: $packageId, grant: $grant}, {}, $operationId, $token)
+  YIELD data RETURN data;
 ```
-
-Run this export in the source Namespace and keep its returned `resourceId`. A full export in a persistent-history Namespace requires owner access. Create and select a different, empty target Namespace. Set `$packageResourceId` to the saved ID, then analyze:
-
-```cypher
-CALL deposit.import.analyze({packageResourceId: $packageResourceId}, {}, $token) YIELD data RETURN data;
-```
-
-The source user must still have permission to read the exported resource. Review the returned summary and apply its `planId` with `deposit.import.apply`. Analysis creates a plan; it does not change target data. `deposit.import.rows` and `deposit.import.dataByPattern` also analyze and stage plans.
 
 ### deposit.import.apply
-Purpose: Apply an analyzed import plan to its target Namespace.
-Inputs: planId (String), token (String).
-Access: Namespace editor.
-Example:
+
+Register and apply the ready plan in the same receiving Store session and on
+the same connection that created it. The Server checks the plan's target
+revision and applies it in one transaction.
 
 ```cypher
-CALL deposit.import.apply($planId, $token) YIELD data RETURN data;
+CALL deposit.import.apply($planId, $operationId, $token) YIELD data RETURN data;
 ```
 
 ### deposit.import.dataByPattern
-Purpose: Match submitted values to a Pattern and stage an import plan.
-Inputs: pattern (Object), values (Map<String,Object>), rules (Map<String,Object>), token (String).
-Access: Namespace editor.
-Example:
+
+Analyze form input against a stored Pattern in the active Namespace.
 
 ```cypher
-CALL deposit.import.dataByPattern({id: $patternId}, {specimen: {Code: 'S-04'}}, {}, $token) YIELD data RETURN data;
+CALL deposit.import.dataByPattern({id: $patternId}, {specimen: {Code: 'S-04'}}, {},
+  $operationId, $token) YIELD data RETURN data;
 ```
 
-### deposit.import.namespaceData
-Purpose: Create a new Namespace as a clone of a complete package.
-Inputs: packageResourceId (String), token (String).
-Access: Any enabled Deposit user with read access to the package; caller owns the clone. No active Namespace is required; selection is unchanged. The package must be a full-Namespace package and its Namespace name must be unused.
-Example:
+### deposit.import.cloneNamespace
+
+Clone a complete Exchange package into a new Namespace in one transaction.
+Register the attempt in Server scope. Use an authorized source-export grant
+or a Server-scoped receiving-upload grant. The authenticated actor owns the
+new Namespace.
 
 ```cypher
-CALL deposit.import.namespaceData($packageResourceId, $token) YIELD data RETURN data;
+CALL deposit.import.cloneNamespace({packageId: $packageId, grant: $grant}, $operationId, $token)
+  YIELD data RETURN data;
 ```
 
 ### deposit.import.rows
 Purpose: Match source rows to Objects and stage an import plan.
-Inputs: source (Map<String,Object>), targets (Map<String,Object>), relationships (List<Object>), rules (Map<String,Object>), token (String).
+Inputs: source (Map<String,Object>), targets (Map<String,Object>), relationships (List<Object>), rules (Map<String,Object>), operationId (String), token (String).
 Access: Namespace editor.
 Example:
 
 ```cypher
-CALL deposit.import.rows({rows: [{id: 'row-1', values: {Code: 'S-04', Mass: 5.0}}]}, {Code: {object: 'specimen', className: 'Specimen', descriptor: 'Code', type: 'String'}, Mass: {object: 'specimen', className: 'Specimen', descriptor: 'Mass', type: 'Float'}}, [], {}, $token) YIELD data RETURN data;
+CALL deposit.import.rows({rows: [{id: 'row-1', values: {Code: 'S-04', Mass: 5.0}}]}, {Code: {object: 'specimen', className: 'Specimen', descriptor: 'Code', type: 'String'}, Mass: {object: 'specimen', className: 'Specimen', descriptor: 'Mass', type: 'Float'}}, [], {}, $operationId, $token) YIELD data RETURN data;
 ```
 
 ## Load
@@ -836,16 +814,6 @@ Example:
 
 ```cypher
 CALL deposit.load.csv($resourceId, {}, $token) YIELD data RETURN data;
-```
-
-### deposit.load.data
-Purpose: Load a resource into a table or inspect a package.
-Inputs: resourceId (String), token (String).
-Access: Namespace editor.
-Example:
-
-```cypher
-CALL deposit.load.data($resourceId, $token) YIELD data RETURN data;
 ```
 
 ### deposit.load.gpkg
@@ -943,18 +911,6 @@ Example:
 ```cypher
 CALL deposit.save.csv({query: 'SELECT Specimen.Code AS code'}, {}, {}, $token) YIELD data RETURN data;
 ```
-
-### deposit.save.data
-Purpose: Export a subgraph or Namespace as a portable package.
-Inputs: selection (Map<String,Object>), options (Map<String,Object>), token (String).
-Access: Namespace viewer for subgraph or transient/disabled full export; Namespace owner for full export with persistent history.
-Example:
-
-```cypher
-CALL deposit.save.data({rootIds: [$specimenId]}, {}, $token) YIELD data RETURN data;
-```
-
-The export saves a subgraph package for `$specimenId`; keep its returned `resourceId` for an import or download. It does not include history. Use `deposit.action.prepare` when a client needs to recover safely after a lost reply.
 
 ### deposit.save.gpkg
 Purpose: Export query or table results as a GeoPackage.
@@ -1296,7 +1252,7 @@ The authoritative hub also describes deposit.admin.cypher and deposit.get.object
 
 ## Result notes
 
-node and rel are native Neo4j handles. Use deposit.utils.toData(entity, token) to convert an entity to portable Deposit data. value is a scalar result; data is a structured result. Query streams include data, columns, and presence; page procedures return their page inside data. Some procedures return one row per match. The [authoritative API and recovery notes](https://github.com/demjanp/deposit-hub/blob/main/deposit-server-api.md) describe transaction and replay behavior.
+node and rel are native Neo4j handles. Use deposit.utils.toData(entity, token) to convert an entity to portable Deposit data. value is a scalar result; data is a structured result. Query streams include data, columns, and presence; page procedures return their page inside data. Some procedures return one row per match. The [public procedure manifest](../runtime/public-api.json) lists installed signatures, scopes and result columns.
 
 
 

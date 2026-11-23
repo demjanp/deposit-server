@@ -49,38 +49,6 @@ class ResourceTransferRepositoryTest {
         assertTrue(failure.getMessage().contains("Upload size cannot be negative"));
     }
 
-    @Test void chunkReceiptsAreUniquePerUploadOffsetAndExactRetriesDoNotChangeThem() {
-        management = new DatabaseManagementServiceBuilderImplementation(temporary.resolve("database"), type -> type != DepositExtension.class).build();
-        var database = management.database("neo4j");
-        SchemaRepository.initialize(database);
-        String uploadId = UUID.randomUUID().toString();
-        try (var tx = database.beginTx()) {
-            var chunk = tx.createNode(Label.label("DepositTransferChunk"));
-            chunk.setProperty("id", UUID.randomUUID().toString());
-            chunk.setProperty("uploadId", uploadId);
-            chunk.setProperty("offset", 12L);
-            chunk.setProperty("length", 5L);
-            chunk.setProperty("checksum", HASH);
-            chunk.setProperty("nextOffset", 17L);
-            assertEquals(Map.of("nextOffset", 17L), ResourceTransferRepository.retryResult(chunk, HASH, 5));
-            assertEquals(Map.of("nextOffset", 17L), ResourceTransferRepository.retryResult(chunk, HASH, 5));
-            assertThrows(ExceptionHandler.DepositException.class, () -> ResourceTransferRepository.retryResult(chunk, "1".repeat(64), 5));
-            assertThrows(ExceptionHandler.DepositException.class, () -> ResourceTransferRepository.retryResult(chunk, HASH, 6));
-            tx.commit();
-        }
-        try (var tx = database.beginTx()) {
-            assertThrows(ConstraintViolationException.class, () -> {
-                var duplicate = tx.createNode(Label.label("DepositTransferChunk"));
-                duplicate.setProperty("id", UUID.randomUUID().toString());
-                duplicate.setProperty("uploadId", uploadId);
-                duplicate.setProperty("offset", 12L);
-                duplicate.setProperty("length", 5L);
-                duplicate.setProperty("checksum", HASH);
-                duplicate.setProperty("nextOffset", 17L);
-            });
-        }
-    }
-
     private static void assertError(ExceptionHandler.DepositException failure, String message) {
         assertTrue(failure.getMessage().contains("\"code\":\"VALIDATION_FAILED\""), failure.getMessage());
         assertTrue(failure.getMessage().contains("\"message\":\"" + message + "\""), failure.getMessage());

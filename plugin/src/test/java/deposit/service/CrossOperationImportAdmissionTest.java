@@ -26,12 +26,15 @@ class CrossOperationImportAdmissionTest {
  }
  @AfterEach void tearDown(){try{if(database!=null&&server!=null){management.unregisterTransactionEventListener("neo4j",server);database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class).removeMonitorListener(server);}}finally{try{if(server!=null&&server.storage!=null)server.storage.close();}finally{try{if(management!=null)management.shutdown();}finally{if(database!=null)ServerContext.detach(database.databaseId().databaseId().uuid());if(previousConfig==null)System.clearProperty("deposit.config");else System.setProperty("deposit.config",previousConfig);}}}}
  @Test void analysisAndApplyReleaseSecondaryReservationsAcrossOperations()throws Exception {
-  String packageId=publishPackage();UUID analyze=UUID.randomUUID(),apply=UUID.randomUUID();
-  Map<String,Object> analysis=call("deposit.import.analyze",analyze,args("source",Json.map("packageResourceId",packageId),"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+  var source=publishPackage();
+  String volume=server.storage.admission.volumeId(server.storage.files.root);
+  long initialCommitment=commitments(volume);
+  UUID analyze=UUID.randomUUID(),apply=UUID.randomUUID();
+  Map<String,Object> analysis=call("deposit.import.analyze",analyze,args("source",source,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
   String planId=(String)analysis.get("planId");
   Map<String,Object> initialPlan=planSnapshot(planId);
   assertNotNull(planId);assertEquals(0,collectionCount(analysis,"conflicts"));
-  assertTrue(commitments(server.storage.admission.volumeId(server.storage.files.root))<=65537L,"only plan metadata survives analysis");
+  assertTrue(commitments(volume)-initialCommitment<=65537L,"only plan metadata survives analysis");
   assertFalse(admissions(analyze).isEmpty(),"ready plan retains its staged package");
 
   Map<String,Object> applied=call("deposit.import.apply",apply,args("planId",planId));
@@ -48,7 +51,6 @@ class CrossOperationImportAdmissionTest {
   List<?> objectRows=(List<?>)objectPage.get("entries");
   assertEquals(1,objectRows.size(),"one actual Object identity in the apply receipt");
   String target=(String)ValueCodec.map(ValueCodec.map(objectRows.get(0)).get("value")).get("value");assertNotNull(target);
-  assertEquals(ImportResultRepositoryTest.withoutLease(applied),call("deposit.import.apply",apply,args("planId",planId)),"same receipt replay must not create new objects");
   assertEquals(ImportResultRepositoryTest.withoutLease(applied),ImportResultRepositoryTest.withoutLease(call("deposit.get.importResult",UUID.randomUUID(),args("resultId",resultId))));
   Map<String,Object> beforeInspection=planSnapshot(planId);
   Map<String,Object> inspected=readOnlyImportPlan(planId);
@@ -57,8 +59,8 @@ class CrossOperationImportAdmissionTest {
   assertEquals(analysis.get("kind"),ValueCodec.map(inspected.get("analysisResult")).get("kind"));
   assertEquals(initialPlan.get("expiresAt"),ValueCodec.map(inspected.get("analysisResult")).get("expiresAt"),"applied analysis expiry remains immutable");
   assertEquals(beforeInspection,planSnapshot(planId),"read-only inspection must not change plan fields");
-  assertEquals(1,countNodes("Object"));assertEquals(1,countNodes("DResource"),"source package DResource is preserved, with no extra imported binary record");
-  assertTrue(admissions(apply).isEmpty(),"ordinary replay releases operation reservations: "+Json.write(readAdmissionFiles()));
+  assertEquals(1,countNodes("Object"));assertEquals(0,countNodes("DResource"),"Exchange intake creates no scientific resource");
+  assertTrue(admissions(apply).isEmpty(),"completed apply releases operation reservations: "+Json.write(readAdmissionFiles()));
  }
  private Map<String,Object> readOnlyImportPlan(String planId)throws Exception {
   try(var tx=database.beginTx()){
@@ -76,7 +78,7 @@ class CrossOperationImportAdmissionTest {
   }
  }
 
- private String publishPackage()throws Exception {
+ private Map<String,Object> publishPackage()throws Exception {
   String source=UUID.randomUUID().toString(),clazz=UUID.randomUUID().toString();
   String object=UUID.randomUUID().toString(),descriptor=UUID.randomUUID().toString(),member=UUID.randomUUID().toString();
   var decl=List.of(entity("ClassDescriptor",source,UUID.randomUUID().toString(),args("classId",clazz,"name","Code","type","String","order",0L,"comment","")));
@@ -88,22 +90,7 @@ class CrossOperationImportAdmissionTest {
   var graph=args("classes",List.of(clazzRow),"objects",List.of(obj),"descriptors",List.of(desc),"geometries",List.of(),"memberships",List.of(mem),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());
   Path archive=temporary.resolve("small.zip");
   ExchangePackageCodec.write(archive,manifest,graph,null,Map.of());
-  long length=Files.size(archive);
-  String checksum=ResourceFiles.checksum(archive),id=UUID.randomUUID().toString();
-  String stored=ResourceFiles.filename("small.zip",checksum);
-  server.storage.content.publish(new ResourceStorage.Content(id,stored,length,checksum),archive);
-  try(var tx=database.beginTx()){
-   var core=new CoreRepository(tx,java.time.ZonedDateTime.now());
-   var repository=new ResourceRepository(tx,core);
-   repository.record("DResource",id,args("namespaceId",namespace,"filename","small.zip","storedFilename",stored,
-       "mediaType","application/zip","bytes",length,"checksum",checksum,"state","ready","createdBy",actor));
-   repository.record("DepositResourceLocation",id,args("namespaceId",namespace,"storedFilename",stored,
-       "bytes",length,"checksum",checksum,"published",true,"everAttached",false));
-   repository.record("DepositExportGrant",UUID.randomUUID().toString(),args("resourceId",id,"namespaceId",namespace,
-       "actorId",actor,"expires",server.sessionTime()+ResourceFiles.LEASE));
-   tx.commit();
-  }
-  return id;
+  return ExchangeTestFixture.receive(server,database,actor,namespace,archive);
  }
  private long countNodes(String label){try(var tx=database.beginTx()){long count=tx.findNodes(Label.label(label)).stream().count();tx.rollback();return count;}}
  private Map<String,Object> call(String procedure,UUID operation,Map<String,Object> request)throws Exception {try(var tx=database.beginTx()){var context=new RequestContext(tx,args("token",token,"operationId",operation.toString()));context.publicCall=true;context.procedure=procedure;context.request=request;var actions=new SessionActionService(context);actions.begin(procedure,ProcedureCatalog.spec(procedure).bindings().stream().map(request::get).collect(java.util.stream.Collectors.toList()));var row=(DataRow)new ProcedureService(context).execute().findFirst().orElseThrow();actions.observe();tx.commit();return row.data;}}
@@ -112,7 +99,7 @@ class CrossOperationImportAdmissionTest {
  private long commitments(String volume)throws Exception {
   long held=0;
   for(var row:readAdmissionFiles()) {
-   var reservation=server.storage.admission.resume((String)row.get("id"));
+   var reservation=server.storage.admission.existing((String)row.get("id"));
    held=Math.addExact(held,reservation.commitments().getOrDefault(volume,0L));
   }
   return held;

@@ -41,23 +41,11 @@ public final class TabularService extends BaseService {
         repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);c.revision=repo.sequence(c.namespaceId);
     }
     private String operationalHash(String procedure,Map<String,Object> request){
-        Node binding=repo.legacyBinding(c);
-        if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
         return c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
     }
-    private Map<String,Object> replayOperational(Node receipt,String hash){
-        c.replayed=true;
-        OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
-        OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));
-        return repo.replay(receipt,c.namespaceId).data();
-    }
-
     private Map<String,Object> load(String procedure,Map<String,Object> request){
         fields(request,"resourceId","formatOptions");operational("editor");lockOperationalScope("editor");
-        String hash=operationalHash(procedure,request);Node receipt=repo.receipt(c,c.namespaceId);
-        // A committed result remains recoverable even after its table or input expires.
-        // Replaying never reads or renews staging, and never recreates expired content.
-        if(receipt!=null)return replayOperational(receipt,hash);
+        String hash=operationalHash(procedure,request);
         String id=RequestContext.uuid(request.get("resourceId"));Node source=resources.resource(c.namespaceId,id);
         if(source==null||!resources.accessible(source,c.actorId,effectiveRole(c.namespaceId),false))c.fail("NOT_FOUND","Resource not found");
         Node location=resources.location(id);resources.lock(id);var content=resources.verify(location);
@@ -146,10 +134,7 @@ public final class TabularService extends BaseService {
 
     private Map<String,Object> save(String procedure,Map<String,Object> request){
         fields(request,"source","parameters","formatOptions");operational("viewer");
-        String hash=operationalHash(procedure,request);Node receipt=repo.receipt(c,c.namespaceId);
-        // Recover the original export before touching its source. A query may have
-        // changed and a staged input may have expired since the original commit.
-        if(receipt!=null){lockOperationalScope("viewer");return replayOperational(receipt,hash);}
+        String hash=operationalHash(procedure,request);
         Map<String,Object> source=ValueCodec.map(request.get("source")),format=request.get("formatOptions")==null?Map.of():ValueCodec.map(request.get("formatOptions"));fields(source,"tableId","query");
         if(source.containsKey("tableId")==source.containsKey("query"))c.fail("VALIDATION_FAILED","Exactly one of tableId or query is required");
         boolean csv=procedure.endsWith(".csv"),xlsx=procedure.endsWith(".xlsx"),gpkg=procedure.endsWith(".gpkg");if(!csv&&!xlsx&&!gpkg)c.fail("VALIDATION_FAILED","Unsupported export format");
@@ -170,7 +155,7 @@ public final class TabularService extends BaseService {
             if(repo.sequence(c.namespaceId)!=revision)c.fail("REVISION_CONFLICT","Namespace changed during export collection");long bytes=Files.size(stage);requireContentLimit(bytes,"Generated export exceeds the content limit");String checksum=ResourceFiles.checksum(stage),resourceId=UUID.randomUUID().toString(),resultFilename=gpkg&&gpkgFiles.size()>1?filename.substring(0,filename.length()-5)+".zip":filename,stored=ResourceFiles.filename(resultFilename,checksum);var content=new ResourceStorage.Content(resourceId,stored,bytes,checksum);resources.lock(resourceId);
             c.server.storagePoint("tabular-export-before-publication");
             StorageAdmission.Reservation publicationAdmission;
-            try{long commitment=Math.addExact(bytes,64L*1024);publicationAdmission=c.server.storage.admission.acquire("tabular-export",resourceId,c.operationId,"tabular-publication",Map.of(resources.files.root,commitment),Json.map("phase","ocfl-publication","resourceId",resourceId,"receiptScope",c.namespaceId,"expectedBytes",bytes));}
+            try{long commitment=Math.addExact(bytes,64L*1024);publicationAdmission=c.server.storage.admission.acquire("tabular-export",resourceId,c.operationId,"tabular-publication",Map.of(resources.files.root,commitment),Json.map("phase","ocfl-publication","resourceId",resourceId,"receiptScope",c.namespaceId,"actorId",c.actorId,"expectedBytes",bytes));}
             catch(StorageAdmission.StoragePressureException pressure){c.fail("LIMIT_EXCEEDED",pressure.getMessage());return Map.of();}
             c.state.release.add(()->{try{c.server.storage.admission.close(publicationAdmission);}catch(IOException failure){c.server.storage.diagnostic="Tabular publication admission cleanup pending";}});
             try(var publication=c.server.resourceLinkPublication(resourceLinksUsed)) {

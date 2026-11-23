@@ -223,11 +223,8 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     }
     public Node receipt(String scope,String operation) {return receipts.receipt(scope,operation);}
     public Node receipt(String actor,String scope,String operation) {return receipts.receipt(actor,scope,operation);}
-    public Node receipt(RequestContext context,String scope) {return context.state.operationClaimed?receipt(context.actorId,scope,context.operationId):receipt(scope,context.operationId);}
-    public Node legacyBinding(RequestContext context) {return context.state.operationClaimed?null:binding(context.actorId,context.operationId);}
-    public Node binding(String actor,String operation) {return receipts.binding(actor,operation);}
+    public Node receipt(RequestContext context,String scope) {return receipt(context.actorId,scope,context.operationId);}
     public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {receipts.saveReceipt(c,scope,hash,outcome);}
-    public Outcome replay(Node receipt,String scope) {return receipts.replay(receipt,scope);}
     public boolean bootstrapped() {return find("DepositInitialization","id","bootstrap")!=null || nodes("User",Map.of("serverRole","administrator")).size()>0;}
     public void validateOwnerDeactivation(String actor) {
         for(Node ns:nodes("Namespace",Map.of())) {

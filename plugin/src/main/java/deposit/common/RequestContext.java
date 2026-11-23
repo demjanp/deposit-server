@@ -12,7 +12,7 @@ public final class RequestContext {
     public String operationId;
     public String uploadContinuation;
     public Long expectedRevision;
-    public boolean publicCall, replayed, operational;
+    public boolean publicCall, operational;
     public String procedure, inputHash, actionScope;
     public Map<String,Object> request;
     public Map<String,Object> selectorBindings=Map.of();

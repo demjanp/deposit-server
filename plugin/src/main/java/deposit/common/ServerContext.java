@@ -276,7 +276,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public volatile boolean administrative;
         public final Map<String,Long> baselines=new HashMap<>();
         public long observationGeneration;
-        public volatile String preparedAction, lastOperation, lastScope;
+        public volatile String lastOperation, lastScope;
         /** Opaque identity only; session state must not retain the transaction state or kernel handle. */
         public Object mutationOwner;
         public Session(String actor,String principal,long created) {this(actor,principal,created,Transport.BOLT);}

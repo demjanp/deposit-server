@@ -20,17 +20,7 @@ public abstract class ActionService extends BaseService {
         if(serverScope)c.server.lockServer(c.state);
         if(!serverScope) {repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);}
         String scope=serverScope?"server":c.namespaceId;
-        String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||depositCloneAction(procedure))?null:c.expectedRevision)));
-        Node binding=repo.legacyBinding(c);
-        if(binding!=null)OperationalGuards.bindingScope(c,scope,binding.getProperty("scope"));
-        Node receipt=repo.receipt(c,scope);
-        if(receipt!=null) {
-            c.replayed=true;
-            OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
-            OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));
-            c.revision=serverScope?c.server.revision(c.state):((Number)receipt.getProperty("revision")).longValue();
-            return repo.replay(receipt,scope);
-        }
+        String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||procedure.equals("deposit.import.cloneNamespace"))?null:c.expectedRevision)));
         c.revision=serverScope?c.server.revision(c.state):repo.sequence(scope);if(c.expectedRevision!=null)checkRevision();
         boolean importApply=procedure.equals("deposit.import.apply");
         boolean importAnalysis=Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern").contains(procedure);
@@ -46,7 +36,7 @@ public abstract class ActionService extends BaseService {
         if(!serverScope&&!importAnalysis){var patterns=new PatternService(c);boolean canonicalized=patterns.canonicalizeResolvedDeclarations();Map<String,Map<String,Object>> resulting=capture(history,scope,workspace);patterns.validateNamespace();patterns.validateDeclarationDeletion(beforeState,resulting);if(canonicalized&&!change.changed())change=new Change(change.outcome(),true);}
         if(change.changed()) {
             if(serverScope) {
-                if(!c.state.operationClaimed||!depositCloneAction(procedure)||procedure.equals("deposit.import.cloneNamespace"))c.state.serverChanged=true;
+                c.state.serverChanged=true;
                 c.revision=c.server.revision(c.state);
             }
             else {repo.advanceNamespace(scope,c.actorId);c.revision=repo.sequence(scope);}
@@ -65,9 +55,6 @@ public abstract class ActionService extends BaseService {
         try{var workspace=new HistoryWorkspace(c.server.storage.files.path("staging/imports"),()->c.state.kernel.assertOpen(),lease::reserve,()->{lease.close();cleaned[0]=true;},budget::ownHistoryWorkspace);c.state.release.add(()->{try{workspace.close();}catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();c.server.storage.diagnostic="Private history index cleanup pending";}});return workspace;}
         catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();throw new UncheckedIOException(failure);}
         catch(RuntimeException failure){if(!cleaned[0])budget.retainForScratchCleanup();throw failure;}
-    }
-    private static boolean depositCloneAction(String procedure) {
-        return Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload").contains(procedure);
     }
     private static boolean isImportResult(Map<String,Object> data){return ImportResultContract.FORMAT.equals(data.get("format"));}
     protected Outcome outcome(Node node) {return new Outcome(node,null,repo.data(node));}

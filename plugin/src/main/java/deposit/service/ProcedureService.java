@@ -42,9 +42,8 @@ public final class ProcedureService {
             case "deposit.get.objectsByPatternPage"->new PatternService(c).search(r,true);
             case "deposit.exchange.export"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
             case "deposit.exchange.beginUpload","deposit.exchange.uploadChunk","deposit.exchange.finishUpload","deposit.exchange.abortUpload","deposit.exchange.inspect","deposit.exchange.memberPage","deposit.exchange.graphPage","deposit.exchange.readChunk","deposit.exchange.discard"->Stream.of(new DataRow(new ExchangePackages(c).execute(p,r),c.meta()));
-            case "deposit.get.data","deposit.get.namespaceData","deposit.save.data","deposit.load.data"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
+            case "deposit.get.data","deposit.get.namespaceData"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
             case "deposit.import.analyze","deposit.get.importPlan","deposit.get.importPlanMetadata","deposit.get.importResult","deposit.get.importResultPage","deposit.get.importResultEntry","deposit.import.discardPlan","deposit.import.apply","deposit.import.dataByPattern","deposit.import.cloneNamespace"->Stream.of(new DataRow(new ImportService(c).execute(p,r),c.meta()));
-            case "deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload"->Stream.of(new DataRow(new CloneUploadService(c).execute(p.substring(p.lastIndexOf('.')+1),r),c.meta()));
             case "deposit.load.csv","deposit.load.xlsx","deposit.load.gpkg","deposit.get.table","deposit.get.tablePage","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg","deposit.get.layout","deposit.import.rows"->{Object value=new TabularService(c).execute(p,r);if(value instanceof Stream<?> stream)yield stream;if(value instanceof DataRow row)yield Stream.of(row);yield Stream.of(new DataRow(ValueCodec.map(value),c.meta()));}
             case "deposit.resource.beginUpload","deposit.resource.uploadChunk","deposit.resource.finishUpload","deposit.resource.abortUpload"->Stream.of(new DataRow(resource.transfer(p.substring(p.lastIndexOf('.')+1),r),c.meta()));
             case "deposit.resource.info","deposit.resource.downloadChunk"->Stream.of(new DataRow(resource.read(r,p.endsWith("downloadChunk")),c.meta()));
@@ -52,7 +51,7 @@ public final class ProcedureService {
             case "deposit.admin.pruneResourcesStatus"->Stream.of(new DataRow(resource.status(r),c.meta()));
             case "deposit.utils.coordinatesToWKT","deposit.utils.wktToCoordinates"->Stream.of(new DataRow(new GeometryService(c).convert(r,p.endsWith("coordinatesToWKT")),c.meta()));
             case "deposit.utils.cancelRequest"->Stream.of(new CancellationService(c).cancel(r));
-            case "deposit.utils.cancel","deposit.get.requests","deposit.get.session","deposit.get.lastOperation","deposit.utils.refresh","deposit.utils.toData","deposit.action.prepare","deposit.action.status","deposit.action.resume","deposit.action.release"->new SessionActionService(c).control(p,r);
+            case "deposit.utils.cancel","deposit.get.requests","deposit.get.session","deposit.get.lastOperation","deposit.utils.refresh","deposit.utils.toData"->new SessionActionService(c).control(p,r);
             default->read(p,r);
         };
     }

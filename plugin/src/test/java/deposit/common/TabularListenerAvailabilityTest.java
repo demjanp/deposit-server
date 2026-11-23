@@ -126,12 +126,16 @@ class TabularListenerAvailabilityTest {
         assertUnavailable(format);assertTrue(reached.get(),"Stop occurs only after successful serialization");
     }
     @ParameterizedTest @ValueSource(strings={"csv","xlsx","gpkg"})
-    void committedReceiptReplaysWithListenerUnavailable(String format)throws Exception {
-        String operation=UUID.randomUUID().toString();var result=save(format,true,operation);
-        var beforeCounts=counts();var beforePublished=published();downloads.stopAccepting();
-        // Remove staging source to establish replay returns before source reads.
-        Files.delete(server.storage.files.path("staging/"+table+".json"));
-        assertEquals(result,save(format,true,operation));assertEquals(beforeCounts,counts());assertEquals(beforePublished,published());
+    void committedReceiptAndObjectRemainWithListenerUnavailable(String format)throws Exception {
+        String operation=UUID.randomUUID().toString();
+        var result=save(format,true,operation);
+        downloads.stopAccepting();
+        assertTrue(server.storage.content.exists((String)result.get("resourceId")));
+        try(var tx=database.beginTx()){
+            var receipt=tx.findNode(Label.label("DepositReceipt"),"operationId",operation);
+            assertNotNull(receipt);
+            assertFalse(receipt.hasProperty("outcome"));
+        }
     }
     @Test void missingListenerFailsClosedDespiteRetainedConfiguredUrl()throws Exception {
         server.attachDownloadsForTesting(null);

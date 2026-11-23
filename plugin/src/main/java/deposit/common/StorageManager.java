@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -75,7 +76,7 @@ public final class StorageManager implements AutoCloseable {
         try { admission.reconcile(this::reconcileReservation); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot reconcile storage reservations", e); }
         for (String id : ids("DepositPruneItem")) { jobs.collect(id); jobs.collect(id); }
-        try { jobs.expireImportPlans(); jobs.expireImportResults(); jobs.expireTables(); jobs.expireCloneUploads(); jobs.expireExchange(); }
+        try { jobs.expireImportPlans(); jobs.expireImportResults(); jobs.expireTables(); jobs.expireExchange(); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot expire staged operational data", e); }
         try { content.recoverWork(); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot reconcile resource work", e); }
@@ -98,7 +99,7 @@ public final class StorageManager implements AutoCloseable {
         return switch(reservation.ownerKind){
             case "ocfl-publication" -> reconcilePublication(reservation);
             case "tabular-load" -> reconcileTableStage(reservation);
-            case "namespace-clone","import-plan" -> reconcilePackageStage(reservation);
+            case "import-plan" -> reconcilePackageStage(reservation);
             case "export-scratch" -> reconcileExportScratch(reservation);
             case "exchange-stage" -> reconcileExchangeStage(reservation);
             default -> StorageAdmission.OwnerState.uncertain();
@@ -256,11 +257,14 @@ public final class StorageManager implements AutoCloseable {
             // interrupted OCFL work has been recovered below.
             return StorageAdmission.OwnerState.uncertain();
         }
-        if(Set.of("export","tabular-export","namespace-clone").contains(reservation.ownerKind)){
-            Object scope=reservation.writeIntent().get("receiptScope");if(!(scope instanceof String receiptScope))return StorageAdmission.OwnerState.uncertain();
+        if("tabular-export".equals(reservation.ownerKind)){
+            var intent=reservation.writeIntent();
+            if(!(intent.get("receiptScope") instanceof String scope) || !(intent.get("actorId") instanceof String actor)
+                    || reservation.operationId==null)return StorageAdmission.OwnerState.uncertain();
             try(var tx=db.beginTx()){
                 CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
-                return core.receipt(receiptScope,reservation.operationId)==null?StorageAdmission.OwnerState.uncertain():StorageAdmission.OwnerState.absent();
+                return core.receipt(actor,scope,reservation.operationId)==null
+                    ?StorageAdmission.OwnerState.uncertain():StorageAdmission.OwnerState.absent();
             }
         }
         if("import-plan".equals(reservation.ownerKind)){
@@ -274,53 +278,26 @@ public final class StorageManager implements AutoCloseable {
                 return new StorageAdmission.OwnerState(true,true,Map.of(),Map.of("stagingPath",staging,"phase","plan-ready"));
             }
         }
-        if("clone-upload".equals(reservation.ownerKind)){
-            try(var tx=db.beginTx()){
-                CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));Node upload=core.find("DepositCloneUpload","id",reservation.ownerId);
-                if(upload==null){Object relative=reservation.writeIntent().get("stagingPath");if(relative instanceof String path&&Files.exists(files.path(path),java.nio.file.LinkOption.NOFOLLOW_LINKS))return StorageAdmission.OwnerState.uncertain();return StorageAdmission.OwnerState.absent();}
-                String actor=(String)upload.getProperty("actorId"),state=(String)upload.getProperty("state"),staging=(String)upload.getProperty("stagingPath");long expected=((Number)upload.getProperty("bytes")).longValue(),committed=((Number)upload.getProperty("nextOffset")).longValue();
-                if(!reservation.ownerId.equals(upload.getProperty("id"))||expected<0||committed<0||committed>expected)return StorageAdmission.OwnerState.uncertain();
-                Path path=files.path(staging);
-                if("uploading".equals(state)&&UploadBinding.abandoned(server,upload))
-                    return new StorageAdmission.OwnerState(true,true,Map.of(),reservation.writeIntent());
-                if(Set.of("aborted","expired").contains(state)){
-                    if(!Files.exists(path,java.nio.file.LinkOption.NOFOLLOW_LINKS))return StorageAdmission.OwnerState.absent();
-                    if(Files.isSymbolicLink(path)||!Files.isRegularFile(path,java.nio.file.LinkOption.NOFOLLOW_LINKS)||Files.size(path)!=committed)return StorageAdmission.OwnerState.uncertain();
-                    return new StorageAdmission.OwnerState(true,true,Map.of(),Map.of("stagingPath",staging,"phase",state,"actorId",actor,"bytes",expected,"nextOffset",committed,"sha256",upload.getProperty("sha256")));
-                }
-                if("consumed".equals(state)){
-                    Object cloneOperation=upload.getProperty("consumedOperationId",null),cloneActor=upload.getProperty("consumedActorId",null);
-                    Object expectedResult=upload.getProperty("consumedResultId",null),expectedNamespace=upload.getProperty("consumedNamespaceId",null);
-                    if(!(cloneOperation instanceof String operationId)||!(cloneActor instanceof String consumedActor)||!actor.equals(consumedActor))return StorageAdmission.OwnerState.uncertain();
-                    if(!(expectedResult instanceof String consumedResult)||!(expectedNamespace instanceof String consumedNamespace))return StorageAdmission.OwnerState.uncertain();
-                    Node receipt=core.receipt(actor,"server",operationId);if(receipt==null||!"server".equals(receipt.getProperty("scope",null))||!operationId.equals(receipt.getProperty("operationId",null))||!actor.equals(receipt.getProperty("actorId",null)))return StorageAdmission.OwnerState.uncertain();
-                    Object rawResultId=receipt.getProperty("importResultId",null);if(!(rawResultId instanceof String resultId))return StorageAdmission.OwnerState.uncertain();
-                    if(!resultId.equals(consumedResult)||!ImportResultContract.verifiesResult(core,receipt,consumedNamespace))return StorageAdmission.OwnerState.uncertain();
-                    if(!Files.exists(path,java.nio.file.LinkOption.NOFOLLOW_LINKS))return StorageAdmission.OwnerState.absent();
-                    if(Files.isSymbolicLink(path)||!Files.isRegularFile(path,java.nio.file.LinkOption.NOFOLLOW_LINKS)||Files.size(path)!=expected||!ResourceFiles.checksum(path).equals(upload.getProperty("sha256")))return StorageAdmission.OwnerState.uncertain();
-                    return new StorageAdmission.OwnerState(true,true,Map.of(),Map.of("stagingPath",staging,"phase","consumed","actorId",actor,"bytes",expected,"nextOffset",committed,"sha256",upload.getProperty("sha256")));
-                }
-                if(!Set.of("uploading","finished").contains(state))return StorageAdmission.OwnerState.uncertain();
-                if(state.equals("finished")){if(!Files.isRegularFile(path,java.nio.file.LinkOption.NOFOLLOW_LINKS)||Files.size(path)!=expected||!ResourceFiles.checksum(path).equals(upload.getProperty("sha256")))return StorageAdmission.OwnerState.uncertain();return new StorageAdmission.OwnerState(true,true,Map.of(),Map.of("stagingPath",staging,"phase","finished","actorId",actor,"bytes",expected,"nextOffset",committed,"sha256",upload.getProperty("sha256")));}
-                if(Files.exists(path)){long actual=Files.size(path);if(actual<committed)throw new java.io.IOException("Committed clone upload bytes are missing during admission recovery");if(actual>committed)files.truncate(staging,committed);}else if(committed>0)throw new java.io.IOException("Clone upload staging is missing during admission recovery");
-                long remaining=expected-committed;Map<String,Long> future=remaining==0?Map.of():Map.of(admission.volumeId(files.root),remaining);return new StorageAdmission.OwnerState(true,true,future,Map.of("stagingPath",staging,"phase","upload","actorId",actor,"bytes",expected,"nextOffset",committed,"sha256",upload.getProperty("sha256")));
-            }
-        }
         if(!"upload".equals(reservation.ownerKind))return StorageAdmission.OwnerState.uncertain();
         try(var tx=db.beginTx()){
-            CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));Node transfer=core.find("DepositTransfer","id",reservation.ownerId);
-            if(transfer==null){Object relative=reservation.writeIntent().get("stagingPath");if(relative instanceof String path&&Files.exists(files.path(path)))return StorageAdmission.OwnerState.uncertain();return StorageAdmission.OwnerState.absent();}
-            String state=(String)transfer.getProperty("state",""),resourceId=(String)transfer.getProperty("resourceId"),namespace=(String)transfer.getProperty("namespaceId");
-            if(!"uploading".equals(state))return StorageAdmission.OwnerState.absent();
-            Node location=core.find("DepositResourceLocation","id",resourceId);if(location==null||!namespace.equals(location.getProperty("namespaceId")))return StorageAdmission.OwnerState.uncertain();
-            String staging=(String)location.getProperty("stagingPath");long expected=((Number)transfer.getProperty("bytes")).longValue(),committed=((Number)transfer.getProperty("nextOffset")).longValue();
-            if(UploadBinding.abandoned(server,transfer))
-                return new StorageAdmission.OwnerState(true,true,Map.of(),reservation.writeIntent());
-            if(expected<0||committed<0||committed>expected)return StorageAdmission.OwnerState.uncertain();Path path=files.path(staging);
-            if(Files.exists(path)){long actual=Files.size(path);if(actual<committed)throw new java.io.IOException("Committed upload bytes are missing during admission recovery");if(actual>committed)files.truncate(staging,committed);}else if(committed>0)throw new java.io.IOException("Committed upload staging is missing during admission recovery");
-            long remaining=expected-committed;Map<String,Long> future=remaining==0?Map.of():Map.of(admission.volumeId(files.root),remaining);
-            var intent=Json.map("stagingPath",staging,"expectedBytes",expected,"nextOffset",committed);
-            return new StorageAdmission.OwnerState(true,true,future,intent);
+            var intent=reservation.writeIntent();
+            if (!(intent.get("stagingPath") instanceof String staging) || !(intent.get("resourceId") instanceof String resourceId))
+                return StorageAdmission.OwnerState.uncertain();
+            CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
+            Node transfer=core.find("DepositTransfer","id",reservation.ownerId);
+            Node location=core.find("DepositResourceLocation","id",resourceId);
+            if (transfer==null && location==null && !Files.exists(files.path(staging),java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                    && !content.exists(resourceId))return StorageAdmission.OwnerState.absent();
+            if (transfer==null || location==null || !resourceId.equals(transfer.getProperty("resourceId",null))
+                    || !reservation.ownerId.equals(location.getProperty("uploadId",null))
+                    || !Objects.equals(transfer.getProperty("namespaceId",null),location.getProperty("namespaceId",null))
+                    || Boolean.TRUE.equals(location.getProperty("quarantined",false)))
+                return StorageAdmission.OwnerState.uncertain();
+            String state=(String)transfer.getProperty("state","");
+            if ("finished".equals(state) && Boolean.TRUE.equals(location.getProperty("published",false))
+                    || "expired".equals(state) && Boolean.TRUE.equals(location.getProperty("collected",false)))
+                return StorageAdmission.OwnerState.absent();
+            return StorageAdmission.OwnerState.uncertain();
         }
     }
 
@@ -388,14 +365,14 @@ public final class StorageManager implements AutoCloseable {
         try {
             operations.tick();
             jobs.expireImportPlans(); jobs.expireImportResults(); jobs.expireTables();
-            jobs.expireCloneUploads(); jobs.expireExchange();
+            jobs.expireExchange();
             for (String id : ids("DepositResourceLocation")) {
                 if (Thread.currentThread().isInterrupted()) return;
                 jobs.process(id, false);
             }
             for (String id : ids("DepositPruneItem")) jobs.collect(id);
             // Runtime cleanup is safe only when a durable receipt proves the import transaction committed.
-            admission.reconcile(reservation->Set.of("ocfl-publication","tabular-load","namespace-clone","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind)
+            admission.reconcile(reservation->Set.of("ocfl-publication","tabular-load","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind)
                 ?reconcileOutputIntent(reservation):reconcileRuntimeImportWrite(reservation));
             operations.finishCleanup();
         } catch (Exception e) { diagnostic = "Resource maintenance pending: " + e.getClass().getSimpleName(); }

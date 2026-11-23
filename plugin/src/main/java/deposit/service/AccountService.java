@@ -79,18 +79,4 @@ public final class AccountService extends ActionService {
     public Outcome deleteNamespace(Map<String,Object> request) { return new NamespaceAdministrationService(c).delete(request); }
     public EntityRow active(Map<String,Object> request,boolean set) { return new NamespaceAdministrationService(c).active(request,set); }
     public Outcome setRole(Map<String,Object> request) { return new NamespaceAdministrationService(c).setRole(request); }
-    public DataRow operation(Map<String,Object> request) {
-        fields(request,"operationId","scope");readContext();Node user=authenticate();String scope=string(request.getOrDefault("scope","namespace"));
-        if(scope.equals("namespace")) {scoped("viewer");scope=c.namespaceId;}
-        else if(scope.equals("server"))c.revision=c.server.revision(c.state);
-        else c.fail("VALIDATION_FAILED","Invalid receipt scope");
-        String operation=RequestContext.uuid(request.get("operationId"));Node binding=repo.binding(c.actorId,operation);
-        if(binding!=null&&!scope.equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
-        Node receipt=repo.receipt(scope,operation);
-        if(receipt==null)c.fail("NOT_FOUND","Operation not found");
-        if(!c.actorId.equals(receipt.getProperty("actorId"))) {
-            if(scope.equals("server"))admin(user);else requireRole(c.namespaceId,"owner");
-        }
-        return new DataRow(Json.map("operationId",operation,"state","committed","outcome",Json.read((String)receipt.getProperty("outcome"))),c.meta());
-    }
 }

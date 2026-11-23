@@ -33,11 +33,10 @@ final class SessionActionScope extends BaseService {
         Object roots = switch (procedure) {
             case "deposit.get.namespaceData" -> List.of();
             case "deposit.get.data","deposit.exchange.export" -> arguments.getFirst();
-            case "deposit.save.data" -> ValueCodec.map(arguments.getFirst()).get("rootIds");
             default -> null;
         };
         if(Set.of("deposit.get.data","deposit.exchange.export").contains(procedure))ExchangeService.validateSelector(roots,arguments.get(1));
-        if (!Set.of("deposit.get.namespaceData","deposit.get.data","deposit.save.data","deposit.exchange.export").contains(procedure)) return "viewer";
+        if (!Set.of("deposit.get.namespaceData","deposit.get.data","deposit.exchange.export").contains(procedure)) return "viewer";
         var namespace=repo.namespace(active());
         boolean history=switch(procedure) {
             case "deposit.get.namespaceData" -> !Boolean.FALSE.equals(ValueCodec.map(arguments.getFirst()).get("includeHistory"));

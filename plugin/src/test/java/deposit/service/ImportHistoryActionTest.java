@@ -107,213 +107,16 @@ class ImportHistoryActionTest {
         }
     }
 
-    private Map<String,Object> invokeCloneUpload(String procedure,String operation,Map<String,Object> request,boolean commit,Long expectedRevision) {
-        return invokeCloneUploadAs(token,procedure,operation,request,commit,expectedRevision);
-    }
-
-    private Map<String,Object> invokeCloneUploadAs(String authToken,String procedure,String operation,Map<String,Object> request,boolean commit,Long expectedRevision) {
-        try(var tx=database.beginTx()) {
-            boolean finished=false;
-            try {
-                var context=new RequestContext(tx,Json.map("token",authToken,"operationId",operation,"expectedRevision",0L));if(expectedRevision==null)context.expectedRevision=server.revision(context.state);else context.expectedRevision=expectedRevision;
-                context.procedure=procedure;context.request=request;
-                var row=(Results.DataRow)new ProcedureService(context).execute().findFirst().orElseThrow();
-                if(commit){tx.commit();finished=true;}else{tx.rollback();finished=true;}
-                return row.data;
-            } finally {if(!finished)tx.rollback();}
-        }
-    }
-
-    @Test void cloneUploadIsActorBoundReplaySafeAndRollbackRestoresCommittedOffset() throws Exception {
-        createNamespace("disabled");byte[] payload="complete clone package".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] prefix="complete ".getBytes(java.nio.charset.StandardCharsets.UTF_8),suffix="clone package".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        String checksum=ResourceFiles.checksum(payload),begin=UUID.randomUUID().toString();
-        Map<String,Object> started=invokeCloneUpload("deposit.import.beginCloneUpload",begin,Json.map("filename","clone.zip","bytes",(long)payload.length,"sha256",checksum),true,null);
-        String uploadId=(String)started.get("uploadId");assertEquals(started,invokeCloneUpload("deposit.import.beginCloneUpload",begin,Json.map("filename","clone.zip","bytes",(long)payload.length,"sha256",checksum),true,0L));
-        String chunk=UUID.randomUUID().toString();Map<String,Object> chunkRequest=Json.map("uploadId",uploadId,"offset",0L,"bytesBase64",Base64.getEncoder().encodeToString(prefix),"chunkSha256",ResourceFiles.checksum(prefix));
-        assertEquals((long)prefix.length,invokeCloneUpload("deposit.import.cloneUploadChunk",chunk,chunkRequest,true,null).get("nextOffset"));
-        assertEquals((long)prefix.length,invokeCloneUpload("deposit.import.cloneUploadChunk",UUID.randomUUID().toString(),chunkRequest,true,null).get("nextOffset"));
-        String rollback=UUID.randomUUID().toString();
-        var rollbackRequest=Json.map("uploadId",uploadId,"offset",(long)prefix.length,"bytesBase64",Base64.getEncoder().encodeToString(suffix),"chunkSha256",ResourceFiles.checksum(suffix));
-        invokeCloneUpload("deposit.import.cloneUploadChunk",rollback,rollbackRequest,false,null);
-        try(var tx=database.beginTx()) {
-            Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);
-            assertEquals((long)prefix.length,upload.getProperty("nextOffset"));
-            assertEquals(prefix.length,Files.size(server.storage.files.path((String)upload.getProperty("stagingPath"))));
-            tx.rollback();
-        }
-        assertEquals((long)payload.length,invokeCloneUpload("deposit.import.cloneUploadChunk",UUID.randomUUID().toString(),rollbackRequest,true,null).get("nextOffset"));
-        assertEquals(Json.map("uploadId",uploadId,"bytes",(long)payload.length,"sha256",checksum,"state","ready"),
-                invokeCloneUpload("deposit.import.finishCloneUpload",UUID.randomUUID().toString(),Json.map("uploadId",uploadId),true,null));
-    }
-
-    @Test void cloneUploadChunkFinishAndAbortAreDeniedToDifferentActorWithoutDisclosureOrMutation() throws Exception {
-        createNamespace("disabled");String otherActor=UUID.randomUUID().toString(),otherToken=ServerContext.randomToken();
+    private Map<String,Object> clonePackage(String operation,Map<String,Object> source) {
         try(var tx=database.beginTx()){
-            Node user=node(tx,"User",Json.map("id",otherActor,"enabled",true,"serverRole","user"));node(tx,"DepositActorLock",Json.map("id",otherActor));
-            var internal=(InternalTransaction)tx;var session=new ServerContext.Session(otherActor,internal.securityContext().subject().executingUser(),server.sessionTime());session.namespace=namespace;server.registerSession(Json.hash(otherToken),session);tx.commit();
-        }
-        byte[] payload="actor private clone".getBytes(java.nio.charset.StandardCharsets.UTF_8);String checksum=ResourceFiles.checksum(payload);
-        Map<String,Object> started=invokeCloneUpload("deposit.import.beginCloneUpload",UUID.randomUUID().toString(),Json.map("filename","private.zip","bytes",(long)payload.length,"sha256",checksum),true,null);String uploadId=(String)started.get("uploadId");
-        byte[] first=Arrays.copyOfRange(payload,0,5);Map<String,Object> chunkRequest=Json.map("uploadId",uploadId,"offset",0L,"bytesBase64",Base64.getEncoder().encodeToString(first),"chunkSha256",ResourceFiles.checksum(first));
-        for(var attempt:List.of(
-                Map.entry("deposit.import.cloneUploadChunk",chunkRequest),
-                Map.entry("deposit.import.finishCloneUpload",Json.map("uploadId",uploadId)),
-                Map.entry("deposit.import.abortCloneUpload",Json.map("uploadId",uploadId)))){
-            ExceptionHandler.DepositException denied=assertThrows(ExceptionHandler.DepositException.class,()->invokeCloneUploadAs(otherToken,attempt.getKey(),UUID.randomUUID().toString(),attempt.getValue(),true,null));
-            assertTrue(denied.getMessage().contains("\"code\":\"NOT_FOUND\""),"another actor must receive a non-disclosing NOT_FOUND response");
-            try(var tx=database.beginTx()){Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertEquals("uploading",upload.getProperty("state"));assertEquals(0L,upload.getProperty("nextOffset"));assertFalse(Files.exists(server.storage.files.path((String)upload.getProperty("stagingPath"))));assertEquals(0,tx.findNodes(Label.label("DepositCloneUploadChunk"),Map.of("uploadId",uploadId)).stream().count());tx.rollback();}
-        }
-    }
-
-    @Test void clonePackageResourceWithoutAccessReturnsNotFoundWithoutCreatingArtifacts() throws Exception {
-        createNamespace("disabled");String caller=UUID.randomUUID().toString(),callerToken=ServerContext.randomToken(),sourceNamespace=UUID.randomUUID().toString(),resourceId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
-        try(var tx=database.beginTx()){
-            Node user=node(tx,"User",Json.map("id",caller,"enabled",true,"serverRole","user"));node(tx,"DepositActorLock",Json.map("id",caller));
-            var internal=(InternalTransaction)tx;var session=new ServerContext.Session(caller,internal.securityContext().subject().executingUser(),server.sessionTime());session.namespace=namespace;server.registerSession(Json.hash(callerToken),session);
-            node(tx,"Namespace",Json.map("id",sourceNamespace,"name","Private package source","description","","sequence",0L,"historyMode","disabled"));
-            Node resource=node(tx,"DResource",Json.map("id",resourceId,"namespaceId",sourceNamespace,"filename","private-exchange.zip","mediaType","application/zip","bytes",128L,"sha256","a".repeat(64),"state","ready","createdBy",actor));
-            node(tx,"DepositResourceLocation",Json.map("id",resourceId,"namespaceId",sourceNamespace,"storedFilename","private-exchange.zip","bytes",128L,"checksum","a".repeat(64),"leaseUntil",0L,"everAttached",true,"published",true));
-            node(tx,"DepositExportGrant",Json.map("id",UUID.randomUUID().toString(),"resourceId",resourceId,"namespaceId",sourceNamespace,"actorId",caller,"history",true,"expires",server.sessionTime()+ResourceFiles.LEASE));
-            Node descriptor=node(tx,"Descriptor",Json.map("id",UUID.randomUUID().toString(),"namespaceId",sourceNamespace,"name","Exchange package"));descriptor.createRelationshipTo(resource,RelationshipType.withName("HAS_RESOURCE"));tx.commit();
-        }
-        Path admissionRoot=server.storage.files.root.resolve("admission");Set<String> before;try(var rows=Files.list(admissionRoot)){before=rows.map(path->path.getFileName().toString()).collect(java.util.stream.Collectors.toSet());}
-        ExceptionHandler.DepositException denied=assertThrows(ExceptionHandler.DepositException.class,()->invokeCloneUploadAs(callerToken,"deposit.import.cloneNamespace",operation,Json.map("source",Json.map("resourceId",resourceId)),true,serverRevision()));
-        assertTrue(denied.getMessage().contains("\"code\":\"NOT_FOUND\""),"inaccessible package resources must not be disclosed");
-        try(var tx=database.beginTx()){
-            try(var matches=tx.findNodes(Label.label("Namespace"),"name","Private package source")){assertEquals(1,matches.stream().count());}
-            assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation));
-            try(var clones=tx.findNodes(Label.label("Namespace"),"name","private-exchange.zip")){assertEquals(0,clones.stream().count());}
-            tx.rollback();
-        }
-        try(var rows=Files.list(admissionRoot)){assertEquals(before,rows.map(path->path.getFileName().toString()).collect(java.util.stream.Collectors.toSet()),"unauthorized clone creates no storage admission artifact");}
-    }
-
-    @Test void authorizedActorCanCloneAttachedPackageResource() throws Exception {
-        createNamespace("disabled");String sourceNamespace=UUID.randomUUID().toString(),resourceId=UUID.randomUUID().toString();Path archive=temporary.resolve("authorized-package-resource.zip");
-        var manifest=Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",sourceNamespace,"name","Authorized Package","description","resource source","depositVersion","2.0.0","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");
-        var graph=Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());
-        ExchangePackageCodec.write(archive,manifest,graph,null,Map.of());String checksum=ResourceFiles.checksum(archive);long bytes=Files.size(archive);String stored=ResourceFiles.filename("authorized-package-resource.zip",checksum);
-        var content=new ResourceStorage.Content(resourceId,stored,bytes,checksum);server.storage.content.publish(content,archive);
-        try(var tx=database.beginTx()){
-            Node source=node(tx,"Namespace",Json.map("id",sourceNamespace,"name","Authorized source","description","","sequence",0L,"historyMode","disabled"));
-            Node user=tx.findNode(Label.label("User"),"id",actor);user.createRelationshipTo(source,RelationshipType.withName("HAS_NAMESPACE_ROLE")).setProperty("role","viewer");
-            Node resource=node(tx,"DResource",Json.map("id",resourceId,"namespaceId",sourceNamespace,"filename","authorized-package-resource.zip","storedFilename",stored,"mediaType","application/zip","bytes",bytes,"checksum",checksum,"state","ready","createdBy",actor));
-            node(tx,"DepositResourceLocation",Json.map("id",resourceId,"namespaceId",sourceNamespace,"storedFilename",stored,"bytes",bytes,"checksum",checksum,"leaseUntil",0L,"everAttached",true,"published",true));
-            node(tx,"DepositExportGrant",Json.map("id",UUID.randomUUID().toString(),"resourceId",resourceId,"namespaceId",sourceNamespace,"actorId",actor,"history",true,"expires",server.sessionTime()+ResourceFiles.LEASE));
-            Node descriptor=node(tx,"Descriptor",Json.map("id",UUID.randomUUID().toString(),"namespaceId",sourceNamespace,"name","Exchange package"));descriptor.createRelationshipTo(resource,RelationshipType.withName("HAS_RESOURCE"));tx.commit();
-        }
-
-        String operation=UUID.randomUUID().toString();Map<String,Object> result=invokeCloneUpload("deposit.import.cloneNamespace",operation,Json.map("source",Json.map("resourceId",resourceId)),true,serverRevision());
-        assertNotNull(result.get("namespaceId"));assertNotNull(result.get("resultId"));
-        try(var tx=database.beginTx()){Node cloned=tx.findNode(Label.label("Namespace"),"id",(String)result.get("namespaceId"));assertNotNull(cloned);assertEquals("Authorized Package",cloned.getProperty("name"));assertNotNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation));tx.rollback();}
-
-    }
-
-    @Test void abortedCloneUploadIsReclaimedByExpiryMaintenance() throws Exception {
-        createNamespace("disabled");byte[] payload="partial clone".getBytes(java.nio.charset.StandardCharsets.UTF_8);String checksum=ResourceFiles.checksum(payload);
-        Map<String,Object> started=invokeCloneUpload("deposit.import.beginCloneUpload",UUID.randomUUID().toString(),Json.map("filename","clone.zip","bytes",(long)payload.length,"sha256",checksum),true,null);String uploadId=(String)started.get("uploadId");String abortOperation=UUID.randomUUID().toString();
-        assertEquals(Json.map("aborted",true),invokeCloneUpload("deposit.import.abortCloneUpload",abortOperation,Json.map("uploadId",uploadId),true,null));
-        String stagingPath,admissionId;try(var tx=database.beginTx()){Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertNotNull(upload);assertEquals("aborted",upload.getProperty("state"));stagingPath=(String)upload.getProperty("stagingPath");admissionId=(String)upload.getProperty("admissionId");tx.rollback();}
-        Path staged=server.storage.files.path(stagingPath);server.storage.recover();
-        assertFalse(Files.exists(staged));assertFalse(Files.exists(server.storage.files.root.resolve("admission").resolve(admissionId+".json")));
-        try(var tx=database.beginTx()){assertNull(tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId));tx.rollback();}
-    }
-
-    @Test void expiredCloneUploadChunkLedgerIsReclaimedInBoundedRestartableBatches() throws Exception {
-        createNamespace("disabled");String uploadId=UUID.randomUUID().toString();int chunkCount=700;
-        String relative="staging/imports/clone-uploads/large-expired-ledger.zip";Path staged=server.storage.files.path(relative);Files.createDirectories(staged.getParent());Files.write(staged,new byte[]{1});
-        try(var tx=database.beginTx()){
-            Node upload=node(tx,"DepositCloneUpload",Json.map("id",uploadId,"actorId",actor,"filename","large.zip","bytes",1L,"sha256",ResourceFiles.checksum(new byte[]{1}),"nextOffset",1L,"state","aborted","expires",0L,"stagingPath",relative));
-            for(int index=0;index<chunkCount;index++)node(tx,"DepositCloneUploadChunk",Json.map("id",uploadId+"/"+index,"uploadId",uploadId,"offset",(long)index,"length",1L,"checksum","0".repeat(64),"nextOffset",(long)index+1));
+            var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));
+            context.expectedRevision=server.revision(context.state);
+            context.procedure="deposit.import.cloneNamespace";
+            context.request=Json.map("source",source);
+            var data=new ImportService(context).execute(context.procedure,context.request);
             tx.commit();
+            return data;
         }
-        server.storage.recover();
-        try(var tx=database.beginTx()){
-            Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertNotNull(upload,"ledger remains the durable cleanup owner between bounded passes");
-            assertEquals(1L,upload.getProperty("cleanupAttempts"));assertFalse(Files.exists(staged));
-            assertEquals((long)(chunkCount-256),tx.findNodes(Label.label("DepositCloneUploadChunk"),Map.of("uploadId",uploadId)).stream().count());tx.rollback();
-        }
-        try(var tx=database.beginTx()){tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId).setProperty("expires",0L);tx.commit();}
-        server.storage.recover();
-        try(var tx=database.beginTx()){
-            Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertNotNull(upload);
-            assertEquals((long)(chunkCount-512),tx.findNodes(Label.label("DepositCloneUploadChunk"),Map.of("uploadId",uploadId)).stream().count());tx.rollback();
-        }
-        server.storage.recover();
-        try(var tx=database.beginTx()){
-            assertNull(tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId));
-            assertEquals(0,tx.findNodes(Label.label("DepositCloneUploadChunk"),Map.of("uploadId",uploadId)).stream().count());tx.rollback();
-        }
-    }
-
-    @Test void cloneUploadCoordinatesHaveUniqueIndexedLookupAcrossUploads() {
-        String first=UUID.randomUUID().toString(),second=UUID.randomUUID().toString();
-        try(var tx=database.beginTx()){
-            Node one=tx.createNode(Label.label("DepositCloneUpload"));one.setProperty("id",first);one.setProperty("actorId",actor);one.setProperty("state","uploading");one.setProperty("expires",1L);
-            Node two=tx.createNode(Label.label("DepositCloneUpload"));two.setProperty("id",second);two.setProperty("actorId",actor);two.setProperty("state","uploading");two.setProperty("expires",1L);
-            for(String upload:List.of(first,second)){Node chunk=tx.createNode(Label.label("DepositCloneUploadChunk"));chunk.setProperty("id",upload+"/0");chunk.setProperty("uploadId",upload);chunk.setProperty("offset",0L);chunk.setProperty("length",1L);chunk.setProperty("checksum","0".repeat(64));chunk.setProperty("nextOffset",1L);}
-            try(var found=tx.findNodes(Label.label("DepositCloneUploadChunk"),Map.of("uploadId",first,"offset",0L))){assertTrue(found.hasNext());assertEquals(first,found.next().getProperty("uploadId"));assertFalse(found.hasNext());}
-            var explained=tx.execute("EXPLAIN MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId, offset:$offset}) RETURN chunk",Map.of("uploadId",first,"offset",0L));String plan=explained.getExecutionPlanDescription().toString();assertTrue(plan.contains("NodeUniqueIndexSeek")||plan.contains("NodeIndexSeek"),plan);
-            var expiry=tx.execute("EXPLAIN MATCH (upload:DepositCloneUpload) WHERE upload.expires <= $now RETURN upload.id",Map.of("now",0L));String expiryPlan=expiry.getExecutionPlanDescription().toString();assertTrue(expiryPlan.contains("NodeIndexSeekByRange")||expiryPlan.contains("NodeIndexSeek"),expiryPlan);
-            tx.rollback();
-        }
-    }
-
-    @Test void cloneNamespaceCommitsAndReplaysAsOneServerScopedActionAndRejectsNameCollision() throws Exception {
-        createNamespace("disabled");String sourceNamespace=UUID.randomUUID().toString();Path archive=temporary.resolve("clone-source.zip");
-        var manifest=Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",sourceNamespace,"name","Cloned Namespace","description","copied","depositVersion","2.0.0","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");
-        var graph=Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());
-        ExchangePackageCodec.write(archive,manifest,graph,null,Map.of());byte[] bytes=Files.readAllBytes(archive);String checksum=ResourceFiles.checksum(bytes);
-        String uploadId=uploadClonePackage(bytes,checksum);String operation=UUID.randomUUID().toString();long expected=serverRevision();var request=Json.map("source",Json.map("uploadId",uploadId,"sha256",checksum));
-        Map<String,Object> first=invokeCloneUpload("deposit.import.cloneNamespace",operation,request,true,expected);
-        assertEquals("clone",first.get("kind"));String clonedId=(String)first.get("namespaceId");assertNotNull(clonedId);
-        assertEquals(first,invokeCloneUpload("deposit.import.cloneNamespace",operation,request,true,expected));
-        try(var tx=database.beginTx()){
-            Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertEquals("consumed",upload.getProperty("state"));
-            assertTrue(Files.exists(server.storage.files.path((String)upload.getProperty("stagingPath"))),"committed clone retains durable upload ownership until maintenance cleanup");
-            assertEquals(1,tx.findNodes(Label.label("DepositCloneUploadChunk"),Map.of("uploadId",uploadId)).stream().count());tx.rollback();
-        }
-        try(var tx=database.beginTx()){
-            var cloned=tx.findNode(Label.label("Namespace"),"id",clonedId);assertNotNull(cloned);assertEquals("Cloned Namespace",cloned.getProperty("name"));
-            try(var matching=tx.findNodes(Label.label("Namespace"),"name","Cloned Namespace")){assertEquals(1,matching.stream().count());}
-            assertNotNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation));tx.rollback();
-        }
-        try(var tx=database.beginTx()){tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId).setProperty("expires",0L);tx.commit();}
-        server.storage.recover();
-        try(var tx=database.beginTx()){assertNull(tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId));tx.rollback();}
-
-        String collisionUpload=uploadClonePackage(bytes,checksum);String collisionOperation=UUID.randomUUID().toString();long collisionRevision=serverRevision();
-        var collisionRequest=Json.map("source",Json.map("uploadId",collisionUpload,"sha256",checksum));
-        assertThrows(ExceptionHandler.DepositException.class,()->invokeCloneUpload("deposit.import.cloneNamespace",collisionOperation,collisionRequest,true,collisionRevision));
-        try(var tx=database.beginTx()){
-            try(var matching=tx.findNodes(Label.label("Namespace"),"name","Cloned Namespace")){assertEquals(1,matching.stream().count());}
-            assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",collisionOperation));tx.rollback();
-        }
-
-        var rollbackManifest=new LinkedHashMap<>(manifest);rollbackManifest.put("packageId",UUID.randomUUID().toString());rollbackManifest.put("sourceNamespaceId",UUID.randomUUID().toString());rollbackManifest.put("name","Rollback Namespace");
-        Path rollbackArchive=temporary.resolve("clone-rollback-source.zip");ExchangePackageCodec.write(rollbackArchive,rollbackManifest,graph,null,Map.of());byte[] rollbackBytes=Files.readAllBytes(rollbackArchive);String rollbackChecksum=ResourceFiles.checksum(rollbackBytes);
-        String rollbackUpload=uploadClonePackage(rollbackBytes,rollbackChecksum);String rollbackOperation=UUID.randomUUID().toString();long rollbackRevision=serverRevision();
-        var rollbackRequest=Json.map("source",Json.map("uploadId",rollbackUpload,"sha256",rollbackChecksum));
-        Map<String,Object> rolledBack=invokeCloneUpload("deposit.import.cloneNamespace",rollbackOperation,rollbackRequest,false,rollbackRevision);
-        assertEquals("clone",rolledBack.get("kind"));
-        try(var tx=database.beginTx()){
-            assertNull(tx.findNode(Label.label("Namespace"),"id",rolledBack.get("namespaceId")));
-            assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",rollbackOperation));
-            Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",rollbackUpload);assertEquals("finished",upload.getProperty("state"));tx.rollback();
-        }
-    }
-
-    @Test void cloneStreamingValidationCancellationRollsBackAndRetainsUploadForRetry() throws Exception {
-        createNamespace("disabled");String sourceNamespace=UUID.randomUUID().toString();Path archive=temporary.resolve("clone-cancel-source.zip");
-        var manifest=Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",sourceNamespace,"name","Cancelled Clone","description","cancel","depositVersion","2.0.0","historyMode","disabled","exportedRevision",0L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");
-        var graph=Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),"geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());
-        ExchangePackageCodec.write(archive,manifest,graph,null,Map.of());byte[] bytes=Files.readAllBytes(archive);String checksum=ResourceFiles.checksum(bytes);String uploadId=uploadClonePackage(bytes,checksum),operation=UUID.randomUUID().toString();Path staged;String admissionId;
-        try(var tx=database.beginTx()){Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);staged=server.storage.files.path((String)upload.getProperty("stagingPath"));admissionId=(String)upload.getProperty("admissionId");tx.rollback();}
-        var observer=ServerContext.class.getDeclaredMethod("storageObserverForTesting",java.util.function.Consumer.class);observer.setAccessible(true);AtomicBoolean cancelled=new AtomicBoolean();observer.invoke(server,(java.util.function.Consumer<String>)point->{if("clone-validation".equals(point)&&cancelled.compareAndSet(false,true))throw new IllegalStateException("injected clone validation cancellation");});
-        assertThrows(IllegalStateException.class,()->invokeCloneUpload("deposit.import.cloneNamespace",operation,Json.map("source",Json.map("uploadId",uploadId,"sha256",checksum)),true,serverRevision()));observer.invoke(server,(java.util.function.Consumer<String>)point->{});
-        assertTrue(cancelled.get(),"clone must use the streaming validation callback checkpoint");assertTrue(Files.exists(staged));assertTrue(Files.exists(server.storage.files.root.resolve("admission").resolve(admissionId+".json")));
-        try(var tx=database.beginTx()){assertNull(tx.findNode(Label.label("Namespace"),"name","Cancelled Clone"));assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation));assertEquals("finished",tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId).getProperty("state"));tx.rollback();}
     }
 
     @Test void cloneNamespaceMaterializesHistoryOnlyResourceAndRetainsItInClonedSnapshot() throws Exception {
@@ -337,20 +140,19 @@ class ImportHistoryActionTest {
         var epoch=Json.map("id",sourceEpoch,"mode","persistent","closed",false,"startedSequence",0L,"endedSequence",null,"baselineRevisionId",sourceRevision,"headRevisionId",sourceRevision,"baseline",revision,"revisions",List.of(revision));
         var history=Json.map("namespaceId",sourceNamespace,"historyMode","persistent","activeEpochId",sourceEpoch,"headRevisionId",sourceRevision,"epochs",List.of(epoch),"complete",true);
         Path archive=temporary.resolve("clone-history-resource.zip");ExchangePackageCodec.write(archive,manifest,graph,history,Map.of(checksum,contentPath));
-        byte[] bytes=Files.readAllBytes(archive);String packageChecksum=ResourceFiles.checksum(bytes);String uploadId=uploadClonePackage(bytes,packageChecksum);
-        String failedOperation=UUID.randomUUID().toString();var failedRequest=Json.map("source",Json.map("uploadId",uploadId,"sha256",packageChecksum));
+        var original=ExchangeTestFixture.receive(server,database,actor,"server",archive);
+        String failedOperation=UUID.randomUUID().toString();
         var observer=ServerContext.class.getDeclaredMethod("storageObserverForTesting",java.util.function.Consumer.class);observer.setAccessible(true);
         observer.invoke(server,(java.util.function.Consumer<String>)point->{if("clone-after-result-save".equals(point))throw new IllegalStateException("injected clone result publication failure");});
-        assertThrows(IllegalStateException.class,()->invokeCloneUpload("deposit.import.cloneNamespace",failedOperation,failedRequest,true,serverRevision()));
+        assertThrows(IllegalStateException.class,()->clonePackage(failedOperation,original));
         observer.invoke(server,(java.util.function.Consumer<String>)point->{});
         try(var tx=database.beginTx()){
             try(var namespaces=tx.findNodes(Label.label("Namespace"),"name","History Resource Clone")){assertEquals(0,namespaces.stream().count());}
             for(String label:List.of("DepositHistoryEpoch","Revision","DepositSnapshot","DepositImportResult"))try(var records=tx.findNodes(Label.label(label))){assertEquals(0,records.stream().count(),label+" must roll back with the failed clone");}
             assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",failedOperation));
             try(var resources=tx.findNodes(Label.label("DResource"),"filename","historical-only.bin")){assertEquals(0,resources.stream().count());}
-            Node upload=tx.findNode(Label.label("DepositCloneUpload"),"id",uploadId);assertEquals("finished",upload.getProperty("state"));assertTrue(Files.exists(server.storage.files.path((String)upload.getProperty("stagingPath"))),"rollback preserves the original upload bytes for retry");assertTrue(Files.exists(server.storage.files.root.resolve("admission").resolve((String)upload.getProperty("admissionId")+".json")),"rollback preserves upload admission");tx.rollback();
         }
-        Map<String,Object> envelope=invokeCloneUpload("deposit.import.cloneNamespace",UUID.randomUUID().toString(),Json.map("source",Json.map("uploadId",uploadId,"sha256",packageChecksum)),true,serverRevision());
+        Map<String,Object> envelope=clonePackage(UUID.randomUUID().toString(),ExchangeTestFixture.receive(server,database,actor,"server",archive));
         String clonedNamespace=(String)envelope.get("namespaceId"),resultId=(String)envelope.get("resultId");assertNotNull(clonedNamespace);assertNotNull(resultId);
         try(var tx=database.beginTx()){
             var context=new RequestContext(tx,Json.map("token",token));context.actorId=actor;context.session=server.session(Json.hash(token));
@@ -364,13 +166,6 @@ class ImportHistoryActionTest {
         }
     }
 
-
-    private String uploadClonePackage(byte[] bytes,String checksum){
-        Map<String,Object> started=invokeCloneUpload("deposit.import.beginCloneUpload",UUID.randomUUID().toString(),Json.map("filename","clone.zip","bytes",(long)bytes.length,"sha256",checksum),true,null);
-        String id=(String)started.get("uploadId");var chunk=Json.map("uploadId",id,"offset",0L,"bytesBase64",Base64.getEncoder().encodeToString(bytes),"chunkSha256",checksum);
-        invokeCloneUpload("deposit.import.cloneUploadChunk",UUID.randomUUID().toString(),chunk,true,null);
-        invokeCloneUpload("deposit.import.finishCloneUpload",UUID.randomUUID().toString(),Json.map("uploadId",id),true,null);return id;
-    }
 
     private Map<String,Object> invokeNamespaceProcedure(String procedure,Map<String,Object> request,String selectedNamespace) {
         try(var tx=database.beginTx()) {
@@ -428,8 +223,8 @@ class ImportHistoryActionTest {
         var history=Json.map("namespaceId",sourceNamespace,"historyMode","persistent","activeEpochId",activeEpoch,"headRevisionId",editRevision,"epochs",List.of(closed,active),"complete",true);
         var manifest=Json.map("packageId",UUID.randomUUID().toString(),"sourceNamespaceId",sourceNamespace,"name","Declaration Identity Clone","description","history identity","depositVersion","2.0.0","historyMode","persistent","exportedRevision",1L,"createdAt","2026-01-01T00:00:00Z","rootIds",List.of(),"scope","namespace");
         var graph=Json.map("classes",List.of(Json.map("kind","Class","id",sourceClass,"namespaceId",sourceNamespace,"name","Specimen","position",List.of(0.0,0.0),"order",0L,"comment","edited","descriptors",List.of(Json.map("kind","ClassDescriptor","id",sourceDeclaration,"namespaceId",sourceNamespace,"classId",sourceClass,"name","Mass","type","Integer","order",0L,"comment",""),Json.map("kind","ClassDescriptor","id",sourceListDeclaration,"namespaceId",sourceNamespace,"classId",sourceClass,"name","Series","type","List","order",1L,"comment",""),Json.map("kind","ClassDescriptor","id",sourceTransitionDeclaration,"namespaceId",sourceNamespace,"classId",sourceClass,"name","Transition","type","Integer","order",2L,"comment","")))),"objects",List.of(Json.map("kind","Object","id",sourceObject,"namespaceId",sourceNamespace,"classId",sourceClass,"position",List.of(1.0,2.0))),"descriptors",List.of(Json.map("kind","Descriptor","id",sourceMassDescriptor,"namespaceId",sourceNamespace,"objectId",sourceObject,"name","Mass","value","9"),Json.map("kind","Descriptor","id",sourceListDescriptor,"namespaceId",sourceNamespace,"objectId",sourceObject,"name","Series","value",Json.map("itemType","Integer","items",List.of("9","10"))),Json.map("kind","Descriptor","id",sourceTransitionDescriptor,"namespaceId",sourceNamespace,"objectId",sourceObject,"name","Transition","value","11")),"geometries",List.of(),"memberships",List.of(Json.map("kind","Membership","id",sourceMembership,"namespaceId",sourceNamespace,"objectId",sourceObject,"classId",sourceClass)),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of(),"resources",List.of());
-        Path archive=temporary.resolve("clone-class-descriptor-history.zip");ExchangePackageCodec.write(archive,manifest,graph,history,Map.of());byte[] bytes=Files.readAllBytes(archive);String checksum=ResourceFiles.checksum(bytes);String uploadId=uploadClonePackage(bytes,checksum);
-        Map<String,Object> result=invokeCloneUpload("deposit.import.cloneNamespace",UUID.randomUUID().toString(),Json.map("source",Json.map("uploadId",uploadId,"sha256",checksum)),true,serverRevision());
+        Path archive=temporary.resolve("clone-class-descriptor-history.zip");ExchangePackageCodec.write(archive,manifest,graph,history,Map.of());
+        Map<String,Object> result=clonePackage(UUID.randomUUID().toString(),ExchangeTestFixture.receive(server,database,actor,"server",archive));
         String destination=(String)result.get("namespaceId"),resultId=(String)result.get("resultId");assertNotNull(destination);
         String targetDeclaration,targetMassDescriptor,targetListDescriptor,targetTransitionDeclaration,targetTransitionDescriptor;
         try(var tx=database.beginTx()) {
@@ -468,8 +263,6 @@ class ImportHistoryActionTest {
             tx.rollback();
         }
     }
-
-    private long serverRevision(){try(var tx=database.beginTx()){var context=new RequestContext(tx,Json.map("token",token));long revision=server.revision(context.state);tx.rollback();return revision;}}
 
     @Test void cloneHistoryReusesCurrentIdsAndAddsHistoryOnlyIdsToDiskBackedMappings() throws Exception {
         createNamespace("disabled");
@@ -531,118 +324,6 @@ class ImportHistoryActionTest {
         }
     }
 
-    @Test void preparedCloneAndStagingActionsReplayAfterServerRunChange() throws Exception {
-        createNamespace("disabled");
-        String recoveryKey=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
-        List<Object> arguments=List.of("clone.zip",1L,ResourceFiles.checksum(new byte[]{97}));
-        apiCall(token,"deposit.utils.refresh",List.of("server"),true);
-        // Prepare at a proven nonzero saved lifecycle revision to exercise the restart case.
-        replaceRevision(7L);
-        apiCall(token,"deposit.utils.refresh",List.of("server"),true);
-        apiCall(token,"deposit.action.prepare",List.of(recoveryKey,"deposit.import.beginCloneUpload",arguments),true);
-        long savedRevision;
-        try(var tx=database.beginTx()) {
-            savedRevision=tx.findNode(Label.label("DepositPreparedAction"),"recoveryKey",recoveryKey).getProperty("expectedRevision") instanceof Long value ? value : -1L;
-            tx.rollback();
-        }
-        assertTrue(savedRevision>0L,"restart fixture must begin from nonzero lifecycle revision");
-        replaceRunId(server);
-        // A restart resets lifecycle revision to zero. Restore must not confuse
-        // the revision observed before preparation with an operation cursor.
-        replaceRevision(0L);
-        apiCall(token,"deposit.action.resume",List.of(recoveryKey),true);
-        var prepared=apiCall(token,"deposit.action.status",List.of(recoveryKey),true);
-        assertEquals("prepared",prepared.get("state"));operation=(String)prepared.get("operationId");
-        var started=apiCall(token,"deposit.import.beginCloneUpload",arguments,true);
-        assertTrue(started.containsKey("uploadId"));
-        var status=apiCall(token,"deposit.action.status",List.of(recoveryKey),false);
-        assertEquals("committed",status.get("state"));assertEquals(operation,status.get("operationId"));
-        var replayed=status.get("outcome");
-        replaceRunId(server);
-        apiCall(token,"deposit.action.resume",List.of(recoveryKey),true);
-        var actionReplay=apiCall(token,"deposit.import.beginCloneUpload",arguments,true);
-        assertEquals(replayed,actionReplay,"committed procedure replay must use the original recovery key and request hash");
-    }
-
-    @Test void sequentialPreparedServerActionsObserveCommittedRevisionWithoutRefresh() throws Exception {
-        createNamespace("disabled");
-        try(var tx=database.beginTx()) {tx.findNode(Label.label("User"),"id",actor).setProperty("serverRole","administrator");tx.commit();}
-        apiCall(token,"deposit.utils.refresh",List.of("server"),true);
-        long revision=server.committedRevision();
-        String namespaceKey=UUID.randomUUID().toString();
-        apiCall(token,"deposit.action.prepare",List.of(namespaceKey,"deposit.create.namespace",List.of("Sequential server Namespace",Json.map("description","description","historyMode","disabled"))),true);
-        apiCall(token,"deposit.create.namespace",List.of("Sequential server Namespace",Json.map("description","description","historyMode","disabled")),true);
-        apiCall(token,"deposit.action.release",List.of(),true);
-        long namespaceRevision=server.committedRevision();
-        assertTrue(namespaceRevision>revision);
-        assertEquals(namespaceRevision,server.session(Json.hash(token)).baselines.get("server"));
-        String userKey=UUID.randomUUID().toString();
-        apiCall(token,"deposit.action.prepare",List.of(userKey,"deposit.create.user",List.of("sequential-user","Valid-password-123",Json.map("serverRole","user"))),true);
-        apiCall(token,"deposit.create.user",List.of("sequential-user","Valid-password-123",Json.map("serverRole","user")),true);
-        apiCall(token,"deposit.action.release",List.of(),true);
-        long userRevision=server.committedRevision();
-        assertEquals(namespaceRevision+1,userRevision);
-        assertEquals(userRevision,server.session(Json.hash(token)).baselines.get("server"));
-        assertNull(server.session(Json.hash(token)).preparedAction);
-        assertNull(server.session(Json.hash(token)).mutationOwner);
-    }
-
-    private Map<String,Object> apiCall(String token,String procedure,List<Object> arguments,boolean commit) throws Exception {
-        try(var tx=database.beginTx()) {
-            var probe=new ApiProbe();probe.tx=tx;probe.log=org.neo4j.logging.NullLog.getInstance();
-            Object result=probe.call(token,procedure,arguments).findFirst().orElseThrow();
-            Map<String,Object> row=switch(result) {case Results.DataRow value->value.data;case Results.EntityRow value->value.data;case Results.ValueRow value->Json.map("value",value.value);default->throw new AssertionError("Unexpected public row: "+result.getClass());};
-            if(commit)tx.commit();else tx.rollback();
-            return row;
-        }
-    }
-
-    private static final class ApiProbe extends deposit.api.BaseAPI {
-        java.util.stream.Stream<Object> call(String token,String procedure,java.util.List<Object> arguments) {
-            return invokePublic(token,procedure,arguments);
-        }
-    }
-
-    @Test void cloneRunIdentityGuardsOrdinaryServerScopedActionRestore() throws Exception {
-        createNamespace("disabled");
-        String key=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
-        List<Object> arguments=List.of("Fresh Namespace");
-        try(var tx=database.beginTx()) {
-            node(tx,"DepositPreparedAction",Json.map("actorId",actor,"recoveryKey",key,"operationId",operation,"procedure","deposit.create.namespace","scope","server","operational",false,"expectedRevision",0L,"inputHash",new SessionActionService(new RequestContext(tx,Json.map("token",token))).fingerprint("deposit.create.namespace",arguments),"bindings",Json.write(Map.of("name","Fresh Namespace")),"runId","previous-run"));tx.rollback();
-        }
-        try(var tx=database.beginTx()) {
-            var context=new RequestContext(tx,Json.map("token",token));server.session(Json.hash(token)).preparedAction=key;
-            assertThrows(ExceptionHandler.DepositException.class,()->new SessionActionService(context).begin("deposit.create.namespace",arguments));tx.rollback();
-        }
-    }
-
-    @Test void preparedCloneAndStagingActionsResumeAfterServerRunChange() throws Exception {
-        createNamespace("disabled");
-        for(String procedure:List.of("deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload","deposit.import.cloneNamespace")) {
-            String recoveryKey=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
-            List<Object> arguments=switch(procedure) {
-                case "deposit.import.beginCloneUpload"->List.of("clone.zip",1L,ResourceFiles.checksum(new byte[]{97}));
-                case "deposit.import.cloneUploadChunk"->List.of(UUID.randomUUID().toString(),0L,"YQ==","a".repeat(64));
-                case "deposit.import.cloneNamespace"->List.of(Json.map("uploadId",UUID.randomUUID().toString(),"sha256","a".repeat(64)));
-                default->List.of(UUID.randomUUID().toString());
-            };
-            try(var tx=database.beginTx()) {
-                var context=new RequestContext(tx,Json.map("token",token));
-                context.state.observations.put("server",server.revision(context.state));
-                new SessionActionService(context).begin(procedure,arguments);
-                context.operationId=operation;
-                Node prepared=node(tx,"DepositPreparedAction",Json.map("actorId",actor,"recoveryKey",recoveryKey,"operationId",operation,
-                        "procedure",procedure,"scope","server","operational",true,"inputHash",new SessionActionService(context).fingerprint(procedure,arguments),
-                        "bindings",Json.write(context.request),"runId","previous-server-run"));
-                context.session.preparedAction=recoveryKey;
-                new SessionActionService(context).begin(procedure,arguments);
-                assertEquals(operation,context.operationId);assertEquals("server",context.actionScope);
-                context.session.preparedAction=null;
-                tx.rollback();
-            }
-        }
-    }
-
     private long revisionCount() {try(var tx=database.beginTx()){return new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC)).nodes("Revision",Map.of("namespaceId",namespace)).size();}}
     private long sequence() {try(var tx=database.beginTx()){return new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC)).sequence(namespace);}}
     private Map<String,Object> definition() {try(var tx=database.beginTx()){return Json.read((String)new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC)).entity("Pattern",namespace,pattern).getProperty("definition"));}}
@@ -656,14 +337,13 @@ class ImportHistoryActionTest {
     }
 
     @ParameterizedTest @ValueSource(strings={"disabled","transient","persistent"})
-    void importApplyWritesOneCompleteHistoryActionAndExactReplay(String mode) {
+    void importApplyWritesOneCompleteHistoryAction(String mode) {
         createNamespace(mode);long revisionsBefore=revisionCount();String operation=UUID.randomUUID().toString(),plan=UUID.randomUUID().toString();var invocations=new AtomicInteger();
         Map<String,Object> request=Json.map("planId",plan);
         invoke("deposit.import.apply",operation,0,request,true,context->{
             invocations.incrementAndGet();
             var core=new CoreRepository(context.tx,context.timestamp);core.update(core.namespace(namespace),Map.of("description","applied"),actor);
         });
-        invoke("deposit.import.apply",operation,0,request,true,context->{throw new AssertionError("Receipt replay must not rerun import application");});
         assertEquals(1,invocations.get());assertEquals(1,sequence());
         assertEquals(revisionsBefore+(!"disabled".equals(mode)?1:0),revisionCount());
         assertFalse(hasPatternProposal());
@@ -685,7 +365,7 @@ class ImportHistoryActionTest {
         try(var tx=database.beginTx()) {
             var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));context.state.observations.put(namespace,0L);context.publicCall=true;context.procedure="deposit.create.class";context.request=Json.map("name","Bound operation","properties",Json.map());
             var actions=new SessionActionService(context);actions.begin(context.procedure,java.util.List.of("Bound operation",Json.map()));
-            assertEquals(operation,context.operationId,"the public operation envelope must retain its supplied identity for admission and replay");
+            assertEquals(operation,context.operationId,"the public operation envelope must retain its supplied identity for admission");
             assertEquals(namespace,context.actionScope);tx.rollback();
         }
     }

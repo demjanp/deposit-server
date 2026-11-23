@@ -177,35 +177,20 @@ class OperationAttemptTest {
 
     @Test void lostExportAndAnalysisRepliesLeaveNoDomainWriteReceipts() {
         Actor a=actor();
-        String export="deposit.save.data", exportId=operationId(clock.get());
-        var exportArgs=List.<Object>of(Map.of(),Map.of());
+        String export="deposit.exchange.export", exportId=operationId(clock.get());
+        var exportArgs=Arrays.<Object>asList(null,Map.of());
         begin(a,exportId,a.namespace,export,exportArgs);
         call(a,a.execution,export,exportArgs,exportId);
         var exported=call(a,a.control,"deposit.action.cancel",List.of(exportId,a.namespace),null);
         assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(exported));
-        String packageId=(String)ValueCodec.map(exported.get("result")).get("resourceId");
-        assertNotNull(packageId);
         String analyze="deposit.import.analyze",analysisId=operationId(clock.get());
-        var analysis=List.<Object>of(Map.of("packageResourceId",packageId),Map.of());
+        var analysis=List.<Object>of(packageSource(ValueCodec.map(exported.get("result"))),Map.of());
         begin(a,analysisId,a.namespace,analyze,analysis);
         call(a,a.execution,analyze,analysis,analysisId);
         var analyzed=status(a,analysisId,a.namespace);
         assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(analyzed));
-        String planId=(String)ValueCodec.map(analyzed.get("result")).get("planId");
-        assertNotNull(planId);
+        assertNotNull(ValueCodec.map(analyzed.get("result")).get("planId"));
         assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(call(a,a.control,"deposit.action.cancel",List.of(analysisId,a.namespace),null)));
-        String apply="deposit.import.apply", applyId=operationId(clock.get());
-        var applyArgs=List.<Object>of(planId);
-        begin(a,applyId,a.namespace,apply,applyArgs);
-        try(var tx=database.beginTx()){
-            var core=new CoreRepository(tx,ZonedDateTime.now());
-            core.find("DepositExportGrant",Map.of("resourceId",packageId,"actorId",a.id)).delete();
-            tx.commit();
-        }
-        assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,apply,applyArgs,applyId));
-        try(var tx=database.beginTx()){
-            assertEquals(0L,new CoreRepository(tx,ZonedDateTime.now()).sequence(a.namespace));
-        }
     }
 
     @Test void lateCancellationReturnsTheCommittedResultAndCannotStartASecondMutation() throws Exception {
@@ -335,40 +320,18 @@ class OperationAttemptTest {
     }
 
     @Test void aRevokedSourceGrantBlocksClaimStatusAndIdenticalRegistration() {
-        Actor a=actor();
-        String packageId=UUID.randomUUID().toString(), grantId=UUID.randomUUID().toString(), source;
-        try(var tx=database.beginTx()){
-            var core=new CoreRepository(tx,ZonedDateTime.now());
-            source=CoreRepository.id(core.create("Namespace",null,a.id,Json.map("name",packageId,"sequence",0L,"historyMode","disabled")));
-            core.setRole(a.id,source,"viewer");
-            var location=tx.createNode(org.neo4j.graphdb.Label.label("DepositResourceLocation"));
-            Json.map("id",packageId,"namespaceId",source).forEach(location::setProperty);
-            var resource=tx.createNode(org.neo4j.graphdb.Label.label("DResource"));
-            Json.map("id",packageId,"namespaceId",source,"state","ready").forEach(resource::setProperty);
-            var grant=tx.createNode(org.neo4j.graphdb.Label.label("DepositExportGrant"));
-            Json.map("id",grantId,"resourceId",packageId,"actorId",a.id,"namespaceId",source,"expires",clock.get()+60000).forEach(grant::setProperty);
-            tx.commit();
-        }
+        Actor source=actor(), receiver=receivingNamespace(source);
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
         String id=operationId(clock.get()), procedure="deposit.import.analyze";
-        var args=List.<Object>of(Map.of("packageResourceId",packageId),Map.of());
-        assertEquals("REGISTERED",state(begin(a,id,a.namespace,procedure,args)));
+        var args=List.<Object>of(packageSource(reference),Map.of());
+        assertEquals("REGISTERED",state(begin(receiver,id,receiver.namespace,procedure,args)));
         try(var tx=database.beginTx()){
-            var core=new CoreRepository(tx,ZonedDateTime.now());
-            core.find("DepositExportGrant","id",grantId).delete();
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(source.id,source.namespace,null);
             tx.commit();
         }
-        try{
-            assertThrows(ExceptionHandler.DepositException.class,()->begin(a,id,a.namespace,procedure,args));
-            assertThrows(ExceptionHandler.DepositException.class,()->status(a,id,a.namespace));
-            assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,procedure,args,id));
-        }finally{
-            try(var tx=database.beginTx()){
-                var core=new CoreRepository(tx,ZonedDateTime.now());
-                core.entity("DResource",source,packageId).delete();
-                core.find("DepositResourceLocation","id",packageId).delete();
-                tx.commit();
-            }
-        }
+        assertThrows(ExceptionHandler.DepositException.class,()->begin(receiver,id,receiver.namespace,procedure,args));
+        assertThrows(ExceptionHandler.DepositException.class,()->status(receiver,id,receiver.namespace));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(receiver,receiver.execution,procedure,args,id));
     }
 
     @Test void claimedWorkerCanCommitAfterItsOriginalDeadline() throws Exception {
@@ -527,42 +490,190 @@ class OperationAttemptTest {
         assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(status(renew(a),id,a.namespace)));
     }
 
-    @Test void interruptedCloneUploadDiscardsItsIncompleteZip() throws Exception {
+    @Test void interruptedServerScopeExchangeUploadDiscardsItsIncompleteZip() throws Exception {
         Actor a=actor();
-        String begin="deposit.import.beginCloneUpload", beginId=operationId(clock.get());
-        byte[] bytes={1,2};
-        var args=List.<Object>of("clone.zip",2L,ResourceFiles.checksum(bytes));
-        begin(a,beginId,"server",begin,args);
-        String upload=(String)call(a,a.execution,begin,args,beginId).get("uploadId");
-        var oneByte=new byte[]{1};
-        String chunk="deposit.import.cloneUploadChunk", partId=operationId(clock.get());
-        var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(oneByte),ResourceFiles.checksum(oneByte));
-        begin(a,partId,"server",chunk,part);
-        assertEquals(1L,call(a,a.execution,chunk,part,partId).get("nextOffset"));
-        Path incomplete=server.storage.files.path("staging/imports/clone-uploads/"+upload+".zip");
+        String upload=beginExchange(a,"server","zip",Map.of());
+        exchangeChunk(a,"server",upload,"package",0L,new byte[]{1});
+        Path incomplete=server.storage.files.path("staging/exchange/"+upload+"/package.zip");
         assertTrue(Files.exists(incomplete));
         connections.remove(a.execution);
         server.storage.recover();
         assertFalse(Files.exists(incomplete));
-        assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(status(a,partId,"server")));
     }
 
-    @Test void startupSettlesPreviousIncarnationWithoutRestartingWork() {
+    @Test void startupPreservesCommitAndFencesAbandonedWork() throws Exception {
         Actor a=actor();
         String id=operationId(clock.get()), procedure="deposit.create.class";
-        var args=List.<Object>of("Previous incarnation "+id,Map.of());
+        var args=List.<Object>of("Committed before restart",Map.of());
         begin(a,id,a.namespace,procedure,args);
+        String committed=(String)call(a,a.execution,procedure,args,id).get("id");
+        String pending=operationId(clock.get());
+        var incomplete=List.<Object>of("Abandoned before restart",Map.of());
+        begin(a,pending,a.namespace,procedure,incomplete);
+        String running=operationId(clock.get());
+        begin(a,running,a.namespace,procedure,incomplete);
         try(var tx=database.beginTx()){
-            var node=new OperationAttemptRepository(tx).find(a.id,a.namespace,id);
-            node.setProperty("incarnation",UUID.randomUUID().toString());
-            node.setProperty("requestId",UUID.randomUUID().toString());
-            node.setProperty("transactionSequence",Long.MAX_VALUE);
-            OperationAttemptRepository.transition(node,"RUNNING",clock.get());
+            var attempt=new OperationAttemptRepository(tx).find(a.id,a.namespace,running);
+            attempt.setProperty("requestId",UUID.randomUUID().toString());
+            attempt.setProperty("transactionSequence",Long.MAX_VALUE);
+            OperationAttemptRepository.transition(attempt,"RUNNING",clock.get());
             tx.commit();
         }
-        new OperationMaintenance(server,database).recover();
-        assertEquals("FAILED_ROLLED_BACK",state(status(a,id,a.namespace)));
-        assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,procedure,args,id));
+        String upload=beginResource(a);
+        writeResource(a,upload);
+        Path staged=server.storage.files.path("staging/"+a.namespace+"/"+upload+".part");
+        assertTrue(Files.isRegularFile(staged));
+
+        var monitors=database.getDependencyResolver().resolveDependency(Monitors.class);
+        management.unregisterTransactionEventListener("neo4j",server);
+        monitors.removeMonitorListener(server);
+        server.shutdown();
+        UUID databaseId=database.databaseId().databaseId().uuid();
+        server=ServerContext.attach(databaseId);
+        server.sessionClockForTesting(clock::get);
+        var field=ServerContext.class.getDeclaredField("database");
+        field.setAccessible(true);
+        field.set(server,database);
+        server.storage=new StorageManager(server,database);
+        monitors.addMonitorListener(server);
+        management.registerTransactionEventListener("neo4j",server);
+        server.storage.recover();
+        server.markReadyForTesting();
+
+        Actor renewed=renew(a);
+        var status=status(renewed,id,a.namespace);
+        assertEquals("COMMITTED",state(status));
+        assertEquals(committed,ValueCodec.map(status.get("result")).get("id"));
+        assertEquals("CANCELLED_ROLLED_BACK",state(status(renewed,pending,a.namespace)));
+        assertEquals("FAILED_ROLLED_BACK",state(status(renewed,running,a.namespace)));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(renewed,renewed.execution,procedure,incomplete,pending));
+        assertFalse(Files.exists(staged));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNotNull(core.entity("Class",a.namespace,committed));
+            assertNull(core.find("Class",Map.of("namespaceId",a.namespace,"name",incomplete.getFirst())));
+        }
+    }
+
+    @Test void uncertainOcflUploadOwnershipIsQuarantined() throws Exception {
+        Actor a=actor();
+        String upload=beginResource(a);
+        writeResource(a,upload);
+        String pending=operationId(clock.get());
+        begin(a,pending,a.namespace,"deposit.resource.finishUpload",List.of(upload));
+        assertEquals("CANCELLED_ROLLED_BACK",state(call(a,a.control,"deposit.action.cancel",List.of(pending,a.namespace),null)));
+        String resource, admission;
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            var transfer=core.find("DepositTransfer","id",upload);
+            resource=(String)transfer.getProperty("resourceId");
+            admission=(String)transfer.getProperty("admissionId");
+            var repository=new deposit.repository.ResourceRepository(tx,core);
+            Node location=repository.location(resource);
+            Path staged=server.storage.files.path((String)location.getProperty("stagingPath"));
+            server.storage.content.publish(repository.content(location),staged);
+            transfer.setProperty("resourceId",UUID.randomUUID().toString());
+            tx.commit();
+        }
+        connections.remove(a.execution);
+        server.storage.recover();
+        server.storage.recover();
+        assertTrue(server.storage.content.exists(resource));
+        assertTrue(Files.isRegularFile(server.storage.files.root.resolve("admission").resolve(admission+".json")));
+        assertEquals("failed",status(a,pending,a.namespace).get("cleanupState"));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertEquals(true,core.find("DepositResourceLocation","id",resource).getProperty("quarantined"));
+            assertEquals(true,core.find("DepositTransfer","id",upload).getProperty("writerFenced"));
+        }
+    }
+
+    @Test void formerExecutionResumeProcedureIsUnregistered() {
+        try(var tx=database.beginTx();var rows=tx.execute("SHOW PROCEDURES YIELD name WHERE name IN $retired RETURN name",
+                Map.of("retired",List.of("deposit.action.prepare","deposit.action.resume","deposit.action.release",
+                    "deposit.action.status","deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk",
+                    "deposit.import.finishCloneUpload","deposit.import.abortCloneUpload","deposit.save.data","deposit.load.data")))){
+            assertFalse(rows.hasNext());
+        }
+    }
+
+    @Test void orderedBatchUsesExplicitTypesAndRollsBackOnDeclarationMismatch() {
+        Actor a=actor();
+        var commands=List.of(
+            batch("class","deposit.create.class",List.of("Typed batch",Map.of())),
+            batch("declaration","deposit.create.classDescriptor",List.of(ref("class"),"Code","Integer",Map.of())),
+            Json.map("key","object","procedure","deposit.create.object","arguments",
+                List.of(ref("class"),Map.of("descriptors",Map.of("Code",9007199254740993L))),"descriptorTypes",Map.of("Code","Integer")),
+            batch("dictionary","deposit.create.classDescriptor",List.of(ref("class"),"Data","DDict",Map.of())),
+            batch("set","deposit.set.descriptor",List.of(ref("object"),"Data",
+                Map.of("type",Map.of("type","String","value","scientific"),"value",Map.of("type","Integer","value",1L)))));
+        var result=tracked(a,a.namespace,"deposit.apply.batch",List.of(commands));
+        assertEquals(5,ValueCodec.map(result.get("results")).size());
+
+        var rejected=List.of(
+            batch("class","deposit.create.class",List.of("Rollback batch",Map.of())),
+            batch("declaration","deposit.create.classDescriptor",List.of(ref("class"),"Code","Integer",Map.of())),
+            Json.map("key","object","procedure","deposit.create.object","arguments",
+                List.of(ref("class"),Map.of("descriptors",Map.of("Code","bad"))),"descriptorTypes",Map.of("Code","String")));
+        String id=operationId(clock.get());
+        var args=List.<Object>of(rejected);
+        begin(a,id,a.namespace,"deposit.apply.batch",args);
+        var failure=assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,"deposit.apply.batch",args,id));
+        assertTrue(failure.getMessage().contains("VALIDATION_FAILED"),failure.getMessage());
+        assertTrue(failure.getMessage().contains("commandIndex"),failure.getMessage());
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNull(core.find("Class",Map.of("namespaceId",a.namespace,"name","Rollback batch")));
+        }
+    }
+
+    private static Map<String,Object> batch(String key,String procedure,List<?> arguments) {
+        return Json.map("key",key,"procedure",procedure,"arguments",arguments);
+    }
+
+    private static Map<String,Object> ref(String key) {return Map.of("ref",key,"field","id");}
+
+    @Test void structuredExchangeAcceptsValidGraphAndRejectsMembershipAndManifestErrors() {
+        Actor a=actor();
+        String source=UUID.randomUUID().toString(), first=UUID.randomUUID().toString(),
+            second=UUID.randomUUID().toString(), object=UUID.randomUUID().toString();
+        var manifest=exchangeManifest(source);
+        var graph=emptyExchangeGraph();
+        graph.put("classes",List.of(record("Class",first,source,"name","First","descriptors",List.of()),
+            record("Class",second,source,"name","Second","descriptors",List.of())));
+        graph.put("objects",List.of(record("Object",object,source,"classId",first)));
+        graph.put("memberships",List.of(record("Membership",UUID.randomUUID().toString(),source,"objectId",object,"classId",first)));
+        var reference=uploadSnapshot(a,a.namespace,manifest,graph,Map.of());
+        assertNotNull(tracked(a,a.namespace,"deposit.import.analyze",List.of(packageSource(reference),Map.of())).get("planId"));
+
+        var wrongManifest=new LinkedHashMap<>(manifest);
+        wrongManifest.put("scope","elsewhere");
+        assertInvalidSnapshot(a,wrongManifest,graph);
+        graph.put("memberships",List.of(record("Membership",UUID.randomUUID().toString(),source,"objectId",object,"classId",second)));
+        assertInvalidSnapshot(a,manifest,graph);
+    }
+
+    private void assertInvalidSnapshot(Actor a,Map<String,Object> manifest, Map<String,Object> graph) {
+        var failure=assertThrows(ExceptionHandler.DepositException.class,()->uploadSnapshot(a,a.namespace,manifest,graph,Map.of()));
+        assertTrue(failure.getMessage().contains("VALIDATION_FAILED"),failure.getMessage());
+    }
+
+    @Test void rowImportRejectsDuplicateIdsAndUnknownRelationshipTemplatesOnServer() {
+        Actor a=actor();
+        var row=Map.of("id","sample","values",Map.of("code","X"));
+        var targets=Map.of("code",Map.of("object","item","className","Specimen","descriptor","Code","type","String"));
+        var valid=List.<Object>of(Map.of("rows",List.of(row)),targets,List.of(),Map.of());
+        assertNotNull(tracked(a,a.namespace,"deposit.import.rows",valid).get("planId"));
+        for(var invalid:List.of(
+                List.<Object>of(Map.of("rows",List.of(row,row)),targets,List.of(),Map.of()),
+                List.<Object>of(Map.of("rows",List.of(Map.of("id","bad/id","values",row.get("values")))),targets,List.of(),Map.of()),
+                List.<Object>of(Map.of("rows",List.of(row)),targets,
+                    List.of(Map.of("source","missing","target","item","label","links")),Map.of()))) {
+            String id=operationId(clock.get());
+            begin(a,id,a.namespace,"deposit.import.rows",invalid);
+            var failure=assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,"deposit.import.rows",invalid,id));
+            assertTrue(failure.getMessage().contains("VALIDATION_FAILED"),failure.getMessage());
+        }
     }
 
     @Test void interruptionAfterOcflPublicationReclaimsOnlyTheUncommittedObject() throws Exception {
@@ -1056,6 +1167,20 @@ class OperationAttemptTest {
         }while(cursor!=null);
         assertTrue(pages>1);
         assertEquals(description,value.toString());
+    }
+
+    @Test void largeInlineSnapshotUsesTheCanonicalExchangeGrant() {
+        Actor a=actor();
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            core.namespace(a.namespace).setProperty("description","s".repeat(1_050_000));
+            tx.commit();
+        }
+        var reference=tracked(a,a.namespace,"deposit.get.data",Arrays.asList(null,Map.of("includeHistory",false)));
+        assertNotNull(reference.get("packageId"));
+        assertFalse(reference.containsKey("resourceId"));
+        var data=inspectExchange(a,reference);
+        assertEquals("text",ValueCodec.map(ValueCodec.map(data.get("manifest")).get("description")).get("kind"));
     }
 
     @Test void exchangeStructuredContentDeduplicatesMembersWithoutCombiningResourceIdentities() throws Exception {

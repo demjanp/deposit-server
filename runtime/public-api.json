@@ -2269,7 +2269,7 @@
       "data": "Map<String,Object>"
     },
     "batchEligible": false,
-    "invocationOwner": "RecoveryCoordinator"
+    "invocationOwner": "SessionControl"
   },
   {
     "name": "deposit.get.lastOperation",
@@ -2283,7 +2283,7 @@
       "data": "Map<String,Object>"
     },
     "batchEligible": false,
-    "invocationOwner": "RecoveryCoordinator"
+    "invocationOwner": "SessionControl"
   },
   {
     "name": "deposit.get.requests",
@@ -2297,7 +2297,7 @@
       "data": "Map<String,Object>"
     },
     "batchEligible": false,
-    "invocationOwner": "RecoveryCoordinator"
+    "invocationOwner": "SessionControl"
   },
   {
     "name": "deposit.utils.cancel",
@@ -2311,7 +2311,7 @@
       "value": "Object"
     },
     "batchEligible": false,
-    "invocationOwner": "RecoveryCoordinator"
+    "invocationOwner": "SessionControl"
   },
   {
     "name": "deposit.utils.cancelRequest",
@@ -2331,7 +2331,7 @@
       "value": "Object"
     },
     "batchEligible": false,
-    "invocationOwner": "RecoveryCoordinator"
+    "invocationOwner": "SessionControl"
   },
   {
     "name": "deposit.action.begin",
@@ -2616,26 +2616,6 @@
     "scope": "namespace",
     "action": false,
     "tokenIndex": 2,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Store"
-  },
-  {
-    "name": "deposit.load.data",
-    "args": [
-      {
-        "name": "resourceId",
-        "type": "String",
-        "binding": "resourceId"
-      }
-    ],
-    "output": "data",
-    "mode": "READ",
-    "scope": "namespace",
-    "action": false,
-    "tokenIndex": 1,
     "resultColumns": {
       "data": "Map<String,Object>"
     },
@@ -3205,37 +3185,6 @@
     "cancellable": true
   },
   {
-    "name": "deposit.save.data",
-    "args": [
-      {
-        "name": "selection",
-        "type": "Map<String,Object>",
-        "binding": "selection"
-      },
-      {
-        "name": "options",
-        "type": "Map<String,Object>",
-        "binding": "+"
-      },
-      {
-        "name": "operationId",
-        "type": "String"
-      }
-    ],
-    "output": "data",
-    "mode": "WRITE",
-    "scope": "operational",
-    "action": true,
-    "tokenIndex": 3,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Store",
-    "tracked": "always",
-    "cancellable": true
-  },
-  {
     "name": "deposit.set.pattern",
     "args": [
       {
@@ -3267,141 +3216,12 @@
     "cancellable": true
   },
   {
-    "name": "deposit.import.abortCloneUpload",
-    "args": [
-      {
-        "name": "uploadId",
-        "type": "String",
-        "binding": "uploadId"
-      },
-      {
-        "name": "operationId",
-        "type": "String"
-      }
-    ],
-    "output": "data",
-    "mode": "WRITE",
-    "scope": "server",
-    "action": true,
-    "tokenIndex": 2,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client",
-    "tracked": "always",
-    "cancellable": true
-  },
-  {
-    "name": "deposit.import.beginCloneUpload",
-    "args": [
-      {
-        "name": "filename",
-        "type": "String",
-        "binding": "filename"
-      },
-      {
-        "name": "bytes",
-        "type": "Long",
-        "binding": "bytes"
-      },
-      {
-        "name": "sha256",
-        "type": "String",
-        "binding": "sha256"
-      },
-      {
-        "name": "operationId",
-        "type": "String"
-      }
-    ],
-    "output": "data",
-    "mode": "WRITE",
-    "scope": "server",
-    "action": true,
-    "tokenIndex": 4,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client",
-    "tracked": "always",
-    "cancellable": true
-  },
-  {
     "name": "deposit.import.cloneNamespace",
     "args": [
       {
         "name": "source",
         "type": "Map<String,Object>",
         "binding": "source"
-      },
-      {
-        "name": "operationId",
-        "type": "String"
-      }
-    ],
-    "output": "data",
-    "mode": "WRITE",
-    "scope": "server",
-    "action": true,
-    "tokenIndex": 2,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client",
-    "tracked": "always",
-    "cancellable": true
-  },
-  {
-    "name": "deposit.import.cloneUploadChunk",
-    "args": [
-      {
-        "name": "uploadId",
-        "type": "String",
-        "binding": "uploadId"
-      },
-      {
-        "name": "offset",
-        "type": "Long",
-        "binding": "offset"
-      },
-      {
-        "name": "bytesBase64",
-        "type": "String",
-        "binding": "bytesBase64"
-      },
-      {
-        "name": "chunkSha256",
-        "type": "String",
-        "binding": "chunkSha256"
-      },
-      {
-        "name": "operationId",
-        "type": "String"
-      }
-    ],
-    "output": "data",
-    "mode": "WRITE",
-    "scope": "server",
-    "action": true,
-    "tokenIndex": 5,
-    "resultColumns": {
-      "data": "Map<String,Object>"
-    },
-    "batchEligible": false,
-    "invocationOwner": "Client",
-    "tracked": "always",
-    "cancellable": true
-  },
-  {
-    "name": "deposit.import.finishCloneUpload",
-    "args": [
-      {
-        "name": "uploadId",
-        "type": "String",
-        "binding": "uploadId"
       },
       {
         "name": "operationId",

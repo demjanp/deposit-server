@@ -9,7 +9,7 @@ import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** Incomplete staging belongs to its original Bolt connection and session. */
 public final class UploadBinding {
-    private static final List<String> WRITERS=List.of("DepositTransfer","DepositCloneUpload","DepositExchangeStage");
+    private static final List<String> WRITERS=List.of("DepositTransfer","DepositExchangeStage");
     private UploadBinding() {}
 
     public static void bind(RequestContext context, Node writer) {
@@ -75,6 +75,13 @@ public final class UploadBinding {
                 attempt.setProperty("cleanupState", "complete");
                 attempt.removeProperty("uploadId");
             }
+        }
+    }
+
+    static void cleanupFailed(CoreRepository core, String uploadId) {
+        for (Node attempt : core.nodes("DepositOperationAttempt", Map.of("uploadId", uploadId))) {
+            if (!deposit.repository.OperationAttemptRepository.open((String)attempt.getProperty("state")))
+                attempt.setProperty("cleanupState","failed");
         }
     }
 

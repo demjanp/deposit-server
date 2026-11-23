@@ -38,7 +38,7 @@ final class CoreProjectionRepository {
         String kind = CoreRepository.kind(node);
         var result = new LinkedHashMap<String,Object>();
         if (!kind.equals("User")) result.put("kind", kind);
-        for (String key : List.of("id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","username","enabled","serverRole","description","depositVersion","historyMode","historyEpochId","sequence","order","comment","type")) {
+        for (String key : List.of("id","namespaceId","createdAt","createdBy","updatedAt","updatedBy","name","username","enabled","serverRole","description","historyMode","historyEpochId","sequence","order","comment","type")) {
             if (node.hasProperty(key)) {
                 Object value = node.getProperty(key);
                 result.put(key, value instanceof TemporalAccessor ? value.toString() : value);

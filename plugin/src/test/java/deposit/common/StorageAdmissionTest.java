@@ -80,7 +80,7 @@ class StorageAdmissionTest {
                 assertTrue(reservation.commitments().isEmpty(),"Future-space credits are process-local");
                 return new StorageAdmission.OwnerState(true,true,Map.of(volume,256L),Map.of("stagingPath","staging/upload.part"));
             });
-            var resumed=restarted.resume(id);assertEquals("new-run",resumed.serverRunId());assertEquals(256L,resumed.commitments().get(volume));
+            var resumed=restarted.existing(id);assertEquals("new-run",resumed.serverRunId());assertEquals(256L,resumed.commitments().get(volume));
             restarted.reconcile(reservation->StorageAdmission.OwnerState.uncertain());assertTrue(java.nio.file.Files.exists(root.resolve("admission").resolve(id+".json")));
             restarted.close(resumed);
         }

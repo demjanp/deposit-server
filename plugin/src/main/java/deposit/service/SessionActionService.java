@@ -7,15 +7,13 @@ import java.util.*;
 import java.util.stream.Stream;
 import org.neo4j.graphdb.*;
 
-/** Session observations and explicit recoverable actions; ordinary calls always get fresh identities. */
+/** Session observations and single-attempt action dispatch. */
 public final class SessionActionService extends BaseService {
-    private final PreparedActionRepository prepared;
     final SessionActionScope scopeRules;
     private final SessionDiagnostics diagnostics;
-    private final PreparedActionWorkflow preparedActions;
     private static final Set<String> OPERATION_CONTROLS=Set.of("deposit.action.begin","deposit.action.cancel","deposit.get.operation");
     private boolean enforceAttempt;
-    public SessionActionService(RequestContext c){super(c);prepared=new PreparedActionRepository(c.tx);scopeRules=new SessionActionScope(c);diagnostics=new SessionDiagnostics(c);preparedActions=new PreparedActionWorkflow(c,prepared,this);}
+    public SessionActionService(RequestContext c){super(c);scopeRules=new SessionActionScope(c);diagnostics=new SessionDiagnostics(c);}
     private boolean cancellation(String p){return Set.of("deposit.utils.cancel","deposit.utils.cancelRequest","deposit.get.requests","deposit.utils.logout").contains(p);}
     public void beginPublic(String procedure,List<Object> arguments,String operationId){
         if(c.state.operationClaimed)c.fail("VALIDATION_FAILED","An operation must execute in a separate transaction");
@@ -39,7 +37,7 @@ public final class SessionActionService extends BaseService {
             // Claim the nonblocking session lease before waiting for authorization fences.
             var tx=(org.neo4j.kernel.impl.coreapi.InternalTransaction)c.tx;
             c.server.authenticate(c,tx.securityContext().subject().executingUser(),false);
-            if(action||Set.of("deposit.action.prepare","deposit.action.resume","deposit.action.release","deposit.utils.refresh","deposit.set.activeNamespace","deposit.set.administrativeMode","deposit.utils.logout").contains(procedure))lease();
+            if(action||Set.of("deposit.utils.refresh","deposit.set.activeNamespace","deposit.set.administrativeMode","deposit.utils.logout").contains(procedure))lease();
             if(Set.of("deposit.set.user","deposit.set.password","deposit.set.namespaceRole","deposit.delete.namespace").contains(procedure))authorizationChange();
             authenticate();
         }
@@ -62,20 +60,11 @@ public final class SessionActionService extends BaseService {
             return;
         }
         c.inputHash=fingerprint(procedure,arguments);
-        String attached=c.session.preparedAction;
-        if(attached!=null){
-            repo.lockActor(c.actorId);Node actionNode=prepared.find(c.actorId,attached);if(actionNode==null)c.fail("NOT_FOUND","Prepared action unavailable");prepared.lock(actionNode);
-            if(!procedure.equals(actionNode.getProperty("procedure"))||!c.inputHash.equals(actionNode.getProperty("inputHash")))c.fail("OPERATION_MISMATCH","Prepared action arguments differ");
-            restore(actionNode);
-            c.request=new ArgumentService(c,Json.read((String)actionNode.getProperty("bindings")),true).request(procedure,arguments);
-            if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",actionNode.getProperty("namespaceRevision"));
-        }else{
-            c.actionScope=scopeRules.scope(procedure,arguments);c.operational=scopeRules.operational(procedure);
-            if(c.operationId==null)c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:scopeRules.baseline(c.actionScope);
-            c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);
-            if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData","deposit.exchange.export","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,scopeRules.exportRole(procedure,arguments));
-            if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",scopeRules.baseline(scopeRules.active()));
-        }
+        c.actionScope=scopeRules.scope(procedure,arguments);c.operational=scopeRules.operational(procedure);
+        if(c.operationId==null)c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:scopeRules.baseline(c.actionScope);
+        c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);
+        if(Set.of("deposit.get.data","deposit.get.namespaceData","deposit.exchange.export","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,scopeRules.exportRole(procedure,arguments));
+        if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",scopeRules.baseline(scopeRules.active()));
         synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}
     }
     String fingerprint(String procedure,List<Object> arguments){return CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"arguments",arguments)));}
@@ -101,33 +90,12 @@ public final class SessionActionService extends BaseService {
             requireRole(scope,role);
         }
     }
-    private void restore(Node action){
-        c.actionScope=(String)action.getProperty("scope");c.operationId=(String)action.getProperty("operationId");c.operational=(boolean)action.getProperty("operational");
-        c.expectedRevision=c.operational?null:((Number)action.getProperty("expectedRevision")).longValue();
-        Node receipt=repo.receipt(c.actionScope,c.operationId);
-        boolean deleted=c.procedure.equals("deposit.delete.namespace")&&receipt!=null;
-        if(!deleted)authorize(c.procedure,c.actionScope,action.hasProperty("authorizationRole")?(String)action.getProperty("authorizationRole"):null);
-        if(c.procedure.equals("deposit.delete.namespace")&&!deleted){String target=(String)action.getProperty("namespaceId");if(!target.equals(scopeRules.active()))c.fail("SCOPE_MISMATCH","Deletion target changed");requireRole(target,"owner");}
-        // Clone/staging actions are durable start/resume operations, not
-        // observation cursors. Keep existing run checks for ordinary actions.
-        if(receipt==null&&c.actionScope.equals("server")&&!depositCloneProcedure(c.procedure)&&
-                !c.server.runId.equals(action.getProperty("runId")))c.fail("REVISION_CONFLICT","Server restarted; refresh and prepare a new action");
-        // Server-scoped clone actions are non-operational and their durable prepared
-        // revision survives restart. Reauthorize and bind the refreshed server
-        // observation instead of rejecting the pre-restart revision forever.
-        if(depositCloneProcedure(c.procedure)) {
-            c.operational=false;c.expectedRevision=c.server.revision(c.state);
-        }
-    }
-    static boolean depositCloneProcedure(String procedure){
-        return Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload").contains(procedure);
-    }
     public void observe(){
         if(c.session==null||cancellation(c.procedure)||OPERATION_CONTROLS.contains(c.procedure)||c.procedure.startsWith("deposit.action.")||Set.of("deposit.get.session","deposit.get.lastOperation","deposit.utils.refresh").contains(c.procedure))return;
         String scope=c.actionScope!=null?c.actionScope:c.namespaceId==null?"server":c.namespaceId;
         long revision=c.revision,generation=c.observationGeneration;
-        boolean committedAction=c.operationId!=null&&!c.operational&&!c.replayed;
-        boolean usesCurrentServerRevision=scope.equals("server")&&!depositCloneProcedure(c.procedure);
+        boolean committedAction=c.operationId!=null&&!c.operational;
+        boolean usesCurrentServerRevision=scope.equals("server")&&!"deposit.import.cloneNamespace".equals(c.procedure);
         c.state.afterCommit.add(()->{synchronized(c.session){
             if(committedAction){c.session.baselines.put(scope,usesCurrentServerRevision?c.server.committedRevision():revision);c.session.observationGeneration++;}
             else if(c.session.observationGeneration==generation)c.session.baselines.putIfAbsent(scope,revision);
@@ -148,9 +116,6 @@ public final class SessionActionService extends BaseService {
         return switch(procedure){
             case "deposit.action.begin"->Stream.of(new DataRow(new OperationAttemptService(c).begin(request),c.meta()));
             case "deposit.get.operation","deposit.action.cancel"->Stream.of(new DataRow(new OperationAttemptService(c).inspect(request,procedure.endsWith("cancel")),c.meta()));
-            case "deposit.action.prepare"->Stream.of(new DataRow(preparedActions.prepare(request),c.meta()));
-            case "deposit.action.status","deposit.action.resume"->Stream.of(new DataRow(preparedActions.status(request,procedure.endsWith("resume")),c.meta()));
-            case "deposit.action.release"->{separate();c.state.afterCommit.add(()->c.session.preparedAction=null);yield Stream.of(new ValueRow(true,c.meta()));}
             case "deposit.utils.refresh"->Stream.of(new DataRow(refresh(string(request.get("scope"))),c.meta()));
             case "deposit.get.session"->Stream.of(new DataRow(diagnostics.session(),c.meta()));
             case "deposit.get.lastOperation"->Stream.of(new DataRow(diagnostics.lastOperation(),c.meta()));
@@ -162,7 +127,6 @@ public final class SessionActionService extends BaseService {
     }
     private Map<String,Object> refresh(String scope){
         if(!Set.of("namespace","server","both").contains(scope))c.fail("VALIDATION_FAILED","Invalid refresh scope");separate();
-        if(c.session.preparedAction!=null)c.fail("SESSION_BUSY","Release prepared action before refresh");
         var values=new LinkedHashMap<String,Long>();if(!scope.equals("namespace"))values.put("server",c.server.revision(c.state));
         if(!scope.equals("server")){String ns=scopeRules.active();requireRole(ns,"viewer");values.put(ns,repo.sequence(ns));}
         c.state.afterCommit.add(()->{synchronized(c.session){c.session.baselines.putAll(values);c.session.observationGeneration++;}});

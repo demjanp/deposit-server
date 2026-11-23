@@ -8,7 +8,7 @@ import java.util.*;
 /** Ordered domain commands sharing a single action, transaction and receipt. */
 public final class BatchService extends ActionService {
     public BatchService(RequestContext c) {super(c);}
-    private record Command(String key,String procedure,List<Object> arguments) {}
+    private record Command(String key,String procedure,List<Object> arguments,Map<String,Object> descriptorTypes) {}
     public Outcome apply(Map<String,Object> request) {
         fields(request,"commands");
         Object input=request.getOrDefault("commands",List.of());
@@ -19,14 +19,14 @@ public final class BatchService extends ActionService {
         for(int index=0;index<list.size();index++) {
             String key=null;
             try {
-                var item=ValueCodec.map(list.get(index));fields(item,"key","procedure","arguments");key=string(item.get("key"));
+                var item=ValueCodec.map(list.get(index));fields(item,"key","procedure","arguments","descriptorTypes");key=string(item.get("key"));
                 if(key.isBlank()||!keys.add(key))c.fail("VALIDATION_FAILED","Command keys must be unique and nonempty");
                 String procedure=string(item.get("procedure"));if(!DomainService.COMMANDS.contains(procedure))c.fail("VALIDATION_FAILED","Command is not allowed in a batch");
                 if(DomainService.commandRole(procedure).equals("owner"))role="owner";
                 if(!(item.get("arguments") instanceof List<?>))c.fail("VALIDATION_FAILED","Command arguments must be a list");
                 @SuppressWarnings("unchecked") List<Object> arguments=(List<Object>)item.get("arguments");
                 if(arguments.size()!=ProcedureCatalog.spec(procedure).bindings().size())c.fail("VALIDATION_FAILED","Wrong number of command arguments");
-                commands.add(new Command(key,procedure,arguments));
+                commands.add(new Command(key,procedure,arguments,ValueCodec.map(item.getOrDefault("descriptorTypes",Map.of()))));
             }catch(ExceptionHandler.DepositException failure) {throw commandError(failure,key,index);}
         }
         return action("deposit.apply.batch",request,false,role,()->{
@@ -49,6 +49,7 @@ public final class BatchService extends ActionService {
                     var bindings=new LinkedHashMap<String,Object>();String prefix="command"+index+".";
                     c.selectorBindings.forEach((key,value)->{if(key.startsWith(prefix))bindings.put(key.substring(prefix.length()),value);});
                     var resolved=new ArgumentService(c,bindings,true).request(command.procedure(),arguments);
+                    applyDescriptorTypes(command,resolved);
                     Change step=domain.command(command.procedure(),resolved);changed|=step.changed();
                     if(c.journal!=null)c.journal.checkpoint(new deposit.repository.HistoryRepository(c.tx,repo).capture(c.namespaceId));
                     var saved=Json.read(Json.write(step.outcome().data()));if(!step.changed())saved.put("changed",false);
@@ -58,6 +59,27 @@ public final class BatchService extends ActionService {
             return new Change(new Outcome(null,null,Json.map("results",results)),changed);
         });
     }
+    private void applyDescriptorTypes(Command command, Map<String,Object> request) {
+        var types=command.descriptorTypes();
+        if(types.isEmpty())return;
+        switch(command.procedure()) {
+            case "deposit.create.descriptor","deposit.set.descriptor" -> {
+                String name=string(request.get("name"));
+                if(!types.keySet().equals(Set.of(name))||!request.containsKey("value"))
+                    c.fail("VALIDATION_FAILED","Explicit type must identify the Descriptor being written");
+                request.put("value",new DomainService.ExplicitDescriptorValue(ValueCodec.type(types.get(name)),request.get("value")));
+            }
+            case "deposit.create.object","deposit.set.object" -> {
+                var values=new LinkedHashMap<>(ValueCodec.map(request.get("descriptors")));
+                if(!values.keySet().containsAll(types.keySet()))
+                    c.fail("VALIDATION_FAILED","Explicit types must identify supplied Descriptor values");
+                types.forEach((name,type)->values.put(name,new DomainService.ExplicitDescriptorValue(ValueCodec.type(type),values.get(name))));
+                request.put("descriptors",values);
+            }
+            default -> c.fail("VALIDATION_FAILED","Command does not accept explicit Descriptor types");
+        }
+    }
+
     private RuntimeException commandError(ExceptionHandler.DepositException failure,String key,int index) {
         var error=Json.read(failure.getMessage().substring("DEPOSIT_ERROR ".length()));var details=new LinkedHashMap<>(ValueCodec.map(error.get("details")));
         details.put("commandKey",key);details.put("commandIndex",index);

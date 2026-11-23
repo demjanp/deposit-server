@@ -67,8 +67,8 @@ class Stage7CapacityTest {
         writeGraph(root.resolve("graph.json"),source,checksum,bytes.length);writeArchive(root,archive,manifest(source));
         var summary=ExchangePackageCodec.validateSummary(archive);assertEquals((long)OBJECTS,summary.counts().get("objects"));assertEquals((long)OBJECTS,summary.counts().get("memberships"));
         timingProgress("atomic-package-built objects="+OBJECTS+" archiveBytes="+Files.size(archive));
-        String packageResource=publishPackage(archive);timingProgress("atomic-package-published objects="+OBJECTS);Set<String> before=storageIds();UUID analyzeOperation=UUID.randomUUID();
-        Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,args("source",Json.map("packageResourceId",packageResource),"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+        var packageSource=publishPackage(archive);timingProgress("atomic-package-published objects="+OBJECTS);Set<String> before=storageIds();UUID analyzeOperation=UUID.randomUUID();
+        Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
         String planId=(String)analysis.get("planId");assertEquals(0L,collectionCount(analysis,"conflicts"));assertEquals(OBJECTS,collectionCount(analysis,"objectMappings"));
         timingProgress("atomic-analysis-complete objects="+OBJECTS);
         UUID operation=UUID.randomUUID();var observer=ServerContext.class.getDeclaredMethod("storageObserverForTesting",java.util.function.Consumer.class);observer.setAccessible(true);
@@ -81,17 +81,19 @@ class Stage7CapacityTest {
         Set<String> retained=admissions(operation);assertFalse(retained.isEmpty(),"publication remains admission-owned for reconciliation");
         assertEquals(Set.of("import-apply","import-write"),admissionKinds(operation),"published bytes and database writes remain owned by the failed apply");
         server.storage.admission.reconcile(server.storage::reconcileRuntimeImportWrite);assertEquals(retained,admissions(operation),"uncertain runtime reconciliation does not erase resources or ownership");
-        // Simulate a committed apply whose public response is lost. The next client call must
-        // recover the exact durable result using the original operation identity and plan.
-        call("deposit.import.apply",operation,args("planId",planId));timingProgress("atomic-apply-reply-discarded objects="+OBJECTS);
-        Map<String,Object> applied=call("deposit.import.apply",operation,args("planId",planId));String result=(String)applied.get("resultId");
+        var replacement=call("deposit.import.analyze",UUID.randomUUID(),
+            args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+        UUID replacementOperation=UUID.randomUUID();
+        var applied=call("deposit.import.apply",replacementOperation,args("planId",replacement.get("planId")));
+        String result=(String)applied.get("resultId");
         assertTrue(collectionCount(applied,"mapping")>OBJECTS,"public apply uses the composite mapping, not analysis-only objectMappings");assertEquals((long)OBJECTS,metadata(applied,"createdObjects"));assertEquals(1L,metadata(applied,"createdResources"));
         timingProgress("atomic-recovery-apply-complete objects="+OBJECTS);
-        assertEquals(applied,call("deposit.import.apply",operation,args("planId",planId)),"same-operation committed receipt replay after the first reply was discarded");timingProgress("atomic-replay-complete objects="+OBJECTS);
-        assertTrue(admissions(operation).isEmpty(),"successful replay releases both secondary reservations");
+        assertEquals(withoutLease(applied),withoutLease(call("deposit.get.importResult",null,args("resultId",applied.get("resultId")))));
+        timingProgress("atomic-result-inspected objects="+OBJECTS);
+        assertTrue(admissions(replacementOperation).isEmpty(),"successful apply releases both secondary reservations");
         assertEquals(withoutLease(applied),withoutLease(call("deposit.get.importResult",null,args("resultId",result))));timingProgress("atomic-result-envelope-retrieved objects="+OBJECTS);
-        try(var tx=database.beginTx()){assertEquals(Json.read((String)tx.findNode(Label.label("DepositReceipt"),"operationId",operation.toString()).getProperty("outcome")),withoutLease(applied));assertEquals(OBJECTS+1L,countNodes(tx,"Object"));assertEquals(preexistingObject,onlyPreexistingObjectAfterImport(preexistingObject));assertEquals(3L,countNodes(tx,"DResource"),"source package plus original plus imported resource must remain");tx.rollback();}
-        assertTrue(server.storage.content.exists(retainedResource),"retained rollback bytes are not expected to disappear during replay");
+        try(var tx=database.beginTx()){assertEquals(applied.get("resultId"),tx.findNode(Label.label("DepositReceipt"),"operationId",replacementOperation.toString()).getProperty("importResultId"));assertEquals(OBJECTS+1L,countNodes(tx,"Object"));assertEquals(preexistingObject,onlyPreexistingObjectAfterImport(preexistingObject));assertEquals(2L,countNodes(tx,"DResource"),"original and imported resources must remain");tx.rollback();}
+        assertTrue(server.storage.content.exists(retainedResource),"retained rollback bytes are not expected to disappear during result inspection");
         measuredPageNanos=measuredPageCalls=measuredPageEntries=0;
         long retrieved=0,rows=0,topLevelRows=0;var nested=new HashMap<String,String>();var nestedCounts=new HashMap<String,Long>();
         for(var row:mapping(result,"identityMappings")){var descriptor=ValueCodec.map(row.get("value"));nested.put(scalar(row.get("key")),(String)descriptor.get("collection"));nestedCounts.put(scalar(row.get("key")),((Number)descriptor.get("count")).longValue());}
@@ -186,9 +188,9 @@ class Stage7CapacityTest {
         var summary=ExchangePackageCodec.validateSummary(archive);
         assertEquals((long)objectCount,summary.counts().get("objects"));assertEquals((long)objectCount,summary.counts().get("memberships"));
         timingProgress("package-built objects="+objectCount+" archiveBytes="+Files.size(archive));
-        String packageResource=publishPackage(archive);timingProgress("package-published resource="+packageResource);
+        var packageSource=publishPackage(archive);timingProgress("package-published reference="+packageSource.get("packageId"));
         UUID analyzeOperation=UUID.randomUUID();
-        Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,args("source",Json.map("packageResourceId",packageResource),"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+        Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
         String planId=(String)analysis.get("planId");assertEquals(0L,collectionCount(analysis,"conflicts"));assertEquals((long)objectCount,collectionCount(analysis,"objectMappings"));
         timingProgress("analysis-ready objects="+objectCount);
         UUID applyOperation=UUID.randomUUID();Map<String,Object> applied=call("deposit.import.apply",applyOperation,args("planId",planId));
@@ -235,13 +237,13 @@ class Stage7CapacityTest {
         assertEquals((long)objectCount,summary.counts().get("objects"));
         assertEquals((long)objectCount,summary.counts().get("memberships"));
         timingProgress("analysis-apply-package-ready objects="+objectCount+" archiveBytes="+Files.size(archive));
-        String packageResource=publishPackage(archive);
+        var packageSource=publishPackage(archive);
         timingProgress("analysis-apply-package-published objects="+objectCount);
 
         UUID analyzeOperation=UUID.randomUUID();
         long analysisStarted=System.nanoTime();
         Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,
-            args("source",Json.map("packageResourceId",packageResource),"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+            args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
         long analysisNanos=System.nanoTime()-analysisStarted;
         String planId=(String)analysis.get("planId");
         assertNotNull(planId);assertEquals(0L,collectionCount(analysis,"conflicts"));
@@ -274,11 +276,11 @@ class Stage7CapacityTest {
         assertEquals((long)objectCount,summary.counts().get("objects"));
         assertEquals((long)objectCount,summary.counts().get("memberships"));
         timingProgress("rollback-replay-package-ready objects="+objectCount+" archiveBytes="+Files.size(archive));
-        String packageResource=publishPackage(archive);
+        var packageSource=publishPackage(archive);
         timingProgress("rollback-replay-package-published objects="+objectCount);
         UUID analyzeOperation=UUID.randomUUID();long analysisStarted=System.nanoTime();
         Map<String,Object> analysis=call("deposit.import.analyze",analyzeOperation,
-            args("source",Json.map("packageResourceId",packageResource),"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+            args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
         long analysisMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-analysisStarted);
         String planId=(String)analysis.get("planId");
         assertNotNull(planId);assertEquals(0L,collectionCount(analysis,"conflicts"));
@@ -306,9 +308,12 @@ class Stage7CapacityTest {
         assertEquals(retained,admissions(operation),"runtime reconciliation preserves uncertain publication ownership");
         timingProgress("induced-rollback-verified objects="+objectCount);
 
+        var replacement=call("deposit.import.analyze",UUID.randomUUID(),
+            args("source",packageSource,"rules",Json.map("alwaysCreate",List.of("Specimen"))));
+        UUID replacementOperation=UUID.randomUUID();
         long applyStarted=System.nanoTime();String priorTimingEnabled=System.getProperty("deposit.stage7.import.timing.enabled");
         System.setProperty("deposit.stage7.import.timing.enabled","true");Map<String,Object> applied;
-        try{applied=call("deposit.import.apply",operation,args("planId",planId));}
+        try{applied=call("deposit.import.apply",replacementOperation,args("planId",replacement.get("planId")));}
         finally{if(priorTimingEnabled==null)System.clearProperty("deposit.stage7.import.timing.enabled");else System.setProperty("deposit.stage7.import.timing.enabled",priorTimingEnabled);}
         long applyNanos=System.nanoTime()-applyStarted;
         String result=(String)applied.get("resultId");assertNotNull(result);
@@ -316,11 +321,11 @@ class Stage7CapacityTest {
         timingProgress("rollback-recovery-apply-complete objects="+objectCount+" applyMs="+TimeUnit.NANOSECONDS.toMillis(applyNanos));
 
         long replayStarted=System.nanoTime();
-        Map<String,Object> replay=call("deposit.import.apply",operation,args("planId",planId));
+        Map<String,Object> replay=call("deposit.get.importResult",null,args("resultId",applied.get("resultId")));
         long replayNanos=System.nanoTime()-replayStarted;
-        assertEquals(withoutLease(applied),withoutLease(replay),"committed same-operation replay returns the original result");
-        assertTrue(admissions(operation).isEmpty(),"committed replay releases both secondary reservations");
-        timingProgress("committed-replay-complete objects="+objectCount+" replayMs="+TimeUnit.NANOSECONDS.toMillis(replayNanos));
+        assertEquals(withoutLease(applied),withoutLease(replay),"result inspection returns the original committed result");
+        assertTrue(admissions(replacementOperation).isEmpty(),"committed apply releases both secondary reservations");
+        timingProgress("committed-inspection-complete objects="+objectCount+" replayMs="+TimeUnit.NANOSECONDS.toMillis(replayNanos));
 
         long envelopeStarted=System.nanoTime();
         Map<String,Object> envelope=call("deposit.get.importResult",null,args("resultId",result));
@@ -391,14 +396,14 @@ class Stage7CapacityTest {
         var metadata=new TreeMap<String,Object>();for(var entry:files.entrySet())metadata.put(entry.getKey(),Json.map("bytes",Files.size(entry.getValue()),"sha256",ResourceFiles.checksum(entry.getValue())));manifest.put("files",metadata);Path file=root.resolve("manifest.json");Json.write(Files.newOutputStream(file),manifest);files.put("manifest.json",file);
         try(var zip=new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(archive)))){for(var entry:files.entrySet()){zip.putNextEntry(new ZipEntry(entry.getKey()));Files.copy(entry.getValue(),zip);zip.closeEntry();}}
     }
-    private String publishPackage(Path archive)throws Exception {long length=Files.size(archive);String checksum=ResourceFiles.checksum(archive);String upload=(String)call("deposit.resource.beginUpload",UUID.randomUUID(),args("filename","stage7.zip","bytes",length,"sha256",checksum,"mediaType","application/zip")).get("uploadId");
-        try(var in=Files.newInputStream(archive)){long offset=0;byte[] data;while((data=in.readNBytes(ResourceFiles.CHUNK)).length>0){call("deposit.resource.uploadChunk",UUID.randomUUID(),args("uploadId",upload,"offset",offset,"bytesBase64",Base64.getEncoder().encodeToString(data),"chunkSha256",ResourceFiles.checksum(data)));offset=Math.addExact(offset,data.length);}assertEquals(length,offset);}return (String)call("deposit.resource.finishUpload",UUID.randomUUID(),args("uploadId",upload)).get("resourceId");
+    private Map<String,Object> publishPackage(Path archive)throws Exception {
+        return ExchangeTestFixture.receive(server,database,actor,namespace,archive);
     }
     private static RelationshipType relationshipType(String name){return RelationshipType.withName(name);}
     private Map<String,Object> call(String procedure,UUID operation,Map<String,Object> request)throws Exception {try(var tx=database.beginTx()){
         var envelope=new LinkedHashMap<String,Object>();envelope.put("token",token);if(operation!=null)envelope.put("operationId",operation.toString());var context=new RequestContext(tx,envelope);context.publicCall=true;context.procedure=procedure;context.request=request;var actions=new deposit.service.SessionActionService(context);actions.begin(procedure,ProcedureCatalog.spec(procedure).bindings().stream().map(request::get).collect(java.util.stream.Collectors.toList()));var row=(DataRow)new deposit.service.ProcedureService(context).execute().findFirst().orElseThrow();actions.observe();tx.commit();return row.data;
     }}
-    private void assertRolledBack(UUID operation,String planId,String preexistingObject)throws Exception{try(var tx=database.beginTx()){assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation.toString()));assertNull(tx.findNode(Label.label("DepositImportResult"),"operationId",operation.toString()));assertEquals("ready",tx.findNode(Label.label("DepositImportPlan"),"id",planId).getProperty("state"));assertEquals(1L,countNodes(tx,"Object"),"only the pre-existing receiving Object must remain after induced apply rollback");assertEquals(preexistingObject,uniqueObjectId(),"induced failure must not duplicate or replace the pre-existing receiving Object");assertEquals(2L,countNodes(tx,"DResource"),"the original and deliberately retained uncommitted publication records remain");assertNotNull(tx.findNode(Label.label("DResource"),"id",id("old-resource",0)),"the original pre-existing DResource identity must remain");tx.rollback();}}
+    private void assertRolledBack(UUID operation,String planId,String preexistingObject)throws Exception{try(var tx=database.beginTx()){assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation.toString()));assertNull(tx.findNode(Label.label("DepositImportResult"),"operationId",operation.toString()));assertEquals("ready",tx.findNode(Label.label("DepositImportPlan"),"id",planId).getProperty("state"));assertEquals(1L,countNodes(tx,"Object"),"only the pre-existing receiving Object must remain after induced apply rollback");assertEquals(preexistingObject,uniqueObjectId(),"induced failure must not duplicate or replace the pre-existing receiving Object");assertEquals(1L,countNodes(tx,"DResource"),"the original scientific record remains");assertNotNull(tx.findNode(Label.label("DResource"),"id",id("old-resource",0)),"the original pre-existing DResource identity must remain");tx.rollback();}}
     private String onlyObjectId()throws Exception {try(var tx=database.beginTx()){try(var nodes=tx.findNodes(Label.label("Object"))){assertTrue(nodes.hasNext());String id=CoreRepository.id(nodes.next());assertFalse(nodes.hasNext());tx.rollback();return id;}}}
     private String uniqueObjectId()throws Exception {try(var tx=database.beginTx()){try(var nodes=tx.findNodes(Label.label("Object"))){assertTrue(nodes.hasNext());String id=CoreRepository.id(nodes.next());assertFalse(nodes.hasNext());return id;}finally{tx.rollback();}}}
     private String onlyPreexistingObjectAfterImport(String previous)throws Exception {try(var tx=database.beginTx()){int seen=0;String remaining=null;try(var nodes=tx.findNodes(Label.label("Object"))){while(nodes.hasNext()){String id=CoreRepository.id(nodes.next());if(id.equals(previous)){remaining=id;seen++;}}}assertEquals(1,seen,"exact pre-existing receiving Object identity must remain");tx.rollback();return remaining;}}

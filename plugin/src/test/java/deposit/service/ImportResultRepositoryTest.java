@@ -46,7 +46,7 @@ class ImportResultRepositoryTest {
 
     @Test void storesPagedNestedAndChunkedValuesAndSupportsExactLargeKeyLookup(){
         try(var tx=database.beginTx()){
-            var context=context(tx,actor);var repo=new ImportResultRepository(context);Map<String,Object> envelope=repo.envelope(resultId);Object lease=envelope.get("leaseId");assertEquals(ImportResultContract.FORMAT,envelope.get("format"));assertFalse(envelope.containsKey("objectMappings"));Node receipt=new CoreRepository(tx,context.timestamp).receipt(namespace,operation);assertEquals(resultId,receipt.getProperty("importResultId"));assertEquals(resultId,new CoreRepository(tx,context.timestamp).replay(receipt,namespace).data().get("resultId"));
+            var context=context(tx,actor);var repo=new ImportResultRepository(context);Map<String,Object> envelope=repo.envelope(resultId);Object lease=envelope.get("leaseId");assertEquals(ImportResultContract.FORMAT,envelope.get("format"));assertFalse(envelope.containsKey("objectMappings"));Node receipt=new CoreRepository(tx,context.timestamp).receipt(namespace,operation);assertEquals(resultId,receipt.getProperty("importResultId"));assertFalse(receipt.hasProperty("outcome"));
             Map<String,Object> page=repo.page(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","cursor",null,"limit",10L));List<?> entries=(List<?>)page.get("entries");Map<String,Object> first=ValueCodec.map(entries.get(0));Map<String,Object> keyDescriptor=ValueCodec.map(first.get("key"));assertEquals("text",keyDescriptor.get("type"));assertTrue(((String)keyDescriptor.get("collection")).length()>10);
             assertThrows(ExceptionHandler.DepositException.class,()->repo.entry(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","key",largeKey)));
             Map<String,Object> nestedText=null;for(Object raw:entries){Map<String,Object> entry=ValueCodec.map(raw);if("text".equals(ValueCodec.map(entry.get("key")).get("value")))nestedText=ValueCodec.map(entry.get("value"));}
@@ -72,11 +72,9 @@ class ImportResultRepositoryTest {
         try(var tx=database.beginTx()){
             var context=context(tx,actor);
             var core=new CoreRepository(tx,context.timestamp);
-            Map<String,Object> replayed=core.replay(core.receipt(namespace,applyOperation),namespace).data();
-            assertEquals("apply",replayed.get("kind"));
-            assertEquals("plan-1",replayed.get("planId"));
-            assertEquals("APPLIED",replayed.get("state"));
-            assertEquals(withoutLease(envelope),replayed);
+            var receipt=core.receipt(namespace,applyOperation);
+            assertEquals(envelope.get("resultId"),receipt.getProperty("importResultId"));
+            assertFalse(receipt.hasProperty("outcome"));
             assertEquals(withoutLease(envelope), withoutLease(new ImportResultRepository(context).envelope((String)envelope.get("resultId"))));
         }
     }
@@ -164,7 +162,7 @@ class ImportResultRepositoryTest {
             var rowMetadata=new LinkedHashMap<String,Object>();for(int i=0;i<600;i++)rowMetadata.put("source-"+i,Json.map("blank",i%2==0));
             var context=context(tx,actor);context.operationId=diagnosticOperation;var repository=new ImportResultRepository(context);
             var envelope=repository.save(diagnosticOperation,"analysis",null,7L,Json.map("conflicts",conflicts,"_tabularBlanks",rowMetadata));diagnosticResult=(String)envelope.get("resultId");assertEquals("IMPORT_CONFLICT",envelope.get("state"));
-            context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.replay(core.receipt(namespace,diagnosticOperation),namespace).data().get("resultId"));assertNull(tx.findNode(Label.label("DepositImportPlan"),"resultId",diagnosticResult));tx.commit();
+            context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.receipt(namespace,diagnosticOperation).getProperty("importResultId"));assertNull(tx.findNode(Label.label("DepositImportPlan"),"resultId",diagnosticResult));tx.commit();
         }catch(Exception failure){throw new AssertionError(failure);}
         try(var tx=database.beginTx()){
             var repository=new ImportResultRepository(context(tx,actor));Object lease=repository.envelope(diagnosticResult).get("leaseId");var first=repository.page(Json.map("resultId",diagnosticResult,"leaseId",lease,"collection","conflicts","cursor",null,"limit",1L));

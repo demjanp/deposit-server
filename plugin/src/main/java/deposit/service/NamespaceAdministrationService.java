@@ -15,26 +15,15 @@ final class NamespaceAdministrationService extends ActionService {
             String name=name(request.get("name")),mode=string(request.getOrDefault("historyMode","persistent"));
             if(!Set.of("disabled","transient","persistent").contains(mode))c.fail("VALIDATION_FAILED","Invalid historyMode");
             if(repo.find("Namespace","name",name)!=null)c.fail("DUPLICATE","Namespace name exists");
-            Node ns=repo.create("Namespace",null,c.actorId,Json.map("name",name,"description",string(request.getOrDefault("description","")),"historyMode",mode,"historyEpochId",UUID.randomUUID().toString(),"sequence",0L,"depositVersion",DepositInfo.version()));
+            Node ns=repo.create("Namespace",null,c.actorId,Json.map("name",name,"description",string(request.getOrDefault("description","")),"historyMode",mode,"historyEpochId",UUID.randomUUID().toString(),"sequence",0L));
             repo.setRole(c.actorId,CoreRepository.id(ns),"owner");new deposit.repository.HistoryRepository(c.tx,repo).baseline(CoreRepository.id(ns),c.actorId,0,c.server.runId,c.timestamp);
             var data=repo.data(ns);data.put("role","owner");return new Change(new Outcome(ns,null,data),true);
         });
     }
     Outcome setNamespace(Map<String,Object> request) { return new DomainService(c).execute("deposit.set.namespace",request); }
     Outcome delete(Map<String,Object> request) {
-        fields(request,"confirmNamespaceName","expectedNamespaceRevision");authorizationChange();Node user=authenticate();mutation();
+        fields(request,"confirmNamespaceName","expectedNamespaceRevision");authorizationChange();authenticate();mutation();
         repo.lockActor(c.actorId);c.server.lockServer(c.state);
-        Node receipt=repo.receipt(c,"server");
-        if(receipt!=null&&receipt.hasProperty("deletedNamespaceId")) {
-            c.replayed=true;
-            if(!c.actorId.equals(receipt.getProperty("actorId")))admin(user);
-            String target=(String)receipt.getProperty("deletedNamespaceId");
-            if(!deletionHash(request,target).equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
-            c.revision=c.server.revision(c.state);return repo.replay(receipt,"server");
-        }
-        Node binding=repo.legacyBinding(c);
-        if(binding!=null&&!"server".equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
-        if(receipt!=null)c.fail("OPERATION_MISMATCH","Operation belongs to another request");
         scoped("owner");String target=c.namespaceId;repo.lockNamespace(target);requireRole(target,"owner");
         long sequence=repo.sequence(target);c.revision=c.server.revision(c.state);checkRevision();
         if(integer(request.get("expectedNamespaceRevision"))!=sequence)c.fail("REVISION_CONFLICT","Namespace revision changed");
