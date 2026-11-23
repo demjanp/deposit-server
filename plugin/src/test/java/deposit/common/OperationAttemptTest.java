@@ -901,6 +901,27 @@ class OperationAttemptTest {
         assertNotEquals(id,tracked(replacement,replacement.namespace,"deposit.import.analyze",args).get("planId"));
     }
 
+    @Test void receivingUploadDisposalKeepsRollbackReceiptAccessible() throws Exception {
+        Actor source=actor(), receiver=receivingNamespace(source);
+        var exported=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        byte[] zip=exchangeBytes(source,exported,inspectExchange(source,exported),"package");
+        String upload=beginExchange(receiver,receiver.namespace,"zip",Map.of());
+        exchangeChunk(receiver,receiver.namespace,upload,"package",0,zip);
+        var packageRef=tracked(receiver,receiver.namespace,"deposit.exchange.finishUpload",List.of(upload));
+        var analysis=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(packageRef),Map.of()));
+        String apply=operationId(clock.get());
+        var arguments=List.of(analysis.get("planId"));
+        begin(receiver,apply,receiver.namespace,"deposit.import.apply",arguments);
+        connections.remove(receiver.execution);
+        call(receiver,receiver.control,"deposit.exchange.discard",List.of(packageRef.get("packageId"),packageRef.get("grant")),null);
+        assertEquals("CANCELLED_ROLLED_BACK",state(status(receiver,apply,receiver.namespace)));
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(receiver.id,receiver.namespace,null);
+            tx.commit();
+        }
+        assertThrows(ExceptionHandler.DepositException.class,()->status(receiver,apply,receiver.namespace));
+    }
+
     @Test void importResultLeaseAndCommitProofOutliveAdmissionIndependently() throws Exception {
         Actor source=actor(), receiver=receivingNamespace(source);
         tracked(source,source.namespace,"deposit.create.class",List.of("First mapped class",Map.of()));

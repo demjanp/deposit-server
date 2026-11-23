@@ -69,9 +69,7 @@ final class OperationAttemptService extends BaseService {
         Node node = attempts.find(c.actorId, scope, id);
         if (node != null) {
             c.tx.acquireReadLock(node);
-            if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(node))
-                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure))
-            checkSource(node.getAllProperties(),true);
+            checkControlSource(node,procedure);
             if (node.hasProperty("procedure") && (!procedure.equals(node.getProperty("procedure"))
                     || !hash.equals(node.getProperty("inputHash")) || !namespace.equals(node.getProperty("authorizationScope"))))
                 c.fail("OPERATION_MISMATCH", "Operation input changed");
@@ -97,7 +95,8 @@ final class OperationAttemptService extends BaseService {
         if (uploadId != null) node.setProperty("uploadId", uploadId);
         if (source != null) {
             node.setProperty("sourceExchange",source.packageId);
-            if (source.grantId != null) node.setProperty("sourceGrant",source.grantId);
+            node.setProperty("sourceGrant",source.grantId);
+            if(source.receivingUpload)node.setProperty("receivingUpload",true);
         }
         node.setProperty("claimDeadline", OperationAttemptRepository.idTime(id) + OperationAttemptRepository.RETENTION);
         if (!scopes.operational(procedure)) node.setProperty("expectedRevision", scopes.baseline(scope));
@@ -241,10 +240,17 @@ final class OperationAttemptService extends BaseService {
             authorize(procedure,namespace,"viewer");
         }
         authorize(procedure, (String)node.getProperty("authorizationScope"), (String)node.getProperty("role"));
-        if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(node))
-                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure))
-            checkSource(node.getAllProperties(),true);
+        checkControlSource(node,procedure);
         return false;
+    }
+
+    private void checkControlSource(Node attempt,String procedure) {
+        // A verified receiving upload confers no source access. Its deletion must
+        // leave status and cancellation available under the original receiving policy.
+        if(Boolean.TRUE.equals(attempt.getProperty("receivingUpload",false)))return;
+        if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(attempt))
+                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure))
+            checkSource(attempt.getAllProperties(),true);
     }
 
     private Map<String,Object> status(Node node, String id, String scope, boolean sanitized) {
@@ -354,7 +360,7 @@ final class OperationAttemptService extends BaseService {
         return id;
     }
 
-    private record SourceBinding(String packageId, String grantId) {}
+    private record SourceBinding(String packageId, String grantId, boolean receivingUpload) {}
 
     private SourceBinding bindSource(String procedure, String scope, Map<String,Object> request) {
         return switch (procedure) {
@@ -377,8 +383,9 @@ final class OperationAttemptService extends BaseService {
     private SourceBinding bindExchange(String scope,Map<String,Object> raw) {
         var source=ExchangePackages.source(raw);
         String id=RequestContext.uuid(source.get("packageId")), grant=string(source.get("grant"));
-        new ExchangePackages(c).input(id,grant,scope,true,false);
-        return new SourceBinding(id,grant);
+        var packages=new ExchangePackages(c);
+        Node stage=packages.input(id,grant,scope,true,false);
+        return new SourceBinding(id,grant,!packages.sourceExport(stage));
     }
 
     private void checkSource(Map<String,Object> attempt, boolean acquiring) {
