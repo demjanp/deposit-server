@@ -23,7 +23,8 @@ function Stop-Local($State,[string]$PackageRoot,[switch]$Force) {
     [void]$process.Handle
     if($Force){Stop-Process -Id $identity.pid -Force}
     else {$drain=Drain-Installation $State;$identityBase64=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($drain|ConvertTo-Json -Compress)));& (Join-Path $PackageRoot 'helpers\Stop-Console.ps1') -IdentityBase64 $identityBase64}
-    if(!$process.WaitForExit(60000)){Fail 'Neo4j did not stop cleanly within 60 seconds'}
+    # Neo4j can spend several minutes checkpointing on a busy volume after Deposit drains.
+    if(!$process.WaitForExit(300000)){Fail 'Neo4j did not stop cleanly within 5 minutes'}
     Remove-Item -LiteralPath $file -Force
 }
 function Status($State,[string]$StatePath,[string]$PackageRoot) {
