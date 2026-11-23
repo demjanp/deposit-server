@@ -41,6 +41,7 @@ build/
 .codex/
 .agents/
 .abcroute/
+.stage-route/
 AGENTS.md
 
 ### Mac OS ###
