@@ -54,6 +54,7 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.get.importResult",new Spec("server",false,List.of("resultId")));
   SPECS.put("deposit.get.importResultPage",new Spec("server",false,List.of("resultId","leaseId","collection","cursor","limit")));
   SPECS.put("deposit.get.importResultEntry",new Spec("server",false,List.of("resultId","leaseId","collection","key")));
+  SPECS.put("deposit.import.discardPlan",new Spec("namespace",false,List.of("planId")));
   SPECS.put("deposit.import.apply",new Spec("operational",true,List.of("planId")));
   SPECS.put("deposit.import.dataByPattern",new Spec("operational",true,List.of("pattern","values","rules")));
   SPECS.put("deposit.import.cloneNamespace",new Spec("server",true,List.of("source")));

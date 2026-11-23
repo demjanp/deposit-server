@@ -7,7 +7,7 @@ import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
-/** An incomplete writer belongs to its original Bolt connection and session. */
+/** Incomplete staging belongs to its original Bolt connection and session. */
 public final class UploadBinding {
     private static final List<String> WRITERS=List.of("DepositTransfer","DepositCloneUpload","DepositExchangeStage");
     private UploadBinding() {}
@@ -21,11 +21,15 @@ public final class UploadBinding {
 
     public static void require(RequestContext context, Node writer) {
         if (!context.publicCall || context.operationId == null && !"deposit.action.begin".equals(context.procedure)) return;
-        if (!context.server.runId.equals(writer.getProperty("writerIncarnation", null))
-                || !context.state.tokenHash.equals(writer.getProperty("writerSession", null))
-                || !java.util.Objects.equals(connection(context),writer.getProperty("writerConnection", null))
-                || abandoned(context.server, writer))
+        if (!ownedByConnection(context,writer))
             context.fail("UPLOAD_FENCED", "Upload writer is unavailable. Begin a new upload at offset zero");
+    }
+
+    public static boolean ownedByConnection(RequestContext context,Node writer) {
+        return context.server.runId.equals(writer.getProperty("writerIncarnation",null))
+            && context.state.tokenHash.equals(writer.getProperty("writerSession",null))
+            && java.util.Objects.equals(connection(context),writer.getProperty("writerConnection",null))
+            && !abandoned(context.server,writer);
     }
 
     public static boolean abandoned(ServerContext server, Node writer) {

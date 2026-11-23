@@ -235,6 +235,8 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p124(@Name("resultId") String a0,@Name("leaseId") String leaseId,@Name("collection") String a1,@Name("cursor") Map<String,Object> a2,@Name("limit") Long a3,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultPage",Arrays.asList(a0,leaseId,a1,a2,a3)).map(PublicResults::data); }
  @Procedure(name="deposit.get.importResultEntry",mode=Mode.READ)
  public Stream<PublicResults.DataRow> p125(@Name("resultId") String a0,@Name("leaseId") String leaseId,@Name("collection") String a1,@Name("key") String a2,@Name("token") String token) { return invokePublic(token,"deposit.get.importResultEntry",Arrays.asList(a0,leaseId,a1,a2)).map(PublicResults::data); }
+ @Procedure(name="deposit.import.discardPlan",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> discardImportPlan(@Name("planId") String planId,@Name("token") String token) { return invokePublic(token,"deposit.import.discardPlan",List.of(planId)).map(PublicResults::data); }
  @Procedure(name="deposit.import.apply",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p110(@Name("planId") String a0,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.apply",Arrays.asList(a0),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.import.cloneNamespace",mode=Mode.WRITE)

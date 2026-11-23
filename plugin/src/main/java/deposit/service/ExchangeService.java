@@ -49,8 +49,8 @@ public final class ExchangeService extends BaseService {
     private Map<String,Object> executeExport(String procedure,Map<String,Object> request) {
         if(procedure.equals("deposit.load.data"))return validatePackage(request);
         if(procedure.equals("deposit.get.namespaceData")) {
-            fields(request,"includeHistory");if(request.get("includeHistory")!=null&&!(request.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=Boolean.TRUE.equals(request.get("includeHistory"));
-            Node ns=repo.namespace(c.namespaceId);boolean includeHistory="persistent".equals(ns.getProperty("historyMode","disabled"));
+            fields(request,"includeHistory");if(request.get("includeHistory")!=null&&!(request.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=!Boolean.FALSE.equals(request.get("includeHistory"));
+            Node ns=repo.namespace(c.namespaceId);boolean includeHistory=history&&"persistent".equals(ns.getProperty("historyMode","disabled"));
             if(includeHistory)requireRole(c.namespaceId,"owner");
             return readReceipt(procedure,request,()->{var snapshot=assembly.snapshot(true);return completeSnapshot(ValueCodec.map(snapshot.get("manifest")),ValueCodec.map(snapshot.get("graph")),includeHistory,true);});
         }
@@ -67,7 +67,8 @@ public final class ExchangeService extends BaseService {
             long hops=integer(options.getOrDefault("maxHops",3L));
             boolean rootBoundary=(boolean)options.getOrDefault("rootClassBoundary",true);
             scoped("viewer");
-            boolean history=whole&&"persistent".equals(repo.namespace(c.namespaceId).getProperty("historyMode","disabled"));
+            boolean history=whole&&(canonical||!Boolean.FALSE.equals(options.get("includeHistory")))
+                &&"persistent".equals(repo.namespace(c.namespaceId).getProperty("historyMode","disabled"));
             if(history)requireRole(c.namespaceId,"owner");
             return readReceipt(procedure,request,()->{
                 var full=assembly.snapshot(whole);
@@ -113,7 +114,8 @@ public final class ExchangeService extends BaseService {
     }
     private void stage(String category,Map<String,Object> value){try{c.state.kernel.assertOpen();records.add(category,value);}catch(IOException e){throw new UncheckedIOException(e);}}
     private Map<String,Object> completeSnapshot(Map<String,Object> manifest,Map<String,Object> graph,boolean includeHistory,boolean whole){
-        includeHistory=whole&&"persistent".equals(manifest.get("historyMode"));
+        if(whole&&!includeHistory&&"persistent".equals(manifest.get("historyMode")))
+            manifest.put("historyMode","disabled");
         var projection=includeHistory?assembly.historyBundle(whole,graph):null;
         finalizeResources(graph,projection==null?Set.of():projection.resourceIds());manifest.put("includeHistory",includeHistory);
         var result=Json.map("manifest",manifest,"graph",graph,"history",projection==null?null:projection.history());

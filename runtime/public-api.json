@@ -2809,6 +2809,26 @@
     "invocationOwner": "Client"
   },
   {
+    "name": "deposit.import.discardPlan",
+    "args": [
+      {
+        "name": "planId",
+        "type": "String",
+        "binding": "planId"
+      }
+    ],
+    "output": "data",
+    "mode": "WRITE",
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "scope": "namespace",
+    "action": false,
+    "batchEligible": false,
+    "invocationOwner": "Store"
+  },
+  {
     "name": "deposit.import.apply",
     "args": [
       {

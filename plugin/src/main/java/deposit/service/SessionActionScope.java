@@ -39,8 +39,13 @@ final class SessionActionScope extends BaseService {
         if(Set.of("deposit.get.data","deposit.exchange.export").contains(procedure))ExchangeService.validateSelector(roots,arguments.get(1));
         if (!Set.of("deposit.get.namespaceData","deposit.get.data","deposit.save.data","deposit.exchange.export").contains(procedure)) return "viewer";
         var namespace=repo.namespace(active());
+        boolean history=switch(procedure) {
+            case "deposit.get.namespaceData" -> !Boolean.FALSE.equals(ValueCodec.map(arguments.getFirst()).get("includeHistory"));
+            case "deposit.get.data" -> !Boolean.FALSE.equals(ValueCodec.map(arguments.get(1)).get("includeHistory"));
+            default -> true;
+        };
         boolean whole=roots==null||roots instanceof List<?> list&&list.isEmpty();
-        return whole&&namespace!=null&&"persistent".equals(namespace.getProperty("historyMode","disabled"))?"owner":"viewer";
+        return whole&&history&&namespace!=null&&"persistent".equals(namespace.getProperty("historyMode","disabled"))?"owner":"viewer";
     }
     long baseline(String scope) {
         Long value=c.state.observations.get(scope);

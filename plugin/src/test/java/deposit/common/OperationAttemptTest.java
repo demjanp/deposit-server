@@ -698,6 +698,58 @@ class OperationAttemptTest {
         }
     }
 
+    @Test void discardPlanFencesDelayedApplyAndRemovesStaging() throws Exception {
+        Actor source=actor(), receiver=receivingNamespace(source);
+        tracked(source,source.namespace,"deposit.create.class",List.of("Discarded specimen",Map.of()));
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        var args=List.<Object>of(packageSource(reference),Map.of());
+        var plan=tracked(receiver,receiver.namespace,"deposit.import.analyze",args);
+        String planId=(String)plan.get("planId"), delayed=operationId(clock.get());
+        List<Object> apply=List.of(planId);
+        assertEquals("REGISTERED",state(begin(receiver,delayed,receiver.namespace,"deposit.import.apply",apply)));
+        String path;
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            path=(String)core.find("DepositImportPlan","id",planId).getProperty("stagingPath");
+            assertTrue(Files.exists(server.storage.files.path(path)));
+        }
+        var params=Map.<String,Object>of("plan",planId,"token",receiver.token);
+        String discard="CALL deposit.import.discardPlan($plan,$token) YIELD data RETURN data";
+        assertEquals("cancelled",ValueCodec.map(cypher(receiver.control,discard,params).get("data")).get("state"));
+        assertEquals("cancelled",ValueCodec.map(cypher(receiver.control,discard,params).get("data")).get("state"));
+        assertFalse(Files.exists(server.storage.files.path(path)));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(receiver,receiver.execution,"deposit.import.apply",apply,delayed));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Discarded specimen")));
+        }
+        var fresh=tracked(receiver,receiver.namespace,"deposit.import.analyze",args);
+        assertNotEquals(planId,fresh.get("planId"));
+        tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(fresh.get("planId")));
+        assertEquals("applied",call(receiver,receiver.control,"deposit.import.discardPlan",List.of(fresh.get("planId")),null).get("state"));
+    }
+
+    @Test void disconnectedPlanIsFencedAndReclaimedBeforeAReplacementAnalysis() throws Exception {
+        Actor source=actor(), receiver=receivingNamespace(source);
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        var args=List.<Object>of(packageSource(reference),Map.of());
+        String id=(String)tracked(receiver,receiver.namespace,"deposit.import.analyze",args).get("planId");
+        String path;
+        try(var tx=database.beginTx()){
+            path=(String)new CoreRepository(tx,ZonedDateTime.now()).find("DepositImportPlan","id",id).getProperty("stagingPath");
+            assertTrue(Files.isRegularFile(server.storage.files.path(path)));
+        }
+        connections.remove(receiver.execution);
+        Actor replacement=new Actor(receiver.id,receiver.token,receiver.namespace,addConnection(),receiver.control);
+        assertTrue(assertThrows(ExceptionHandler.DepositException.class,()->begin(replacement,operationId(clock.get()),
+            receiver.namespace,"deposit.import.apply",List.of(id))).getMessage().contains("PLAN_FENCED"));
+        var jobs=new StorageMaintenanceJobs(server,database,server.storage.files,()->server.storage.content,message->{});
+        jobs.expireImportPlans();
+        assertFalse(Files.exists(server.storage.files.path(path)));
+        assertEquals("cancelled",call(replacement,replacement.control,"deposit.get.importPlanMetadata",List.of(id),null).get("state"));
+        assertNotEquals(id,tracked(replacement,replacement.namespace,"deposit.import.analyze",args).get("planId"));
+    }
+
     @Test void importResultLeaseAndCommitProofOutliveAdmissionIndependently() throws Exception {
         Actor source=actor(), receiver=receivingNamespace(source);
         tracked(source,source.namespace,"deposit.create.class",List.of("First mapped class",Map.of()));
@@ -763,8 +815,14 @@ class OperationAttemptTest {
                 ()->call(renewed,renewed.control,"deposit.get.importResultPage",List.of(result,leaseId,"identityMappings",cursor,1L),null))
                 .getMessage().contains("RESULT_EXPIRED"));
             clock.set(expiry+ImportResultContract.READER);
-            jobs.expireImportResults();
-            jobs.expireImportResults();
+            // Each maintenance pass collects only one bounded batch. Other
+            // methods of this shared fixture can have equally old results.
+            for(int pass=0;pass<32;pass++) {
+                try(var tx=database.beginTx()) {
+                    if(new CoreRepository(tx,ZonedDateTime.now()).find(ImportResultContract.LABEL,"id",result)==null)break;
+                }
+                jobs.expireImportResults();
+            }
             try(var tx=database.beginTx()) {
                 var core=new CoreRepository(tx,ZonedDateTime.now());
                 assertNull(core.find(ImportResultContract.LABEL,"id",result));
@@ -919,7 +977,22 @@ class OperationAttemptTest {
             List.of("Historical origin "+UUID.randomUUID(),Map.of("historyMode","persistent")));
         String original=(String)historyNamespace.get("id");
         Actor source=renew(new Actor(actor.id,null,original,addConnection(),addConnection()));
-        tracked(source,original,"deposit.create.class",List.of("Historical class",Map.of()));
+        byte[] payload={1,3,5,7};
+        String digest=ResourceFiles.checksum(payload);
+        String resourceUpload=(String)tracked(source,original,"deposit.resource.beginUpload",
+            List.of("history.bin",(long)payload.length,digest,"application/octet-stream")).get("uploadId");
+        tracked(source,original,"deposit.resource.uploadChunk",
+            List.of(resourceUpload,0L,Base64.getEncoder().encodeToString(payload),digest));
+        String resource=(String)tracked(source,original,"deposit.resource.finishUpload",List.of(resourceUpload)).get("resourceId");
+        var clazz=tracked(source,original,"deposit.create.class",List.of("Historical class",
+            Map.of("descriptors",List.of(Map.of("name","Attachment","type","DResource")))));
+        var object=tracked(source,original,"deposit.create.object",List.of(Map.of("id",clazz.get("id")),
+            Map.of("descriptors",Map.of("Attachment",Map.of("resourceId",resource)))));
+        tracked(source,original,"deposit.set.object",List.of(object.get("id"),Map.of("clearDescriptors",List.of("Attachment"))));
+        var current=tracked(source,original,"deposit.get.data",Arrays.asList(null,Map.of("includeHistory",false)));
+        assertEquals(false,ValueCodec.map(current.get("manifest")).get("includeHistory"));
+        assertNull(current.get("history"));
+        assertTrue(((List<?>)ValueCodec.map(current.get("graph")).get("resources")).isEmpty());
         var reference=tracked(source,original,"deposit.exchange.export",Arrays.asList(null,Map.of()));
         var inspected=inspectExchange(source,reference);
         assertEquals(true,ValueCodec.map(inspected.get("manifest")).get("includeHistory"));
@@ -939,7 +1012,16 @@ class OperationAttemptTest {
             var core=new CoreRepository(tx,ZonedDateTime.now());
             assertNotNull(core.find("Class",Map.of("namespaceId",target,"name","Historical class")));
             assertEquals("persistent",core.namespace(target).getProperty("historyMode"));
-            assertEquals(1L,core.sequence(target));
+            assertEquals(3L,core.sequence(target));
+            var ids=core.nodes("DResource",Map.of("namespaceId",target));
+            assertEquals(1,ids.size());
+            String clonedResource=CoreRepository.id(ids.getFirst());
+            assertNotEquals(resource,clonedResource);
+            var location=core.find("DepositResourceLocation","id",clonedResource);
+            var content=new ResourceStorage.Content(clonedResource,(String)location.getProperty("storedFilename"),payload.length,digest);
+            try(var reader=server.storage.content.open(content,0,payload.length)){
+                assertArrayEquals(payload,reader.readAllBytes());
+            }
             assertFalse(core.nodes("DepositHistoryEpoch",Map.of("namespaceId",target)).isEmpty());
         }
     }

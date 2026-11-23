@@ -23,6 +23,7 @@ public final class ImportService extends ActionService {
             case "deposit.get.importResult"->importResults.envelope(RequestContext.uuid(request.get("resultId")));
             case "deposit.get.importResultPage"->importResults.page(request);
             case "deposit.get.importResultEntry"->importResults.entry(request);
+            case "deposit.import.discardPlan"->discardPlan(request);
             case "deposit.import.apply"->apply(request);
             case "deposit.import.dataByPattern"->dataByPattern(request);
             case "deposit.import.cloneNamespace"->cloneNamespace(request);
@@ -140,6 +141,29 @@ public final class ImportService extends ActionService {
         return Json.map("plan",metadata,"analysisResult",analysis);
     }
 
+    private Map<String,Object> discardPlan(Map<String,Object> request) {
+        fields(request,"planId");
+        scoped("viewer");
+        String id=RequestContext.uuid(request.get("planId"));
+        if(c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","Import plan discard requires a separate transaction");
+        c.state.mutation=true;
+        repo.lockActor(c.actorId);
+        repo.lockNamespace(c.namespaceId);
+        requireRole(c.namespaceId,"viewer");
+        Node plan=repo.find("DepositImportPlan","id",id);
+        if(plan==null||!c.namespaceId.equals(plan.getProperty("namespaceId",null))
+                ||!c.actorId.equals(plan.getProperty("actorId",null)))
+            c.fail("NOT_FOUND","Import plan is unavailable");
+        c.tx.acquireWriteLock(plan);
+        if("ready".equals(plan.getProperty("state"))&&number(plan,"expiresAt",0)>resources.now()) {
+            Path path=stagedPath((String)plan.getProperty("stagingPath"));
+            plan.setProperty("state","cancelled");
+            if(plan.hasProperty("admissionId"))releasePlanStagingAfterCommit(plan,path);
+            else c.state.afterCommit.add(()->deleteStaging(path));
+        }
+        return planMetadata(plan);
+    }
+
     private Map<String,Object> apply(Map<String,Object> request){
         fields(request,"planId");String id=RequestContext.uuid(request.get("planId"));
         // The staged plan owns its independent target revision; session refresh cannot replace it.
@@ -148,6 +172,8 @@ public final class ImportService extends ActionService {
             repo.lockNamespace(c.namespaceId);Node plan=repo.find("DepositImportPlan","id",id);if(plan!=null&&!c.namespaceId.equals(plan.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Import plan belongs to another Namespace");
             if(plan==null||number(plan,"expiresAt",0)<=resources.now()||!"ready".equals(plan.getProperty("state")))c.fail("NOT_FOUND","Unapplied import plan is unavailable");
             if(!c.actorId.equals(plan.getProperty("actorId"))&&(c.state.operationClaimed||!"owner".equals(effectiveRole(c.namespaceId))))c.fail("FORBIDDEN","Import plan belongs to another actor");
+            if(c.state.operationClaimed&&!UploadBinding.ownedByConnection(c,plan))
+                c.fail("PLAN_FENCED","Import plan is unavailable. Analyze the original input again");
             Path content=null;
             if(plan.hasProperty("sourceGrantId")){
                 String resourceId=(String)plan.getProperty("sourcePackageId"),grantId=(String)plan.getProperty("sourceGrantId");
@@ -248,7 +274,7 @@ public final class ImportService extends ActionService {
 
     /** Write only the fields common to every durable import-plan source. */
     private Node initializePlan(String id,String sourcePackageId,String stagingPath,long targetRevision,long now,long expiresAt,String rules){
-        var properties=Json.map("id",id,"namespaceId",c.namespaceId,"actorId",c.actorId,"sourcePackageId",sourcePackageId,"stagingPath",stagingPath,"targetRevision",targetRevision,"createdAt",now,"lastActivity",now,"expiresAt",expiresAt,"state","ready","rules",rules);ImportWriteBudget.forRequest(c).reserveRecord(properties);Node plan=c.tx.createNode(Label.label("DepositImportPlan"));properties.forEach(plan::setProperty);return plan;
+        var properties=Json.map("id",id,"namespaceId",c.namespaceId,"actorId",c.actorId,"sourcePackageId",sourcePackageId,"stagingPath",stagingPath,"targetRevision",targetRevision,"createdAt",now,"lastActivity",now,"expiresAt",expiresAt,"state","ready","rules",rules);ImportWriteBudget.forRequest(c).reserveRecord(properties);Node plan=c.tx.createNode(Label.label("DepositImportPlan"));properties.forEach(plan::setProperty);UploadBinding.bind(c,plan);return plan;
     }
 
     /** Newly-created staging belongs to this transaction until its commit. */
@@ -284,6 +310,7 @@ public final class ImportService extends ActionService {
     private Map<String,Object> planMetadata(Node plan) {
         long expires=(long)plan.getProperty("expiresAt");
         Object state=expires<=resources.now()?"expired":plan.getProperty("state");
+        if("ready".equals(state)&&UploadBinding.abandoned(c.server,plan))state="cancelled";
         return Json.map("planId",CoreRepository.id(plan),"namespaceId",plan.getProperty("namespaceId"),
             "state",state,"targetRevision",plan.getProperty("targetRevision"),"expiresAt",expires);
     }

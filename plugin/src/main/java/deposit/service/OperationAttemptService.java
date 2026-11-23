@@ -19,7 +19,7 @@ final class OperationAttemptService extends BaseService {
     private static final Set<String> CLONE_STEPS = Set.of("deposit.import.cloneUploadChunk", "deposit.import.finishCloneUpload", "deposit.import.abortCloneUpload");
     private static final Set<String> EXCHANGE_STEPS = Set.of("deposit.exchange.uploadChunk","deposit.exchange.finishUpload","deposit.exchange.abortUpload");
     private static final Set<String> SUMMARY_KEYS = Set.of("id", "namespaceId", "revisionId", "targetRevision",
-        "planId", "resultId", "uploadId", "resourceId", "packageId", "tableId", "pruneId", "nextOffset", "bytes", "changed","grant","sha256","expiresAt","memberCount","member");
+        "planId", "resultId", "uploadId", "resourceId", "packageId", "tableId", "pruneId", "nextOffset", "bytes", "changed","grant","sha256","expiresAt","memberCount","member","chunkBytes","checksum","state","aborted");
     private final OperationAttemptRepository attempts;
     private final SessionActionScope scopes;
 
@@ -390,6 +390,8 @@ final class OperationAttemptService extends BaseService {
                 if (plan == null || !scope.equals(plan.getProperty("namespaceId",null)) || !c.actorId.equals(plan.getProperty("actorId",null))
                         || !"ready".equals(plan.getProperty("state",null)) || (long)plan.getProperty("expiresAt",0L)<=c.server.sessionTime())
                     throw unavailable();
+                if(!UploadBinding.ownedByConnection(c,plan))
+                    c.fail("PLAN_FENCED","Import plan is unavailable. Analyze the original input again");
                 grantId = (String)plan.getProperty("sourceGrantId",null);
                 if (grantId == null) return null;
                 packageId = (String)plan.getProperty("sourcePackageId");

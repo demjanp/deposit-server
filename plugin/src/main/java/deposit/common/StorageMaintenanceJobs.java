@@ -281,30 +281,42 @@ final class StorageMaintenanceJobs {
 
     void expireImportPlans() throws IOException {
         long now = server.sessionTime();
-        List<String> expired = new ArrayList<>();
+        List<String> settled = new ArrayList<>();
         try (var tx = db.beginTx()) {
             for (Node plan : core(tx).nodes("DepositImportPlan", Map.of()))
-                if (number(plan, "expiresAt", 0) <= now) expired.add(CoreRepository.id(plan));
+                if (number(plan, "expiresAt", 0) <= now || abandonedPlan(plan))
+                    settled.add(CoreRepository.id(plan));
         }
-        for (String id : expired) try (var tx = db.beginTx()) {
+        for (String id : settled) try (var tx = db.beginTx()) {
             CoreRepository core = core(tx);
             Node plan = core.find("DepositImportPlan", "id", id);
-            if (plan == null || number(plan, "expiresAt", 0) > now) continue;
-            // Inspection can renew the plan while cleanup waits for its Namespace.
+            if (plan == null) continue;
             core.lockNamespace(text(plan, "namespaceId"));
             plan = core.find("DepositImportPlan", "id", id);
-            if (plan == null || number(plan, "expiresAt", 0) > now) continue;
+            if (plan == null) continue;
+            boolean expired = number(plan, "expiresAt", 0) <= now;
+            if (!expired && !abandonedPlan(plan)) continue;
+            tx.acquireWriteLock(plan);
             String path = plan.hasProperty("stagingPath") ? text(plan, "stagingPath") : null;
-            String admissionId=plan.hasProperty("admissionId")?text(plan,"admissionId"):null;
+            String admissionId = (String)plan.getProperty("admissionId",null);
             if (path != null) Files.deleteIfExists(files.path(path));
-            plan.delete();
+            if (expired) plan.delete();
+            else {
+                plan.setProperty("state","cancelled");
+                plan.removeProperty("stagingPath");
+                plan.removeProperty("admissionId");
+            }
             tx.commit();
-            if(admissionId!=null)try{server.storage.admission.close(server.storage.admission.resume(admissionId));}catch(IOException failure){diagnostic.accept("Expired import storage admission cleanup pending");}
+            if(admissionId!=null)try{server.storage.admission.close(server.storage.admission.resume(admissionId));}catch(IOException failure){diagnostic.accept("Import plan storage admission cleanup pending");}
         }
         try(var tx=db.beginTx()){
             collectTerminalTransferChunks(tx,TRANSFER_CHUNK_CLEANUP_BATCH);
             tx.commit();
         }catch(RuntimeException failure){diagnostic.accept("Upload chunk metadata cleanup pending: "+failure.getClass().getSimpleName());}
+    }
+
+    private boolean abandonedPlan(Node plan) {
+        return "ready".equals(plan.getProperty("state",null)) && UploadBinding.abandoned(server,plan);
     }
 
     static long collectTerminalTransferChunks(Transaction tx,int batchSize){
