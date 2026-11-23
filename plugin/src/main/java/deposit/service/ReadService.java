@@ -15,8 +15,12 @@ public final class ReadService extends BaseService {
     private String discoveryFingerprint;
     private boolean discoveryMode;
     private List<Node> namespaces(Map<String,Object> request) {
+        if(request.containsKey("id")) {
+            String id=RequestContext.uuid(request.get("id"));
+            Node node=repo.namespace(id);
+            return node!=null&&effectiveRole(id)!=null?List.of(node):List.of();
+        }
         List<Node> nodes=repo.nodes("Namespace",Map.of()).stream().filter(n->effectiveRole(CoreRepository.id(n))!=null).toList();
-        if(request.containsKey("id")) {String id=RequestContext.uuid(request.get("id"));nodes=nodes.stream().filter(n->id.equals(CoreRepository.id(n))).toList();}
         if(request.containsKey("name")) {String name=name(request.get("name"));nodes=nodes.stream().filter(n->name.equals(n.getProperty("name"))).toList();}
         return nodes;
     }
@@ -35,8 +39,9 @@ public final class ReadService extends BaseService {
             case "User" -> {
                 fields(request,"userId");boolean admin="administrator".equals(user.getProperty("serverRole"));
                 if(request.containsKey("userId")) {
-                    String id=RequestContext.uuid(request.get("userId"));Node target=repo.find("User","id",id);
-                    if(target==null||(!admin&&!id.equals(c.actorId)))c.fail("NOT_FOUND","User not found");nodes=List.of(target);
+                    String id=RequestContext.uuid(request.get("userId"));
+                    if(!admin&&!id.equals(c.actorId))c.fail("NOT_FOUND","User not found");
+                    nodes=List.of(id.equals(c.actorId)?user:required("User",id));
                 } else nodes=admin?repo.nodes("User",Map.of()):List.of(user);
             }
             case "Namespace" -> {

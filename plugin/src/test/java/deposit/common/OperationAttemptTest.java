@@ -687,6 +687,62 @@ class OperationAttemptTest {
         }
     }
 
+    @Test void strongestBatchRoleAndFinalAuthorizationUseCurrentGrants() {
+        Actor a=actor(), otherOwner=actor();
+        try(var tx=database.beginTx()) {
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            core.setRole(otherOwner.id,a.namespace,"owner");
+            core.setRole(a.id,a.namespace,"editor");
+            tx.commit();
+        }
+        var commands=List.of(
+            batch("class","deposit.create.class",List.of("Allowed to edit",Map.of())),
+            batch("namespace","deposit.set.namespace",List.of(Map.of("description","Owner only"))));
+        var denied=assertThrows(ExceptionHandler.DepositException.class,()->begin(a,operationId(clock.get()),a.namespace,
+            "deposit.apply.batch",List.of(commands)));
+        assertTrue(denied.getMessage().contains("NOT_FOUND"),denied.getMessage());
+        var result=tracked(a,a.namespace,"deposit.apply.batch",List.of(commands.subList(0,1)));
+        assertEquals("Allowed to edit",ValueCodec.map(ValueCodec.map(result.get("results")).get("class")).get("name"));
+
+        try(var tx=database.beginTx()) {
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(a.id,a.namespace,"owner");
+            tx.commit();
+        }
+        var granted=List.of(batch("namespace","deposit.set.namespace",List.of(Map.of("description","Owner only"))));
+        tracked(a,a.namespace,"deposit.apply.batch",List.of(granted));
+
+        String id=operationId(clock.get());
+        String route="deposit.set.namespaceRole";
+        var arguments=List.<Object>of(Map.of("id",a.id),"editor");
+        begin(a,id,a.namespace,route,arguments);
+        var revoked=assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,route,arguments,id));
+        assertTrue(revoked.getMessage().contains("NOT_FOUND"),revoked.getMessage());
+        try(var tx=database.beginTx()) {
+            assertEquals("owner",new CoreRepository(tx,ZonedDateTime.now()).role(a.id,a.namespace));
+        }
+        assertEquals("FAILED_ROLLED_BACK",state(status(a,id,a.namespace)));
+    }
+
+    @Test void selfDisableCommitsAndRevokesTheSession() {
+        Actor a=actor(), otherOwner=actor();
+        try(var tx=database.beginTx()) {
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            core.find("User","id",a.id).setProperty("serverRole","administrator");
+            core.find("User","id",otherOwner.id).setProperty("serverRole","administrator");
+            core.setRole(otherOwner.id,a.namespace,"owner");
+            tx.commit();
+        }
+        String id=operationId(clock.get());
+        String route="deposit.set.user";
+        var arguments=List.<Object>of(Map.of("id",a.id),Map.of("enabled",false));
+        begin(a,id,"server",route,arguments);
+        assertEquals(false,call(a,a.execution,route,arguments,id).get("enabled"));
+        assertThrows(ExceptionHandler.DepositException.class,()->status(a,id,"server"));
+        try(var tx=database.beginTx()) {
+            assertEquals("COMMITTED",OperationAttemptRepository.state(new OperationAttemptRepository(tx).find(a.id,"server",id)));
+        }
+    }
+
     private static Map<String,Object> batch(String key,String procedure,List<?> arguments) {
         return Json.map("key",key,"procedure",procedure,"arguments",arguments);
     }

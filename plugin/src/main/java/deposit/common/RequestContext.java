@@ -1,6 +1,7 @@
 package deposit.common;
 
 import java.util.*;
+import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
@@ -22,6 +23,16 @@ public final class RequestContext {
     public final ServerContext server;
     public final ServerContext.TxState state;
     public ServerContext.Session session;
+    public boolean protectedAuthorization;
+    private record ResolvedEntity(String kind,String namespace,String id) {}
+    private final Map<ResolvedEntity,Node> resolved = new HashMap<>();
+    public Node resolved(String kind,String namespace,String id) {
+        return resolved.get(new ResolvedEntity(kind,namespace,id));
+    }
+    public void remember(String kind,String namespace,String id,Node node) {
+        resolved.put(new ResolvedEntity(kind,namespace,id),node);
+    }
+    public void clearResolved() { resolved.clear(); }
     public String actorId, namespaceId;
     public long revision;
     public ChangeSet journal;

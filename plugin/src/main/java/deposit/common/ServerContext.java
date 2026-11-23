@@ -134,7 +134,8 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             long now=sessionTime();
             if(!state.operationClaimed&&!state.writerContinuation&&(now-session.touched>=1_800_000L||now-session.created>=28_800_000L))throw ExceptionHandler.fail("SESSION_EXPIRED","Session expired before commit");
         }
-        Node user=tx.findNode(Label.label("User"),"id",session.actor);
+        Node user=state.protectedActor;
+        if(user==null)user=tx.findNode(Label.label("User"),"id",session.actor);
         if(user==null||(!state.selfAccountChange&&!Boolean.TRUE.equals(user.getProperty("enabled",false))))throw ExceptionHandler.fail("AUTH_FAILED","Account unavailable before commit");
         if(state.privileged&&!state.selfAccountChange&&!"administrator".equals(user.getProperty("serverRole","user")))throw ExceptionHandler.fail("FORBIDDEN","Administrator required before commit");
         return null;
@@ -285,6 +286,17 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public static final class TxState {
         public final KernelTransaction kernel;
         public String tokenHash,namespace;
+        // These facts are populated only after the authorization fence is acquired.
+        public Node protectedActor;
+        public long authorizationGeneration;
+        public final Map<String,Node> protectedNamespaces=new HashMap<>();
+        public final Map<String,String> namespaceRoles=new HashMap<>();
+        public void invalidateAuthorization() {
+            authorizationGeneration++;
+            protectedActor=null;
+            protectedNamespaces.clear();
+            namespaceRoles.clear();
+        }
         public boolean observationsCaptured;
         public long observationGeneration;
         public final Map<String,Long> observations=new HashMap<>();

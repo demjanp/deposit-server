@@ -35,12 +35,11 @@ public final class SessionActionService extends BaseService {
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);return;
         }
         if(cancellation(procedure)||OPERATION_CONTROLS.contains(procedure)){
-            var tx=(org.neo4j.kernel.impl.coreapi.InternalTransaction)c.tx;c.server.authenticate(c,tx.securityContext().subject().executingUser(),false);
-            Node actor=repo.find("User","id",c.actorId);if(actor==null||!Boolean.TRUE.equals(actor.getProperty("enabled",false)))c.fail("AUTH_FAILED","Account unavailable");
+            bindBoltSession();
+            if(enabledActor(false)==null)c.fail("AUTH_FAILED","Account unavailable");
         }else {
             // Claim the nonblocking session lease before waiting for authorization fences.
-            var tx=(org.neo4j.kernel.impl.coreapi.InternalTransaction)c.tx;
-            c.server.authenticate(c,tx.securityContext().subject().executingUser(),false);
+            bindBoltSession();
             if(action||Set.of("deposit.utils.refresh","deposit.set.activeNamespace","deposit.set.administrativeMode","deposit.utils.logout").contains(procedure))lease();
             if(Set.of("deposit.set.user","deposit.set.password","deposit.set.namespaceRole","deposit.delete.namespace").contains(procedure))authorizationChange();
             authenticate();
@@ -49,7 +48,10 @@ public final class SessionActionService extends BaseService {
             if(!c.state.observationsCaptured){c.state.observations.putAll(c.session.baselines);c.state.observationGeneration=c.session.observationGeneration;c.state.observationsCaptured=true;}
             c.observationGeneration=c.state.observationGeneration;
         }
-        if(Set.of("namespace","operational").contains(spec.scope()))scoped("viewer");
+        if(Set.of("namespace","operational").contains(spec.scope())) {
+            if(action&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")))scope("viewer");
+            else scoped("viewer");
+        }
         if(Set.of("deposit.set.activeNamespace","deposit.set.administrativeMode").contains(procedure))lease();
 
         if(!action){
@@ -87,7 +89,7 @@ public final class SessionActionService extends BaseService {
     }
     private void authorize(String procedure,String scope){authorize(procedure,scope,null);}
     void authorize(String procedure,String scope,String roleOverride){
-        if(procedure.equals("deposit.admin.pruneResources")||Set.of("deposit.create.user","deposit.set.user").contains(procedure))admin(repo.find("User","id",c.actorId));
+        if(procedure.equals("deposit.admin.pruneResources")||Set.of("deposit.create.user","deposit.set.user").contains(procedure))admin(authenticate());
         if(!scope.equals("server")){
             if(!scope.equals(scopeRules.active()))c.fail("SCOPE_MISMATCH","Action belongs to another Namespace");
             String role=roleOverride!=null?roleOverride:Set.of("deposit.set.namespace","deposit.delete.all","deposit.set.namespaceRole","deposit.set.versioningType","deposit.set.versionTag","deposit.utils.restore").contains(procedure)?"owner":"editor";
@@ -132,7 +134,7 @@ public final class SessionActionService extends BaseService {
     private Map<String,Object> refresh(String scope){
         if(!Set.of("namespace","server","both").contains(scope))c.fail("VALIDATION_FAILED","Invalid refresh scope");separate();
         var values=new LinkedHashMap<String,Long>();if(!scope.equals("namespace"))values.put("server",c.server.revision(c.state));
-        if(!scope.equals("server")){String ns=scopeRules.active();requireRole(ns,"viewer");values.put(ns,repo.sequence(ns));}
+        if(!scope.equals("server")){String ns=scopeRules.active();values.put(ns,CoreRepository.sequence(requireRole(ns,"viewer")));}
         c.state.afterCommit.add(()->{synchronized(c.session){c.session.baselines.putAll(values);c.session.observationGeneration++;}});
         return Json.map("scope",scope,"observed",values);
     }

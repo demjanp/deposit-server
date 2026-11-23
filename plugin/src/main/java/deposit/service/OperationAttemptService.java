@@ -63,7 +63,7 @@ final class OperationAttemptService extends BaseService {
             : procedure.equals("deposit.admin.pruneResources") ? "viewer"
             : procedure.equals("deposit.delete.namespace") || OWNER.contains(procedure) || batchNeedsOwner(procedure,arguments)
                 ? "owner" : "editor";
-        authorize(procedure, namespace, role);
+        authorize(procedure, namespace, role, false);
         String hash = fingerprint(procedure, arguments);
         Node admission = attempts.lockAdmission();
         Node node = attempts.find(c.actorId, scope, id);
@@ -136,7 +136,7 @@ final class OperationAttemptService extends BaseService {
                 c.fail("OPERATION_NOT_CLAIMABLE", "Execution binding expired or changed. Inspect the operation");
             if (procedure.equals("deposit.delete.namespace") && !scopes.active().equals(saved.get("authorizationScope")))
                 c.fail("SCOPE_MISMATCH", "Deletion target changed");
-            authorize(procedure, (String)saved.get("authorizationScope"), (String)saved.get("role"));
+            authorize(procedure,(String)saved.get("authorizationScope"),(String)saved.get("role"),true);
             checkSource(saved,true);
             writer(procedure, arguments, operationScope);
             c.state.operationConnection = connection;
@@ -168,7 +168,7 @@ final class OperationAttemptService extends BaseService {
         // A deletion checks the target owner under the authorization and Namespace
         // locks before removing it. Account self-changes have the same pre-write check.
         if (!procedure.equals("deposit.delete.namespace") && !c.state.selfAccountChange)
-            authorize(procedure, (String)node.getProperty("authorizationScope"), (String)node.getProperty("role"));
+            authorize(procedure,(String)node.getProperty("authorizationScope"),(String)node.getProperty("role"),true);
         c.checkSourceAuthorization.run();
         checkSource(node.getAllProperties(),false);
         OperationAttemptRepository.transition(node, domainWrite(procedure) ? "COMMITTED" : "COMPLETED_NO_DOMAIN_WRITE", c.server.sessionTime());
@@ -186,7 +186,7 @@ final class OperationAttemptService extends BaseService {
             Node admission = attempts.lockAdmission();
             node = attempts.find(c.actorId, scope, id);
             if (node == null) {
-                authorize(null, scope, "viewer");
+                authorize(null, scope, "viewer", false);
                 long now = c.server.sessionTime();
                 if (!attempts.admissible(admission,id,now)) return status(null,id,scope,false);
                 attempts.admit(admission, id, now);
@@ -197,7 +197,7 @@ final class OperationAttemptService extends BaseService {
             }
         }
         if (node == null) {
-            authorize(null, scope, "viewer");
+            authorize(null, scope, "viewer", false);
             return status(null, id, scope, false);
         }
         boolean sanitized = checkAccess(node, scope, cancel);
@@ -228,18 +228,18 @@ final class OperationAttemptService extends BaseService {
     private boolean checkAccess(Node node, String scope, boolean cancel) {
         String procedure = (String)node.getProperty("procedure", null);
         if (procedure == null) {
-            authorize(null, scope, "viewer");
+            authorize(null, scope, "viewer", false);
             return false;
         }
         if ("server".equals(scope) && SERVER_RECEIPTS.contains(procedure)
                 && "COMMITTED".equals(OperationAttemptRepository.state(node))) {
-            checkAccount();
+            checkAccount(false);
             if (!cancel || procedure.equals("deposit.delete.namespace")) return true;
             var result=Json.read((String)node.getProperty("result"));
             if (!(result.get("namespaceId") instanceof String namespace)) throw unavailable();
-            authorize(procedure,namespace,"viewer");
+            authorize(procedure,namespace,"viewer",false);
         }
-        authorize(procedure, (String)node.getProperty("authorizationScope"), (String)node.getProperty("role"));
+        authorize(procedure,(String)node.getProperty("authorizationScope"),(String)node.getProperty("role"),false);
         checkControlSource(node,procedure);
         return false;
     }
@@ -310,18 +310,20 @@ final class OperationAttemptService extends BaseService {
         return state != null && !state.operationSettled && state.requestIds.contains(values.get("requestId")) ? state : null;
     }
 
-    private void authorize(String procedure, String namespace, String role) {
-        Node user = checkAccount();
-        if (procedure != null && ADMIN.contains(procedure) && !AuthorizationAdapter.administrator(user)) throw unavailable();
-        if (!namespace.equals("server")) {
-            String actual = effectiveRole(namespace);
-            if (repo.namespace(namespace) == null || actual == null || rank(actual) < rank(role)) throw unavailable();
+    private void authorize(String procedure,String namespace,String role,boolean execution) {
+        boolean reuse=execution&&c.protectedAuthorization;
+        Node user=checkAccount(reuse);
+        if(procedure!=null&&ADMIN.contains(procedure)&&!AuthorizationAdapter.administrator(user))throw unavailable();
+        if(!namespace.equals("server")) {
+            Node root=reuse?repo.namespace(namespace):repo.find("Namespace","id",namespace);
+            String actual=AuthorizationAdapter.role(c,repo,user,namespace,reuse);
+            if(root==null||actual==null||rank(actual)<rank(role))throw unavailable();
         }
     }
 
-    private Node checkAccount() {
-        Node user = repo.find("User", "id", c.actorId);
-        if (user == null || !Boolean.TRUE.equals(user.getProperty("enabled", false))) throw unavailable();
+    private Node checkAccount(boolean reuse) {
+        Node user=enabledActor(reuse);
+        if(user==null)throw unavailable();
         return user;
     }
 

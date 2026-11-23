@@ -2,6 +2,7 @@ package deposit.service;
 
 import deposit.common.*;
 import deposit.common.Results.Outcome;
+import deposit.repository.CoreRepository;
 import deposit.repository.HistoryWorkspace;
 import java.io.*;
 import java.util.*;
@@ -12,16 +13,18 @@ public abstract class ActionService extends BaseService {
     protected ActionService(RequestContext c) {super(c);}
     protected record Change(Outcome outcome,boolean changed) {}
     protected Outcome action(String procedure,Map<String,Object> request,boolean serverScope,String role,Supplier<Change> work) {
-        if(serverScope) authenticate();else scoped(role);
+        Node namespace;
+        if(serverScope) {authenticate();namespace=null;}else namespace=scope(role);
         mutation();
         // Serialize durable actor/operation scope reservation across Namespaces.
         // Dedicated lock nodes avoid cycles with role edges. Always actor before scope.
         repo.lockActor(c.actorId);
         if(serverScope)c.server.lockServer(c.state);
-        if(!serverScope) {repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);}
+        if(!serverScope)repo.lockNamespace(c.namespaceId);
         String scope=serverScope?"server":c.namespaceId;
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||procedure.equals("deposit.import.cloneNamespace"))?null:c.expectedRevision)));
-        c.revision=serverScope?c.server.revision(c.state):repo.sequence(scope);if(c.expectedRevision!=null)checkRevision();
+        long lockedRevision=serverScope?c.server.revision(c.state):CoreRepository.sequence(namespace);
+        c.revision=lockedRevision;if(c.expectedRevision!=null)checkRevision();
         boolean importApply=procedure.equals("deposit.import.apply");
         boolean importAnalysis=Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern").contains(procedure);
         if(importApply)ImportWriteBudget.forRequest(c);
@@ -31,7 +34,7 @@ public abstract class ActionService extends BaseService {
         // Analysis, row paging and pattern samples are observations. They must not
         // capture the receiving Namespace or invoke scientific Pattern maintenance.
         Map<String,Map<String,Object>> beforeState=serverScope||importAnalysis?Map.of():capture(history,scope,workspace);
-        if(scientific&&!"disabled".equals(repo.namespace(scope).getProperty("historyMode")))c.journal=workspace==null?new ChangeSet(beforeState):workspace.journal(beforeState);
+        if(scientific&&!"disabled".equals(namespace.getProperty("historyMode")))c.journal=workspace==null?new ChangeSet(beforeState):workspace.journal(beforeState);
         Change change=work.get();
         if(!serverScope&&!importAnalysis){var patterns=new PatternService(c);boolean canonicalized=patterns.canonicalizeResolvedDeclarations();Map<String,Map<String,Object>> resulting=capture(history,scope,workspace);patterns.validateNamespace();patterns.validateDeclarationDeletion(beforeState,resulting);if(canonicalized&&!change.changed())change=new Change(change.outcome(),true);}
         if(change.changed()) {
@@ -39,7 +42,7 @@ public abstract class ActionService extends BaseService {
                 c.state.serverChanged=true;
                 c.revision=c.server.revision(c.state);
             }
-            else {repo.advanceNamespace(scope,c.actorId);c.revision=repo.sequence(scope);}
+            else c.revision=repo.advanceNamespace(namespace,lockedRevision,c.actorId);
             if(c.journal!=null){c.journal.checkpoint(capture(history,scope,workspace));String revisionId=importApply?history.appendId(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp,ImportWriteBudget.forRequest(c)::reserveHistoryRecord):history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp).id();if(!isImportResult(change.outcome().data()))change.outcome().data().put("revisionId",revisionId);}
         } else if(!isImportResult(change.outcome().data()))change.outcome().data().put("changed",false);
         if(scientific){c.server.storagePoint("history-before-receipt");c.state.afterCommit.add(()->c.server.storagePoint("history-after-commit"));}

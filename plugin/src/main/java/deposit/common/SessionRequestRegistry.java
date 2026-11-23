@@ -39,9 +39,10 @@ final class SessionRequestRegistry {
 
     ServerContext.Session authenticateBolt(RequestContext context, String principal) {
         if (context.token == null || context.token.isEmpty()) context.fail("AUTH_REQUIRED", "Session token required");
-        String hash = Json.hash(context.token);
+        String hash = context.session == null ? Json.hash(context.token) : context.state.tokenHash;
         ServerContext.Session session = sessions.get(hash);
-        if (session == null || session.transport != ServerContext.Transport.BOLT || !Objects.equals(session.principal, principal))
+        if (session == null || context.session != null && session != context.session
+                || session.transport != ServerContext.Transport.BOLT || !Objects.equals(session.principal, principal))
             context.fail("AUTH_FAILED", "Invalid session");
         synchronized (session) {
             long now = sessionTime();
@@ -54,7 +55,7 @@ final class SessionRequestRegistry {
             }
             session.touched = now;
         }
-        bind(context, hash, session);
+        if (context.session == null) bind(context, hash, session);
         return session;
     }
 

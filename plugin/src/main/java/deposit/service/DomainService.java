@@ -13,12 +13,15 @@ public final class DomainService extends ActionService {
         if(request.containsKey("classId")==request.containsKey("className"))c.fail("VALIDATION_FAILED","Supply classId or className");
         if(request.containsKey("classId"))return required("Class",request.get("classId"));
         String name=name(request.get("className"));Node n=repo.find("Class",Map.of("namespaceId",c.namespaceId,"name",name));
-        if(n==null && infer)n=newClass(Json.map("name",name));
+        if(n==null && infer)n=createClass(name,Map.of());
         if(n==null)c.fail("NOT_FOUND","Class not found");return n;
     }
     private Node newClass(Map<String,Object> request) {
         String name=name(request.get("name"));
         if(repo.find("Class",Map.of("namespaceId",c.namespaceId,"name",name))!=null)c.fail("DUPLICATE","Class name exists");
+        return createClass(name,request);
+    }
+    private Node createClass(String name,Map<String,Object> request) {
         Node n=repo.create("Class",c.namespaceId,c.actorId,Json.map("name",name,"position",position(request.getOrDefault("position",List.of(0.0,0.0))),"order",integer(request.getOrDefault("order",0L)),"comment",string(request.getOrDefault("comment",""))));
         Object descriptors=request.getOrDefault("descriptors",List.of());if(!(descriptors instanceof List<?>))c.fail("VALIDATION_FAILED","Class descriptors must be a list");
         for(Object declaration:(List<?>)descriptors) {var d=ValueCodec.map(declaration);fields(d,"name","type","order","comment");newDeclaration(n,d);}
@@ -33,22 +36,22 @@ public final class DomainService extends ActionService {
     private record DescriptorWrite(Node descriptor,boolean changed) {}
     private DescriptorWrite descriptor(Node object,String name,Object input,boolean createOnly) {
         Node old=repo.descriptor(object,name);if(old!=null&&createOnly)c.fail("DUPLICATE","Descriptor exists");
-        Node declaration=repo.declaration(repo.objectClass(object),name);
+        Node clazz=repo.objectClass(object);
+        Node declaration=repo.declaration(clazz,name);
         ExplicitDescriptorValue explicit=input instanceof ExplicitDescriptorValue typed?typed:null;
         Object payload=explicit==null?input:explicit.value();
-        if(declaration==null) {
-            String type;
-            if(explicit==null) {
-                var typed=ValueCodec.map(input);fields(typed,"type","value");
-                if(!typed.containsKey("value"))c.fail("VALIDATION_FAILED","Undeclared value requires explicit type and value");
-                type=ValueCodec.type(typed.get("type"));payload=typed.get("value");
-            } else type=explicit.type();
-            ValueCodec.normalize(type,payload);
-            declaration=newDeclaration(repo.objectClass(object),Json.map("name",name,"type",type));
+        String type;
+        if(declaration!=null) {
+            type=(String)declaration.getProperty("type");
+            if(explicit!=null&&!type.equals(explicit.type()))c.fail("VALIDATION_FAILED","Explicit value type differs from the Descriptor declaration");
+        } else if(explicit!=null)type=explicit.type();
+        else {
+            var typed=ValueCodec.map(input);fields(typed,"type","value");
+            if(!typed.containsKey("value"))c.fail("VALIDATION_FAILED","Undeclared value requires explicit type and value");
+            type=ValueCodec.type(typed.get("type"));payload=typed.get("value");
         }
-        String type=(String)declaration.getProperty("type");
-        if(explicit!=null&&!type.equals(explicit.type()))c.fail("VALIDATION_FAILED","Explicit value type differs from the Descriptor declaration");
         Object normalized=ValueCodec.normalize(type,payload);
+        if(declaration==null)repo.attach("ClassDescriptor",clazz,c.actorId,Json.map("name",name,"type",type,"order",0L,"comment",""));
         if(old==null){Node descriptor=repo.attach("Descriptor",object,c.actorId,Json.map("name",name));repo.writeValue(descriptor,type,normalized,c.actorId);return new DescriptorWrite(descriptor,true);}
         return new DescriptorWrite(old,repo.writeValue(old,type,normalized,c.actorId));
     }
@@ -111,7 +114,9 @@ public final class DomainService extends ActionService {
             if(kind.equals("Descriptor")) {if(!request.containsKey("value"))c.fail("VALIDATION_FAILED","value required");var result=descriptor(required("Object",request.get("objectId")),name(request.get("name")),request.get("value"),false);return new Change(outcome(result.descriptor()),result.changed());}
             Node n=required(kind,request.get("id"));var updates=new LinkedHashMap<String,Object>();
             if(request.containsKey("name")) {
-                String name=name(request.get("name"));Node found=repo.find(kind,Map.of("namespaceId",c.namespaceId,"name",name));if(found!=null&&!found.equals(n))c.fail("DUPLICATE","Name exists");updates.put("name",name);
+                String name=name(request.get("name"));
+                if(!name.equals(n.getProperty("name"))&&repo.find(kind,Map.of("namespaceId",c.namespaceId,"name",name))!=null)c.fail("DUPLICATE","Name exists");
+                updates.put("name",name);
             }
             if(request.containsKey("position"))updates.put("position",position(request.get("position")));
             if(request.containsKey("order"))updates.put("order",integer(request.get("order")));
@@ -175,10 +180,11 @@ public final class DomainService extends ActionService {
     public static String commandRole(String procedure) {return Set.of("deposit.set.namespace","deposit.delete.all").contains(procedure)?"owner":"editor";}
     public Outcome execute(String procedure,Map<String,Object> request) {
         if(!COMMANDS.contains(procedure))c.fail("VALIDATION_FAILED","Unsupported domain command");
-        return action(procedure,request,false,commandRole(procedure),()->command(procedure,request));
+        return action(procedure,request,false,commandRole(procedure),()->authorizedCommand(procedure,request));
     }
-    Change command(String procedure,Map<String,Object> request) {
-        c.state.kernel.assertOpen();requireRole(c.namespaceId,commandRole(procedure));
+    // Both callers enter through ActionService with the strongest required role.
+    Change authorizedCommand(String procedure,Map<String,Object> request) {
+        c.state.kernel.assertOpen();
         return switch(procedure) {
             case "deposit.set.classDescriptor" -> schema.declarationPatch(request);
             case "deposit.set.membership" -> membershipCommand(request);
@@ -191,7 +197,6 @@ public final class DomainService extends ActionService {
             case "deposit.set.namespace" -> schema.namespace(request);
             case "deposit.delete.all" -> schema.clear(request);
             default -> {
-                if(!COMMANDS.contains(procedure))c.fail("VALIDATION_FAILED","Unsupported domain command");
                 String[] parts=procedure.split("\\.");String kind=Character.toUpperCase(parts[2].charAt(0))+parts[2].substring(1);
                 if(kind.equals("Relationship")||kind.equals("ClassRelationship"))yield relationships.relationship(parts[1],kind,request);
                 yield switch(parts[1]) {case "create"->createCommand(kind,request);case "set"->setCommand(kind,request);case "delete"->removeCommand(kind,request);default->throw new IllegalArgumentException();};

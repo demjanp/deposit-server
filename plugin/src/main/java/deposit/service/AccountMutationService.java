@@ -23,8 +23,7 @@ final class AccountMutationService extends ActionService {
     Outcome setUser(Map<String,Object> request) {
         fields(request,"userId","enabled","serverRole","newPassword");authorizationChange();admin(authenticate());
         return action("deposit.set.user",request,true,null,()->{
-            Node target=repo.find("User","id",RequestContext.uuid(request.get("userId")));
-            if(target==null)c.fail("NOT_FOUND","User not found");
+            Node target=required("User",request.get("userId"));
             var changes=new LinkedHashMap<String,Object>();
             if(request.containsKey("enabled")) {
                 if(!(request.get("enabled") instanceof Boolean))c.fail("VALIDATION_FAILED","enabled must be Boolean");
@@ -51,7 +50,11 @@ final class AccountMutationService extends ActionService {
             boolean disabled=Boolean.TRUE.equals(target.getProperty("enabled"))&&!enabled;
             boolean demoted=AuthorizationAdapter.administrator(target)&&!role.equals("administrator");
             boolean changed=repo.update(target,changes,c.actorId);String targetId=CoreRepository.id(target);
-            if(changed&&targetId.equals(c.actorId))c.state.selfAccountChange=true;
+            if(changed) {
+                c.state.invalidateAuthorization();
+                c.clearResolved();
+                if(targetId.equals(c.actorId))c.state.selfAccountChange=true;
+            }
             if(passwordChanged||disabled)c.state.afterCommit.add(()->c.server.revokeUser(targetId));
             if(demoted)c.state.afterCommit.add(()->c.server.demoteUser(targetId));
             return new Change(outcome(target),changed);
@@ -60,11 +63,12 @@ final class AccountMutationService extends ActionService {
     ValueRow setPassword(Map<String,Object> request) {
         fields(request,"oldPassword","newPassword");authorizationChange();
         Outcome result=action("deposit.set.password",request,true,null,()->{
-            Node user=repo.find("User","id",c.actorId);
+            Node user=authenticate();
             if(!AccountCredentials.matches(user,string(request.get("oldPassword"))))c.fail("AUTH_FAILED","Invalid credentials");
             String value=AccountCredentials.password(request.get("newPassword"));boolean changed=!AccountCredentials.matches(user,value);
             if(changed) {
                 repo.update(user,Map.of("passwordHash",AccountCredentials.hash(value)),c.actorId);
+                c.state.invalidateAuthorization();
                 c.state.afterCommit.add(()->c.server.revokeUser(c.actorId));
             }
             return new Change(new Outcome(null,null,Json.map("changed",changed)),changed);

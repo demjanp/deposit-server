@@ -15,6 +15,13 @@ final class AuthorizationAdapter {
     }
     static String role(RequestContext c, CoreRepository repo, String namespace) {
         Node user = repo.find("User", "id", c.actorId);
-        return mode(c, user) ? "owner" : repo.role(c.actorId, namespace);
+        return mode(c,user) ? "owner" : repo.role(c.actorId,namespace);
+    }
+    static String role(RequestContext c,CoreRepository repo,Node user,String namespace,boolean reuse) {
+        if(mode(c,user))return "owner";
+        if(!reuse)return repo.role(user,namespace);
+        var roles=c.state.namespaceRoles;
+        if(!roles.containsKey(namespace))roles.put(namespace,repo.role(user,namespace));
+        return roles.get(namespace);
     }
 }

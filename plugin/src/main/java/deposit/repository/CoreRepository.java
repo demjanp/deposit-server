@@ -9,10 +9,16 @@ import org.neo4j.graphdb.*;
 /** Graph storage only. Authorization and action boundaries belong to services. */
 public final class CoreRepository implements CoreProjectionRepository.Access, OperationReceiptRepository.Access {
     private final Transaction tx;
+    private final RequestContext context;
     private final ZonedDateTime timestamp;
     private final CoreProjectionRepository projections;
     private final OperationReceiptRepository receipts;
-    public CoreRepository(Transaction tx,ZonedDateTime timestamp) {this.tx=tx;this.timestamp=timestamp;projections=new CoreProjectionRepository(this);receipts=new OperationReceiptRepository(tx,this);}
+    public CoreRepository(Transaction tx,ZonedDateTime timestamp) {this(tx,timestamp,null);}
+    public CoreRepository(RequestContext context) {this(context.tx,context.timestamp,context);}
+    private CoreRepository(Transaction tx,ZonedDateTime timestamp,RequestContext context) {
+        this.tx=tx;this.timestamp=timestamp;this.context=context;
+        projections=new CoreProjectionRepository(this);receipts=new OperationReceiptRepository(tx,this);
+    }
     public Node find(String label,String property,Object value) {return tx.findNode(Label.label(label),property,value);}
     public Node find(String label,Map<String,Object> properties) {
         try(var nodes=tx.findNodes(Label.label(label),properties)) {return nodes.hasNext()?nodes.next():null;}
@@ -27,18 +33,27 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         for(String label:List.of("Namespace","User","Class","Object","ClassDescriptor","Descriptor","Pattern","UserTool","DGeometry","DResource")) if(node.hasLabel(Label.label(label))) return label;
         throw new IllegalStateException("Unknown domain label");
     }
-    public Node namespace(String id) {return find("Namespace","id",id);}
-    public long sequence(String id) {Node ns=namespace(id);if(ns==null) throw ExceptionHandler.fail("NOT_FOUND","Namespace not found");return ((Number)ns.getProperty("sequence")).longValue();}
+    public Node namespace(String id) {
+        if(context==null||!context.protectedAuthorization)return find("Namespace","id",id);
+        return context.state.protectedNamespaces.computeIfAbsent(id,key->find("Namespace","id",key));
+    }
+    public long sequence(String id) {Node ns=namespace(id);if(ns==null) throw ExceptionHandler.fail("NOT_FOUND","Namespace not found");return sequence(ns);}
+    public static long sequence(Node namespace) {return ((Number)namespace.getProperty("sequence")).longValue();}
     public void lockNamespace(String id) {Node lock=find("DepositNamespaceLock","id",id);if(lock==null)throw new IllegalStateException("Namespace coordination missing");tx.acquireWriteLock(lock);}
     public void lockActor(String id) {tx.acquireWriteLock(find("DepositActorLock","id",id));}
     public String role(String actor,String namespace) {
-        Node user=find("User","id",actor);if(user==null) return null;
+        return role(find("User","id",actor),namespace);
+    }
+    public String role(Node user,String namespace) {
+        if(user==null)return null;
         try(var edges=user.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_NAMESPACE_ROLE"))) {
             for(Relationship edge:edges) if(namespace.equals(edge.getEndNode().getProperty("id",null))) return (String)edge.getProperty("role");
         }return null;
     }
     public boolean setRole(String actor,String namespace,String role) {
-        Node user=find("User","id",actor);Node ns=namespace(namespace);
+        return setRole(find("User","id",actor),namespace(namespace),role);
+    }
+    public boolean setRole(Node user,Node ns,String role) {
         try(var edges=user.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_NAMESPACE_ROLE"))) {
             for(Relationship edge:edges) if(edge.getEndNode().equals(ns)) {
                 if(Objects.equals(edge.getProperty("role"),role)) return false;
@@ -80,7 +95,12 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         if(changed) audit(node,actor);return changed;
     }
     public void audit(Entity node,String actor) {node.setProperty("updatedAt",timestamp);node.setProperty("updatedBy",actor);}
-    public void advanceNamespace(String namespace,String actor) {Node ns=namespace(namespace);ns.setProperty("sequence",sequence(namespace)+1);audit(ns,actor);}
+    public long advanceNamespace(Node namespace,long sequence,String actor) {
+        long next=sequence+1;
+        namespace.setProperty("sequence",next);
+        audit(namespace,actor);
+        return next;
+    }
     public Relationship membership(Node object) {return object.getSingleRelationship(RelationshipType.withName("MEMBER_OF"),Direction.OUTGOING);}
     public Node objectClass(Node object) {var membership=membership(object);if(membership==null) throw new IllegalStateException("Object has no Class");return membership.getEndNode();}
     public Relationship assign(Node object,Node clazz,String actor) {
@@ -136,9 +156,13 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     }
     String resourceWriteRole(String actor,String namespace) {
         var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;var server=ServerContext.forDatabase(internal.getDatabaseId());
-        Node user=find("User","id",actor);String role=role(actor,namespace);
-        if(user!=null&&server.state(internal.kernelTransaction()).administrative&&"administrator".equals(user.getProperty("serverRole",null)))role="owner";
-        return role;
+        var state=server.state(internal.kernelTransaction());
+        boolean reuse=context!=null&&context.protectedAuthorization&&actor.equals(context.actorId)
+            &&namespace.equals(state.namespace)&&state.protectedActor!=null;
+        Node user=reuse?state.protectedActor:find("User","id",actor);
+        if(user!=null&&state.administrative&&"administrator".equals(user.getProperty("serverRole",null)))return "owner";
+        if(reuse&&state.namespaceRoles.containsKey(namespace))return state.namespaceRoles.get(namespace);
+        return role(user,namespace);
     }
     /** Materialization-only resource attachment; ordinary public value authorization is unchanged. */
     public boolean writeImportedValue(Node descriptor,String type,Object value,String actor,ResourceRepository.ImportedResources imported) {

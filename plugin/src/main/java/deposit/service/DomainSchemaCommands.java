@@ -30,7 +30,7 @@ final class DomainSchemaCommands extends BaseService {
         }
         if(request.containsKey("description"))updates.put("description",string(request.get("description")));
         boolean changed=repo.update(ns,updates,c.actorId);var result=domain.outcome(ns);result.data().put("role",effectiveRole(c.namespaceId));
-        if(changed)result.data().put("sequence",repo.sequence(c.namespaceId)+1);
+        if(changed)result.data().put("sequence",c.revision+1);
         return new ActionService.Change(result,changed);
     }
     ActionService.Change clear(Map<String,Object> request) {

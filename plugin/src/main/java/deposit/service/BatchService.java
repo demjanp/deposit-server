@@ -8,7 +8,7 @@ import java.util.*;
 /** Ordered domain commands sharing a single action, transaction and receipt. */
 public final class BatchService extends ActionService {
     public BatchService(RequestContext c) {super(c);}
-    private record Command(String key,String procedure,List<Object> arguments,Map<String,Object> descriptorTypes) {}
+    private record Command(String key,String procedure,List<String> fields,List<Object> arguments,Map<String,Object> descriptorTypes) {}
     public Outcome apply(Map<String,Object> request) {
         fields(request,"commands");
         Object input=request.getOrDefault("commands",List.of());
@@ -25,8 +25,9 @@ public final class BatchService extends ActionService {
                 if(DomainService.commandRole(procedure).equals("owner"))role="owner";
                 if(!(item.get("arguments") instanceof List<?>))c.fail("VALIDATION_FAILED","Command arguments must be a list");
                 @SuppressWarnings("unchecked") List<Object> arguments=(List<Object>)item.get("arguments");
-                if(arguments.size()!=ProcedureCatalog.spec(procedure).bindings().size())c.fail("VALIDATION_FAILED","Wrong number of command arguments");
-                commands.add(new Command(key,procedure,arguments,ValueCodec.map(item.getOrDefault("descriptorTypes",Map.of()))));
+                var commandFields=ProcedureCatalog.spec(procedure).bindings();
+                if(arguments.size()!=commandFields.size())c.fail("VALIDATION_FAILED","Wrong number of command arguments");
+                commands.add(new Command(key,procedure,commandFields,arguments,ValueCodec.map(item.getOrDefault("descriptorTypes",Map.of()))));
             }catch(ExceptionHandler.DepositException failure) {throw commandError(failure,key,index);}
         }
         return action("deposit.apply.batch",request,false,role,()->{
@@ -34,8 +35,11 @@ public final class BatchService extends ActionService {
             for(int index=0;index<commands.size();index++) {
                 Command command=commands.get(index);
                 try {
-                    c.state.kernel.assertOpen();var arguments=new ArrayList<>(command.arguments());
-                    var fields=ProcedureCatalog.spec(command.procedure()).bindings();
+                    c.state.kernel.assertOpen();
+                    // Earlier commands may have deleted, renamed or recreated an entity.
+                    c.clearResolved();
+                    var arguments=new ArrayList<>(command.arguments());
+                    var fields=command.fields();
                     for(int argument=0;argument<arguments.size();argument++) {
                         String field=fields.get(argument);
                         if(!field.startsWith("@")&&!Set.of("id","objectId","classId","sourceId","targetId").contains(field))continue;
@@ -48,9 +52,9 @@ public final class BatchService extends ActionService {
                     }
                     var bindings=new LinkedHashMap<String,Object>();String prefix="command"+index+".";
                     c.selectorBindings.forEach((key,value)->{if(key.startsWith(prefix))bindings.put(key.substring(prefix.length()),value);});
-                    var resolved=new ArgumentService(c,bindings,true).request(command.procedure(),arguments);
+                    var resolved=new ArgumentService(c,bindings,true).bind(command.procedure(),fields,arguments);
                     applyDescriptorTypes(command,resolved);
-                    Change step=domain.command(command.procedure(),resolved);changed|=step.changed();
+                    Change step=domain.authorizedCommand(command.procedure(),resolved);changed|=step.changed();
                     if(c.journal!=null)c.journal.checkpoint(new deposit.repository.HistoryRepository(c.tx,repo).capture(c.namespaceId));
                     var saved=Json.read(Json.write(step.outcome().data()));if(!step.changed())saved.put("changed",false);
                     results.put(command.key(),saved);

@@ -13,9 +13,12 @@ public final class ArgumentService extends BaseService {
     public Map<String,Object> request(String procedure,List<Object> arguments){
         var spec=ProcedureCatalog.spec(procedure);
         if(arguments==null||arguments.size()!=spec.bindings().size())c.fail("VALIDATION_FAILED","Wrong number of domain arguments");
+        return bind(procedure,spec.bindings(),arguments);
+    }
+    Map<String,Object> bind(String procedure,List<String> fields,List<Object> arguments){
         var result=new LinkedHashMap<String,Object>();
         for(int i=0;i<arguments.size();i++){
-            String field=spec.bindings().get(i);Object value=arguments.get(i);
+            String field=fields.get(i);Object value=arguments.get(i);
             if(field.equals("+")){
                 var map=ValueCodec.map(value);
                 for(var entry:map.entrySet()){
@@ -33,9 +36,9 @@ public final class ArgumentService extends BaseService {
             if(!useBindings&&result.get("commands") instanceof List<?> commands){
                 for(int index=0;index<commands.size();index++){
                     if(!(commands.get(index) instanceof Map<?,?> command)||!(command.get("procedure") instanceof String target)||!DomainService.COMMANDS.contains(target)||!(command.get("arguments") instanceof List<?> args))continue;
-                    var fields=ProcedureCatalog.spec(target).bindings();
-                    for(int i=0;i<Math.min(fields.size(),args.size());i++){
-                        String field=fields.get(i);Object value=args.get(i);
+                    var commandFields=ProcedureCatalog.spec(target).bindings();
+                    for(int i=0;i<Math.min(commandFields.size(),args.size());i++){
+                        String field=commandFields.get(i);Object value=args.get(i);
                         if(!field.startsWith("@")||(value instanceof Map<?,?> map&&map.containsKey("ref")))continue;
                         try{identity(field.substring(1).split(":")[0],value,"command"+index+".arg"+i,target.equals("deposit.create.object"));}
                         catch(ExceptionHandler.DepositException failure){
@@ -57,23 +60,35 @@ public final class ArgumentService extends BaseService {
     private String identity(String kind,Object selector,String path,boolean infer){
         if(useBindings&&bindings.containsKey(path))return (String)bindings.get(path);
         String id=null;Node node=null;
+        boolean serverEntity=Set.of("Namespace","User").contains(kind);
+        String ns=null;
         if(selector instanceof Map<?,?>){
             var map=ValueCodec.map(selector);
             if(map.containsKey("id")){fields(map,"id");id=RequestContext.uuid(map.get("id"));}
             else if(kind.equals("Descriptor")||kind.equals("ClassDescriptor")){
                 String ownerKey=kind.equals("Descriptor")?"objectId":"class";fields(map,ownerKey,"name");
                 String ownerId=kind.equals("Descriptor")?RequestContext.uuid(map.get(ownerKey)):identity("Class",map.get(ownerKey),path+".class",false);
-                node=repo.find(kind,Map.of("namespaceId",namespace(),"ownerId",ownerId,"name",name(map.get("name"))));
+                ns=namespace();
+                node=repo.find(kind,Map.of("namespaceId",ns,"ownerId",ownerId,"name",name(map.get("name"))));
             }else c.fail("VALIDATION_FAILED","Expected a name or {id: UUID}");
         }else if(Set.of("Class","Pattern","UserTool","Namespace","User").contains(kind)){
             String field=kind.equals("User")?"username":"name";String name=name(selector);
-            node=Set.of("Namespace","User").contains(kind)?repo.find(kind,field,name):repo.find(kind,Map.of("namespaceId",namespace(),field,name));
+            if(!serverEntity)ns=namespace();
+            node=serverEntity?repo.find(kind,field,name):repo.find(kind,Map.of("namespaceId",ns,field,name));
             if(node==null&&infer){bindings.put(path,null);return null;}
         }else id=RequestContext.uuid(selector);
-        if(id!=null)node=Set.of("Namespace","User").contains(kind)?repo.find(kind,"id",id):repo.entity(kind,namespace(),id);
+        if(id!=null) {
+            if(!serverEntity)ns=namespace();
+            node=findResolved(kind,ns,id);
+        }
         if(node==null)c.fail("NOT_FOUND",kind+" not found");
-        if(kind.equals("Namespace"))requireRole(CoreRepository.id(node),"viewer");
-        id=CoreRepository.id(node);bindings.put(path,id);return id;
+        id=CoreRepository.id(node);
+        if(kind.equals("Namespace")) {
+            if(c.protectedAuthorization)c.state.protectedNamespaces.put(id,node);
+            requireRole(id,"viewer");
+        }
+        if(c.protectedAuthorization)c.remember(kind,ns,id,node);
+        bindings.put(path,id);return id;
     }
     private Map<String,Object> selection(String kind,Object value,String path){
         if(value==null)return new LinkedHashMap<>();

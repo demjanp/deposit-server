@@ -12,7 +12,10 @@ final class AuthorizationGuard {
         if (writer == state || (!exclusive && readers.contains(state))) return;
         // An upgrade is only possible before the transaction's first mutation/lock.
         // Drop the read lease and reauthenticate after acquiring exclusive access.
-        if (exclusive && readers.remove(state)) notifyAll();
+        if (exclusive && readers.remove(state)) {
+            state.invalidateAuthorization();
+            notifyAll();
+        }
         if (exclusive) waitingWriters++;
         try {
             while (writer != null || (exclusive ? !readers.isEmpty() : waitingWriters > 0)) {

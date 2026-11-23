@@ -24,11 +24,13 @@ final class NamespaceAdministrationService extends ActionService {
     Outcome delete(Map<String,Object> request) {
         fields(request,"confirmNamespaceName","expectedNamespaceRevision");authorizationChange();authenticate();mutation();
         repo.lockActor(c.actorId);c.server.lockServer(c.state);
-        scoped("owner");String target=c.namespaceId;repo.lockNamespace(target);requireRole(target,"owner");
-        long sequence=repo.sequence(target);c.revision=c.server.revision(c.state);checkRevision();
+        Node namespace=scope("owner");String target=c.namespaceId;repo.lockNamespace(target);
+        long sequence=CoreRepository.sequence(namespace);c.revision=c.server.revision(c.state);checkRevision();
         if(integer(request.get("expectedNamespaceRevision"))!=sequence)c.fail("REVISION_CONFLICT","Namespace revision changed");
-        if(!string(request.get("confirmNamespaceName")).equals(repo.namespace(target).getProperty("name")))c.fail("VALIDATION_FAILED","Namespace name confirmation changed");
+        if(!string(request.get("confirmNamespaceName")).equals(namespace.getProperty("name")))c.fail("VALIDATION_FAILED","Namespace name confirmation changed");
         String hash=deletionHash(request,target);List<String> deleted=repo.deleteNamespace(target);
+        c.state.invalidateAuthorization();
+        c.clearResolved();
         c.namespaceId=null;c.state.serverChanged=true;c.revision=c.server.revision(c.state);
         Outcome result=new Outcome(null,null,Json.map("deletedIds",deleted));repo.saveReceipt(c,"server",hash,result);
         repo.receipt(c,"server").setProperty("deletedNamespaceId",target);
@@ -43,12 +45,13 @@ final class NamespaceAdministrationService extends ActionService {
         if(set) {
             if(c.state.scoped||c.state.mutation)c.fail("VALIDATION_FAILED","Selection requires separate transaction");
             if(request.size()!=1)c.fail("VALIDATION_FAILED","Supply exactly one Namespace selector");
-            Node selected=request.containsKey("name")?repo.find("Namespace","name",name(request.get("name"))):repo.find("Namespace","id",RequestContext.uuid(request.get("id")));
-            if(selected==null)c.fail("NOT_FOUND","Namespace not found");namespace=CoreRepository.id(selected);requireRole(namespace,"viewer");
+            Node selected=request.containsKey("name")?repo.find("Namespace","name",name(request.get("name"))):required("Namespace",request.get("id"));
+            if(selected==null)c.fail("NOT_FOUND","Namespace not found");
+            namespace=CoreRepository.id(selected);c.state.protectedNamespaces.put(namespace,selected);
             String committedNamespace=namespace;var session=c.session;c.state.selection=true;c.state.afterCommit.add(()->session.namespace=committedNamespace);
         }
         if(namespace==null) {var meta=c.meta();meta.put("revision",null);return new EntityRow(null,null,meta);}
-        requireRole(namespace,"viewer");c.namespaceId=namespace;c.revision=repo.sequence(namespace);Node ns=repo.namespace(namespace);var data=repo.data(ns);data.put("role",effectiveRole(namespace));return new EntityRow(ns,data,c.meta());
+        Node ns=requireRole(namespace,"viewer");c.namespaceId=namespace;c.revision=CoreRepository.sequence(ns);var data=repo.data(ns);data.put("role",effectiveRole(namespace));return new EntityRow(ns,data,c.meta());
     }
     Outcome setRole(Map<String,Object> request) {
         fields(request,"userId","role");authorizationChange();
@@ -57,13 +60,15 @@ final class NamespaceAdministrationService extends ActionService {
             if(!request.containsKey("role"))c.fail("VALIDATION_FAILED","role required");
             String role=request.get("role")==null?null:string(request.get("role"));
             if(role!=null&&rank(role)==0)c.fail("VALIDATION_FAILED","Invalid role");
-            Node user=repo.find("User","id",userId);if(user==null)c.fail("NOT_FOUND","User not found");
+            Node user=required("User",userId);
             if("owner".equals(role)&&!Boolean.TRUE.equals(user.getProperty("enabled")))c.fail("VALIDATION_FAILED","Owner must be enabled");
-            if("owner".equals(repo.role(userId,c.namespaceId))&&!"owner".equals(role)) {
+            if("owner".equals(repo.role(user,c.namespaceId))&&!"owner".equals(role)) {
                 boolean other=repo.roles(c.namespaceId).stream().anyMatch(r->"owner".equals(r.get("role"))&&!userId.equals(r.get("userId"))&&Boolean.TRUE.equals(repo.find("User","id",r.get("userId")).getProperty("enabled")));
                 if(!other)c.fail("VALIDATION_FAILED","Namespace requires an enabled owner");
             }
-            boolean changed=repo.setRole(userId,c.namespaceId,role);return new Change(new Outcome(null,null,Json.map("userId",userId,"role",role)),changed);
+            boolean changed=repo.setRole(user,repo.namespace(c.namespaceId),role);
+            if(changed)c.state.invalidateAuthorization();
+            return new Change(new Outcome(null,null,Json.map("userId",userId,"role",role)),changed);
         });
     }
 }
