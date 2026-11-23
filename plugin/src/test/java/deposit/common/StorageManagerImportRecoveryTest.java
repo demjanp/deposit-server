@@ -141,7 +141,7 @@ class StorageManagerImportRecoveryTest {
         var reservation=old.acquire("clone-upload",uploadId,UUID.randomUUID().toString(),"namespace-clone-upload",Map.of(root,0L),Json.map("phase","upload","uploadId",uploadId,"actorId",actor,"bytes",(long)payload.length,"nextOffset",(long)payload.length,"sha256",ResourceFiles.checksum(payload),"stagingPath",relative));
         try(var tx=database.beginTx()){Node upload=tx.createNode(Label.label("DepositCloneUpload"));upload.setProperty("id",uploadId);upload.setProperty("actorId",actor);upload.setProperty("bytes",payload.length);upload.setProperty("nextOffset",payload.length);upload.setProperty("sha256",ResourceFiles.checksum(payload));upload.setProperty("state","consumed");upload.setProperty("expires",System.currentTimeMillis()+60_000L);upload.setProperty("stagingPath",relative);upload.setProperty("admissionId",reservation.id);upload.setProperty("consumedOperationId",cloneOperation);upload.setProperty("consumedActorId",actor);upload.setProperty("consumedResultId",resultId);upload.setProperty("consumedNamespaceId",namespaceId);
             Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId",namespaceId);result.setProperty("scope","server");result.setProperty("actorId",actor);result.setProperty("operationId",cloneOperation);result.setProperty("kind","clone");
-            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope","server");receipt.setProperty("operationId",cloneOperation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("outcome",Json.write(Json.map("format",ImportResultContract.FORMAT,"resultId",resultId,"namespaceId",namespaceId)));tx.commit();}
+            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope","server");receipt.setProperty("operationId",cloneOperation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("resultNamespaceId",namespaceId);tx.commit();}
         old.close();storage=new StorageManager(server,database);server.storage=storage;
         storage.recover();
         var resumed=storage.admission.resume(reservation.id);assertEquals(server.runId,resumed.serverRunId());assertTrue(Files.exists(staged),"a consumed upload is retained until its package bytes are actually deleted");
@@ -162,7 +162,7 @@ class StorageManagerImportRecoveryTest {
     private void writeCloneReceipt(String scope,String actor,String operation,String resultNamespace) {
         String resultId=UUID.randomUUID().toString();try(var tx=database.beginTx()){
             Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId",resultNamespace);result.setProperty("scope","server");result.setProperty("actorId",actor);result.setProperty("operationId",operation);result.setProperty("kind","clone");
-            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("outcome",Json.write(Json.map("format",ImportResultContract.FORMAT,"resultId",resultId)));tx.commit();
+            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("resultNamespaceId",resultNamespace);tx.commit();
         }
     }
 
@@ -172,7 +172,7 @@ class StorageManagerImportRecoveryTest {
         try(var tx=database.beginTx()){
             if(!"missing-result".equals(resultMode)){Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId","mismatched-result-scope".equals(resultMode)?UUID.randomUUID().toString():scope);result.setProperty("scope","server".equals(scope)?"server":"namespace");result.setProperty("actorId",receiptActor);result.setProperty("operationId",operation);}
             Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",receiptActor);receipt.setProperty("importResultId",resultId);
-            Map<String,Object> outcome=Json.map("format",ImportResultContract.FORMAT,"resultId",resultId);receipt.setProperty("outcome",Json.write(outcome));tx.commit();
+            receipt.setProperty("resultNamespaceId",scope);tx.commit();
         }
     }
 }

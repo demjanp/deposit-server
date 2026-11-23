@@ -19,8 +19,16 @@ final class SessionRequestRegistry {
     void clock(java.util.function.LongSupplier value) { clock = Objects.requireNonNull(value); }
     void register(String tokenHash, ServerContext.Session session) { sessions.put(tokenHash,session); }
     ServerContext.Session session(String tokenHash) { return sessions.get(tokenHash); }
-    boolean removeSession(String tokenHash) { return sessions.remove(tokenHash)!=null; }
-    boolean removeSession(String tokenHash,ServerContext.Session expected) { return sessions.remove(tokenHash,expected); }
+    boolean removeSession(String tokenHash) {
+        ServerContext.Session session=sessions.get(tokenHash);
+        return session!=null&&removeSession(tokenHash,session);
+    }
+    boolean removeSession(String tokenHash,ServerContext.Session expected) {
+        if(!sessions.remove(tokenHash,expected))return false;
+        requests.values().stream().map(ActiveRequest::state).filter(state->state.operationClaimed&&tokenHash.equals(state.tokenHash))
+            .forEach(ServerContext.TxState::signalOperationCancellation);
+        return true;
+    }
 
     void track(RequestContext context) {
         ActiveRequest request = new ActiveRequest(context.actorId, context.state);
@@ -38,8 +46,11 @@ final class SessionRequestRegistry {
         synchronized (session) {
             long now = sessionTime();
             if (now - session.touched >= 1_800_000L || now - session.created >= 28_800_000L) {
-                sessions.remove(hash, session);
-                context.fail("SESSION_EXPIRED", "Session expired");
+                if (!UploadBinding.validContinuation(context,hash,session.actor)) {
+                    if (!UploadBinding.hasLiveWriter(context,hash)) removeSession(hash,session);
+                    context.fail("SESSION_EXPIRED", "Session expired");
+                }
+                context.state.writerContinuation=true;
             }
             session.touched = now;
         }
@@ -89,7 +100,7 @@ final class SessionRequestRegistry {
         ActiveRequest request = requests.get(requestId);
         if (request == null) return false;
         if (!administrator && !request.actor().equals(actor)) throw ExceptionHandler.fail("FORBIDDEN", "Cannot cancel another actor's request");
-        request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);
+        signal(request.state());
         return true;
     }
 
@@ -101,17 +112,22 @@ final class SessionRequestRegistry {
     boolean cancelSession(String tokenHash, ServerContext.TxState caller) {
         boolean cancelled = false;
         for (ActiveRequest request : requests.values()) if (request.state() != caller && Objects.equals(tokenHash, request.state().tokenHash)) {
-            request.state().kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);
+            signal(request.state());
             cancelled = true;
         }
         return cancelled;
+    }
+
+    private void signal(ServerContext.TxState state) {
+        if (state.operationClaimed) state.signalOperationCancellation();
+        else state.kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);
     }
 
     void completeRequests(ServerContext.TxState state) {
         for (String requestId : state.requestIds) requests.computeIfPresent(requestId, (key, value) -> value.state() == state ? null : value);
     }
 
-    void revokeUser(String actor) { sessions.entrySet().removeIf(e -> e.getValue().actor.equals(actor)); }
+    void revokeUser(String actor) { sessions.forEach((hash,session)->{if(session.actor.equals(actor))removeSession(hash,session);}); }
     void demoteUser(String actor) { sessions.values().stream().filter(s -> s.actor.equals(actor)).forEach(s -> s.administrative = false); }
     void clearNamespace(String namespace) {
         sessions.values().forEach(s -> { synchronized (s) { if (namespace.equals(s.namespace)) s.namespace = null; } });

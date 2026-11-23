@@ -12,8 +12,13 @@ final class CsvTableFormat {
     private CsvTableFormat() {}
 
     static Map<String,Object> read(Path file,Path destination,char delimiter,int headerRow,Map<String,Object> typeMap,Map<String,Object> formats,String decimal,Runnable check)throws IOException{
+        return read(file,destination,delimiter,headerRow,typeMap,formats,decimal,check,
+            path->Files.newOutputStream(path,StandardOpenOption.CREATE_NEW));
+    }
+
+    static Map<String,Object> read(Path file,Path destination,char delimiter,int headerRow,Map<String,Object> typeMap,Map<String,Object> formats,String decimal,Runnable check,TabularJsonWriter.Target target)throws IOException{
         var decoder=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT);
-        try(var input=new PushbackReader(new BufferedReader(new InputStreamReader(Files.newInputStream(file),decoder)),1);var output=Files.newBufferedWriter(destination,StandardCharsets.UTF_8,StandardOpenOption.CREATE_NEW)){
+        try(var input=new PushbackReader(new BufferedReader(new InputStreamReader(Files.newInputStream(file),decoder)),1);var output=new BufferedWriter(new OutputStreamWriter(target.open(destination),StandardCharsets.UTF_8))){
             int first=input.read();if(first!=0xfeff&&first!=-1)input.unread(first);List<String> header=null;for(int i=1;i<=headerRow;i++){header=readRecord(input,delimiter);if(header==null)throw ExceptionHandler.fail("VALIDATION_FAILED","Header row is missing");}
             List<String> names=header;Set<String> unique=new HashSet<>();List<Map<String,Object>> columns=new ArrayList<>();for(String name:names)columns.add(TabularPolicy.projectHeader(name,unique,typeMap));
             TabularPolicy.validateOptions(names,typeMap,formats);

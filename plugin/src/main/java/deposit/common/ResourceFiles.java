@@ -36,9 +36,32 @@ public final class ResourceFiles {
             if(Files.exists(part,LinkOption.NOFOLLOW_LINKS)&&(Files.isSymbolicLink(part)||!part.toRealPath().equals(part)))throw new IOException("Linked resource path");
         }return p;
     }
+    public void deleteOwnedStagingTree(String relative)throws IOException {
+        Path directory=path(relative);
+        if(Files.notExists(directory,LinkOption.NOFOLLOW_LINKS))return;
+        if(!Files.isDirectory(directory,LinkOption.NOFOLLOW_LINKS))throw new IOException("Expected owned staging directory");
+        Files.walkFileTree(directory,new SimpleFileVisitor<Path>(){
+            private void check(Path entry)throws IOException{path(root.relativize(entry).toString());}
+            @Override public FileVisitResult preVisitDirectory(Path entry,java.nio.file.attribute.BasicFileAttributes attributes)throws IOException{
+                check(entry);return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path entry,java.nio.file.attribute.BasicFileAttributes attributes)throws IOException{
+                check(entry);
+                if(!attributes.isRegularFile())throw new IOException("Invalid file in owned staging directory");
+                Files.deleteIfExists(entry);return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult postVisitDirectory(Path entry,IOException failure)throws IOException{
+                if(failure!=null)throw failure;
+                check(entry);Files.deleteIfExists(entry);return FileVisitResult.CONTINUE;
+            }
+        });
+    }
     public static String checksum(byte[] bytes) {try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}}
     public static String checksum(Path path)throws IOException {
-        try {var digest=MessageDigest.getInstance("SHA-256");try(var in=Files.newInputStream(path)){byte[] buffer=new byte[64*1024];int n;while((n=in.read(buffer))!=-1)digest.update(buffer,0,n);}return HexFormat.of().formatHex(digest.digest());}
+        return checksum(path,()->{});
+    }
+    public static String checksum(Path path,Runnable checkpoint)throws IOException {
+        try {var digest=MessageDigest.getInstance("SHA-256");try(var in=Files.newInputStream(path)){byte[] buffer=new byte[64*1024];int n;while((n=in.read(buffer))!=-1){checkpoint.run();digest.update(buffer,0,n);}}return HexFormat.of().formatHex(digest.digest());}
         catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
     }
     public static String hash(Object input) {
@@ -66,4 +89,8 @@ public final class ResourceFiles {
         try(var channel=FileChannel.open(p,StandardOpenOption.WRITE)){if(channel.size()<length)throw new IOException("Staged resource is shorter than its committed offset");channel.truncate(length);channel.force(true);}
     }
     public void verify(String location,long bytes,String checksum)throws IOException {Path p=path(location);if(!Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)||Files.size(p)!=bytes||!checksum(p).equals(checksum))throw new IOException("Resource content unavailable");}
+    public void verify(String location,long bytes,String checksum,Runnable checkpoint)throws IOException {
+        Path p=path(location);
+        if(!Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)||Files.size(p)!=bytes||!checksum(p,checkpoint).equals(checksum))throw new IOException("Resource content unavailable");
+    }
 }

@@ -19,7 +19,7 @@ public final class RuntimeReadiness {
             config.load(input);
             Set<String> required=Set.of("resourceRoot","exportRoot","download.listenAddress","download.port","download.publicBaseUrl","secretRoot");
             if (!config.stringPropertyNames().containsAll(required)
-                || !Set.of("resourceRoot","exportRoot","download.listenAddress","download.port","download.publicBaseUrl","download.tlsKeyStore","download.tlsKeyStorePasswordFile","secretRoot").containsAll(config.stringPropertyNames())) {
+                || !Set.of("resourceRoot","exportRoot","download.listenAddress","download.port","download.publicBaseUrl","download.tlsKeyStore","download.tlsKeyStorePasswordFile","secretRoot","operationRestoreTime").containsAll(config.stringPropertyNames())) {
                 throw new IllegalStateException("Invalid Deposit configuration keys");
             }
             boolean hasKeyStore=config.stringPropertyNames().contains("download.tlsKeyStore");

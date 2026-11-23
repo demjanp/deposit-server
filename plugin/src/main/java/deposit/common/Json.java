@@ -32,6 +32,10 @@ public final class Json {
         try { STREAM_MAPPER.writeValue(output,value); }
         catch (Exception e) { throw new IllegalArgumentException("Cannot encode portable value", e); }
     }
+    static void writeCanonical(OutputStream output,Object value) {
+        try { MAPPER.writeValue(output,value); }
+        catch (Exception e) { throw new IllegalArgumentException("Cannot encode portable value", e); }
+    }
     @SuppressWarnings("unchecked") public static Map<String,Object> read(String value) {
         try { return MAPPER.readValue(value, Map.class); }
         catch (Exception e) { throw new IllegalArgumentException("Invalid encoded record", e); }

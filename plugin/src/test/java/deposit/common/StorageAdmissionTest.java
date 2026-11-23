@@ -76,7 +76,10 @@ class StorageAdmissionTest {
             var saved=Json.read(java.nio.file.Files.readString(root.resolve("admission").resolve(id+".json")));assertFalse(saved.containsKey("format"));assertFalse(saved.containsKey("version"));
         }
         try(var restarted=new StorageAdmission(root,"new-run")){
-            restarted.reconcile(reservation->new StorageAdmission.OwnerState(true,true,Map.of(volume,256L),Map.of("stagingPath","staging/upload.part","nextOffset",256L)));
+            restarted.reconcile(reservation->{
+                assertTrue(reservation.commitments().isEmpty(),"Future-space credits are process-local");
+                return new StorageAdmission.OwnerState(true,true,Map.of(volume,256L),Map.of("stagingPath","staging/upload.part"));
+            });
             var resumed=restarted.resume(id);assertEquals("new-run",resumed.serverRunId());assertEquals(256L,resumed.commitments().get(volume));
             restarted.reconcile(reservation->StorageAdmission.OwnerState.uncertain());assertTrue(java.nio.file.Files.exists(root.resolve("admission").resolve(id+".json")));
             restarted.close(resumed);

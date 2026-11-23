@@ -19,10 +19,10 @@ final class ImportRowExpansion {
     RowSource newRowSource(Path path)throws IOException{return new RowSource(path);}
 
 Iterable<Map<String,Object>> inlineRows(List<?> input){return ()->new Iterator<>(){final Iterator<?> source=input.iterator();public boolean hasNext(){return source.hasNext();}public Map<String,Object> next(){c.state.kernel.assertOpen();Map<String,Object> row=ValueCodec.map(source.next());BaseService.fields(row,"id","values");Map<String,Object> values=ValueCodec.map(row.get("values"));var presence=new LinkedHashMap<String,Object>();values.keySet().forEach(k->presence.put(k,true));return Json.map("rowId",row.get("id"),"values",values,"presence",presence);}};}
-static final class RowSource implements Iterable<Map<String,Object>>,AutoCloseable {
+final class RowSource implements Iterable<Map<String,Object>>,AutoCloseable {
     private final Json.ArrayReader reader;
     RowSource(Path path)throws IOException {reader=new Json.ArrayReader(path,"rows");}
-    public Iterator<Map<String,Object>> iterator(){return new Iterator<>(){Map<String,Object> next=read();private Map<String,Object> read(){try{return reader.next();}catch(IOException e){throw new UncheckedIOException(e);}}public boolean hasNext(){return next!=null;}public Map<String,Object> next(){if(next==null)throw new NoSuchElementException();Map<String,Object> raw=next;next=read();return Json.map("rowId",raw.get("rowId"),"values",ValueCodec.map(raw.get("values")),"presence",ValueCodec.map(raw.get("presence")));}};}
+    public Iterator<Map<String,Object>> iterator(){return new Iterator<>(){Map<String,Object> next=read();private Map<String,Object> read(){try{StagedTable.checkpoint(c);return reader.next();}catch(IOException e){throw new UncheckedIOException(e);}}public boolean hasNext(){return next!=null;}public Map<String,Object> next(){if(next==null)throw new NoSuchElementException();Map<String,Object> raw=next;next=read();return Json.map("rowId",raw.get("rowId"),"values",ValueCodec.map(raw.get("values")),"presence",ValueCodec.map(raw.get("presence")));}};}
     public void close()throws IOException{reader.close();}
 }
 static void writeTabularPackage(Path destination,Map<String,Object> manifest,Map<String,Object> graph){try{Files.createDirectories(destination.getParent());ExchangePackageCodec.write(destination,manifest,graph,null,Map.of());}catch(IOException e){throw new UncheckedIOException(e);}}

@@ -9,7 +9,10 @@ import org.neo4j.graphdb.*;
 final class SessionDiagnostics extends BaseService {
     SessionDiagnostics(RequestContext c) { super(c); }
     Map<String,Object> lastOperation() {
-        String id=c.session.lastOperation,scope=c.session.lastScope;Node receipt=id==null?null:repo.receipt(scope,id);
+        String id=c.session.lastOperation,scope=c.session.lastScope;
+        if(id!=null&&java.util.UUID.fromString(id).version()==7)
+            return new OperationAttemptService(c).inspect(Json.map("operationId",id,"scope",scope),false);
+        Node receipt=id==null?null:repo.receipt(c.actorId,scope,id);
         if(scope!=null&&!scope.equals("server"))requireRole(scope,"viewer");
         return Json.map("operationId",id,"scope",scope,"state",id==null?"none":receipt==null?"unresolved":"committed",
             "revision",receipt==null?null:receipt.getProperty("revision"),"outcome",receipt==null?null:Json.read((String)receipt.getProperty("outcome")));

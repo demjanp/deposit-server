@@ -14,6 +14,7 @@ public final class ExchangeService extends BaseService {
     private ExportRecords.StorageBudget exportBudget;
     private ExportRecords records;
     private ExchangeSnapshot assembly;
+    private Path exportWorkspace;
     public ExchangeService(RequestContext c){super(c);resources=new ResourceRepository(c.tx,repo);}
 
     public Map<String,Object> execute(String procedure,Map<String,Object> request) {
@@ -48,8 +49,8 @@ public final class ExchangeService extends BaseService {
 
     private Map<String,Object> readReceipt(String procedure,Map<String,Object> request,java.util.function.Supplier<Map<String,Object>> collect){
         if(c.operationId==null||c.expectedRevision!=null)c.fail("VALIDATION_FAILED","Export operation requires an operation ID without expectedRevision");
-        if(c.state.mutation)c.fail("VALIDATION_FAILED","One mutation per transaction");c.state.mutation=true;repo.lockActor(c.actorId);repo.lockNamespace(c.namespaceId);String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
-        Node prior=repo.receipt(c.namespaceId,c.operationId);if(prior!=null){c.replayed=true;if(!c.actorId.equals(prior.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");if(!hash.equals(prior.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");return repo.replay(prior,c.namespaceId).data();}
+        if(c.state.mutation)c.fail("VALIDATION_FAILED","One mutation per transaction");c.state.mutation=true;repo.lockActor(c.actorId);repo.lockNamespace(c.namespaceId);String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
+        Node prior=repo.receipt(c,c.namespaceId);if(prior!=null){c.replayed=true;if(!c.actorId.equals(prior.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");if(!hash.equals(prior.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");return repo.replay(prior,c.namespaceId).data();}
         Map<String,Object> data=withExportAdmission(collect);repo.saveReceipt(c,c.namespaceId,hash,new Results.Outcome(null,null,data));return data;
     }
 
@@ -77,8 +78,8 @@ public final class ExchangeService extends BaseService {
         Map<String,Object> selection=ValueCodec.map(request.get("selection"));fields(selection,"rootIds");if(selection.containsKey("rootIds")&&!(selection.get("rootIds") instanceof List<?>))c.fail("VALIDATION_FAILED","rootIds must be a list");List<?> rawRoots=selection.get("rootIds") instanceof List<?> list?list:null;List<?> roots=rawRoots==null?null:List.copyOf(rawRoots.stream().map(RequestContext::uuid).collect(java.util.stream.Collectors.toCollection(TreeSet::new)));
         if(options.get("includeHistory")!=null&&!(options.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");
         c.state.mutation=true;repo.lockActor(c.actorId);repo.lockNamespace(c.namespaceId);long revision=repo.sequence(c.namespaceId);c.revision=revision;
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.save.data","request",request)));
-        Node receipt=repo.receipt(c.namespaceId,c.operationId);
+        String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.save.data","request",request)));
+        Node receipt=repo.receipt(c,c.namespaceId);
         if(receipt!=null){if(!c.actorId.equals(receipt.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");if(!hash.equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");return repo.replay(receipt,c.namespaceId).data();}
         return withExportAdmission(()->{
             boolean whole=roots==null||roots.isEmpty();var content=assembly.snapshot(whole);if(repo.sequence(c.namespaceId)!=revision)c.fail("REVISION_CONFLICT","Namespace changed during export collection");
@@ -93,7 +94,7 @@ public final class ExchangeService extends BaseService {
     private Map<String,Object> publishPackage(Map<String,Object> snapshot,Map<String,Object> graphs,Map<String,Object> historyData){
         Path stage=null;Path blobDirectory=null;
         try{
-            stage=resources.files.path("staging/exports/"+UUID.randomUUID()+".zip");Files.createDirectories(stage.getParent());var blobs=new TreeMap<String,Path>();
+            stage=exportWorkspace.resolve("package.zip");var blobs=new TreeMap<String,Path>();
             blobDirectory=Files.createTempDirectory(stage.getParent(),"resource-content-");long expanded=0;
             for(Object raw:(List<?>)graphs.get("resources")){
                 c.state.kernel.assertOpen();String resourceId=(String)ValueCodec.map(raw).get("id");Node loc=resources.location(resourceId);ResourceStorage.Content verified=resources.verify(loc);
@@ -133,10 +134,27 @@ public final class ExchangeService extends BaseService {
     private Map<String,Object> counts(Map<String,Object> graph){var out=new LinkedHashMap<String,Object>();graph.forEach((k,v)->{if(v instanceof List<?> l)out.put(k,(long)l.size());});return out;}
     private long countJson(Object value)throws IOException{final long[] size={0};Json.write(new OutputStream(){public void write(int b)throws IOException{size[0]=Math.addExact(size[0],1L);}public void write(byte[] b,int offset,int length)throws IOException{size[0]=Math.addExact(size[0],(long)length);}},value);return size[0];}
     private <T>T withExportAdmission(java.util.function.Supplier<T> work){
-        try{admission=c.server.storage.admission.acquire("export",c.operationId,c.operationId,"exchange-export",Map.of(resources.files.root,64L*1024),Json.map("phase","snapshot-collection","receiptScope",c.namespaceId));exportBudget=new AdmissionBudget();try(var staged=new ExportRecords(resources.files.path("staging/exports"),()->c.state.kernel.assertOpen(),exportBudget)){records=staged;assembly=new ExchangeSnapshot(c,repo,staged);return work.get();}}
+        String workspaceId=UUID.randomUUID().toString(), relative="staging/exports/attempt-"+workspaceId;
+        try{
+            exportWorkspace=resources.files.path(relative);
+            admission=c.server.storage.admission.acquire("export-scratch",workspaceId,c.operationId,"exchange-export",
+                Map.of(exportWorkspace,64L*1024),Json.map("phase","export-scratch","actorId",c.actorId,"receiptScope",c.namespaceId));
+            Files.createDirectories(exportWorkspace);
+            exportBudget=new AdmissionBudget();
+            try(var staged=new ExportRecords(exportWorkspace,()->c.state.kernel.assertOpen(),exportBudget)){
+                records=staged;assembly=new ExchangeSnapshot(c,repo,staged);return work.get();
+            }
+        }
         catch(StorageAdmission.StoragePressureException pressure){throw ExceptionHandler.fail("LIMIT_EXCEEDED",pressure.getMessage());}
         catch(IOException|UncheckedIOException failure){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to stage source snapshot");}
-        finally{records=null;assembly=null;if(exportBudget instanceof AdmissionBudget budget)try{budget.finish();}catch(IOException failure){c.server.storage.diagnostic="Exchange storage admission settlement pending";}exportBudget=null;if(admission!=null)try{c.server.storage.admission.close(admission);}catch(IOException failure){c.server.storage.diagnostic="Exchange storage admission cleanup pending";}admission=null;}
+        finally{
+            records=null;assembly=null;
+            if(exportBudget instanceof AdmissionBudget budget)try{budget.finish();}catch(IOException failure){c.server.storage.diagnostic="Exchange storage admission settlement pending";}
+            exportBudget=null;
+            if(admission!=null)try{resources.files.deleteOwnedStagingTree(relative);c.server.storage.admission.close(admission);}
+                catch(IOException|StorageAdmission.StoragePressureException failure){c.server.storage.diagnostic="Exchange storage admission cleanup pending";}
+            admission=null;exportWorkspace=null;
+        }
     }
     private final class AdmissionBudget implements ExportRecords.StorageBudget {
         private static final long BLOCK=64L*1024,SETTLE=64L*1024;

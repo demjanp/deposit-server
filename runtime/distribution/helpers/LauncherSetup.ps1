@@ -27,6 +27,9 @@ function Setup([string[]]$Arguments,[string]$PackageRoot,[string]$StatePath,$Man
     $depositConfigForward=$depositConfig.Replace('\','/')
     Set-Neo4jSetting $neo4jConfig 'server.default_listen_address' '127.0.0.1'
     Set-Neo4jSetting $neo4jConfig 'server.bolt.enabled' 'true'
+    Set-Neo4jSetting $neo4jConfig 'db.logs.query.parameter_logging_enabled' 'false'
+    Set-Neo4jSetting $neo4jConfig 'db.logs.query.early_raw_logging_enabled' 'false'
+    Set-Neo4jSetting $neo4jConfig 'db.logs.query.obfuscate_literals' 'true'
     Set-Neo4jSetting $neo4jConfig 'server.bolt.listen_address' "127.0.0.1:$boltPort"
     Set-Neo4jSetting $neo4jConfig 'server.bolt.advertised_address' "127.0.0.1:$boltPort"
     Set-Neo4jSetting $neo4jConfig 'server.http.enabled' 'false'

@@ -21,6 +21,7 @@ public final class ResourceTransferRepository {
         StorageAdmission.Reservation reservation=admission("upload",upload,"resource-upload",Map.of(resources.files.root.resolve(staging),bytes,transactionVolume(),64L*1024),Json.map("resourceId",id,"stagingPath",staging,"expectedBytes",bytes,"nextOffset",0L));
         resources.lock(id);
         Node t=resources.record("DepositTransfer",upload,Json.map("namespaceId",c.namespaceId,"actorId",c.actorId,"resourceId",id,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"nextOffset",0L,"state","uploading","expires",resources.now()+ResourceFiles.LEASE,"admissionId",reservation.id));
+        UploadBinding.bind(c,t);
         resources.record("DepositResourceLocation",id,Json.map("namespaceId",c.namespaceId,"uploadId",upload,"storedFilename",stored,"stagingPath",staging,"bytes",bytes,"checksum",checksum,"leaseUntil",resources.now()+ResourceFiles.LEASE,"everAttached",false,"admissionId",reservation.id));return beginResult(t);
     }
     public Map<String,Object> chunk(Map<String,Object> request,Node t)throws IOException {
@@ -32,7 +33,7 @@ public final class ResourceTransferRepository {
         if(bytes.length==0||bytes.length>ResourceFiles.MAX_CHUNK)c.fail("LIMIT_EXCEEDED","Invalid chunk length");
         String checksum=ResourceFiles.hash(request.get("chunkSha256"));if(!checksum.equals(ResourceFiles.checksum(bytes)))c.fail("VALIDATION_FAILED","Chunk checksum mismatch");
         String uploadId=CoreRepository.id(t);Node old=resources.core.find("DepositTransferChunk",Map.of("uploadId",uploadId,"offset",offset));
-        if(old!=null){Map<String,Object> replay=retryResult(old,checksum,bytes.length);resources.renew(t);return replay;}
+        if(old!=null&&!c.state.operationClaimed){Map<String,Object> replay=retryResult(old,checksum,bytes.length);resources.renew(t);return replay;}
         if(offset<0||offset!=number(t,"nextOffset",0)||bytes.length>number(t,"bytes",0)-offset)c.fail("VALIDATION_FAILED","Chunk must continue the committed offset within declared size");
         Node loc=resources.location(text(t,"resourceId"));String staging=text(loc,"stagingPath");StorageAdmission.Reservation reservation=admission(t,loc,number(t,"bytes",0)-number(t,"nextOffset",0));long argumentBytes=encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         t.setProperty("admissionId",reservation.id);loc.setProperty("admissionId",reservation.id);
@@ -42,7 +43,7 @@ public final class ResourceTransferRepository {
         resources.files.append(staging,offset,bytes);
         c.server.storagePoint("chunk-flushed");
         long next;try{next=Math.addExact(offset,(long)bytes.length);}catch(ArithmeticException e){c.fail("LIMIT_EXCEEDED","Upload offset is not representable");return Map.of();}
-        resources.record("DepositTransferChunk",UUID.randomUUID().toString(),Json.map("uploadId",uploadId,"offset",offset,"length",(long)bytes.length,"checksum",checksum,"nextOffset",next));
+        if(!c.state.operationClaimed)resources.record("DepositTransferChunk",UUID.randomUUID().toString(),Json.map("uploadId",uploadId,"offset",offset,"length",(long)bytes.length,"checksum",checksum,"nextOffset",next));
         t.setProperty("nextOffset",next);resources.renew(t);return Json.map("nextOffset",next);
     }
 
@@ -59,7 +60,7 @@ public final class ResourceTransferRepository {
         t.setProperty("admissionId",reservation.id);loc.setProperty("admissionId",reservation.id);
         if(!resources.storage.exists(id)) {
             if(number(t,"bytes",0)==0)resources.files.append(text(loc,"stagingPath"),0,new byte[0]);
-            resources.files.verify(text(loc,"stagingPath"),number(t,"bytes",0),text(t,"checksum"));
+            resources.files.verify(text(loc,"stagingPath"),number(t,"bytes",0),text(t,"checksum"),c.state.kernel::assertOpen);
         }
         c.server.storagePoint("publication-before");boolean alreadyPublished=resources.storage.exists(id);if(!alreadyPublished){resources.server.storage.admission.setWriteIntent(reservation,Json.map("resourceId",id,"stagingPath",loc.getProperty("stagingPath",""),"phase","publication","expectedBytes",number(t,"bytes",0)));resources.server.storage.admission.grow(reservation,Map.of(resources.files.root,number(t,"bytes",0)));}
         resources.publish(resources.content(loc),loc.hasProperty("stagingPath")?resources.files.path(text(loc,"stagingPath")):null,reservation);c.server.storagePoint("publication-after");

@@ -24,10 +24,14 @@ final class XlsxTableReader {
     private static final long XLSX_MAX_EXPANDED=2L*1024*1024*1024;
     private XlsxTableReader() {}
     static Map<String,Object> parseXlsx(Path file,Path destination,Map<String,Object> options,int headerRow,Map<String,Object> types,Map<String,Object> formats,String decimal,Runnable check)throws IOException{
+        return parseXlsx(file,destination,options,headerRow,types,formats,decimal,check,
+            path->Files.newOutputStream(path,StandardOpenOption.CREATE_NEW));
+    }
+    static Map<String,Object> parseXlsx(Path file,Path destination,Map<String,Object> options,int headerRow,Map<String,Object> types,Map<String,Object> formats,String decimal,Runnable check,TabularJsonWriter.Target target)throws IOException{
         preflightXlsx(file,check,XLSX_MAX_ENTRIES,XLSX_MAX_EXPANDED);
         ZipSecureFile.setMaxEntrySize(XLSX_MAX_EXPANDED);ZipSecureFile.setMinInflateRatio(0.01);
-        Path workspace=Files.createTempDirectory(destination.getParent(),"xlsx-");
-        try(OPCPackage container=OPCPackage.open(file.toFile(),org.apache.poi.openxml4j.opc.PackageAccess.READ);OutputStream output=Files.newOutputStream(destination,StandardOpenOption.CREATE_NEW)){
+        Path workspace=Files.createDirectory(destination.resolveSibling(destination.getFileName()+".work"));
+        try(OPCPackage container=OPCPackage.open(file.toFile(),org.apache.poi.openxml4j.opc.PackageAccess.READ);OutputStream output=target.open(destination)){
             XSSFReader reader=new XSSFReader(container);StylesTable styles=reader.getStylesTable();boolean date1904=workbookUses1904(reader);String selected=Objects.toString(options.get("sheet"), "");
             try(SharedStringStore shared=new SharedStringStore(workspace)){InputStream stringsData=reader.getSharedStringsData();if(stringsData!=null)try(InputStream strings=stringsData){parseSharedStrings(strings,shared,check);}
                 XSSFReader.SheetIterator sheets=(XSSFReader.SheetIterator)reader.getSheetIterator();InputStream sheet=null;while(sheets.hasNext()){InputStream candidate=sheets.next();if(Objects.equals(sheets.getSheetName(),selected)){sheet=candidate;break;}candidate.close();}if(sheet==null)throw ExceptionHandler.fail("VALIDATION_FAILED","Selected XLSX sheet does not exist");

@@ -47,12 +47,12 @@ public final class ResourceRepository {
         if(loc.hasProperty("uploadId")&&actor.equals(resource.getProperty("createdBy"))&&number(loc,"leaseUntil",0)>now()) {
             Node t=transfer(text(loc,"uploadId"));
             if(t!=null&&actor.equals(t.getProperty("actorId",null))&&number(t,"expires",0)>now()) {
-                if(renew)renew(t);return true;
+                return true;
             }
         }
         for(Node grant:core.nodes("DepositExportGrant",Map.of("resourceId",id,"namespaceId",resource.getProperty("namespaceId"),"actorId",actor))) {
             if(number(grant,"expires",0)>now()&&(!Boolean.TRUE.equals(grant.getProperty("history",false))||Objects.equals(role,"owner"))) {
-                if(renew){grant.setProperty("expires",now()+ResourceFiles.LEASE);loc.removeProperty("orphanSince");}return true;
+                return true;
             }
         }return false;
     }
@@ -145,6 +145,18 @@ public final class ResourceRepository {
         // then installs the immutable object in the OCFL root. Reserve both payload
         // writes on the resolved filesystem before calling it.
         growPublication(reservation,peak);
+        var state=server.state(((InternalTransaction)tx).kernelTransaction());
+        if(state.operationClaimed){
+            state.kernel.assertOpen();
+            var intent=server.storage.admission.acquire("ocfl-publication",content.resourceId(),state.operationId,
+                "immutable-object-write",Map.of(files.root,0L),Json.map("phase","publish","actorId",state.operationActor,
+                    "receiptScope",state.operationScope,"resourceId",content.resourceId(),"storedFilename",content.storedFilename(),
+                    "bytes",content.bytes(),"checksum",content.checksum()));
+            boolean[] committed={false};
+            state.afterCommit.add(()->committed[0]=true);
+            state.release.add(()->{if(committed[0])try{server.storage.admission.closeIfPresent(intent.id);}
+                catch(IOException|RuntimeException failure){server.storage.diagnostic="Committed OCFL intent cleanup pending";}});
+        }
         storage.publish(content,staged);storage.verify(content);
         storage.assertWorkClean();
         server.storage.admission.materialized(reservation,files.root,content.bytes());
@@ -154,9 +166,9 @@ public final class ResourceRepository {
     public void expire(Node loc) {
         String id=CoreRepository.id(loc);lock(id);if(loc.hasProperty("deleting")||Boolean.TRUE.equals(loc.getProperty("collected",false)))return;
         Node t=loc.hasProperty("uploadId")?transfer(text(loc,"uploadId")):null;
-        if(t!=null&&"uploading".equals(t.getProperty("state"))&&number(t,"expires",0)<=now())t.setProperty("state","expired");
+        if(t!=null&&"uploading".equals(t.getProperty("state"))&&!t.hasProperty("writerIncarnation")&&number(t,"expires",0)<=now())t.setProperty("state","expired");
         else if(t!=null&&"uploading".equals(t.getProperty("state")))return; // Active lease is already retained; no need to rescan grant/history/pending relations.
         orphan(loc);
     }
-    public boolean eligible(Node loc,long age) {return !Boolean.TRUE.equals(loc.getProperty("collected",false))&&!loc.hasProperty("deleting")&&!protectedContent(loc)&&loc.hasProperty("orphanSince")&&now()-number(loc,"orphanSince",now())>=age;}
+    public boolean eligible(Node loc,long age) {return !Boolean.TRUE.equals(loc.getProperty("collected",false))&&!loc.hasProperty("deleting")&&!Boolean.TRUE.equals(loc.getProperty("quarantined",false))&&!protectedContent(loc)&&loc.hasProperty("orphanSince")&&now()-number(loc,"orphanSince",now())>=age;}
 }

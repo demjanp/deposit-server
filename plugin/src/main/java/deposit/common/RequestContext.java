@@ -10,12 +10,14 @@ public final class RequestContext {
     public final java.time.ZonedDateTime timestamp=java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC);
     public final String requestId, token;
     public String operationId;
+    public String uploadContinuation;
     public Long expectedRevision;
     public boolean publicCall, replayed, operational;
     public String procedure, inputHash, actionScope;
     public Map<String,Object> request;
     public Map<String,Object> selectorBindings=Map.of();
     public long observationGeneration;
+    public Runnable checkSourceAuthorization=()->{};
     public final ServerContext server;
     public final ServerContext.TxState state;
     public ServerContext.Session session;

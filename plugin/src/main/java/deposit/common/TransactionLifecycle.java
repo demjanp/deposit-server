@@ -44,6 +44,10 @@ final class TransactionLifecycle {
         if (!databaseId.equals(tx.getDatabaseId())) return;
         ServerContext.TxState state = transactions.get(tx.getTransactionSequenceNumber());
         if (state == null || !state.completing.compareAndSet(false, true)) return;
+        if (state.operationClaimed) {
+            if (!committed && state.operationCancelled()) server.rememberCancelled(state);
+            state.operationSettled=true;
+        }
         try {
             if (committed) {
                 if (state.serverChanged) revision++;

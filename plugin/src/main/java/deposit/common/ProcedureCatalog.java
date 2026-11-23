@@ -130,15 +130,13 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.utils.wktToCoordinates",new Spec("server",false,List.of("wkt","+")));
   SPECS.put("deposit.utils.toData",new Spec("server",false,List.of("entity")));
   SPECS.put("deposit.get.session",new Spec("server",false,List.of()));
+  SPECS.put("deposit.action.begin",new Spec("server",false,List.of("operationId","scope","procedure","arguments")));
+  SPECS.put("deposit.action.cancel",new Spec("server",false,List.of("operationId","scope")));
   SPECS.put("deposit.utils.refresh",new Spec("server",false,List.of("scope")));
   SPECS.put("deposit.get.lastOperation",new Spec("server",false,List.of()));
   SPECS.put("deposit.get.requests",new Spec("server",false,List.of()));
   SPECS.put("deposit.utils.cancel",new Spec("server",false,List.of()));
   SPECS.put("deposit.utils.cancelRequest",new Spec("server",false,List.of("requestId")));
-  SPECS.put("deposit.action.prepare",new Spec("server",false,List.of("recoveryKey","procedure","arguments")));
-  SPECS.put("deposit.action.status",new Spec("server",false,List.of("recoveryKey")));
-  SPECS.put("deposit.action.resume",new Spec("server",false,List.of("recoveryKey")));
-  SPECS.put("deposit.action.release",new Spec("server",false,List.of()));
  }
  public static Spec spec(String name){Spec s=SPECS.get(name);if(s==null)throw ExceptionHandler.fail("VALIDATION_FAILED","Unknown public procedure");return s;}
  public static Set<String> names(){return Collections.unmodifiableSet(SPECS.keySet());}

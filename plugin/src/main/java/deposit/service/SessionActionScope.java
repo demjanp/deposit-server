@@ -20,11 +20,16 @@ final class SessionActionScope extends BaseService {
         return ProcedureCatalog.spec(procedure).scope().equals("operational")||procedure.equals("deposit.admin.pruneResources");
     }
     String exportRole(String procedure,List<Object> arguments) {
-        Object options=null;
-        if(procedure.equals("deposit.save.data")||procedure.equals("deposit.get.data"))options=arguments!=null&&arguments.size()>1?arguments.get(1):null;
-        else if(procedure.equals("deposit.get.namespaceData"))options=arguments!=null&&!arguments.isEmpty()?arguments.get(0):null;
-        else if(procedure.equals("deposit.save.csv")||procedure.equals("deposit.save.xlsx")||procedure.equals("deposit.save.gpkg"))return "viewer";
-        return options instanceof Map<?,?> m&&Boolean.TRUE.equals(ValueCodec.map(m).get("includeHistory"))?"owner":"viewer";
+        Object roots = switch (procedure) {
+            case "deposit.get.namespaceData" -> List.of();
+            case "deposit.get.data" -> arguments.getFirst();
+            case "deposit.save.data" -> ValueCodec.map(arguments.getFirst()).get("rootIds");
+            default -> null;
+        };
+        if (!Set.of("deposit.get.namespaceData","deposit.get.data","deposit.save.data").contains(procedure)) return "viewer";
+        var namespace=repo.namespace(active());
+        boolean whole=roots==null||roots instanceof List<?> list&&list.isEmpty();
+        return whole&&namespace!=null&&"persistent".equals(namespace.getProperty("historyMode","disabled"))?"owner":"viewer";
     }
     long baseline(String scope) {
         Long value=c.state.observations.get(scope);

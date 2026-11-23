@@ -1,6 +1,7 @@
 package deposit.common;
 
 import java.util.*;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import javax.crypto.Mac;
@@ -15,6 +16,19 @@ public final class CursorCodec {
     /** Keyed canonical identity prevents account receipts becoming a fast password oracle. */
     public static String requestHash(RequestContext c,String canonicalRequest) {
         return "hmac-sha256:"+Base64.getUrlEncoder().withoutPadding().encodeToString(sign(c.server.cursorKey,"receipt:"+canonicalRequest));
+    }
+    public static String requestHash(RequestContext c,Map<String,Object> request) {
+        final Mac mac;
+        try {
+            mac=Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(c.server.cursorKey,"HmacSHA256"));
+        } catch(java.security.GeneralSecurityException e){throw new IllegalStateException(e);}
+        mac.update("receipt:".getBytes(StandardCharsets.UTF_8));
+        Json.writeCanonical(new OutputStream(){
+            public void write(int value){mac.update((byte)value);}
+            public void write(byte[] values,int offset,int length){mac.update(values,offset,length);}
+        },request);
+        return "hmac-sha256:"+Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal());
     }
     public static String encode(RequestContext c,Map<String,Object> payload) {
         String body=Base64.getUrlEncoder().withoutPadding().encodeToString(Json.write(payload).getBytes(StandardCharsets.UTF_8));

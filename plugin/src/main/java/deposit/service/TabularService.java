@@ -41,9 +41,9 @@ public final class TabularService extends BaseService {
         repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);c.revision=repo.sequence(c.namespaceId);
     }
     private String operationalHash(String procedure,Map<String,Object> request){
-        Node binding=repo.binding(c.actorId,c.operationId);
+        Node binding=repo.legacyBinding(c);
         if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
-        return CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
+        return c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
     }
     private Map<String,Object> replayOperational(Node receipt,String hash){
         c.replayed=true;
@@ -54,7 +54,7 @@ public final class TabularService extends BaseService {
 
     private Map<String,Object> load(String procedure,Map<String,Object> request){
         fields(request,"resourceId","formatOptions");operational("editor");lockOperationalScope("editor");
-        String hash=operationalHash(procedure,request);Node receipt=repo.receipt(c.namespaceId,c.operationId);
+        String hash=operationalHash(procedure,request);Node receipt=repo.receipt(c,c.namespaceId);
         // A committed result remains recoverable even after its table or input expires.
         // Replaying never reads or renews staging, and never recreates expired content.
         if(receipt!=null)return replayOperational(receipt,hash);
@@ -71,25 +71,46 @@ public final class TabularService extends BaseService {
         String decimal=String.valueOf(options.getOrDefault("decimalSeparator","."));if(!Set.of(".",",").contains(decimal))c.fail("VALIDATION_FAILED","decimalSeparator must be '.' or ','");
         Map<String,Object> types=options.containsKey("columnTypes")?ValueCodec.map(options.get("columnTypes")):Map.of();Map<String,Object> dateFormats=options.containsKey("dateFormats")?ValueCodec.map(options.get("dateFormats")):Map.of();
         Path input=null,table=null,rowIndex=null;boolean completed=false;String tableId=UUID.randomUUID().toString();
+        String base="staging/tables/"+tableId;
         try{
-            input=resources.files.path("staging/tables/"+tableId+".source");Files.createDirectories(input.getParent());
-            try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(input,StandardOpenOption.CREATE_NEW)){in.transferTo(out);}
+            input=resources.files.path(base+".source");table=resources.files.path(base+".json");rowIndex=resources.files.path(base+".idx");
+            Files.createDirectories(input.getParent());
+            var admission=c.server.storage.admission;
+            var staging=admission.acquire("tabular-load",tableId,c.operationId,"table-staging",Map.of(input,content.bytes()),
+                Json.map("phase","table-load","actorId",c.actorId,"receiptScope",c.namespaceId,"sourceResourceId",id));
+            Path retainedSource=input,retainedTable=table,retainedIndex=rowIndex;
+            boolean[] committed={false};
+            c.state.afterCommit.add(()->committed[0]=true);
+            c.state.release.add(()->{
+                boolean scratchAbsent=!Files.exists(retainedSource,LinkOption.NOFOLLOW_LINKS)
+                    && !Files.exists(retainedTable.resolveSibling(retainedTable.getFileName()+".work"),LinkOption.NOFOLLOW_LINKS);
+                if(scratchAbsent&&(committed[0]||!Files.exists(retainedTable,LinkOption.NOFOLLOW_LINKS)&&!Files.exists(retainedIndex,LinkOption.NOFOLLOW_LINKS)))
+                    try{admission.closeIfPresent(staging.id);}catch(IOException|RuntimeException e){c.server.storage.diagnostic="Table staging ownership cleanup pending";}
+            });
+            try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(input,StandardOpenOption.CREATE_NEW)){
+                byte[] buffer=new byte[64*1024];int count;
+                while((count=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,count);}
+            }
             if(Files.size(input)!=content.bytes()||!ResourceFiles.checksum(input).equals(content.checksum()))c.fail("RESOURCE_CORRUPT","Source resource changed during table load");
-            table=resources.files.path("staging/tables/"+tableId+".json");rowIndex=resources.files.path("staging/tables/"+tableId+".idx");
-            var parsed=csv?CsvTableFormat.read(input,table,delimiter,header,types,dateFormats,decimal,c.state.kernel::assertOpen):xlsx?XlsxTableReader.parseXlsx(input,table,options,header,types,dateFormats,decimal,c.state.kernel::assertOpen):GeoPackageAdapter.load(input,table,options,types,dateFormats,decimal,c.state.kernel::assertOpen);
+            admission.materialized(staging,input,content.bytes());
+            TabularJsonWriter.Target target=path->admission.openStagingOutput(staging,path,c.state.kernel::assertOpen);
+            var parsed=csv?CsvTableFormat.read(input,table,delimiter,header,types,dateFormats,decimal,c.state.kernel::assertOpen,target):xlsx?XlsxTableReader.parseXlsx(input,table,options,header,types,dateFormats,decimal,c.state.kernel::assertOpen,target):GeoPackageAdapter.load(input,table,options,types,dateFormats,decimal,c.state.kernel::assertOpen,target);
             requireContentLimit(Files.size(table),"Generated table staging exceeds the content limit");
+            long indexBytes=Math.multiplyExact(((Number)parsed.get("rowCount")).longValue(),Long.BYTES);
+            admission.grow(staging,Map.of(rowIndex,indexBytes));
             long indexed=Json.indexArray(table,"rows",rowIndex);if(indexed!=((Number)parsed.get("rowCount")).longValue())throw new IOException("Staged row index count differs from parsed table");
+            admission.materialized(staging,rowIndex,indexBytes);
             long now=resources.now();resources.record("DepositTabularTable",tableId,Json.map("namespaceId",c.namespaceId,"creatorId",c.actorId,"sourceResourceId",id,"path",resources.files.root.relativize(table).toString().replace('\\','/'),"rowIndexPath",resources.files.root.relativize(rowIndex).toString().replace('\\','/'),"createdAt",now,"lastAccessAt",now,"expiresAt",now+TABLE_TTL,"columnsJson",Json.write(parsed.get("columns")),"rowCount",parsed.get("rowCount"),"valid",parsed.get("valid"),"diagnosticsJson",Json.write(parsed.get("diagnostics")),"diagnosticsTruncated",parsed.get("diagnosticsTruncated")));
             resources.record("DepositResourceLease",UUID.randomUUID().toString(),Json.map("resourceId",id,"namespaceId",c.namespaceId,"type","table","tableId",tableId,"expires",Long.MAX_VALUE));
             Map<String,Object> result=Json.map("tableId",tableId,"columns",parsed.get("columns"),"rowCount",parsed.get("rowCount"),"valid",parsed.get("valid"),"diagnostics",parsed.get("diagnostics"),"diagnosticsTruncated",parsed.get("diagnosticsTruncated"));
             repo.saveReceipt(c,c.namespaceId,hash,new Results.Outcome(null,null,result));
             // Metadata, protective lease and receipt commit together. Also clean files
             // if the caller later rolls back an otherwise successful load transaction.
-            Path completedTable=table,completedIndex=rowIndex;boolean[] committed={false};
-            c.state.afterCommit.add(()->committed[0]=true);
+            Path completedTable=table,completedIndex=rowIndex;
             c.state.release.add(()->{if(!committed[0]){discard(completedTable);discard(completedIndex);}});
             Files.deleteIfExists(input);input=null;completed=true;return result;
-        }catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to stage table");}
+        }catch(StorageAdmission.StoragePressureException|ArithmeticException e){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Insufficient or unrepresentable table staging capacity");}
+        catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to stage table");}
         finally{if(!completed){if(table!=null)try{Files.deleteIfExists(table);}catch(IOException ignored){}if(rowIndex!=null)try{Files.deleteIfExists(rowIndex);}catch(IOException ignored){}if(input!=null)try{Files.deleteIfExists(input);}catch(IOException ignored){}}}
     }
 
@@ -117,15 +138,15 @@ public final class TabularService extends BaseService {
     private static char delimiter(Object raw){String s=string(raw);if(s.length()!=1||"\"\r\n\0".indexOf(s.charAt(0))>=0)throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid CSV delimiter");return s.charAt(0);}
     private long positive(Object value,String field){long n=integer(value);if(n<1||n>1_000_000)c.fail("LIMIT_EXCEEDED",field+" must be positive");return n;}
 
-    private Node tableNode(Object raw){String id=RequestContext.uuid(raw);repo.lockNamespace(c.namespaceId);Node table=repo.find("DepositTabularTable","id",id);if(table!=null&&!c.namespaceId.equals(table.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Table belongs to another Namespace");if(table==null||number(table,"expiresAt",0)<=resources.now())c.fail("NOT_FOUND","Table is unavailable");if(!c.actorId.equals(table.getProperty("creatorId"))&&!"owner".equals(effectiveRole(c.namespaceId)))c.fail("NOT_FOUND","Table is unavailable");table.setProperty("lastAccessAt",resources.now());table.setProperty("expiresAt",resources.now()+TABLE_TTL);return table;}
+    private Node tableNode(Object raw){return new StagedTable(c).acquire(raw);}
     private static long number(Node n,String key,long d){return ((Number)n.getProperty(key,d)).longValue();}
     private Map<String,Object> readData(Node table){try(InputStream in=Files.newInputStream(resources.files.path((String)table.getProperty("path")))){return Json.read(in);}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");return Map.of();}}
-    private Stream<Results.QueryRowResult> table(Map<String,Object> request){fields(request,"tableId");readContext();scoped("viewer");Node table=tableNode(request.get("tableId"));List<Map<String,Object>> columns=Json.readList((String)table.getProperty("columnsJson")).stream().map(ValueCodec::map).toList();final Json.ArrayReader reader;try{reader=new Json.ArrayReader(resources.files.path((String)table.getProperty("path")),"rows");}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");return Stream.empty();}Iterator<Results.QueryRowResult> iterator=new Iterator<>(){Results.QueryRowResult next;boolean loaded,done;public boolean hasNext(){if(loaded)return true;if(done)return false;try{c.state.kernel.assertOpen();Map<String,Object> row=reader.next();if(row==null){done=true;return false;}next=new Results.QueryRowResult(Json.map("rowId",row.get("rowId"),"values",row.get("values")),columns,ValueCodec.map(row.get("presence")),c.meta());loaded=true;return true;}catch(IOException e){throw new UncheckedIOException(e);}}public Results.QueryRowResult next(){if(!hasNext())throw new NoSuchElementException();loaded=false;return next;}};return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterator,Spliterator.ORDERED),false).onClose(()->{try{reader.close();}catch(IOException e){throw new UncheckedIOException(e);}});}
-    private DataRow page(Map<String,Object> request){fields(request,"tableId","pageSize","cursor");readContext();scoped("viewer");Node table=tableNode(request.get("tableId"));int size=(int)integer(request.getOrDefault("pageSize",200L));if(size<1||size>1000)c.fail("LIMIT_EXCEEDED","pageSize must be between 1 and 1000");long count=number(table,"rowCount",0),offset=0;String hash=Json.hash(CoreRepository.id(table));if(request.containsKey("cursor")){Map<String,Object> cur=CursorCodec.decode(c,string(request.get("cursor")));if(!c.namespaceId.equals(cur.get("scope")))c.fail("SCOPE_MISMATCH","Cursor belongs to another Namespace");if(!c.actorId.equals(cur.get("actor"))||!hash.equals(cur.get("hash")))c.fail("VALIDATION_FAILED","Cursor does not match table");if(((Number)cur.get("revision")).longValue()!=c.revision)c.fail("REVISION_CONFLICT","Namespace revision changed");offset=((Number)cur.get("offset")).longValue();if(offset<0||offset>count)c.fail("VALIDATION_FAILED","Invalid cursor offset");}var rows=new ArrayList<Map<String,Object>>(Math.min(size,200));try(RandomAccessFile index=new RandomAccessFile(resources.files.path((String)table.getProperty("rowIndexPath")).toFile(),"r")){index.seek(offset*Long.BYTES);Path data=resources.files.path((String)table.getProperty("path"));for(int i=0;i<size&&offset+i<count;i++){c.state.kernel.assertOpen();long byteOffset=index.readLong();rows.add(Json.objectAt(data,byteOffset));}}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");}long end=offset+rows.size();String next=null;if(end<count)next=CursorCodec.encode(c,Json.map("scope",c.namespaceId,"actor",c.actorId,"hash",hash,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900000L));Map<String,Object> meta=c.meta();meta.put("nextCursor",next);return new DataRow(Json.map("columns",Json.readList((String)table.getProperty("columnsJson")),"rows",rows),meta);}
+    private Stream<Results.QueryRowResult> table(Map<String,Object> request){fields(request,"tableId");readContext();scoped("viewer");Node table=tableNode(request.get("tableId"));List<Map<String,Object>> columns=Json.readList((String)table.getProperty("columnsJson")).stream().map(ValueCodec::map).toList();final Json.ArrayReader reader;try{reader=new Json.ArrayReader(resources.files.path((String)table.getProperty("path")),"rows");}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");return Stream.empty();}Iterator<Results.QueryRowResult> iterator=new Iterator<>(){Results.QueryRowResult next;boolean loaded,done;public boolean hasNext(){if(loaded)return true;if(done)return false;try{StagedTable.checkpoint(c);Map<String,Object> row=reader.next();if(row==null){done=true;return false;}next=new Results.QueryRowResult(Json.map("rowId",row.get("rowId"),"values",row.get("values")),columns,ValueCodec.map(row.get("presence")),c.meta());loaded=true;return true;}catch(IOException e){throw new UncheckedIOException(e);}}public Results.QueryRowResult next(){if(!hasNext())throw new NoSuchElementException();loaded=false;return next;}};return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterator,Spliterator.ORDERED),false).onClose(()->{try{reader.close();}catch(IOException e){throw new UncheckedIOException(e);}});}
+    private DataRow page(Map<String,Object> request){fields(request,"tableId","pageSize","cursor");readContext();scoped("viewer");Node table=tableNode(request.get("tableId"));int size=(int)integer(request.getOrDefault("pageSize",200L));if(size<1||size>1000)c.fail("LIMIT_EXCEEDED","pageSize must be between 1 and 1000");long count=number(table,"rowCount",0),offset=0;String hash=Json.hash(CoreRepository.id(table));if(request.containsKey("cursor")){Map<String,Object> cur=CursorCodec.decode(c,string(request.get("cursor")));if(!c.namespaceId.equals(cur.get("scope")))c.fail("SCOPE_MISMATCH","Cursor belongs to another Namespace");if(!c.server.runId.equals(cur.get("incarnation"))||!c.actorId.equals(cur.get("actor"))||!hash.equals(cur.get("hash")))c.fail("VALIDATION_FAILED","Cursor does not match table");if(((Number)cur.get("revision")).longValue()!=c.revision)c.fail("REVISION_CONFLICT","Namespace revision changed");offset=((Number)cur.get("offset")).longValue();if(offset<0||offset>count)c.fail("VALIDATION_FAILED","Invalid cursor offset");}var rows=new ArrayList<Map<String,Object>>(Math.min(size,200));try(RandomAccessFile index=new RandomAccessFile(resources.files.path((String)table.getProperty("rowIndexPath")).toFile(),"r")){index.seek(offset*Long.BYTES);Path data=resources.files.path((String)table.getProperty("path"));for(int i=0;i<size&&offset+i<count;i++){StagedTable.checkpoint(c);long byteOffset=index.readLong();rows.add(Json.objectAt(data,byteOffset));}}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");}long end=offset+rows.size();String next=null;if(end<count)next=CursorCodec.encode(c,Json.map("scope",c.namespaceId,"actor",c.actorId,"hash",hash,"incarnation",c.server.runId,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900000L));Map<String,Object> meta=c.meta();meta.put("nextCursor",next);return new DataRow(Json.map("columns",Json.readList((String)table.getProperty("columnsJson")),"rows",rows),meta);}
 
     private Map<String,Object> save(String procedure,Map<String,Object> request){
         fields(request,"source","parameters","formatOptions");operational("viewer");
-        String hash=operationalHash(procedure,request);Node receipt=repo.receipt(c.namespaceId,c.operationId);
+        String hash=operationalHash(procedure,request);Node receipt=repo.receipt(c,c.namespaceId);
         // Recover the original export before touching its source. A query may have
         // changed and a staged input may have expired since the original commit.
         if(receipt!=null){lockOperationalScope("viewer");return replayOperational(receipt,hash);}
@@ -142,9 +163,10 @@ public final class TabularService extends BaseService {
         Path stage=null;List<GeoPackageAdapter.Output> gpkgFiles=new ArrayList<>();
         try{
             Files.createDirectories(resources.files.path("staging/exports"));
-            if(gpkg){Path directory=resources.files.path("staging/exports");gpkgFiles=GeoPackageAdapter.write(tablePath,columns,filename,layer,directory,c.state.kernel::assertOpen,this::dresourceMarkdown);if(gpkgFiles.size()==1)stage=gpkgFiles.getFirst().path();else{stage=resources.files.path("staging/exports/"+UUID.randomUUID()+".zip");try(ZipOutputStream zip=new ZipOutputStream(Files.newOutputStream(stage,StandardOpenOption.CREATE_NEW))){for(var file:gpkgFiles){zip.putNextEntry(new ZipEntry(file.filename()));Files.copy(file.path(),zip);zip.closeEntry();}}}}
-            else if(csv){stage=resources.files.path("staging/exports/"+UUID.randomUUID()+extension);CsvTableFormat.write(stage,columns,tablePath,delimiter,c.state.kernel::assertOpen,this::dresourceMarkdown);}
-            else if(xlsx){stage=resources.files.path("staging/exports/"+UUID.randomUUID()+extension);XlsxTableWriter.write(stage,columns,tablePath,rowCount,sheetName,c.state.kernel::assertOpen,value->{ResourceLink link=resourceLink(value);return new XlsxTableWriter.ResourceLink(link.label(),link.url());});}
+            if(gpkg){Path directory=resources.files.path("staging/exports");gpkgFiles=GeoPackageAdapter.write(tablePath,columns,filename,layer,directory,()->StagedTable.checkpoint(c),this::dresourceMarkdown);if(gpkgFiles.size()==1)stage=gpkgFiles.getFirst().path();else{stage=resources.files.path("staging/exports/"+UUID.randomUUID()+".zip");try(ZipOutputStream zip=new ZipOutputStream(Files.newOutputStream(stage,StandardOpenOption.CREATE_NEW))){for(var file:gpkgFiles){zip.putNextEntry(new ZipEntry(file.filename()));Files.copy(file.path(),zip);zip.closeEntry();}}}}
+            else if(csv){stage=resources.files.path("staging/exports/"+UUID.randomUUID()+extension);CsvTableFormat.write(stage,columns,tablePath,delimiter,()->StagedTable.checkpoint(c),this::dresourceMarkdown);}
+            else if(xlsx){stage=resources.files.path("staging/exports/"+UUID.randomUUID()+extension);XlsxTableWriter.write(stage,columns,tablePath,rowCount,sheetName,()->StagedTable.checkpoint(c),value->{ResourceLink link=resourceLink(value);return new XlsxTableWriter.ResourceLink(link.label(),link.url());});}
+            c.state.tableReadDeadline=Long.MAX_VALUE;
             if(repo.sequence(c.namespaceId)!=revision)c.fail("REVISION_CONFLICT","Namespace changed during export collection");long bytes=Files.size(stage);requireContentLimit(bytes,"Generated export exceeds the content limit");String checksum=ResourceFiles.checksum(stage),resourceId=UUID.randomUUID().toString(),resultFilename=gpkg&&gpkgFiles.size()>1?filename.substring(0,filename.length()-5)+".zip":filename,stored=ResourceFiles.filename(resultFilename,checksum);var content=new ResourceStorage.Content(resourceId,stored,bytes,checksum);resources.lock(resourceId);
             c.server.storagePoint("tabular-export-before-publication");
             StorageAdmission.Reservation publicationAdmission;

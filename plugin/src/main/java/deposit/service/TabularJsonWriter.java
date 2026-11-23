@@ -2,12 +2,16 @@ package deposit.service;
 
 import deposit.common.Json;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Writer;
+import java.nio.file.Path;
 import java.util.*;
 
 /** Staged JSON encoding over a caller-owned Writer. */
 final class TabularJsonWriter {
     private TabularJsonWriter() {}
+
+    @FunctionalInterface interface Target { OutputStream open(Path path) throws IOException; }
 
     static void header(Writer output,List<?> columns)throws IOException{
         output.write("{\"columns\":");output.write(Json.write(columns));output.write(",\"rows\":[");

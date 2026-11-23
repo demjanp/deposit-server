@@ -25,7 +25,7 @@ public final class ProcedureService {
             case "deposit.delete.namespace"->Stream.of(account.deleteNamespace(r).structured(c));
             case "deposit.set.activeNamespace","deposit.get.activeNamespace"->Stream.of(account.active(r,p.startsWith("deposit.set.")));
             case "deposit.set.administrativeMode","deposit.get.administrativeMode"->Stream.of(account.administrative(r,p.startsWith("deposit.set.")));
-            case "deposit.get.operation"->Stream.of(account.operation(r));
+            case "deposit.get.operation","deposit.action.begin","deposit.action.cancel"->new SessionActionService(c).control(p,r);
             case "deposit.apply.batch"->Stream.of(new BatchService(c).apply(r).structured(c));
             case "deposit.get.revision"->Stream.of(history.revision(r));
             case "deposit.get.history"->history.records(r);

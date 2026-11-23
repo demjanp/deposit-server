@@ -20,10 +20,10 @@ public abstract class ActionService extends BaseService {
         if(serverScope)c.server.lockServer(c.state);
         if(!serverScope) {repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,role);}
         String scope=serverScope?"server":c.namespaceId;
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||depositCloneAction(procedure))?null:c.expectedRevision)));
-        Node binding=repo.binding(c.actorId,c.operationId);
+        String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||depositCloneAction(procedure))?null:c.expectedRevision)));
+        Node binding=repo.legacyBinding(c);
         if(binding!=null)OperationalGuards.bindingScope(c,scope,binding.getProperty("scope"));
-        Node receipt=repo.receipt(scope,c.operationId);
+        Node receipt=repo.receipt(c,scope);
         if(receipt!=null) {
             c.replayed=true;
             OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
@@ -45,7 +45,10 @@ public abstract class ActionService extends BaseService {
         Change change=work.get();
         if(!serverScope&&!importAnalysis){var patterns=new PatternService(c);boolean canonicalized=patterns.canonicalizeResolvedDeclarations();Map<String,Map<String,Object>> resulting=capture(history,scope,workspace);patterns.validateNamespace();patterns.validateDeclarationDeletion(beforeState,resulting);if(canonicalized&&!change.changed())change=new Change(change.outcome(),true);}
         if(change.changed()) {
-            if(serverScope) {c.state.serverChanged=true;c.revision=c.server.revision(c.state);}
+            if(serverScope) {
+                if(!c.state.operationClaimed||!depositCloneAction(procedure)||procedure.equals("deposit.import.cloneNamespace"))c.state.serverChanged=true;
+                c.revision=c.server.revision(c.state);
+            }
             else {repo.advanceNamespace(scope,c.actorId);c.revision=repo.sequence(scope);}
             if(c.journal!=null){c.journal.checkpoint(capture(history,scope,workspace));String revisionId=importApply?history.appendId(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp,ImportWriteBudget.forRequest(c)::reserveHistoryRecord):history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp).id();if(!isImportResult(change.outcome().data()))change.outcome().data().put("revisionId",revisionId);}
         } else if(!isImportResult(change.outcome().data()))change.outcome().data().put("changed",false);

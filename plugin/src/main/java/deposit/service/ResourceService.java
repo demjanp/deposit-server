@@ -17,7 +17,8 @@ public final class ResourceService extends BaseService {
         if(t==null||!c.actorId.equals(t.getProperty("actorId")))c.fail("NOT_FOUND","Upload not found");
         if(!c.namespaceId.equals(t.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Upload belongs to another Namespace");
         resources.lock(text(t,"resourceId"));
-        if(active&&(!Set.of("uploading","finished").contains(text(t,"state"))||number(t,"expires",0)<=resources.now()))c.fail("NOT_FOUND","Upload expired or aborted");return t;
+        UploadBinding.require(c,t);
+        if(active&&(!Set.of("uploading","finished").contains(text(t,"state"))||!t.hasProperty("writerIncarnation")&&number(t,"expires",0)<=resources.now()))c.fail("NOT_FOUND","Upload expired or aborted");return t;
     }
     private void operational() {
         OperationalGuards.operationalContext(c);
@@ -25,9 +26,9 @@ public final class ResourceService extends BaseService {
     }
     public Map<String,Object> transfer(String method,Map<String,Object> request) {
         scoped("editor");operational();repo.lockNamespace(c.namespaceId);requireRole(c.namespaceId,"editor");c.revision=repo.sequence(c.namespaceId);
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.resource."+method,"request",request)));
-        Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
-        Node receipt=repo.receipt(c.namespaceId,c.operationId);
+        String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.resource."+method,"request",request)));
+        Node binding=repo.legacyBinding(c);if(binding!=null)OperationalGuards.bindingScope(c,c.namespaceId,binding.getProperty("scope"));
+        Node receipt=repo.receipt(c,c.namespaceId);
         if(receipt!=null) {
             c.replayed=true;
             OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));
@@ -68,16 +69,16 @@ public final class ResourceService extends BaseService {
         if(dryRun)readContext();else operational();
         String bindingScope=scope.equals("all")?"server":c.namespaceId;
         long hours=integer(request.getOrDefault("minimumAgeHours",48L));if(hours<0||hours>Long.MAX_VALUE/3_600_000)c.fail("VALIDATION_FAILED","Invalid minimum age");long age=hours*3_600_000;
-        String hash=CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
+        String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
         if(!dryRun) {
-            Node binding=repo.binding(c.actorId,c.operationId);if(binding!=null)OperationalGuards.bindingScope(c,bindingScope,binding.getProperty("scope"));
-            Node receipt=repo.receipt(bindingScope,c.operationId);if(receipt!=null){OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));return repo.replay(receipt,bindingScope).data();}
+            Node binding=repo.legacyBinding(c);if(binding!=null)OperationalGuards.bindingScope(c,bindingScope,binding.getProperty("scope"));
+            Node receipt=repo.receipt(c,bindingScope);if(receipt!=null){OperationalGuards.receiptActor(c,receipt.getProperty("actorId"));OperationalGuards.receiptHash(c,hash,receipt.getProperty("requestHash"));return repo.replay(receipt,bindingScope).data();}
         }
         List<Node> locations=repo.nodes("DepositResourceLocation",scope.equals("all")?Map.of():Map.of("namespaceId",c.namespaceId));
         for(String ns:locations.stream().map(n->text(n,"namespaceId")).distinct().sorted().toList())repo.lockNamespace(ns);
         var candidates=new ArrayList<String>();long bytes=0;for(Node loc:locations){resources.lock(CoreRepository.id(loc));if(resources.eligible(loc,age)){candidates.add(CoreRepository.id(loc));try{bytes=Math.addExact(bytes,number(loc,"bytes",0));}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}}}
         if(dryRun)return Json.map("candidateIds",candidates,"counts",(long)candidates.size(),"eligibleBytes",bytes);
-        String job=UUID.randomUUID().toString();resources.record("DepositPruneJob",job,Json.map("scope",bindingScope,"actorId",c.actorId,"minimumAge",age,"createdAt",resources.now()));
+        String job=UUID.randomUUID().toString();resources.record("DepositPruneJob",job,Json.map("scope",bindingScope,"actorId",c.actorId,"minimumAge",age,"createdAt",resources.now(),"incarnation",c.server.runId));
         for(String id:candidates)resources.record("DepositPruneItem",job+"/"+id,Json.map("jobId",job,"resourceId",id,"state","pending","reclaimedBytes",0L));
         var result=Json.map("pruneId",job,"candidateIds",candidates,"counts",(long)candidates.size(),"scheduledBytes",bytes);repo.saveReceipt(c,bindingScope,hash,new Outcome(null,null,result));return result;
     }

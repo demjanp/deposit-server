@@ -13,8 +13,17 @@ public final class SessionActionService extends BaseService {
     final SessionActionScope scopeRules;
     private final SessionDiagnostics diagnostics;
     private final PreparedActionWorkflow preparedActions;
+    private static final Set<String> OPERATION_CONTROLS=Set.of("deposit.action.begin","deposit.action.cancel","deposit.get.operation");
+    private boolean enforceAttempt;
     public SessionActionService(RequestContext c){super(c);prepared=new PreparedActionRepository(c.tx);scopeRules=new SessionActionScope(c);diagnostics=new SessionDiagnostics(c);preparedActions=new PreparedActionWorkflow(c,prepared,this);}
-    private boolean cancellation(String p){return Set.of("deposit.utils.cancel","deposit.utils.cancelRequest","deposit.get.requests").contains(p);}
+    private boolean cancellation(String p){return Set.of("deposit.utils.cancel","deposit.utils.cancelRequest","deposit.get.requests","deposit.utils.logout").contains(p);}
+    public void beginPublic(String procedure,List<Object> arguments,String operationId){
+        if(c.state.operationClaimed)c.fail("VALIDATION_FAILED","An operation must execute in a separate transaction");
+        enforceAttempt=true;
+        c.operationId=operationId;
+        c.uploadContinuation=OperationAttemptService.uploadContinuation(procedure,arguments);
+        begin(procedure,arguments);
+    }
     public void begin(String procedure,List<Object> arguments){
         c.publicCall=true;c.procedure=procedure;
         var spec=ProcedureCatalog.spec(procedure);
@@ -23,7 +32,7 @@ public final class SessionActionService extends BaseService {
         if(Set.of("deposit.utils.login","deposit.utils.bootstrap").contains(procedure)){
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);return;
         }
-        if(cancellation(procedure)){
+        if(cancellation(procedure)||OPERATION_CONTROLS.contains(procedure)){
             var tx=(org.neo4j.kernel.impl.coreapi.InternalTransaction)c.tx;c.server.authenticate(c,tx.securityContext().subject().executingUser(),false);
             Node actor=repo.find("User","id",c.actorId);if(actor==null||!Boolean.TRUE.equals(actor.getProperty("enabled",false)))c.fail("AUTH_FAILED","Account unavailable");
         }else {
@@ -39,11 +48,19 @@ public final class SessionActionService extends BaseService {
             c.observationGeneration=c.state.observationGeneration;
         }
         if(Set.of("namespace","operational").contains(spec.scope()))scoped("viewer");
-        if(Set.of("deposit.set.activeNamespace","deposit.set.administrativeMode","deposit.utils.logout").contains(procedure))lease();
+        if(Set.of("deposit.set.activeNamespace","deposit.set.administrativeMode").contains(procedure))lease();
 
-        if(!action){c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);return;}
-        if(c.state.mutation)c.fail("VALIDATION_FAILED","Only one mutation is allowed per transaction; use batch");
+        if(!action){
+            if(enforceAttempt&&c.operationId!=null)c.fail("VALIDATION_FAILED","Procedure does not accept an operation ID");
+            c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);return;
+        }
+        if(c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","Only one mutation is allowed per transaction; use batch");
         lease();
+        if(enforceAttempt){
+            new OperationAttemptService(c).claim(procedure,arguments,scopeRules.scope(procedure,arguments));
+            synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}
+            return;
+        }
         c.inputHash=fingerprint(procedure,arguments);
         String attached=c.session.preparedAction;
         if(attached!=null){
@@ -106,7 +123,7 @@ public final class SessionActionService extends BaseService {
         return Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload","deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload").contains(procedure);
     }
     public void observe(){
-        if(c.session==null||cancellation(c.procedure)||c.procedure.startsWith("deposit.action.")||Set.of("deposit.get.session","deposit.get.lastOperation","deposit.utils.refresh").contains(c.procedure))return;
+        if(c.session==null||cancellation(c.procedure)||OPERATION_CONTROLS.contains(c.procedure)||c.procedure.startsWith("deposit.action.")||Set.of("deposit.get.session","deposit.get.lastOperation","deposit.utils.refresh").contains(c.procedure))return;
         String scope=c.actionScope!=null?c.actionScope:c.namespaceId==null?"server":c.namespaceId;
         long revision=c.revision,generation=c.observationGeneration;
         boolean committedAction=c.operationId!=null&&!c.operational&&!c.replayed;
@@ -116,8 +133,21 @@ public final class SessionActionService extends BaseService {
             else if(c.session.observationGeneration==generation)c.session.baselines.putIfAbsent(scope,revision);
         }});
     }
+    public Stream<?> finish(Stream<?> result){
+        if(!c.state.operationClaimed)return result;
+        try(result){
+            var rows=result.iterator();
+            if(!rows.hasNext())throw new IllegalStateException("Tracked procedure did not return a result");
+            Object row=rows.next();
+            if(rows.hasNext())throw new IllegalStateException("Tracked procedure returned more than one result");
+            new OperationAttemptService(c).finish(row);
+            return Stream.of(row);
+        }
+    }
     public Stream<?> control(String procedure,Map<String,Object> request){
         return switch(procedure){
+            case "deposit.action.begin"->Stream.of(new DataRow(new OperationAttemptService(c).begin(request),c.meta()));
+            case "deposit.get.operation","deposit.action.cancel"->Stream.of(new DataRow(new OperationAttemptService(c).inspect(request,procedure.endsWith("cancel")),c.meta()));
             case "deposit.action.prepare"->Stream.of(new DataRow(preparedActions.prepare(request),c.meta()));
             case "deposit.action.status","deposit.action.resume"->Stream.of(new DataRow(preparedActions.status(request,procedure.endsWith("resume")),c.meta()));
             case "deposit.action.release"->{separate();c.state.afterCommit.add(()->c.session.preparedAction=null);yield Stream.of(new ValueRow(true,c.meta()));}

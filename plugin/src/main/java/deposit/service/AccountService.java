@@ -55,9 +55,9 @@ public final class AccountService extends ActionService {
         c.revision=c.server.revision(c.state);return token;
     }
     public ValueRow logout(Map<String,Object> request) {
-        fields(request);readContext();authenticate();
+        fields(request);readContext();
         if(c.state.scoped||c.state.mutation)c.fail("VALIDATION_FAILED","Logout requires separate transaction");
-        c.state.selection=true;c.state.afterCommit.add(()->c.server.removeSession(Json.hash(c.token)));c.revision=c.server.revision(c.state);return new ValueRow(true,c.meta());
+        c.state.selection=true;c.state.afterCommit.add(()->c.server.removeSession(Json.hash(c.token)));c.revision=c.server.committedRevision();return new ValueRow(true,c.meta());
     }
     public Outcome createUser(Map<String,Object> request) { return new AccountMutationService(c).createUser(request); }
     public Outcome createNamespace(Map<String,Object> request) { return new NamespaceAdministrationService(c).create(request); }

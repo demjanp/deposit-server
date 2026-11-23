@@ -33,7 +33,12 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_pattern_name IF NOT EXISTS FOR (n:Pattern) REQUIRE (n.namespaceId,n.name) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_namespace_name IF NOT EXISTS FOR (n:Namespace) REQUIRE n.name IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_username IF NOT EXISTS FOR (n:User) REQUIRE n.username IS UNIQUE").close();
-            tx.execute("CREATE CONSTRAINT deposit_receipt IF NOT EXISTS FOR (n:DepositReceipt) REQUIRE (n.scope,n.operationId) IS UNIQUE").close();
+            tx.execute("CREATE CONSTRAINT deposit_actor_receipt IF NOT EXISTS FOR (n:DepositReceipt) REQUIRE (n.actorId,n.scope,n.operationId) IS UNIQUE").close();
+            tx.execute("CREATE CONSTRAINT deposit_attempt IF NOT EXISTS FOR (n:DepositOperationAttempt) REQUIRE (n.actorId,n.scope,n.operationId) IS UNIQUE").close();
+            tx.execute("CREATE INDEX deposit_attempt_deadline IF NOT EXISTS FOR (n:DepositOperationAttempt) ON (n.claimDeadline)").close();
+            tx.execute("CREATE INDEX deposit_attempt_writer IF NOT EXISTS FOR (n:DepositOperationAttempt) ON (n.uploadId)").close();
+            tx.execute("CREATE INDEX deposit_resource_writer_session IF NOT EXISTS FOR (n:DepositTransfer) ON (n.writerSession)").close();
+            tx.execute("CREATE INDEX deposit_clone_writer_session IF NOT EXISTS FOR (n:DepositCloneUpload) ON (n.writerSession)").close();
             tx.execute("CREATE CONSTRAINT deposit_import_result_id IF NOT EXISTS FOR (n:DepositImportResult) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_import_result_collection_id IF NOT EXISTS FOR (n:DepositImportResultCollection) REQUIRE (n.resultId,n.id) IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_import_result_collection_name IF NOT EXISTS FOR (n:DepositImportResultCollection) ON (n.resultId,n.name)").close();
@@ -56,6 +61,7 @@ public final class SchemaRepository {
         try(var tx=db.beginTx()) {
             if(tx.findNode(Label.label("DepositStorageLock"),"id","spatial")==null)tx.createNode(Label.label("DepositStorageLock")).setProperty("id","spatial");
             try(var nodes=tx.findNodes(Label.label("Namespace"))) {for(Node n:nodes.stream().toList())if(tx.findNode(Label.label("DepositNamespaceLock"),"id",n.getProperty("id"))==null)tx.createNode(Label.label("DepositNamespaceLock")).setProperty("id",n.getProperty("id"));}
+            OperationAttemptRepository.initialize(tx,null);
             tx.commit();
         }
     }

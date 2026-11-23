@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import deposit.api.DepositAPI;
 import deposit.service.DomainService;
 import org.junit.jupiter.api.Test;
@@ -127,6 +128,16 @@ class ProcedureCatalogMetadataTest {
         assertEquals("Boolean", argument(find(catalog, "deposit.get.importPlan"), "renewLease").path("type").asText());
     }
 
+    @Test void discoveryAdvertisesTheRegisteredOperationControls() throws Exception {
+        var catalog = new ObjectMapper().readTree(Files.readString(repositoryRoot().resolve("runtime/public-api.json")));
+        assertTrue(((List<?>)new Discovery.Info("test").data.get("capabilities")).contains("operationControl"));
+        assertEquals("WRITE",find(catalog,"deposit.action.begin").required("mode").asText());
+        assertEquals("WRITE",find(catalog,"deposit.action.cancel").required("mode").asText());
+        assertEquals("READ",find(catalog,"deposit.get.operation").required("mode").asText());
+        var retired=Set.of("deposit.action.prepare","deposit.action.resume","deposit.action.status","deposit.action.release");
+        for(var entry:catalog)assertFalse(retired.contains(entry.required("name").asText()));
+    }
+
     @Test void publicPageLimitIsAcceptedByNeo4jProcedureTypeChecker() throws Exception {
         var checker = new org.neo4j.procedure.impl.Cypher5TypeCheckers();
         for (String name : List.of("deposit.get.importResultPage", "deposit.get.cloneResultPage")) {
@@ -172,7 +183,16 @@ class ProcedureCatalogMetadataTest {
         assertEquals(entry.path("scope").asText(), implementation.scope(), name + " scope");
         assertEquals(entry.path("action").asBoolean(), implementation.action(), name + " action");
         var bindings = new ArrayList<String>();
-        for (JsonNode arg : entry.path("args")) bindings.add(arg.path("binding").asText());
+        for (JsonNode arg : entry.path("args")) {
+            if (arg.has("binding")) bindings.add(arg.path("binding").asText());
+            else assertEquals("operationId", arg.required("name").asText(), name);
+        }
         assertEquals(bindings, implementation.bindings(), name + " ordered bindings");
+        if (implementation.action()) {
+            assertEquals(bindings.size()+1, entry.required("tokenIndex").intValue(), name);
+            assertEquals("operationId", entry.required("args").get(bindings.size()).required("name").asText(), name);
+            assertTrue(entry.required("cancellable").booleanValue(), name);
+            assertEquals(name.equals("deposit.admin.pruneResources")?"conditional":"always", entry.required("tracked").asText(), name);
+        }
     }
 }

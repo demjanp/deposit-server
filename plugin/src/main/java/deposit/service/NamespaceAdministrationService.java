@@ -24,7 +24,7 @@ final class NamespaceAdministrationService extends ActionService {
     Outcome delete(Map<String,Object> request) {
         fields(request,"confirmNamespaceName","expectedNamespaceRevision");authorizationChange();Node user=authenticate();mutation();
         repo.lockActor(c.actorId);c.server.lockServer(c.state);
-        Node receipt=repo.receipt("server",c.operationId);
+        Node receipt=repo.receipt(c,"server");
         if(receipt!=null&&receipt.hasProperty("deletedNamespaceId")) {
             c.replayed=true;
             if(!c.actorId.equals(receipt.getProperty("actorId")))admin(user);
@@ -32,7 +32,7 @@ final class NamespaceAdministrationService extends ActionService {
             if(!deletionHash(request,target).equals(receipt.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");
             c.revision=c.server.revision(c.state);return repo.replay(receipt,"server");
         }
-        Node binding=repo.binding(c.actorId,c.operationId);
+        Node binding=repo.legacyBinding(c);
         if(binding!=null&&!"server".equals(binding.getProperty("scope")))c.fail("SCOPE_MISMATCH","Operation belongs to another scope");
         if(receipt!=null)c.fail("OPERATION_MISMATCH","Operation belongs to another request");
         scoped("owner");String target=c.namespaceId;repo.lockNamespace(target);requireRole(target,"owner");
@@ -42,11 +42,11 @@ final class NamespaceAdministrationService extends ActionService {
         String hash=deletionHash(request,target);List<String> deleted=repo.deleteNamespace(target);
         c.namespaceId=null;c.state.serverChanged=true;c.revision=c.server.revision(c.state);
         Outcome result=new Outcome(null,null,Json.map("deletedIds",deleted));repo.saveReceipt(c,"server",hash,result);
-        repo.receipt("server",c.operationId).setProperty("deletedNamespaceId",target);
+        repo.receipt(c,"server").setProperty("deletedNamespaceId",target);
         c.state.afterCommit.add(()->c.server.clearNamespace(target));return result;
     }
     private String deletionHash(Map<String,Object> request,String target) {
-        return CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.delete.namespace","request",request,"targetNamespaceId",target,"expectedRevision",c.expectedRevision)));
+        return c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.delete.namespace","request",request,"targetNamespaceId",target,"expectedRevision",c.expectedRevision)));
     }
     EntityRow active(Map<String,Object> request,boolean set) {
         fields(request,set?new String[]{"name","id"}:new String[]{});readContext();authenticate();

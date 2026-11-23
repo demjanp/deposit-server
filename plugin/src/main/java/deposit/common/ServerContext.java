@@ -11,6 +11,8 @@ import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.impl.query.TransactionExecutionMonitor;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import deposit.repository.SchemaRepository;
+import deposit.repository.OperationAttemptRepository;
+import org.neo4j.kernel.api.net.NetworkConnectionTracker;
 
 /** Per-database state. No transaction or native entity is retained in a session. */
 public final class ServerContext implements TransactionExecutionMonitor, org.neo4j.graphdb.event.TransactionEventListener<Void> {
@@ -26,6 +28,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private final TransactionLifecycle transactionLifecycle;
     private ServerContext(UUID databaseId) {this.databaseId=databaseId;this.transactionLifecycle=new TransactionLifecycle(this,databaseId,lifecycleLock);}
     private final SessionRequestRegistry sessionsAndRequests=new SessionRequestRegistry();
+    private final Set<Long> settledCancellations=ConcurrentHashMap.newKeySet();
     public void registerSession(String tokenHash, Session session) { sessionsAndRequests.register(tokenHash,session); }
     public Session session(String tokenHash) { return sessionsAndRequests.session(tokenHash); }
     public boolean removeSession(String tokenHash) { return sessionsAndRequests.removeSession(tokenHash); }
@@ -53,6 +56,30 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public void storagePoint(String point){storageObserver.accept(point);}
     void storageObserverForTesting(java.util.function.Consumer<String> observer){storageObserver=observer;}
     public GraphDatabaseAPI database() {return database;}
+    public TxState activeTransaction(long sequence) { return transactionLifecycle.find(sequence); }
+    void rememberCancelled(TxState state) { settledCancellations.add(state.kernel.getTransactionSequenceNumber()); }
+    public boolean settledCancelled(long sequence) { return settledCancellations.contains(sequence); }
+    public void forgetCancelled(long sequence) { settledCancellations.remove(sequence); }
+    public boolean connectionLive(String connection) {
+        return connection != null && database.getDependencyResolver()
+            .resolveDependency(NetworkConnectionTracker.class).get(connection) != null;
+    }
+    public boolean sessionLive(String hash) { return sessionsAndRequests.session(hash) != null; }
+    void checkRequestLiveness() {
+        long now = sessionTime();
+        for (TxState state : transactionLifecycle.activeTransactions()) {
+            if(state.completing.get())continue;
+            if (state.operationClaimed && (!sessionLive(state.tokenHash) || !connectionLive(state.operationConnection)))
+                state.signalOperationCancellation();
+            if (now >= state.tableReadDeadline) {
+                state.kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);
+                if(state.tableReadConnection!=null){
+                    var connection=database.getDependencyResolver().resolveDependency(NetworkConnectionTracker.class).get(state.tableReadConnection);
+                    if(connection!=null)connection.close();
+                }
+            }
+        }
+    }
     void attachDownloadsForTesting(ResourceDownloadServer server) { downloads=server; }
     public void requireResourceLinks() {
         ResourceDownloadServer current = downloads;
@@ -98,11 +125,14 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         var internal=(org.neo4j.kernel.impl.coreapi.InternalTransaction)tx;
         TxState state=transactionLifecycle.find(internal.kernelTransaction().getTransactionSequenceNumber());
         if(state==null||state.tokenHash==null)return null;
+        if(state.operationClaimed && (!state.operationFinal()
+                || !connectionLive(state.operationConnection) || stopping))
+            throw ExceptionHandler.fail("CANCELLED","Operation execution is no longer live before commit");
         Session session=sessionsAndRequests.session(state.tokenHash);
         if(session==null)throw ExceptionHandler.fail("AUTH_FAILED","Session revoked before commit");
         synchronized(session) {
             long now=sessionTime();
-            if(now-session.touched>=1_800_000L||now-session.created>=28_800_000L)throw ExceptionHandler.fail("SESSION_EXPIRED","Session expired before commit");
+            if(!state.operationClaimed&&!state.writerContinuation&&(now-session.touched>=1_800_000L||now-session.created>=28_800_000L))throw ExceptionHandler.fail("SESSION_EXPIRED","Session expired before commit");
         }
         Node user=tx.findNode(Label.label("User"),"id",session.actor);
         if(user==null||(!state.selfAccountChange&&!Boolean.TRUE.equals(user.getProperty("enabled",false))))throw ExceptionHandler.fail("AUTH_FAILED","Account unavailable before commit");
@@ -123,6 +153,10 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         try {
             Path configPath=Path.of(System.getProperty("deposit.config")).toAbsolutePath();
             Properties configuration=new Properties();try(var input=Files.newInputStream(configPath)){configuration.load(input);}
+            String restoreTime=configuration.getProperty("operationRestoreTime");
+            Long restoredAt=restoreTime==null?null:java.time.Instant.parse(restoreTime).toEpochMilli();
+            if(restoredAt!=null && restoredAt>sessionTime())throw new IllegalStateException("Operation restore time is ahead of the server clock");
+            try(var tx=db.beginTx()){OperationAttemptRepository.initialize(tx,restoredAt);tx.commit();}
             String configuredSecretRoot=configuration.getProperty("secretRoot");
             if(configuredSecretRoot==null||configuredSecretRoot.isBlank())throw new IllegalStateException("Deposit secretRoot is required");
             secretDirectory=Path.of(configuredSecretRoot).toAbsolutePath().normalize();
@@ -151,6 +185,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             stopping=true;
             if(!readiness.isDone())readiness.completeExceptionally(new IllegalStateException("Deposit is shutting down"));
         }
+        for(TxState state:transactionLifecycle.activeTransactions()) if(state.operationClaimed)state.signalOperationCancellation();
     }
     /** Called by the authenticated launcher before it signals Neo4j teardown. */
     public void closeAdmission(){
@@ -254,6 +289,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public long observationGeneration;
         public final Map<String,Long> observations=new HashMap<>();
         public boolean scoped,selection,mutation,serverLocked,serverChanged,administrative,selfAccountChange,privileged,auditRegistered;
+        public boolean writerContinuation;
         final java.util.concurrent.atomic.AtomicBoolean completing=new java.util.concurrent.atomic.AtomicBoolean();
         volatile Throwable completionFailure;
         public final List<Runnable> afterCommit=new ArrayList<>();
@@ -262,6 +298,20 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public final Map<String,org.neo4j.gis.spatial.EditableLayer> geometryLayers=new HashMap<>();
         public ImportWriteBudget importWriteBudget;
         public final Set<String> requestIds=ConcurrentHashMap.newKeySet();
+        public volatile boolean operationClaimed;
+        public volatile boolean operationSettled;
+        public String operationActor,operationScope,operationId;
+        public volatile long tableReadDeadline=Long.MAX_VALUE;
+        public String tableReadConnection;
+        public String operationConnection;
+        private final java.util.concurrent.atomic.AtomicInteger operationGate=new java.util.concurrent.atomic.AtomicInteger();
+        public boolean enterOperationFinal() { return operationGate.compareAndSet(0,1); }
+        public boolean operationFinal() { return operationGate.get()==1; }
+        public boolean operationCancelled() { return operationGate.get()==2; }
+        public void signalOperationCancellation() {
+            if(operationGate.compareAndSet(0,2))
+                kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);
+        }
         private final Object identityToken=new Object();
         TxState(KernelTransaction kernel) {this.kernel=kernel;}
         public Object identityToken() { return identityToken; }
