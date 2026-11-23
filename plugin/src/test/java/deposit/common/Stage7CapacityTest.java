@@ -138,7 +138,7 @@ class Stage7CapacityTest {
             if(!memoryOnly){
                 long[] phase=new long[5];
                 try(var context=new PackageValidationContext(true,()->{})){
-                    phase[0]=System.nanoTime();var files=PackageArchiveIO.read(archive,context);
+                    phase[0]=System.nanoTime();var files=PackageArchiveIO.read(archive,context,null);
                     phase[1]=System.nanoTime();var packageManifest=context.parse(files.jsonFiles().get("manifest.json"));
                     var graph=context.parse(files.jsonFiles().get("graph.json"));
                     phase[2]=System.nanoTime();PackageArchiveIO.validateManifest(packageManifest,files.hashes(),files.sizes());

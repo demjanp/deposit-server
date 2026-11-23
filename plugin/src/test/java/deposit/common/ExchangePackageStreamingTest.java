@@ -16,6 +16,33 @@ class ExchangePackageStreamingTest {
         manifest.put("files",Json.map("graph.json",Json.map("bytes",Files.size(graph),"sha256",ResourceFiles.checksum(graph))));Path archive=temp.resolve(UUID.randomUUID()+".zip");
         try(var zip=new ZipOutputStream(Files.newOutputStream(archive))){zip.putNextEntry(new ZipEntry("graph.json"));Files.copy(graph,zip);zip.closeEntry();zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(Json.write(manifest).getBytes(StandardCharsets.UTF_8));zip.closeEntry();}return archive;
     }
+    @Test void compactZip64DirectoryIsVerified()throws Exception {
+        var manifest=manifest();
+        Path graph=temp.resolve("zip64-graph.json");
+        Files.writeString(graph,Json.write(Json.map("classes",List.of(),"objects",List.of(),"descriptors",List.of(),
+            "geometries",List.of(),"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),
+            "patterns",List.of(),"resources",List.of(),"userTools",List.of())));
+        byte[] original=Files.readAllBytes(archive(graph,manifest));
+        int eocd=original.length-22;
+        var fields=java.nio.ByteBuffer.wrap(original).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        int centralLength=fields.getInt(eocd+12), centralStart=fields.getInt(eocd+16);
+        var ending=java.nio.ByteBuffer.allocate(56+20+22).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        ending.putInt(0x06064b50).putLong(44).putShort((short)45).putShort((short)45);
+        ending.putInt(0).putInt(0).putLong(2).putLong(2).putLong(centralLength).putLong(centralStart);
+        ending.putInt(0x07064b50).putInt(0).putLong(eocd).putInt(1);
+        ending.putInt(0x06054b50).putShort((short)0).putShort((short)0);
+        ending.putShort((short)-1).putShort((short)-1).putInt(-1).putInt(-1).putShort((short)0);
+        Path zip64=temp.resolve("compact-zip64.zip");
+        byte[] fixture=new byte[eocd+ending.capacity()];
+        System.arraycopy(original,0,fixture,0,eocd);
+        System.arraycopy(ending.array(),0,fixture,eocd,ending.capacity());
+        Files.write(zip64,fixture);
+        assertEquals(manifest.get("packageId"),ExchangePackageCodec.validateSummary(zip64).packageId());
+        fixture[eocd+48]^=1;
+        Files.write(zip64,fixture);
+        assertThrows(IOException.class,()->ExchangePackageCodec.validateSummary(zip64));
+    }
+
     @Test void opaqueStringLargerThanHeapValidatesAndWorkspaceIsRemoved()throws Exception{
         Path graph=temp.resolve("large.json");var manifest=manifest();
         try(var out=Files.newBufferedWriter(graph)){out.write("{\"classes\":[],\"objects\":[],\"descriptors\":[],\"geometries\":[],\"memberships\":[],\"relationships\":[],\"classRelationships\":[],\"patterns\":[],\"resources\":[],\"userTools\":[{\"kind\":\"UserTool\",\"id\":\""+UUID.randomUUID()+"\",\"namespaceId\":\""+manifest.get("sourceNamespaceId")+"\",\"name\":\"Opaque\",\"data\":\"");String chunk=" x\\t\\u03b1".repeat(4096);for(int i=0;i<2048;i++)out.write(chunk);out.write("\"}]}");}

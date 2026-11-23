@@ -4,9 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.Test;
 
 class DiscoveryInfoTest {
-    @Test void advertisesTheSupportedLazyImportResultProtocol() {
-        var info = new Discovery.Info("1.2.3");
+    @Test void advertisesOperationControlAndCanonicalExchange() {
+        var info = new Discovery.Info("1.2.3","live-run");
         assertEquals("1.2.3", info.data.get("version"));
-        assertEquals(java.util.List.of("fullNamespaceClone", "pagedImportResults"), info.data.get("capabilities"));
+        assertEquals("live-run",info.data.get("incarnation"));
+        assertEquals(java.util.List.of("fullNamespaceClone","pagedImportResults","operationControl","exchangeIntake"), info.data.get("capabilities"));
     }
 }

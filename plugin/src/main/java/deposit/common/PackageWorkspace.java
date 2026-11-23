@@ -89,6 +89,25 @@ final class PackageWorkspace implements AutoCloseable {
     final class Text {
         final long at;Text(long at){this.at=at;}PackageWorkspace owner(){return PackageWorkspace.this;}
         long length(){try{return number(at,OWNER_OFFSET);}catch(IOException e){throw unchecked(e);}}
+        Reader reader() throws IOException {
+            long start=number(at,LENGTH_OFFSET);
+            return new Reader() {
+                private long position;
+                public int read(char[] target,int offset,int requested)throws IOException {
+                    Objects.checkFromIndexSize(offset,requested,target.length);
+                    if(requested==0)return 0;
+                    int length=(int)Math.min(Math.min(requested,textBuffer.length/2),Text.this.length()-position);
+                    if(length==0)return -1;
+                    cancelled();
+                    nodes.seek(Math.addExact(start,Math.multiplyExact(position,2L)));
+                    nodes.readFully(textBuffer,0,length*2);
+                    for(int i=0;i<length;i++)target[offset+i]=(char)((textBuffer[2*i]&255)<<8 | (textBuffer[2*i+1]&255));
+                    position+=length;
+                    return length;
+                }
+                public void close(){}
+            };
+        }
         String materialize(){try{return text(at);}catch(IOException e){throw unchecked(e);}}
         @Override public boolean equals(Object other){return other==this||other instanceof PackageWorkspace.Text text&&length()==text.length()&&fingerprint().equals(text.fingerprint());}
         @Override public int hashCode(){return fingerprint().hashCode();}
@@ -100,6 +119,9 @@ final class PackageWorkspace implements AutoCloseable {
     static Map<String,Object> dictionary(Map<String,Object> map){
         if(!(map instanceof PackageWorkspace.TreeMapView view))return map;
         return view.dictionary();
+    }
+    static Iterable<? extends Map.Entry<?,?>> rawEntries(Map<?,?> map){
+        return map instanceof PackageWorkspace.TreeMapView view?view.rawEntries():map.entrySet();
     }
     private final class TreeMapView extends AbstractMap<String,Object> implements LongSized {
         final long at;final boolean payload;private Map<String,Long> smallFields;
@@ -116,6 +138,24 @@ final class PackageWorkspace implements AutoCloseable {
                 smallFields=found;
             }
             return smallFields.get(shortFieldKey(name));
+        }
+        Iterable<Map.Entry<Object,Object>> rawEntries(){
+            return ()->{
+                try {
+                    return new Iterator<>() {
+                        long child=number(at,FIRST_OFFSET);
+                        public boolean hasNext(){return child!=0;}
+                        public Map.Entry<Object,Object> next(){
+                            if(child==0)throw new NoSuchElementException();
+                            try {
+                                long current=child;
+                                child=PackageWorkspace.this.next(child);
+                                return new SimpleImmutableEntry<>(read(current),read(number(current,FIRST_OFFSET)));
+                            } catch(IOException failure){throw unchecked(failure);}
+                        }
+                    };
+                } catch(IOException failure){throw unchecked(failure);}
+            };
         }
         Map<String,Object> dictionary(){return new AbstractMap<>(){
             public Set<Entry<String,Object>> entrySet(){return new AbstractSet<>(){

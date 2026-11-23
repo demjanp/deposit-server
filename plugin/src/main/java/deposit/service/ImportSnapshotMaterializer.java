@@ -16,7 +16,13 @@ final class ImportSnapshotMaterializer {
 
     ImportSnapshotMaterializer(RequestContext c,CoreRepository repo,ResourceRepository resources){this.c=c;this.repo=repo;this.resources=resources;}
 
-    Map<String,Object> apply(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,Map<String,Object> rules){applyFormScopes(pkg.graph(),namespace,objectMappings,rules);return materialize(pkg,archive,namespace,classMap,objectMappings,ResourceSelection.CURRENT_DESCRIPTOR_WRITES);}
+    Map<String,Object> apply(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,Map<String,Object> rules){return apply(pkg,archive,namespace,classMap,objectMappings,rules,null);}
+
+    Map<String,Object> apply(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,
+            Map<String,Object> objectMappings,Map<String,Object> rules,Path content) {
+        applyFormScopes(pkg.graph(),namespace,objectMappings,rules);
+        return materialize(pkg,archive,namespace,classMap,objectMappings,ResourceSelection.CURRENT_DESCRIPTOR_WRITES,content);
+    }
 
     private void applyFormScopes(Map<String,Object> graph,String namespace,Map<String,Object> mappings,Map<String,Object> rules){
         Object raw=rules.get("_formRootSource");if(!(raw instanceof String source))return;
@@ -35,11 +41,16 @@ final class ImportSnapshotMaterializer {
         if(geometry!=null)try(var edges=geometry.getRelationships()){for(var edge:edges)budget.reserveBeforeMutation(edge);}
     }
 
-Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings){return materialize(pkg,archive,namespace,classMap,objectMappings,ResourceSelection.ALL_PACKAGE_RECORDS);}
+Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings){return materialize(pkg,archive,namespace,classMap,objectMappings,null);}
+
+Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,
+        Map<String,Object> objectMappings,Path content){
+    return materialize(pkg,archive,namespace,classMap,objectMappings,ResourceSelection.ALL_PACKAGE_RECORDS,content);
+}
 
 private enum ResourceSelection { ALL_PACKAGE_RECORDS, CURRENT_DESCRIPTOR_WRITES }
 
-private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,ResourceSelection selection){
+private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path archive,String namespace,Map<String,Object> classMap,Map<String,Object> objectMappings,ResourceSelection selection,Path content){
     Map<String,Object> graph=pkg.graph();ImportScratch mappings;String receiptScope=c.namespaceId==null?"server":c.namespaceId;
     var scratchBudget=ImportWriteBudget.forRequest(c,receiptScope,namespace).scratchLease();
     try{mappings=new ImportScratch(resources.files.path("staging/imports"),()->c.state.kernel.assertOpen(),scratchBudget::reserve,scratchBudget::close);}
@@ -67,9 +78,36 @@ private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path
         for(Object rd:(List<?>)source.get("descriptors")){var d=ValueCodec.map(rd);String field=(String)d.get("name"),type=(String)d.get("type");Node existing=repo.declaration(target,field);if(existing==null)existing=repo.attach("ClassDescriptor",target,c.actorId,Json.map("name",field,"type",type,"order",d.getOrDefault("order",0L),"comment",d.getOrDefault("comment","")));else if(!type.equals(existing.getProperty("type")))c.fail("IMPORT_CONFLICT","Class declaration changed after analysis");if(d.get("id") instanceof String sourceDescriptorId){String targetDescriptorId=CoreRepository.id(existing);classDescriptors.put(sourceDescriptorId,targetDescriptorId);mapping.put(sourceDescriptorId,targetDescriptorId);}}
         String targetId=CoreRepository.id(target);classes.put(sourceId,targetId);mapping.put(sourceId,targetId);
     }
-    for(Object raw:(List<?>)graph.get("resources")){var source=ValueCodec.map(raw);String sourceId=(String)source.get("id");if(!currentResourceIds.contains(sourceId))continue;String checksum=(String)source.get("sha256");Path staged=null;try(ZipFile zip=new ZipFile(archive.toFile())){var entry=zip.getEntry("resources/"+checksum);if(entry==null)c.fail("RESOURCE_CORRUPT","Package resource content is missing");staged=resources.files.path("staging/imports/content-"+UUID.randomUUID());Files.createDirectories(staged.getParent());long expected=((Number)source.get("bytes")).longValue();try(InputStream in=zip.getInputStream(entry);OutputStream out=Files.newOutputStream(staged,StandardOpenOption.CREATE_NEW)){in.transferTo(out);}if(Files.size(staged)!=expected||!checksum.equals(ResourceFiles.checksum(staged)))c.fail("RESOURCE_CORRUPT","Package resource content changed");c.server.storage.admission.materialized(admission,resources.files.root,expected);
-            String targetId=imported.create(staged,(String)source.get("filename"),(String)source.getOrDefault("mediaType","application/octet-stream"),((Number)source.get("bytes")).longValue(),checksum,c.timestamp);resourcesMap.put(sourceId,targetId);mapping.put(sourceId,targetId);
-        }catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to materialize package resource");}finally{if(staged!=null)try{Files.deleteIfExists(staged);}catch(IOException ignored){}}}
+    try(ZipFile zip=content==null&&!currentResourceIds.isEmpty()?new ZipFile(archive.toFile()):null) {
+        for(Object raw:(List<?>)graph.get("resources")) {
+            var source=ValueCodec.map(raw);
+            String sourceId=(String)source.get("id");
+            if(!currentResourceIds.contains(sourceId))continue;
+            String checksum=ResourceFiles.hash(source.get("sha256"));
+            Path staged=resources.files.path("staging/imports/content-"+UUID.randomUUID());
+            try {
+                Files.createDirectories(staged.getParent());
+                long expected=((Number)source.get("bytes")).longValue();
+                try(InputStream input=resourceContent(zip,content,checksum);var output=Files.newOutputStream(staged,StandardOpenOption.CREATE_NEW)) {
+                    byte[] bytes=new byte[64*1024];
+                    long total=0;
+                    for(int count;(count=input.read(bytes))!=-1;){
+                        c.state.kernel.assertOpen();
+                        total=Math.addExact(total,count);
+                        if(total>expected)throw new IOException("Package resource length changed");
+                        output.write(bytes,0,count);
+                    }
+                }
+                if(Files.size(staged)!=expected||!checksum.equals(ResourceFiles.checksum(staged,()->c.state.kernel.assertOpen())))
+                    c.fail("RESOURCE_CORRUPT","Package resource content changed");
+                c.server.storage.admission.materialized(admission,resources.files.root,expected);
+                String targetId=imported.create(staged,(String)source.get("filename"),
+                    (String)source.getOrDefault("mediaType","application/octet-stream"),expected,checksum,c.timestamp);
+                resourcesMap.put(sourceId,targetId);
+                mapping.put(sourceId,targetId);
+            } finally {Files.deleteIfExists(staged);}
+        }
+    } catch(IOException failure){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to materialize package resource");}
     for(Object raw:(List<?>)graph.get("objects")){var source=ValueCodec.map(raw);String sourceId=(String)source.get("id"),classId=classes.get((String)source.get("classId"));if(classId==null)c.fail("VALIDATION_FAILED","Object Class is outside the package");Object selected=objectMappings.get(sourceId);Node object=selected instanceof String targetId?repo.entity("Object",namespace,targetId):null;if(selected instanceof String&&object==null)c.fail("PLAN_STALE","A selected matching Object is no longer available");if(object==null){object=repo.create("Object",namespace,c.actorId,Json.map("position",source.getOrDefault("position",List.of(0.0,0.0))));repo.assign(object,repo.entity("Class",namespace,classId),c.actorId);createdObjects++;}else if(!Objects.equals(CoreRepository.id(repo.objectClass(object)),classId))c.fail("PLAN_STALE","A selected matching Object changed Class");String targetId=CoreRepository.id(object);objects.put(sourceId,targetId);mapping.put(sourceId,targetId);}
     for(Object raw:(List<?>)graph.get("memberships")){var m=ValueCodec.map(raw);String objectId=objects.get(m.get("objectId"));Node object=objectId==null?null:repo.entity("Object",namespace,objectId);if(object==null)c.fail("VALIDATION_FAILED","Membership Object is outside the package");memberships.put((String)m.get("id"),CoreRepository.id(repo.membership(object)));}
     for(Object raw:(List<?>)graph.get("descriptors")){var source=ValueCodec.map(raw);String sourceObject=(String)source.get("objectId"),targetObject=objects.get(sourceObject);if(targetObject==null)c.fail("VALIDATION_FAILED","Descriptor owner is outside the package");Node object=repo.entity("Object",namespace,targetObject),clazz=repo.objectClass(object);String name=(String)source.get("name");Node declaration=repo.declaration(clazz,name);if(declaration==null)c.fail("VALIDATION_FAILED","Descriptor declaration is missing");String type=(String)declaration.getProperty("type");Object incoming=ExchangePackageCodec.decodeValue(type,source.get("value")),value=incoming;Node descriptor=repo.descriptor(object,name);if(descriptor==null){if("DResource".equals(type)&&value!=null){String mappedResource=resourcesMap.get((String)ValueCodec.map(value).get("resourceId"));if(mappedResource==null)c.fail("RESOURCE_CORRUPT","Package resource reference is missing");value=Json.map("resourceId",mappedResource);}descriptor=repo.attach("Descriptor",object,c.actorId,Json.map("name",name));repo.writeImportedValue(descriptor,type,value,c.actorId,imported);}else {Object existingValue=repo.descriptorValue(descriptor);boolean equal;if("DResource".equals(type)){equal=incoming==null?existingValue==null:resourceEquivalent(resourceRecords.get((String)ValueCodec.map(incoming).get("resourceId")),existingValue,namespace);}else equal=Objects.equals(existingValue,value);if(!equal){c.fail("PLAN_STALE","Matched Descriptor changed after analysis");}}descriptors.put((String)source.get("id"),CoreRepository.id(descriptor));if("DGeometry".equals(type)&&source.get("geometryId") instanceof String sourceGeometry){Node geometry=new GeometryRepository(c.tx,repo).geometry(descriptor);if(geometry!=null){String targetId=CoreRepository.id(geometry);geometriesMap.put(sourceGeometry,targetId);mapping.put(sourceGeometry,targetId);}} }
@@ -79,6 +117,16 @@ private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path
     for(Object raw:(List<?>)graph.get("userTools")){var tool=ValueCodec.map(raw);Node existing=repo.find("UserTool",Map.of("namespaceId",namespace,"name",tool.get("name")));if(existing==null)existing=repo.create("UserTool",namespace,c.actorId,Json.map("name",tool.get("name"),"data",tool.get("data"),"comment",tool.getOrDefault("comment","")));else if(!Objects.equals(existing.getProperty("data"),tool.get("data")))c.fail("IMPORT_CONFLICT","User Tool name conflicts");userTools.put((String)tool.get("id"),CoreRepository.id(existing));}
     new PatternService(c).validateNamespace(namespace);var identityMappings=Json.map("Namespace",Map.of((String)pkg.manifest().get("sourceNamespaceId"),namespace),"Class",classes,"ClassDescriptor",classDescriptors,"Object",objects,"DResource",resourcesMap,"DGeometry",geometriesMap,"Descriptor",descriptors,"Membership",memberships,"Relationship",relationships,"ClassRelationship",classRelationships,"Pattern",patterns,"UserTool",userTools);return Json.map("mapping",mapping,"identityMappings",identityMappings,"resourceMapping",resourcesMap,"createdClasses",longCount(classes),"createdObjects",createdObjects,"createdResources",longCount(resourcesMap),"createdRelationships",longSize((Collection<?>)graph.get("relationships")));
     }
+}
+
+private InputStream resourceContent(ZipFile zip,Path content,String checksum)throws IOException {
+    if(content!=null){
+        String relative=resources.files.root.relativize(content.resolve(checksum)).toString();
+        return Files.newInputStream(resources.files.path(relative),LinkOption.NOFOLLOW_LINKS);
+    }
+    var entry=zip.getEntry("resources/"+checksum);
+    if(entry==null)throw new IOException("Package resource content is missing");
+    return zip.getInputStream(entry);
 }
 
 private static long longCount(Map<?,?> values){long count=0;for(Object ignored:values.keySet())count=Math.addExact(count,1);return count;}

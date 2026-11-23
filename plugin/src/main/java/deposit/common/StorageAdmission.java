@@ -66,7 +66,7 @@ public final class StorageAdmission implements AutoCloseable {
             for(var reservation:reservations.values()){
                 if(Objects.equals(operationId,reservation.operationId)&&actor.equals(reservation.writeIntent.get("actorId"))
                         && scope.equals(reservation.writeIntent.get("receiptScope"))
-                        && java.util.Set.of("ocfl-publication","tabular-load","namespace-clone","import-plan","export-scratch").contains(reservation.ownerKind))return true;
+                        && java.util.Set.of("ocfl-publication","tabular-load","namespace-clone","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind))return true;
             }
             return false;
         }finally{stateLock.unlock();}

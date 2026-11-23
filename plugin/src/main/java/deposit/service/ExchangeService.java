@@ -22,6 +22,30 @@ public final class ExchangeService extends BaseService {
         if(procedure.equals("deposit.save.data"))return savePackage(request);
         return executeExport(procedure,request);
     }
+    static void validateSelector(Object value,Object rawOptions) {
+        if(!(rawOptions instanceof Map<?,?>))throw ExceptionHandler.fail("VALIDATION_FAILED","Export options must be a map");
+        var options=ValueCodec.map(rawOptions);
+        fields(options,"maxHops","rootClassBoundary","includeHistory");
+        long hops=integer(options.getOrDefault("maxHops",3L));
+        Object boundary=options.getOrDefault("rootClassBoundary",true);
+        if(hops<0||hops>10||!(boundary instanceof Boolean)
+                ||options.containsKey("includeHistory")&&!(options.get("includeHistory") instanceof Boolean))
+            throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid export options");
+        if(value==null) {
+            if(hops!=3||!Boolean.TRUE.equals(boundary))
+                throw ExceptionHandler.fail("VALIDATION_FAILED","Whole-Namespace export does not accept subgraph traversal options");
+            return;
+        }
+        if(!(value instanceof List<?> roots)||roots.isEmpty())
+            throw ExceptionHandler.fail("VALIDATION_FAILED","Explicit export roots must be a nonempty list");
+        // A UUID contributes at most 39 encoded bytes. Leave room for the two
+        // request envelopes, operation identity and constant-size traversal options.
+        if(roots.size()>(1_048_576-1024)/39)
+            throw ExceptionHandler.fail("LIMIT_EXCEEDED","Explicit export selector exceeds request budget");
+        for(Object root:roots)RequestContext.uuid(root);
+        if(Boolean.TRUE.equals(options.get("includeHistory")))
+            throw ExceptionHandler.fail("VALIDATION_FAILED","Only a whole-Namespace export can include history");
+    }
     private Map<String,Object> executeExport(String procedure,Map<String,Object> request) {
         if(procedure.equals("deposit.load.data"))return validatePackage(request);
         if(procedure.equals("deposit.get.namespaceData")) {
@@ -30,18 +54,39 @@ public final class ExchangeService extends BaseService {
             if(includeHistory)requireRole(c.namespaceId,"owner");
             return readReceipt(procedure,request,()->{var snapshot=assembly.snapshot(true);return completeSnapshot(ValueCodec.map(snapshot.get("manifest")),ValueCodec.map(snapshot.get("graph")),includeHistory,true);});
         }
-        if(procedure.equals("deposit.get.data")) {
-            if(request.get("rootIds")!=null&&!(request.get("rootIds") instanceof List<?>))c.fail("VALIDATION_FAILED","rootIds must be a list");
-            List<?> rawRoots=request.get("rootIds") instanceof List<?> list?list:List.of();var rootSet=new TreeSet<String>();for(Object raw:rawRoots)rootSet.add(RequestContext.uuid(raw));List<?> roots=List.copyOf(rootSet);
-            Map<String,Object> options=new LinkedHashMap<>(request);options.remove("rootIds");fields(options,"maxHops","rootClassBoundary","includeHistory");
-            if(options.get("includeHistory")!=null&&!(options.get("includeHistory") instanceof Boolean))c.fail("VALIDATION_FAILED","includeHistory must be Boolean");scoped("viewer");boolean history=Boolean.TRUE.equals(options.get("includeHistory"));
-            long hops=integer(options.getOrDefault("maxHops",3L));if(hops<0||hops>10)c.fail("VALIDATION_FAILED","maxHops must be between zero and ten");
-            Object rootBoundaryValue=options.getOrDefault("rootClassBoundary",true);if(!(rootBoundaryValue instanceof Boolean))c.fail("VALIDATION_FAILED","rootClassBoundary must be Boolean");boolean rootBoundary=(Boolean)rootBoundaryValue;
-            boolean whole=roots.isEmpty();boolean includeHistory=whole&&"persistent".equals(repo.namespace(c.namespaceId).getProperty("historyMode","disabled"));if(includeHistory)requireRole(c.namespaceId,"owner");return readReceipt(procedure,request,()->{var full=assembly.snapshot(whole);var manifest=ValueCodec.map(full.get("manifest"));
-                if(whole&&(options.containsKey("maxHops")&&hops!=3||options.containsKey("rootClassBoundary")&&!rootBoundary))c.fail("VALIDATION_FAILED","Whole-Namespace export does not accept subgraph traversal options");
-                Map<String,Object> graph=ValueCodec.map(full.get("graph"));if(!whole){var filtered=assembly.subgraph(graph,roots,(int)hops,rootBoundary);graph=ValueCodec.map(filtered.get("graph"));manifest.put("rootIds",roots);manifest.put("maxHops",hops);manifest.put("rootClassBoundary",rootBoundary);manifest.put("boundaryReferences",filtered.get("boundaryReferences"));manifest.put("omittedEdgeCount",filtered.get("omittedEdgeCount"));}
-                // History is a whole-Namespace capability. A subgraph package never carries it.
-                return completeSnapshot(manifest,graph,includeHistory,whole);});
+        if(procedure.equals("deposit.get.data")||procedure.equals("deposit.exchange.export")) {
+            boolean canonical=procedure.equals("deposit.exchange.export");
+            Object rawRoots=request.get("rootIds");
+            var options=canonical?ValueCodec.map(request.get("options")):new LinkedHashMap<>(request);
+            if(!canonical)options.remove("rootIds");
+            validateSelector(rawRoots,options);
+            boolean whole=rawRoots==null;
+            var rootSet=new TreeSet<String>();
+            if(rawRoots instanceof List<?> roots)for(Object root:roots)rootSet.add(RequestContext.uuid(root));
+            var roots=List.copyOf(rootSet);
+            long hops=integer(options.getOrDefault("maxHops",3L));
+            boolean rootBoundary=(boolean)options.getOrDefault("rootClassBoundary",true);
+            scoped("viewer");
+            boolean history=whole&&"persistent".equals(repo.namespace(c.namespaceId).getProperty("historyMode","disabled"));
+            if(history)requireRole(c.namespaceId,"owner");
+            return readReceipt(procedure,request,()->{
+                var full=assembly.snapshot(whole);
+                var manifest=ValueCodec.map(full.get("manifest"));
+                var graph=ValueCodec.map(full.get("graph"));
+                if(!whole) {
+                    var filtered=assembly.subgraph(graph,roots,(int)hops,rootBoundary);
+                    graph=ValueCodec.map(filtered.get("graph"));
+                    manifest.put("rootIds",roots);
+                    manifest.put("maxHops",hops);
+                    manifest.put("rootClassBoundary",rootBoundary);
+                    manifest.put("boundaryReferences",filtered.get("boundaryReferences"));
+                    manifest.put("omittedEdgeCount",filtered.get("omittedEdgeCount"));
+                }
+                if(!canonical)return completeSnapshot(manifest,graph,history,whole);
+                var projection=history?assembly.historyBundle(true,graph):null;
+                finalizeResources(graph,projection==null?Set.of():projection.resourceIds());
+                return publishPackage(manifest,graph,projection==null?null:projection.history());
+            });
         }
         if(procedure.equals("deposit.save.data"))return savePackage(request);
         c.fail("VALIDATION_FAILED","Unsupported exchange operation");return Map.of();
@@ -50,8 +95,11 @@ public final class ExchangeService extends BaseService {
     private Map<String,Object> readReceipt(String procedure,Map<String,Object> request,java.util.function.Supplier<Map<String,Object>> collect){
         if(c.operationId==null||c.expectedRevision!=null)c.fail("VALIDATION_FAILED","Export operation requires an operation ID without expectedRevision");
         if(c.state.mutation)c.fail("VALIDATION_FAILED","One mutation per transaction");c.state.mutation=true;repo.lockActor(c.actorId);repo.lockNamespace(c.namespaceId);String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request)));
-        Node prior=repo.receipt(c,c.namespaceId);if(prior!=null){c.replayed=true;if(!c.actorId.equals(prior.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");if(!hash.equals(prior.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");return repo.replay(prior,c.namespaceId).data();}
-        Map<String,Object> data=withExportAdmission(collect);repo.saveReceipt(c,c.namespaceId,hash,new Results.Outcome(null,null,data));return data;
+        Node prior=c.state.operationClaimed?null:repo.receipt(c,c.namespaceId);if(prior!=null){c.replayed=true;if(!c.actorId.equals(prior.getProperty("actorId")))c.fail("FORBIDDEN","Operation belongs to another actor");if(!hash.equals(prior.getProperty("requestHash")))c.fail("OPERATION_MISMATCH","Operation input changed");return repo.replay(prior,c.namespaceId).data();}
+        c.revision=repo.sequence(c.namespaceId);
+        Map<String,Object> data=withExportAdmission(collect);
+        if(!c.state.operationClaimed)repo.saveReceipt(c,c.namespaceId,hash,new Results.Outcome(null,null,data));
+        return data;
     }
 
     private void finalizeResources(Map<String,Object> graph,Set<String> historicalIds){
@@ -92,16 +140,37 @@ public final class ExchangeService extends BaseService {
         });
     }
     private Map<String,Object> publishPackage(Map<String,Object> snapshot,Map<String,Object> graphs,Map<String,Object> historyData){
-        Path stage=null;Path blobDirectory=null;
+        Path stage=null;
         try{
-            stage=exportWorkspace.resolve("package.zip");var blobs=new TreeMap<String,Path>();
-            blobDirectory=Files.createTempDirectory(stage.getParent(),"resource-content-");long expanded=0;
+            stage=exportWorkspace.resolve("package.zip");
+            var hashes=records.<Boolean>index();
+            Path blobDirectory=Files.createTempDirectory(stage.getParent(),"resource-content-");
+            long expanded=0;
             for(Object raw:(List<?>)graphs.get("resources")){
                 c.state.kernel.assertOpen();String resourceId=(String)ValueCodec.map(raw).get("id");Node loc=resources.location(resourceId);ResourceStorage.Content verified=resources.verify(loc);
-                if(blobs.containsKey(verified.checksum()))continue;
+                if(hashes.put(verified.checksum(),true)!=null)continue;
                 try{expanded=Math.addExact(expanded,verified.bytes());}catch(ArithmeticException e){c.fail("LIMIT_EXCEEDED","Package expanded size is not representable");}
                 Path blob=blobDirectory.resolve(verified.checksum());c.server.storage.admission.grow(admission,Map.of(resources.files.root,verified.bytes()));try(InputStream in=resources.storage.open(verified,0,verified.bytes());OutputStream out=Files.newOutputStream(blob,StandardOpenOption.CREATE_NEW)){byte[] buffer=new byte[65536];int n;while((n=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,n);}}c.server.storage.admission.materialized(admission,resources.files.root,verified.bytes());
-                if(Files.size(blob)!=verified.bytes()||!verified.checksum().equals(ResourceFiles.checksum(blob)))c.fail("RESOURCE_CORRUPT","Source resource changed during export");blobs.put(verified.checksum(),blob);
+                if(Files.size(blob)!=verified.bytes()||!verified.checksum().equals(ResourceFiles.checksum(blob)))c.fail("RESOURCE_CORRUPT","Source resource changed during export");
+            }
+            Map<String,Path> blobs=new AbstractMap<>() {
+                @Override public Set<Entry<String,Path>> entrySet() {
+                    return new AbstractSet<>() {
+                        public int size(){return hashes.size();}
+                        public Iterator<Entry<String,Path>> iterator() {
+                            return hashes.keySet().stream().<Entry<String,Path>>map(hash->Map.entry(hash,blobDirectory.resolve(hash))).iterator();
+                        }
+                    };
+                }
+            };
+            if("deposit.exchange.export".equals(c.procedure)) {
+                var packages=new ExchangePackages(c);
+                var output=packages.createExport();
+                ExchangePackageCodec.write(packages.archive(output),snapshot,graphs,historyData,blobs,exportBudget,()->c.state.kernel.assertOpen());
+                var reference=packages.publish(output,ExchangePackages.SOURCE,historyData!=null,exportBudget);
+                if(repo.sequence(c.namespaceId)!=c.revision)c.fail("REVISION_CONFLICT","Source revision changed during export finalization");
+                reference.remove("memberCount");
+                return reference;
             }
             long graphJson=countJson(graphs),historyJson=historyData==null?0:countJson(historyData),resourceCount=graphs.get("resources") instanceof List<?> rows?rows.size():0;long manifestJson=Math.addExact(countJson(snapshot),Math.addExact(Math.multiplyExact((long)resourceCount,512L),4096L));long jsonBytes=Math.addExact(Math.addExact(graphJson,historyJson),manifestJson);long archiveEstimate=Math.addExact(Math.addExact(jsonBytes,expanded),Math.addExact(jsonBytes/100,Math.addExact(Math.multiplyExact((long)blobs.size()+3L,4096L),65536L)));long workspaceEstimate=Math.addExact(Math.addExact(graphJson,historyJson),manifestJson);long packageReserve=Math.addExact(archiveEstimate,workspaceEstimate);c.server.storage.admission.grow(admission,Map.of(resources.files.root,packageReserve));
             ExchangePackageCodec.write(stage,snapshot,graphs,historyData,blobs);ExchangePackageCodec.validateSummary(stage,()->c.state.kernel.assertOpen());if(repo.sequence(c.namespaceId)!=c.revision)c.fail("REVISION_CONFLICT","Source revision changed during export finalization");
@@ -113,7 +182,7 @@ public final class ExchangeService extends BaseService {
             resources.record("DepositExportGrant",UUID.randomUUID().toString(),Json.map("resourceId",id,"namespaceId",c.namespaceId,"actorId",c.actorId,"history",historyData!=null,"expires",resources.now()+ResourceFiles.LEASE));
             return Json.map("resourceId",id,"checksum",checksum,"bytes",bytes,"state","ready");
         }catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to finalize exchange package");}
-        finally{if(blobDirectory!=null)try(var paths=Files.walk(blobDirectory)){for(Path path:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(path);}catch(IOException ignored){}if(stage!=null)try{Files.deleteIfExists(stage);}catch(IOException ignored){}}
+
     }
     private Map<String,Object> validatePackage(Map<String,Object> request) {
         fields(request,"resourceId");readContext();scoped("editor");String id=RequestContext.uuid(request.get("resourceId"));Node resource=resources.resource(c.namespaceId,id);

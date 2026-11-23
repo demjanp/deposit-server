@@ -35,10 +35,13 @@ public final class CursorCodec {
         return body+"."+Base64.getUrlEncoder().withoutPadding().encodeToString(sign(c.server.cursorKey,body));
     }
     public static Map<String,Object> decode(RequestContext c,String cursor) {
+        return decode(c,cursor,System.currentTimeMillis());
+    }
+    public static Map<String,Object> decode(RequestContext c,String cursor,long now) {
         try {
             String[] parts=cursor.split("\\.");if(parts.length!=2||!MessageDigest.isEqual(sign(c.server.cursorKey,parts[0]),Base64.getUrlDecoder().decode(parts[1])))throw new IllegalArgumentException();
             var payload=Json.read(new String(Base64.getUrlDecoder().decode(parts[0]),StandardCharsets.UTF_8));
-            if(((Number)payload.get("expires")).longValue()<System.currentTimeMillis())throw new IllegalArgumentException();return payload;
+            if(((Number)payload.get("expires")).longValue()<now)throw new IllegalArgumentException();return payload;
         } catch(RuntimeException e) {throw ExceptionHandler.error("VALIDATION_FAILED","Invalid or expired cursor",c,false,Map.of());}
     }
 }

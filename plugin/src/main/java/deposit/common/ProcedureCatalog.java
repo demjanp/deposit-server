@@ -6,6 +6,16 @@ public final class ProcedureCatalog {
  public record Spec(String scope, boolean action, List<String> bindings) {}
  private static final Map<String,Spec> SPECS=new LinkedHashMap<>();
  static {
+  SPECS.put("deposit.exchange.export",new Spec("operational",true,List.of("rootIds","options")));
+  SPECS.put("deposit.exchange.beginUpload",new Spec("exchangeUpload",true,List.of("scope","inputKind","metadata")));
+  SPECS.put("deposit.exchange.uploadChunk",new Spec("exchangeUpload",true,List.of("uploadId","member","offset","bytesBase64","chunkSha256")));
+  SPECS.put("deposit.exchange.finishUpload",new Spec("exchangeUpload",true,List.of("uploadId")));
+  SPECS.put("deposit.exchange.abortUpload",new Spec("exchangeUpload",true,List.of("uploadId")));
+  SPECS.put("deposit.exchange.inspect",new Spec("server",false,List.of("packageId","grant")));
+  SPECS.put("deposit.exchange.memberPage",new Spec("server",false,List.of("packageId","grant","leaseId","cursor","limit")));
+  SPECS.put("deposit.exchange.graphPage",new Spec("server",false,List.of("packageId","grant","leaseId","collection","cursor","limit")));
+  SPECS.put("deposit.exchange.readChunk",new Spec("server",false,List.of("packageId","grant","leaseId","member","offset","length")));
+  SPECS.put("deposit.exchange.discard",new Spec("server",false,List.of("packageId","grant")));
   SPECS.put("deposit.create.class",new Spec("namespace",true,List.of("name","+")));
   SPECS.put("deposit.set.class",new Spec("namespace",true,List.of("@Class:id","+")));
   SPECS.put("deposit.delete.class",new Spec("namespace",true,List.of("@Class:id")));

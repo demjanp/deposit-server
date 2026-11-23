@@ -9,7 +9,7 @@ import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** Authorization and ordering for the public one-attempt operation controls. */
 final class OperationAttemptService extends BaseService {
-    private static final Set<String> EXPORTS = Set.of("deposit.get.data", "deposit.get.namespaceData", "deposit.save.data",
+    private static final Set<String> EXPORTS = Set.of("deposit.get.data", "deposit.get.namespaceData", "deposit.save.data","deposit.exchange.export",
         "deposit.save.csv", "deposit.save.xlsx", "deposit.save.gpkg");
     private static final Set<String> OWNER = Set.of("deposit.set.namespace", "deposit.delete.all", "deposit.set.namespaceRole",
         "deposit.set.versioningType", "deposit.set.versionTag", "deposit.utils.restore");
@@ -17,8 +17,9 @@ final class OperationAttemptService extends BaseService {
     private static final Set<String> SERVER_RECEIPTS = Set.of("deposit.delete.namespace", "deposit.import.cloneNamespace");
     private static final Set<String> RESOURCE_STEPS = Set.of("deposit.resource.uploadChunk", "deposit.resource.finishUpload", "deposit.resource.abortUpload");
     private static final Set<String> CLONE_STEPS = Set.of("deposit.import.cloneUploadChunk", "deposit.import.finishCloneUpload", "deposit.import.abortCloneUpload");
+    private static final Set<String> EXCHANGE_STEPS = Set.of("deposit.exchange.uploadChunk","deposit.exchange.finishUpload","deposit.exchange.abortUpload");
     private static final Set<String> SUMMARY_KEYS = Set.of("id", "namespaceId", "revisionId", "targetRevision",
-        "planId", "resultId", "uploadId", "resourceId", "packageId", "tableId", "pruneId", "nextOffset", "bytes", "changed");
+        "planId", "resultId", "uploadId", "resourceId", "packageId", "tableId", "pruneId", "nextOffset", "bytes", "changed","grant","sha256","expiresAt","memberCount","member");
     private final OperationAttemptRepository attempts;
     private final SessionActionScope scopes;
 
@@ -42,7 +43,7 @@ final class OperationAttemptService extends BaseService {
     }
 
     private static String uploadStepId(String route,List<?> arguments) {
-        if ((RESOURCE_STEPS.contains(route)||CLONE_STEPS.contains(route)) && !arguments.isEmpty()
+        if ((RESOURCE_STEPS.contains(route)||CLONE_STEPS.contains(route)||EXCHANGE_STEPS.contains(route)) && !arguments.isEmpty()
                 && arguments.getFirst() instanceof String id) return id;
         return null;
     }
@@ -94,7 +95,7 @@ final class OperationAttemptService extends BaseService {
         node.setProperty("bindings", Json.write(bindings));
         if (uploadId != null) node.setProperty("uploadId", uploadId);
         if (source != null) {
-            node.setProperty(source.upload ? "sourceUpload" : "sourcePackage",source.packageId);
+            node.setProperty(source.exchange ? "sourceExchange" : source.upload ? "sourceUpload" : "sourcePackage",source.packageId);
             if (source.grantId != null) node.setProperty("sourceGrant",source.grantId);
         }
         node.setProperty("claimDeadline", OperationAttemptRepository.idTime(id) + OperationAttemptRepository.RETENTION);
@@ -271,7 +272,12 @@ final class OperationAttemptService extends BaseService {
             if (now - (long)values.get("updatedAt") >= OperationAttemptRepository.RETENTION) {
                 code = "RESULT_EXPIRED";
                 result = null;
-            } else if (EXPORTS.contains(values.get("procedure")) && !result.containsKey("resourceId")) {
+            } else if (Set.of("deposit.exchange.export","deposit.exchange.finishUpload").contains(values.get("procedure"))
+                    && result.get("packageId") instanceof String packageId) {
+                Node stage=repo.find(ExchangePackages.LABEL,"id",packageId);
+                if(stage==null || (long)stage.getProperty("expiresAt",0L)<=now) {code="RESULT_EXPIRED"; result=null;}
+                else if(!"ready".equals(stage.getProperty("state",null))) {code="RESULT_UNAVAILABLE"; result=null;}
+            } else if (EXPORTS.contains(values.get("procedure")) && !result.containsKey("resourceId") && !result.containsKey("packageId")) {
                 code = "RESULT_UNAVAILABLE";
             }
         }
@@ -322,6 +328,10 @@ final class OperationAttemptService extends BaseService {
 
     private String connection() { return ((InternalTransaction)c.tx).clientInfo().connectionId(); }
     private String writer(String procedure, List<Object> arguments, String scope) {
+        if(EXCHANGE_STEPS.contains(procedure)) {
+            var packages=new ExchangePackages(c);
+            return deposit.repository.CoreRepository.id(packages.writer(arguments.getFirst(),scope,procedure.endsWith("abortUpload")));
+        }
         boolean resource = RESOURCE_STEPS.contains(procedure);
         if (!resource && !CLONE_STEPS.contains(procedure)) return null;
         String id = RequestContext.uuid(arguments.getFirst());
@@ -339,20 +349,25 @@ final class OperationAttemptService extends BaseService {
         return id;
     }
 
-    private record SourceBinding(String packageId, String grantId, boolean upload) {}
+    private record SourceBinding(String packageId, String grantId, boolean upload, boolean exchange) {}
 
     private SourceBinding bindSource(String procedure, String scope, Map<String,Object> request) {
         String packageId;
         String grantId = null;
         switch (procedure) {
-            case "deposit.import.analyze" -> packageId = RequestContext.uuid(ValueCodec.map(request.get("source")).get("packageResourceId"));
+            case "deposit.import.analyze" -> {
+                var source=ValueCodec.map(request.get("source"));
+                if(source.containsKey("packageId")||source.containsKey("grant"))return bindExchange(scope,source);
+                packageId = RequestContext.uuid(source.get("packageResourceId"));
+            }
             case "deposit.import.cloneNamespace" -> {
                 var source = ValueCodec.map(request.get("source"));
+                if(source.containsKey("packageId")||source.containsKey("grant"))return bindExchange(scope,source);
                 if (!source.containsKey("resourceId")) {
                     String uploadId=RequestContext.uuid(source.get("uploadId"));
                     Node upload=authorizeCloneUpload(uploadId,true);
                     if (!ResourceFiles.hash(source.get("sha256")).equals(upload.getProperty("sha256",null))) throw unavailable();
-                    return new SourceBinding(uploadId,null,true);
+                    return new SourceBinding(uploadId,null,true,false);
                 }
                 packageId = RequestContext.uuid(source.get("resourceId"));
             }
@@ -364,13 +379,24 @@ final class OperationAttemptService extends BaseService {
                 grantId = (String)plan.getProperty("sourceGrantId",null);
                 if (grantId == null) return null;
                 packageId = (String)plan.getProperty("sourcePackageId");
+                if(Boolean.TRUE.equals(plan.getProperty("exchangeSource",false)))
+                    return bindExchange(scope,Map.of("packageId",packageId,"grant",grantId));
             }
             default -> { return null; }
         }
-        return new SourceBinding(packageId,new SourcePackageAccess(c).authorize(packageId,grantId,true),false);
+        return new SourceBinding(packageId,new SourcePackageAccess(c).authorize(packageId,grantId,true),false,false);
+    }
+
+    private SourceBinding bindExchange(String scope,Map<String,Object> raw) {
+        var source=ExchangePackages.source(raw);
+        String id=RequestContext.uuid(source.get("packageId")), grant=string(source.get("grant"));
+        new ExchangePackages(c).input(id,grant,scope,true,false);
+        return new SourceBinding(id,grant,false,true);
     }
 
     private void checkSource(Map<String,Object> attempt, boolean acquiring) {
+        if(attempt.get("sourceExchange") instanceof String id)
+            new ExchangePackages(c).input(id,(String)attempt.get("sourceGrant"),(String)attempt.get("scope"),acquiring,false);
         if (attempt.get("sourcePackage") instanceof String id)
             new SourcePackageAccess(c).authorize(id,(String)attempt.get("sourceGrant"),acquiring);
         if (attempt.get("sourceUpload") instanceof String id)

@@ -75,7 +75,7 @@ public final class StorageManager implements AutoCloseable {
         try { admission.reconcile(this::reconcileReservation); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot reconcile storage reservations", e); }
         for (String id : ids("DepositPruneItem")) { jobs.collect(id); jobs.collect(id); }
-        try { jobs.expireImportPlans(); jobs.expireTables(); jobs.expireCloneUploads(); }
+        try { jobs.expireImportPlans(); jobs.expireTables(); jobs.expireCloneUploads(); jobs.expireExchange(); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot expire staged operational data", e); }
         try { content.recoverWork(); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot reconcile resource work", e); }
@@ -100,8 +100,26 @@ public final class StorageManager implements AutoCloseable {
             case "tabular-load" -> reconcileTableStage(reservation);
             case "namespace-clone","import-plan" -> reconcilePackageStage(reservation);
             case "export-scratch" -> reconcileExportScratch(reservation);
+            case "exchange-stage" -> reconcileExchangeStage(reservation);
             default -> StorageAdmission.OwnerState.uncertain();
         };
+    }
+
+    private StorageAdmission.OwnerState reconcileExchangeStage(StorageAdmission.Reservation reservation)throws java.io.IOException {
+        var intent=reservation.writeIntent();
+        String path="staging/exchange/"+RequestContext.uuid(reservation.ownerId);
+        if(!"exchange-stage".equals(intent.get("phase")) || !path.equals(intent.get("stagingPath"))
+                || !(intent.get("actorId") instanceof String actor) || !(intent.get("receiptScope") instanceof String scope)
+                || reservation.operationId==null)return StorageAdmission.OwnerState.uncertain();
+        try(var tx=db.beginTx()){
+            if(tx.findNode(org.neo4j.graphdb.Label.label("DepositExchangeStage"),"id",reservation.ownerId)!=null)
+                return StorageAdmission.OwnerState.uncertain();
+            Node attempt=new OperationAttemptRepository(tx).find(actor,scope,reservation.operationId);
+            if(attempt==null||OperationAttemptRepository.open(OperationAttemptRepository.state(attempt)))
+                return StorageAdmission.OwnerState.uncertain();
+            files.deleteOwnedStagingTree(path);
+            return StorageAdmission.OwnerState.absent();
+        }
     }
 
     private StorageAdmission.OwnerState reconcileExportScratch(StorageAdmission.Reservation reservation)throws java.io.IOException {
@@ -209,6 +227,9 @@ public final class StorageManager implements AutoCloseable {
     }
 
     private StorageAdmission.OwnerState reconcileReservation(StorageAdmission.Reservation reservation)throws java.io.IOException {
+        if("exchange-write".equals(reservation.ownerKind)&&!server.runId.equals(reservation.serverRunId()))
+            return StorageAdmission.OwnerState.absent();
+        if("exchange-stage".equals(reservation.ownerKind))return reconcileExchangeStage(reservation);
         if("history-baseline".equals(reservation.ownerKind)){
             Map<String,Object> intent=reservation.writeIntent();
             if(server.runId.equals(reservation.serverRunId())||!"history-baseline".equals(reservation.purpose)
@@ -376,14 +397,14 @@ public final class StorageManager implements AutoCloseable {
         try {
             operations.tick();
             jobs.expireImportPlans(); jobs.expireTables();
-            jobs.expireCloneUploads();
+            jobs.expireCloneUploads(); jobs.expireExchange();
             for (String id : ids("DepositResourceLocation")) {
                 if (Thread.currentThread().isInterrupted()) return;
                 jobs.process(id, false);
             }
             for (String id : ids("DepositPruneItem")) jobs.collect(id);
             // Runtime cleanup is safe only when a durable receipt proves the import transaction committed.
-            admission.reconcile(reservation->Set.of("ocfl-publication","tabular-load","namespace-clone","import-plan","export-scratch").contains(reservation.ownerKind)
+            admission.reconcile(reservation->Set.of("ocfl-publication","tabular-load","namespace-clone","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind)
                 ?reconcileOutputIntent(reservation):reconcileRuntimeImportWrite(reservation));
             operations.finishCleanup();
         } catch (Exception e) { diagnostic = "Resource maintenance pending: " + e.getClass().getSimpleName(); }

@@ -12,6 +12,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -82,6 +83,75 @@ final class StorageMaintenanceJobs {
             if (loc != null) new ResourceRepository(tx, core).orphan(loc);
             tx.commit();
         }
+    }
+
+    void expireExchange() throws IOException {
+        long now=server.sessionTime();
+        var candidates=new LinkedHashSet<String>();
+        try(var tx=db.beginTx()){
+            try(var rows=tx.execute("""
+                    MATCH (stage:DepositExchangeStage)
+                    WHERE (stage.cleanupAfter <= $now AND coalesce(stage.cleaned,false)=false)
+                        OR stage.inputCleanup=true OR stage.removeAfter <= $now
+                    RETURN stage.id AS id LIMIT 64
+                    """,Map.of("now",now))){
+                while(rows.hasNext())candidates.add((String)rows.next().get("id"));
+            }
+            var core=core(tx);
+            try(var writers=core.scanNodes("DepositExchangeStage",Map.of("state","uploading"))){
+                while(writers.hasNext()&&candidates.size()<128){
+                    Node writer=writers.next();
+                    if(UploadBinding.abandoned(server,core,writer))candidates.add(CoreRepository.id(writer));
+                }
+            }
+        }
+        for(String id:candidates)cleanExchange(id,now);
+    }
+
+    private void cleanExchange(String id,long now)throws IOException {
+        String closed=null;
+        try(var tx=db.beginTx()){
+            var core=core(tx);
+            Node stage=core.find("DepositExchangeStage","id",id);
+            if(stage==null)return;
+            tx.acquireWriteLock(stage);
+            stage=core.find("DepositExchangeStage","id",id);
+            if(stage==null)return;
+            if("uploading".equals(stage.getProperty("state"))&&UploadBinding.abandoned(server,core,stage)){
+                stage.setProperty("state","aborted");
+                stage.setProperty("cleanupAfter",now);
+                stage.setProperty("removeAfter",now+ResourceFiles.LEASE);
+            }
+            boolean removing=(long)stage.getProperty("cleanupAfter",Long.MAX_VALUE)<=now;
+            boolean input=Boolean.TRUE.equals(stage.getProperty("inputCleanup",false));
+            if((removing&&!Boolean.TRUE.equals(stage.getProperty("cleaned",false)))||input){
+                String path="staging/exchange/"+RequestContext.uuid(id);
+                if(removing)files.deleteOwnedStagingTree(path);
+                else files.deleteOwnedStagingTree(path+"/input");
+                long deleted;
+                try(var rows=tx.execute("""
+                        MATCH (member:DepositExchangeUploadMember {uploadId:$id})
+                        WITH member LIMIT 256 DELETE member RETURN count(*) AS deleted
+                        """,Map.of("id",id))){
+                    deleted=(long)rows.next().get("deleted");
+                }
+                if(deleted<256){
+                    stage.removeProperty("inputCleanup");
+                    if(removing){
+                        UploadBinding.cleaned(core,id);
+                        try(var attempts=core.scanNodes("DepositOperationAttempt",Map.of("uploadId",id))){
+                            if(!attempts.hasNext())stage.setProperty("cleaned",true);
+                        }
+                    }
+                }
+            }
+            if(Boolean.TRUE.equals(stage.getProperty("cleaned",false))&&(long)stage.getProperty("removeAfter",Long.MAX_VALUE)<=now){
+                closed=(String)stage.getProperty("admissionId");
+                stage.delete();
+            }
+            tx.commit();
+        }
+        if(closed!=null)server.storage.admission.closeIfPresent(closed);
     }
 
     void expireCloneUploads() throws IOException {

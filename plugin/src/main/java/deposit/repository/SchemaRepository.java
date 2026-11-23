@@ -38,6 +38,11 @@ public final class SchemaRepository {
             tx.execute("CREATE INDEX deposit_attempt_deadline IF NOT EXISTS FOR (n:DepositOperationAttempt) ON (n.claimDeadline)").close();
             tx.execute("CREATE INDEX deposit_attempt_writer IF NOT EXISTS FOR (n:DepositOperationAttempt) ON (n.uploadId)").close();
             tx.execute("CREATE INDEX deposit_resource_writer_session IF NOT EXISTS FOR (n:DepositTransfer) ON (n.writerSession)").close();
+            tx.execute("CREATE INDEX deposit_exchange_writer_session IF NOT EXISTS FOR (n:DepositExchangeStage) ON (n.writerSession)").close();
+            tx.execute("CREATE INDEX deposit_exchange_cleanup IF NOT EXISTS FOR (n:DepositExchangeStage) ON (n.cleanupAfter)").close();
+            tx.execute("CREATE INDEX deposit_exchange_state IF NOT EXISTS FOR (n:DepositExchangeStage) ON (n.state)").close();
+            tx.execute("CREATE CONSTRAINT deposit_exchange_member IF NOT EXISTS FOR (n:DepositExchangeUploadMember) REQUIRE (n.uploadId,n.name) IS UNIQUE").close();
+            tx.execute("CREATE INDEX deposit_exchange_member_writer IF NOT EXISTS FOR (n:DepositExchangeUploadMember) ON (n.uploadId)").close();
             tx.execute("CREATE INDEX deposit_clone_writer_session IF NOT EXISTS FOR (n:DepositCloneUpload) ON (n.writerSession)").close();
             tx.execute("CREATE CONSTRAINT deposit_import_result_id IF NOT EXISTS FOR (n:DepositImportResult) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_import_result_collection_id IF NOT EXISTS FOR (n:DepositImportResultCollection) REQUIRE (n.resultId,n.id) IS UNIQUE").close();
@@ -55,7 +60,7 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_init IF NOT EXISTS FOR (n:DepositInitialization) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_actor_lock IF NOT EXISTS FOR (n:DepositActorLock) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_objects IF NOT EXISTS FOR (n:Object) ON (n.namespaceId)").close();
-            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositTransferChunk","DepositCloneUpload","DepositCloneUploadChunk","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem","DepositImportPlan"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
+            for(String label:List.of("DepositStorageLock","DepositNamespaceLock","DepositTransfer","DepositTransferChunk","DepositCloneUpload","DepositCloneUploadChunk","DepositExchangeStage","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem","DepositImportPlan"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
             tx.commit();
         }
         try(var tx=db.beginTx()) {

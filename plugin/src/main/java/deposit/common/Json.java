@@ -22,7 +22,16 @@ public final class Json {
     // entire spill index into heap, so aggregate exchange serialization omits it.
     private static final ObjectMapper STREAM_MAPPER = new ObjectMapper()
         .enable(DeserializationFeature.USE_LONG_FOR_INTS);
-    static { STREAM_MAPPER.getFactory().setStreamReadConstraints(com.fasterxml.jackson.core.StreamReadConstraints.builder().maxStringLength(Integer.MAX_VALUE).build()); }
+    static {
+        STREAM_MAPPER.getFactory().setStreamReadConstraints(com.fasterxml.jackson.core.StreamReadConstraints.builder().maxStringLength(Integer.MAX_VALUE).build());
+        var module=new com.fasterxml.jackson.databind.module.SimpleModule();
+        module.addSerializer(PackageWorkspace.Text.class,new JsonSerializer<PackageWorkspace.Text>() {
+            @Override public void serialize(PackageWorkspace.Text text,com.fasterxml.jackson.core.JsonGenerator generator,SerializerProvider provider)throws java.io.IOException {
+                try(var reader=text.reader()){generator.writeString(reader,-1);}
+            }
+        });
+        STREAM_MAPPER.registerModule(module);
+    }
     private Json() {}
     public static String write(Object value) {
         try { return MAPPER.writeValueAsString(value); }

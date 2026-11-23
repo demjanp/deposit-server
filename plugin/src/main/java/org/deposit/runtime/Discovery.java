@@ -1,9 +1,7 @@
 package org.deposit.runtime;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Stream;
 import org.neo4j.procedure.Description;
 import org.neo4j.procedure.Mode;
@@ -17,14 +15,20 @@ public class Discovery {
     public Stream<Info> info() {
         RuntimeReadiness.requireReady();
         var database=(org.neo4j.kernel.internal.GraphDatabaseAPI)db;
-        deposit.common.ServerContext.forDatabase(database.databaseId().databaseId().uuid()).requireReady();
-        return Stream.of(new Info(deposit.common.DepositInfo.version()));
+        var server=deposit.common.ServerContext.forDatabase(database.databaseId().databaseId().uuid());
+        server.requireReady();
+        return Stream.of(new Info(deposit.common.DepositInfo.version(),server.runId));
     }
 
     public static class Info {
         public final Map<String, Object> data;
         public Info(String version) {
-            data = Map.of("version", version, "capabilities", List.of("fullNamespaceClone", "pagedImportResults", "operationControl"));
+            this(version,null);
+        }
+        Info(String version,String incarnation) {
+            var capabilities=List.of("fullNamespaceClone","pagedImportResults","operationControl","exchangeIntake");
+            data=incarnation==null?Map.of("version",version,"capabilities",capabilities)
+                :Map.of("version",version,"capabilities",capabilities,"incarnation",incarnation);
         }
     }
 }

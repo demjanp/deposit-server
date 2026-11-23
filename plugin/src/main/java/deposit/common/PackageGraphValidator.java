@@ -27,11 +27,16 @@ final class PackageGraphValidator {
         for(String edgeList:List.of("relationships","classRelationships")){boolean objectEdge=edgeList.equals("relationships");Map<String,Map<String,Object>> endpoints=objectEdge?objects:classes;for(Object raw:(List<?>)graph.get(edgeList)){var edge=(Map<String,Object>)raw;if(!edgeKeys.add(edgeList+"\u0000"+edge.get("sourceId")+"\u0000"+edge.get("targetId")+"\u0000"+edge.get("label")))throw new IOException("Duplicate domain relationship");if(!endpoints.containsKey(edge.get("sourceId"))||!endpoints.containsKey(edge.get("targetId"))||!(edge.get("label") instanceof String))throw new IOException("Invalid relationship endpoint");}}
         Set<String> classEdgeKeys=workspace==null?new HashSet<>():workspace.set();for(Object raw:(List<?>)graph.get("classRelationships")){var edge=(Map<String,Object>)raw;classEdgeKeys.add(edge.get("sourceId")+"\u0000"+edge.get("targetId")+"\u0000"+edge.get("label"));}
         for(Object raw:(List<?>)graph.get("relationships")){var edge=(Map<String,Object>)raw;String sourceClass=memberships.get(edge.get("sourceId")),targetClass=memberships.get(edge.get("targetId"));if(!classEdgeKeys.contains(sourceClass+"\u0000"+targetClass+"\u0000"+edge.get("label")))throw new IOException("Object relationship has no Class relationship");}
-        Map<String,Object> files=ValueCodec.map(manifest.get("files"));for(Object raw:(List<?>)graph.get("resources")) {
+        Map<String,Object> files=ValueCodec.map(manifest.get("files"));
+        Set<String> referenced=workspace==null?new HashSet<>():workspace.set();
+        for(Object raw:(List<?>)graph.get("resources")) {
             if(!(raw instanceof Map<?,?> row)||!(row.get("sha256") instanceof String hash)||!(row.get("entry") instanceof String entry))throw new IOException("Invalid resource record");
             if(!entry.equals("resources/"+hash)||!paths.contains(entry)||!hash.equals(entry.substring(10)))throw new IOException("Missing referenced resource");
+            referenced.add(entry);
             Map<String,Object> info=ValueCodec.map(files.get(entry));if(!Objects.equals(row.get("bytes"),info.get("bytes")))throw new IOException("Resource length differs from its content entry");
         }
+        for(String path:paths)if(path.startsWith("resources/")&&!referenced.contains(path))
+            throw new IOException("Package contains resource content with no resource identity");
         Set<String> entityNames=workspace==null?new HashSet<>():workspace.set();for(String kind:List.of("Pattern","UserTool"))for(var row:ids.get(kind).values())if(!entityNames.add(kind+"\u0000"+row.get("name")))throw new IOException("Duplicate named entity");
         validatePatternRows((List<?>)graph.get("patterns"),classes,workspace);
     }

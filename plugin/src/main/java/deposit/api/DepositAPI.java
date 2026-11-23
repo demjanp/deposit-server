@@ -224,7 +224,7 @@ public final class DepositAPI extends BaseAPI {
  @Procedure(name="deposit.load.data",mode=Mode.READ)
  public Stream<PublicResults.DataRow> p107(@Name("resourceId") String a0,@Name("token") String token) { return invokePublic(token,"deposit.load.data",Arrays.asList(a0)).map(PublicResults::data); }
  @Procedure(name="deposit.import.analyze",mode=Mode.WRITE)
- public Stream<PublicResults.DataRow> p108(@Name("source") Object a0,@Name("rules") Map<String,Object> a1,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.analyze",Arrays.asList(a0,a1),operationId).map(PublicResults::data); }
+ public Stream<PublicResults.DataRow> p108(@Name("source") Map<String,Object> a0,@Name("rules") Map<String,Object> a1,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.analyze",Arrays.asList(a0,a1),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.get.importPlan",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p109(@Name("planId") String a0,@Name("token") String token,@Name(value="renewLease",defaultValue="true") Boolean renewLease) { return invokePublic(token,"deposit.get.importPlan",Arrays.asList(a0,renewLease)).map(PublicResults::data); }
  @Procedure(name="deposit.get.importResult",mode=Mode.READ)
@@ -273,4 +273,45 @@ public final class DepositAPI extends BaseAPI {
  public Stream<PublicResults.DataRow> p121(@Name("source") Map<String,Object> a0,@Name("targets") Map<String,Object> a1,@Name("relationships") List<Object> a2,@Name("rules") Map<String,Object> a3,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.rows",Arrays.asList(a0,a1,a2,a3),operationId).map(PublicResults::data); }
  @Procedure(name="deposit.import.dataByPattern",mode=Mode.WRITE)
  public Stream<PublicResults.DataRow> p122(@Name("pattern") Object a0,@Name("values") Map<String,Object> a1,@Name("rules") Map<String,Object> a2,@Name("operationId") String operationId,@Name("token") String token) { return invokePublic(token,"deposit.import.dataByPattern",Arrays.asList(a0,a1,a2),operationId).map(PublicResults::data); }
+
+ @Procedure(name="deposit.exchange.export",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> exchangeExport(@Name("rootIds") List<String> rootIds, @Name("options") Map<String,Object> options, @Name("operationId") String operationId, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.export",Arrays.asList(rootIds, options),operationId).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.beginUpload",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> exchangeBeginupload(@Name("scope") String scope, @Name("inputKind") String inputKind, @Name("metadata") Map<String,Object> metadata, @Name("operationId") String operationId, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.beginUpload",Arrays.asList(scope, inputKind, metadata),operationId).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.uploadChunk",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> exchangeUploadchunk(@Name("uploadId") String uploadId, @Name("member") String member, @Name("offset") Long offset, @Name("bytesBase64") String bytesBase64, @Name("chunkSha256") String chunkSha256, @Name("operationId") String operationId, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.uploadChunk",Arrays.asList(uploadId, member, offset, bytesBase64, chunkSha256),operationId).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.finishUpload",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> exchangeFinishupload(@Name("uploadId") String uploadId, @Name("operationId") String operationId, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.finishUpload",Arrays.asList(uploadId),operationId).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.abortUpload",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> exchangeAbortupload(@Name("uploadId") String uploadId, @Name("operationId") String operationId, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.abortUpload",Arrays.asList(uploadId),operationId).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.inspect",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> exchangeInspect(@Name("packageId") String packageId, @Name("grant") String grant, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.inspect",Arrays.asList(packageId, grant),null).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.memberPage",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> exchangeMemberpage(@Name("packageId") String packageId, @Name("grant") String grant, @Name("leaseId") String leaseId, @Name("cursor") Map<String,Object> cursor, @Name("limit") Long limit, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.memberPage",Arrays.asList(packageId, grant, leaseId, cursor, limit),null).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.graphPage",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> exchangeGraphpage(@Name("packageId") String packageId, @Name("grant") String grant, @Name("leaseId") String leaseId, @Name("collection") String collection, @Name("cursor") Map<String,Object> cursor, @Name("limit") Long limit, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.graphPage",Arrays.asList(packageId, grant, leaseId, collection, cursor, limit),null).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.readChunk",mode=Mode.READ)
+ public Stream<PublicResults.DataRow> exchangeReadchunk(@Name("packageId") String packageId, @Name("grant") String grant, @Name("leaseId") String leaseId, @Name("member") String member, @Name("offset") Long offset, @Name("length") Long length, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.readChunk",Arrays.asList(packageId, grant, leaseId, member, offset, length),null).map(PublicResults::data);
+ }
+ @Procedure(name="deposit.exchange.discard",mode=Mode.WRITE)
+ public Stream<PublicResults.DataRow> exchangeDiscard(@Name("packageId") String packageId, @Name("grant") String grant, @Name("token") String token) {
+  return invokePublic(token,"deposit.exchange.discard",Arrays.asList(packageId, grant),null).map(PublicResults::data);
+ }
 }

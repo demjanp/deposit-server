@@ -73,7 +73,7 @@ public final class SessionActionService extends BaseService {
             c.actionScope=scopeRules.scope(procedure,arguments);c.operational=scopeRules.operational(procedure);
             if(c.operationId==null)c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:scopeRules.baseline(c.actionScope);
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);
-            if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,scopeRules.exportRole(procedure,arguments));
+            if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData","deposit.exchange.export","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,scopeRules.exportRole(procedure,arguments));
             if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",scopeRules.baseline(scopeRules.active()));
         }
         synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}

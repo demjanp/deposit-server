@@ -9,7 +9,7 @@ import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** An incomplete writer belongs to its original Bolt connection and session. */
 public final class UploadBinding {
-    private static final List<String> WRITERS=List.of("DepositTransfer","DepositCloneUpload");
+    private static final List<String> WRITERS=List.of("DepositTransfer","DepositCloneUpload","DepositExchangeStage");
     private UploadBinding() {}
 
     public static void bind(RequestContext context, Node writer) {

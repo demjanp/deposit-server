@@ -104,15 +104,20 @@ public final class ImportService extends ActionService {
         validateRules(rules);c.operational=false;c.expectedRevision=repo.sequence(c.namespaceId);final Path[] retained={null};final StorageAdmission.Reservation[] retainedAdmission={null};
         try{
             Outcome outcome=action("deposit.import.analyze",request,false,"editor",()->{
-                Map<String,Object> src=ValueCodec.map(request.get("source"));fields(src,"packageResourceId");String packageId=RequestContext.uuid(src.get("packageResourceId"));
-                String id=UUID.randomUUID().toString();AuthorizedPackage copied=copyAuthorizedPackage(packageId,"import-plan",id);Path staged=copied.path();retained[0]=staged;retainedAdmission[0]=copied.reservation();
+                Map<String,Object> src=ValueCodec.map(request.get("source"));
+                boolean exchange=src.containsKey("packageId")||src.containsKey("grant");
+                if(exchange)ExchangePackages.source(src);else fields(src,"packageResourceId");
+                String packageId=RequestContext.uuid(src.get(exchange?"packageId":"packageResourceId"));
+                String id=UUID.randomUUID().toString();
+                AuthorizedPackage copied=exchange?copyExchangePackage(src,id):copyAuthorizedPackage(packageId,"import-plan",id);
+                Path staged=copied.path();retained[0]=staged;retainedAdmission[0]=copied.reservation();
                 String relative=c.server.storage.files.root.relativize(staged).toString().replace('\\','/');long now=resources.now();long targetRevision=repo.sequence(c.namespaceId),expires=now+24L*60*60*1000;String rulesJson=Json.write(rules);
-                Map<String,Object> result=withValidatedPackage(staged,pkg->{Object scope=pkg.manifest().get("scope");if(!"namespace".equals(scope)&&!"subgraph".equals(scope))throw ExceptionHandler.fail("VALIDATION_FAILED","Import source must be a complete Namespace or subgraph snapshot");return analyzeSnapshot(pkg,rules,summary->{
+                Map<String,Object> result=withValidatedPackage(staged,copied.content(),()->c.state.kernel.assertOpen(),pkg->{Object scope=pkg.manifest().get("scope");if(!"namespace".equals(scope)&&!"subgraph".equals(scope))throw ExceptionHandler.fail("VALIDATION_FAILED","Import source must be a complete Namespace or subgraph snapshot");return analyzeSnapshot(pkg,rules,summary->{
                     if(!((Collection<?>)summary.get("conflicts")).isEmpty()){
                         Map<String,Object> diagnostic=importResults.save(c.operationId,"diagnostic",null,targetRevision,now+30L*24*60*60*1000,Json.map("conflicts",summary.get("conflicts")));
                         discardStagingAfterCommit(staged,copied.reservation());return diagnostic;
                     }
-                    Map<String,Object> saved=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,packageId,relative,targetRevision,now,expires,rulesJson);if(copied.sourceGrant()!=null)plan.setProperty("sourceGrantId",copied.sourceGrant());plan.setProperty("resultId",saved.get("resultId"));plan.setProperty("admissionId",copied.reservation().id);retainStagingUntilCommit(staged,copied.reservation());return saved;
+                    Map<String,Object> saved=importResults.save(c.operationId,"analysis",id,targetRevision,expires,summary);Node plan=initializePlan(id,packageId,relative,targetRevision,now,expires,rulesJson);if(copied.sourceGrant()!=null)plan.setProperty("sourceGrantId",copied.sourceGrant());if(exchange)plan.setProperty("exchangeSource",true);plan.setProperty("resultId",saved.get("resultId"));plan.setProperty("admissionId",copied.reservation().id);retainStagingUntilCommit(staged,copied.reservation());return saved;
                 });});
                 return new Change(new Outcome(null,null,result),false);
             });
@@ -151,20 +156,26 @@ public final class ImportService extends ActionService {
             repo.lockNamespace(c.namespaceId);Node plan=repo.find("DepositImportPlan","id",id);if(plan!=null&&!c.namespaceId.equals(plan.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Import plan belongs to another Namespace");
             if(plan==null||number(plan,"expiresAt",0)<=resources.now()||!"ready".equals(plan.getProperty("state")))c.fail("NOT_FOUND","Unapplied import plan is unavailable");
             if(!c.actorId.equals(plan.getProperty("actorId"))&&(c.state.operationClaimed||!"owner".equals(effectiveRole(c.namespaceId))))c.fail("FORBIDDEN","Import plan belongs to another actor");
+            Path content=null;
             if(plan.hasProperty("sourceGrantId")){
                 String resourceId=(String)plan.getProperty("sourcePackageId"),grantId=(String)plan.getProperty("sourceGrantId");
-                resources.lock(resourceId);
-                new SourcePackageAccess(c).authorize(resourceId,grantId,true);
-                c.checkSourceAuthorization=()->new SourcePackageAccess(c).authorize(resourceId,grantId,false);
+                if(Boolean.TRUE.equals(plan.getProperty("exchangeSource",false))) {
+                    content=exchangeInput(resourceId,grantId,c.namespaceId).content();
+                } else {
+                    resources.lock(resourceId);
+                    new SourcePackageAccess(c).authorize(resourceId,grantId,true);
+                    c.checkSourceAuthorization=()->new SourcePackageAccess(c).authorize(resourceId,grantId,false);
+                }
             }
+            Path packageContent=content;
             if(repo.sequence(c.namespaceId)!=number(plan,"targetRevision",-1))c.fail("PLAN_STALE","Receiving Namespace changed after import analysis");
             if(!plan.hasProperty("resultId"))c.fail("RESOURCE_CORRUPT","Import plan has no receipt-owned analysis result");
             String resultId=(String)plan.getProperty("resultId");Path path=stagedPath((String)plan.getProperty("stagingPath"));Map<String,Object> rules=Json.read((String)plan.getProperty("rules"));Map<String,Object> rowIds=importResults.mappingView(resultId,"_rowIds");Map<String,Object> blanks=importResults.mappingView(resultId,"_tabularBlanks");rules.put("_tabularIds",rowIds);rules.put("_tabularBlanks",blanks);
-            long expiry=resources.now()+30L*24*60*60*1000;long validationStarted=System.nanoTime();Map<String,Object> result=withValidatedPackage(path,pkg->{
+            long expiry=resources.now()+30L*24*60*60*1000;long validationStarted=System.nanoTime();Map<String,Object> result=withValidatedPackage(path,packageContent,()->c.state.kernel.assertOpen(),pkg->{
                 recordStage7ApplyTiming("package-validation",validationStarted);
                 try(var indexes=scratch()){
                 Map<String,Object> resolved=Json.map("classMap",importResults.mappingView(resultId,"classMap"),"objectMappings",importResults.mappingView(resultId,"objectMappings"),"conflicts",List.of());
-                long materializationStarted=System.nanoTime();Map<String,Object> applied=applySnapshot(pkg,rules,resolved,path);
+                long materializationStarted=System.nanoTime();Map<String,Object> applied=applySnapshot(pkg,rules,resolved,path,packageContent);
                 recordStage7ApplyTiming("graph-materialization",materializationStarted);
                 long rowMappingStarted=System.nanoTime();
                 if(!rowIds.isEmpty()){Map<String,Object> objectIds=ValueCodec.map(ValueCodec.map(applied.get("identityMappings")).get("Object"));Map<String,Object> rowMappings=indexes.orderedMap();for(var entry:rowIds.entrySet()){c.state.kernel.assertOpen();rowMappings.put((String)entry.getValue(),objectIds.get(entry.getKey()));}applied.put("rowMappings",rowMappings);}
@@ -189,14 +200,21 @@ public final class ImportService extends ActionService {
     }
 
     private Map<String,Object> cloneNamespace(Map<String,Object> request){
-        fields(request,"source");Map<String,Object> source=ValueCodec.map(request.get("source"));fields(source,"resourceId","uploadId","sha256");if(source.containsKey("resourceId")==source.containsKey("uploadId"))c.fail("VALIDATION_FAILED","Clone source must select one staged package or package resource");
-        String id=RequestContext.uuid(source.containsKey("resourceId")?source.get("resourceId"):source.get("uploadId"));
+        fields(request,"source");Map<String,Object> source=ValueCodec.map(request.get("source"));
+        boolean exchange=source.containsKey("packageId")||source.containsKey("grant");
+        if(exchange)ExchangePackages.source(source);
+        else {
+            fields(source,"resourceId","uploadId","sha256");
+            if(source.containsKey("resourceId")==source.containsKey("uploadId"))c.fail("VALIDATION_FAILED","Clone source must select one staged package or package resource");
+        }
+        String id=RequestContext.uuid(source.get(exchange?"packageId":source.containsKey("resourceId")?"resourceId":"uploadId"));
         return action("deposit.import.cloneNamespace",request,true,"viewer",()->{
-            AuthorizedPackage copied=source.containsKey("resourceId")?copyAuthorizedPackage(id,"namespace-clone",UUID.randomUUID().toString()):copyCloneUpload(id,source.get("sha256"));Path path=copied.path();try{return withValidatedPackage(path,()->{c.state.kernel.assertOpen();c.server.storagePoint("clone-validation");},pkg->{
+            AuthorizedPackage copied=exchange?exchangeInput(id,string(source.get("grant")),"server")
+                :source.containsKey("resourceId")?copyAuthorizedPackage(id,"namespace-clone",UUID.randomUUID().toString()):copyCloneUpload(id,source.get("sha256"));Path path=copied.path();try{return withValidatedPackage(path,copied.content(),()->{c.state.kernel.assertOpen();c.server.storagePoint("clone-validation");},pkg->{
                 Map<String,Object> manifest=pkg.manifest();if(!"namespace".equals(manifest.get("scope")))c.fail("VALIDATION_FAILED","Namespace cloning requires a full-Namespace package");
                 if(repo.find("Namespace","name",manifest.get("name"))!=null)c.fail("DUPLICATE","Namespace name already exists");
                 Node ns=repo.create("Namespace",null,c.actorId,Json.map("name",manifest.get("name"),"description",manifest.get("description"),"depositVersion",DepositInfo.version(),"historyMode",manifest.get("historyMode"),"sequence",0L));String nsId=CoreRepository.id(ns);repo.setRole(c.actorId,nsId,"owner");
-                Map<String,Object> result=new ImportSnapshotMaterializer(c,repo,resources).materialize(pkg,path,nsId,Map.of(),Map.of());
+                Map<String,Object> result=new ImportSnapshotMaterializer(c,repo,resources).materialize(pkg,path,nsId,Map.of(),Map.of(),copied.content());
                 if("persistent".equals(manifest.get("historyMode"))){
                     @SuppressWarnings("unchecked") Map<String,String> resourceMap=(Map<String,String>)result.get("resourceMapping");
                     Map<String,Object> identityMappings=ValueCodec.map(result.get("identityMappings"));
@@ -266,9 +284,9 @@ public final class ImportService extends ActionService {
     private void closeAdmission(StorageAdmission.Reservation reservation){try{c.server.storage.admission.close(reservation);}catch(IOException failure){c.server.storage.diagnostic="Import storage admission cleanup pending";}}
     private static void deleteStaging(Path path){try{Files.deleteIfExists(path);}catch(IOException ignored){}}
 
-    private Map<String,Object> applySnapshot(ExchangePackageCodec.PackageData pkg,Map<String,Object> rules,Map<String,Object> summary,Path path){
+    private Map<String,Object> applySnapshot(ExchangePackageCodec.PackageData pkg,Map<String,Object> rules,Map<String,Object> summary,Path path,Path content){
         Map<String,Object> mappings=ValueCodec.map(summary.get("objectMappings"));
-        return new ImportSnapshotMaterializer(c,repo,resources).apply(pkg,path,c.namespaceId,ValueCodec.map(summary.get("classMap")),mappings,rules);
+        return new ImportSnapshotMaterializer(c,repo,resources).apply(pkg,path,c.namespaceId,ValueCodec.map(summary.get("classMap")),mappings,rules,content);
 
     }
 
@@ -277,14 +295,60 @@ public final class ImportService extends ActionService {
     }
     static Map<String,Object> planData(Node plan,Map<String,Object> analysis){Map<String,Object> lifecycle=Json.map("planId",CoreRepository.id(plan),"namespaceId",plan.getProperty("namespaceId"),"state",plan.getProperty("state"),"targetRevision",plan.getProperty("targetRevision"),"expiresAt",plan.getProperty("expiresAt"));return Json.map("plan",lifecycle,"analysisResult",analysis);}
     private AuthorizedPackage copyAuthorizedPackage(String packageId,String ownerKind,String ownerId){
-        Path path=null;StorageAdmission.Reservation reservation=null;try{Node location=resources.location(packageId);if(location==null)c.fail("NOT_FOUND","Package resource not found");String sourceNs=(String)location.getProperty("namespaceId",null);Node resource=sourceNs==null?null:resources.resource(sourceNs,packageId);if(resource==null||!"ready".equals(resource.getProperty("state",null)))c.fail("NOT_FOUND","Package resource not found");resources.lock(packageId);String grant=new SourcePackageAccess(c).authorize(packageId,null,true);c.checkSourceAuthorization=()->new SourcePackageAccess(c).authorize(packageId,grant,false);ResourceStorage.Content content=resources.verify(location);path=resources.files.path("staging/imports/"+UUID.randomUUID()+".zip");String receiptScope="namespace-clone".equals(ownerKind)?"server":c.namespaceId;reservation=c.server.storage.admission.acquire(ownerKind,"namespace-clone".equals(ownerKind)?ImportWriteBudget.reservationOwnerId("server","server",c.actorId,c.operationId):ownerId,c.operationId,"import-package-copy",Map.of(resources.files.root,content.bytes()),Json.map("phase","package-copy","actorId",c.actorId,"packageId",packageId,"receiptScope",receiptScope,"stagingPath",c.server.storage.files.root.relativize(path).toString().replace('\\','/'),"expectedBytes",content.bytes()));Files.createDirectories(path.getParent());try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)){byte[] buffer=new byte[64*1024];int count;while((count=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,count);}}if(Files.size(path)!=content.bytes())throw new IOException("Incomplete package staging copy");c.server.storage.admission.materialized(reservation,resources.files.root,content.bytes());return new AuthorizedPackage(path,reservation,null,true,grant);}catch(IOException|RuntimeException failure){if(path!=null)try{Files.deleteIfExists(path);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(reservation!=null)try{c.server.storage.admission.close(reservation);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(failure instanceof IOException io)throw new UncheckedIOException(io);throw (RuntimeException)failure;}
+        Path path=null;StorageAdmission.Reservation reservation=null;try{Node location=resources.location(packageId);if(location==null)c.fail("NOT_FOUND","Package resource not found");String sourceNs=(String)location.getProperty("namespaceId",null);Node resource=sourceNs==null?null:resources.resource(sourceNs,packageId);if(resource==null||!"ready".equals(resource.getProperty("state",null)))c.fail("NOT_FOUND","Package resource not found");resources.lock(packageId);String grant=new SourcePackageAccess(c).authorize(packageId,null,true);c.checkSourceAuthorization=()->new SourcePackageAccess(c).authorize(packageId,grant,false);ResourceStorage.Content content=resources.verify(location);path=resources.files.path("staging/imports/"+UUID.randomUUID()+".zip");String receiptScope="namespace-clone".equals(ownerKind)?"server":c.namespaceId;reservation=c.server.storage.admission.acquire(ownerKind,"namespace-clone".equals(ownerKind)?ImportWriteBudget.reservationOwnerId("server","server",c.actorId,c.operationId):ownerId,c.operationId,"import-package-copy",Map.of(resources.files.root,content.bytes()),Json.map("phase","package-copy","actorId",c.actorId,"packageId",packageId,"receiptScope",receiptScope,"stagingPath",c.server.storage.files.root.relativize(path).toString().replace('\\','/'),"expectedBytes",content.bytes()));Files.createDirectories(path.getParent());try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)){byte[] buffer=new byte[64*1024];int count;while((count=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,count);}}if(Files.size(path)!=content.bytes())throw new IOException("Incomplete package staging copy");c.server.storage.admission.materialized(reservation,resources.files.root,content.bytes());return new AuthorizedPackage(path,reservation,null,true,grant,null);}catch(IOException|RuntimeException failure){if(path!=null)try{Files.deleteIfExists(path);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(reservation!=null)try{c.server.storage.admission.close(reservation);}catch(IOException cleanup){failure.addSuppressed(cleanup);}if(failure instanceof IOException io)throw new UncheckedIOException(io);throw (RuntimeException)failure;}
     }
-    private AuthorizedPackage copyCloneUpload(String uploadId,Object requestedChecksum){Node upload=repo.find("DepositCloneUpload","id",uploadId);if(upload==null)c.fail("NOT_FOUND","Clone package staging is unavailable");c.tx.acquireWriteLock(upload);upload=repo.find("DepositCloneUpload","id",uploadId);if(upload==null||!c.actorId.equals(upload.getProperty("actorId"))||!"finished".equals(upload.getProperty("state"))||((Number)upload.getProperty("expires")).longValue()<=resources.now())c.fail("NOT_FOUND","Clone package staging is unavailable");String checksum=ResourceFiles.hash(requestedChecksum);if(!checksum.equals(upload.getProperty("sha256")))c.fail("OPERATION_MISMATCH","Clone package digest changed");String relative=(String)upload.getProperty("stagingPath");Path path=stagedPath(relative);try{resources.files.verify(relative,((Number)upload.getProperty("bytes")).longValue(),checksum);StorageAdmission.Reservation reservation=c.server.storage.admission.resume((String)upload.getProperty("admissionId"));return new AuthorizedPackage(path,reservation,upload,false,null);}catch(IOException failure){throw new UncheckedIOException(failure);}}
-    private record AuthorizedPackage(Path path,StorageAdmission.Reservation reservation,Node upload,boolean temporary,String sourceGrant){}
+    private AuthorizedPackage copyCloneUpload(String uploadId,Object requestedChecksum){Node upload=repo.find("DepositCloneUpload","id",uploadId);if(upload==null)c.fail("NOT_FOUND","Clone package staging is unavailable");c.tx.acquireWriteLock(upload);upload=repo.find("DepositCloneUpload","id",uploadId);if(upload==null||!c.actorId.equals(upload.getProperty("actorId"))||!"finished".equals(upload.getProperty("state"))||((Number)upload.getProperty("expires")).longValue()<=resources.now())c.fail("NOT_FOUND","Clone package staging is unavailable");String checksum=ResourceFiles.hash(requestedChecksum);if(!checksum.equals(upload.getProperty("sha256")))c.fail("OPERATION_MISMATCH","Clone package digest changed");String relative=(String)upload.getProperty("stagingPath");Path path=stagedPath(relative);try{resources.files.verify(relative,((Number)upload.getProperty("bytes")).longValue(),checksum);StorageAdmission.Reservation reservation=c.server.storage.admission.resume((String)upload.getProperty("admissionId"));return new AuthorizedPackage(path,reservation,upload,false,null,null);}catch(IOException failure){throw new UncheckedIOException(failure);}}
+    private AuthorizedPackage exchangeInput(String id,String grant,String scope) {
+        var packages=new ExchangePackages(c);
+        var stage=packages.input(id,grant,scope,true,true);
+        c.checkSourceAuthorization=()->packages.input(id,grant,scope,false,false);
+        try {return new AuthorizedPackage(packages.archive(stage),null,null,false,grant,packages.content(stage));}
+        catch(IOException failure){throw new UncheckedIOException(failure);}
+    }
+
+    private AuthorizedPackage copyExchangePackage(Map<String,Object> source,String planId) {
+        String id=RequestContext.uuid(source.get("packageId")), grant=string(source.get("grant"));
+        var input=exchangeInput(id,grant,c.namespaceId);
+        var stage=repo.find(ExchangePackages.LABEL,"id",id);
+        long size=(long)stage.getProperty("bytes");
+        String digest=(String)stage.getProperty("sha256");
+        String relative="staging/imports/"+UUID.randomUUID()+".zip";
+        Path path=stagedPath(relative);
+        StorageAdmission.Reservation reservation=null;
+        try {
+            reservation=c.server.storage.admission.acquire("import-plan",planId,c.operationId,"import-package-copy",
+                Map.of(resources.files.root,size),Json.map("phase","package-copy","actorId",c.actorId,"packageId",id,
+                    "receiptScope",c.namespaceId,"stagingPath",relative,"expectedBytes",size));
+            Files.createDirectories(path.getParent());
+            try(var in=Files.newInputStream(input.path());var out=Files.newOutputStream(path,StandardOpenOption.CREATE_NEW)) {
+                byte[] bytes=new byte[64*1024];
+                for(int count;(count=in.read(bytes))!=-1;){
+                    c.state.kernel.assertOpen();
+                    out.write(bytes,0,count);
+                }
+            }
+            resources.files.verify(relative,size,digest,()->c.state.kernel.assertOpen());
+            c.server.storage.admission.materialized(reservation,resources.files.root,size);
+            return new AuthorizedPackage(path,reservation,null,true,grant,input.content());
+        } catch(IOException|RuntimeException failure) {
+            deleteStaging(path);
+            if(reservation!=null)closeAdmission(reservation);
+            if(failure instanceof IOException io)throw new UncheckedIOException(io);
+            throw (RuntimeException)failure;
+        }
+    }
+    private record AuthorizedPackage(Path path,StorageAdmission.Reservation reservation,Node upload,boolean temporary,String sourceGrant,Path content){}
     private void registerCloneUploadCleanup(Node upload,Map<String,Object> result){upload.setProperty("state","consumed");upload.setProperty("consumedOperationId",c.operationId);upload.setProperty("consumedActorId",c.actorId);upload.setProperty("consumedResultId",result.get("resultId"));upload.setProperty("consumedNamespaceId",result.get("namespaceId"));upload.setProperty("cleanupAttempts",0L);}
     private ExchangePackageCodec.PackageData validate(Path path){try{return ExchangePackageCodec.validate(path);}catch(IOException e){throw new UncheckedIOException(e);}}
     private <T> T withValidatedPackage(Path path,java.util.function.Function<ExchangePackageCodec.PackageData,T> action){return withValidatedPackage(path,()->c.state.kernel.assertOpen(),action);}
     private <T> T withValidatedPackage(Path path,Runnable checkpoint,java.util.function.Function<ExchangePackageCodec.PackageData,T> action){try{return ExchangePackageCodec.withValidatedPackage(path,checkpoint,action);}catch(IOException e){throw new UncheckedIOException(e);}}
+    private <T>T withValidatedPackage(Path path,Path content,Runnable checkpoint,
+            java.util.function.Function<ExchangePackageCodec.PackageData,T> action) {
+        if(content==null)return withValidatedPackage(path,checkpoint,action);
+        try(var budget=new ExchangeBudget(c,"exchange-import-validation")) {
+            return ExchangePackageCodec.withValidatedPackage(path,content.getParent(),budget,checkpoint,action);
+        } catch(IOException failure){throw new UncheckedIOException(failure);}
+    }
     private static String encode(Object value){return ImportSemantics.encode(value);}
     private Path stagedPath(String relative){try{return resources.files.path(relative);}catch(IOException e){throw new UncheckedIOException(e);}}
     private static long estimatePackageBytes(Map<String,Object> manifest,Map<String,Object> graph)throws IOException{

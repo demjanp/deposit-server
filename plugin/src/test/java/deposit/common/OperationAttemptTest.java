@@ -20,6 +20,7 @@ import org.neo4j.dbms.api.*;
 import org.neo4j.internal.kernel.api.connectioninfo.ClientConnectionInfo;
 import org.neo4j.internal.kernel.api.security.LoginContext;
 import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.api.net.*;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.monitoring.Monitors;
@@ -670,6 +671,268 @@ class OperationAttemptTest {
         }
     }
 
+    @Test void exchangeExportInspectAndDirectImport() throws Exception {
+        Actor source=actor();
+        tracked(source,source.namespace,"deposit.create.class",List.of("Exchange specimen",Map.of()));
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        var params=Map.of("id",reference.get("packageId"),"grant",reference.get("grant"),"token",source.token);
+        var inspection=ValueCodec.map(cypher(source.control,
+            "CALL deposit.exchange.inspect($id,$grant,$token) YIELD data RETURN data",params).get("data"));
+        assertEquals("namespace",ValueCodec.map(inspection.get("manifest")).get("scope"));
+        assertEquals(1L,inspection.get("memberCount"));
+        byte[] archive=exchangeBytes(source,reference,inspection,"package");
+        assertEquals(reference.get("bytes"),(long)archive.length);
+        assertEquals(reference.get("sha256"),ResourceFiles.checksum(archive));
+        Actor receiver=receivingNamespace(source);
+        var analysis=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(reference),Map.of()));
+        assertNotNull(analysis.get("planId"));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Exchange specimen")));
+            assertTrue(core.nodes("DResource",Map.of("namespaceId",source.namespace)).isEmpty());
+        }
+        tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(analysis.get("planId")));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNotNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Exchange specimen")));
+        }
+    }
+
+    @Test void exchangeBadCentralDirectoryFencesUploadBeforePublication() throws Exception {
+        Actor actor=actor();
+        Path archive=directory.resolve("malformed-intake.zip");
+        var manifest=exchangeManifest(actor.namespace);
+        manifest.put("packageId",UUID.randomUUID().toString());
+        manifest.put("depositVersion",DepositInfo.version());
+        ExchangePackageCodec.write(archive,manifest,emptyExchangeGraph(),null,Map.of());
+        byte[] bytes=Files.readAllBytes(archive);
+        int central=java.nio.ByteBuffer.wrap(bytes,bytes.length-6,4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
+        bytes[central]^=1;
+        String upload=beginExchange(actor,"server","zip",Map.of());
+        exchangeChunk(actor,"server",upload,"package",0,bytes);
+        String finish=operationId(clock.get());
+        var args=List.<Object>of(upload);
+        begin(actor,finish,"server","deposit.exchange.finishUpload",args);
+        var rejected=assertThrows(ExceptionHandler.DepositException.class,
+            ()->call(actor,actor.execution,"deposit.exchange.finishUpload",args,finish));
+        assertTrue(rejected.getMessage().contains("VALIDATION_FAILED"),rejected.getMessage());
+        assertEquals("FAILED_ROLLED_BACK",state(status(actor,finish,"server")));
+        assertThrows(ExceptionHandler.DepositException.class,
+            ()->begin(actor,operationId(clock.get()),"server","deposit.exchange.finishUpload",args));
+        new OperationMaintenance(server,database).tick();
+        server.storage.recover();
+        assertFalse(Files.exists(server.storage.files.path("staging/exchange/"+upload)));
+        assertEquals("complete",status(actor,finish,"server").get("cleanupState"));
+    }
+
+    @Test void exchangeSourceRevocationDeniesLeasedReadAndApply() {
+        Actor source=actor();
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        var inspection=inspectExchange(source,reference);
+        Actor outsider=actor();
+        assertThrows(ExceptionHandler.DepositException.class,()->inspectExchange(outsider,reference));
+        Actor receiver=receivingNamespace(source);
+        var analysis=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(reference),Map.of()));
+        String apply=operationId(clock.get());
+        var args=List.of(analysis.get("planId"));
+        begin(receiver,apply,receiver.namespace,"deposit.import.apply",args);
+        try(var tx=database.beginTx()){
+            new CoreRepository(tx,ZonedDateTime.now()).setRole(source.id,source.namespace,null);
+            tx.commit();
+        }
+        var read=List.of(reference.get("packageId"),reference.get("grant"),inspection.get("leaseId"),"package",0L,1L);
+        assertThrows(ExceptionHandler.DepositException.class,()->call(source,source.control,"deposit.exchange.readChunk",read,null));
+        assertThrows(ExceptionHandler.DepositException.class,()->call(receiver,receiver.execution,"deposit.import.apply",args,apply));
+        try(var tx=database.beginTx()){
+            assertEquals(0L,new CoreRepository(tx,ZonedDateTime.now()).sequence(receiver.namespace));
+        }
+    }
+
+    @Test void exchangeOversizedSelectorIsRejectedBeforeRegistration() {
+        Actor actor=actor();
+        String id=operationId(clock.get());
+        var args=List.<Object>of(Collections.nCopies(30_000,UUID.randomUUID().toString()),Map.of());
+        var rejected=assertThrows(ExceptionHandler.DepositException.class,
+            ()->begin(actor,id,actor.namespace,"deposit.exchange.export",args));
+        assertTrue(rejected.getMessage().contains("LIMIT_EXCEEDED"),rejected.getMessage());
+        assertEquals("OUTCOME_UNKNOWN",state(status(actor,id,actor.namespace)));
+        assertThrows(ExceptionHandler.DepositException.class,
+            ()->begin(actor,id,actor.namespace,"deposit.get.data",List.of(List.of(),Map.of())));
+    }
+
+    @Test void exchangeOpaqueZipRetainsHistoricalNamespaceForServerScopedClone() throws Exception {
+        Actor actor=actor();
+        var historyNamespace=tracked(actor,"server","deposit.create.namespace",
+            List.of("Historical origin "+UUID.randomUUID(),Map.of("historyMode","persistent")));
+        String original=(String)historyNamespace.get("id");
+        Actor source=renew(new Actor(actor.id,null,original,addConnection(),addConnection()));
+        tracked(source,original,"deposit.create.class",List.of("Historical class",Map.of()));
+        var reference=tracked(source,original,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        var inspected=inspectExchange(source,reference);
+        assertEquals(true,ValueCodec.map(inspected.get("manifest")).get("includeHistory"));
+        byte[] packageBytes=exchangeBytes(source,reference,inspected,"package");
+        // The full package keeps the source name. Remove the disposable source
+        // Namespace to exercise opaque intake and clone without a name collision.
+        tracked(source,"server","deposit.delete.namespace",List.of(historyNamespace.get("name")));
+        Actor clone=renew(new Actor(actor.id,null,null,addConnection(),addConnection()));
+        String upload=beginExchange(clone,"server","zip",Map.of());
+        exchangeChunk(clone,"server",upload,"package",0,packageBytes);
+        var received=tracked(clone,"server","deposit.exchange.finishUpload",List.of(upload));
+        assertEquals(reference.get("sha256"),received.get("sha256"));
+        var outcome=tracked(clone,"server","deposit.import.cloneNamespace",List.of(packageSource(received)));
+        String target=(String)outcome.get("namespaceId");
+        assertNotEquals(original,target);
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNotNull(core.find("Class",Map.of("namespaceId",target,"name","Historical class")));
+            assertEquals("persistent",core.namespace(target).getProperty("historyMode"));
+            assertEquals(1L,core.sequence(target));
+            assertFalse(core.nodes("DepositHistoryEpoch",Map.of("namespaceId",target)).isEmpty());
+        }
+    }
+
+    @Test void exchangePagesLargeUnicodeManifestTextWithLeaseBoundCursor() {
+        Actor actor=actor();
+        var manifest=exchangeManifest(actor.namespace);
+        String description=("study "+Character.toString(0x3b1)+Character.toString(0x1f52c)+" ").repeat(7000);
+        manifest.put("description",description);
+        var reference=uploadSnapshot(actor,"server",manifest,emptyExchangeGraph(),Map.of());
+        var inspection=inspectExchange(actor,reference);
+        var field=ValueCodec.map(ValueCodec.map(inspection.get("manifest")).get("description"));
+        assertEquals("text",field.get("kind"));
+        Object cursor=null;
+        var value=new StringBuilder();
+        int pages=0;
+        do {
+            var args=Arrays.asList(reference.get("packageId"),reference.get("grant"),inspection.get("leaseId"),"description",cursor,1L);
+            var result=call(actor,actor.control,"deposit.exchange.graphPage",args,null);
+            var entries=(List<?>)result.get("entries");
+            assertEquals(1,entries.size());
+            String text=(String)ValueCodec.map(entries.getFirst()).get("value");
+            assertTrue(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=16*1024);
+            value.append(text);
+            cursor=result.get("nextCursor");
+            if(++pages==1 && cursor!=null){
+                var other=inspectExchange(actor,reference);
+                var mismatched=List.of(reference.get("packageId"),reference.get("grant"),other.get("leaseId"),"description",cursor,1L);
+                assertThrows(ExceptionHandler.DepositException.class,
+                    ()->call(actor,actor.control,"deposit.exchange.graphPage",mismatched,null));
+            }
+        }while(cursor!=null);
+        assertTrue(pages>1);
+        assertEquals(description,value.toString());
+    }
+
+    @Test void exchangeStructuredContentDeduplicatesMembersWithoutCombiningResourceIdentities() throws Exception {
+        Actor receiver=actor();
+        String ns=UUID.randomUUID().toString(), clazz=UUID.randomUUID().toString(), object=UUID.randomUUID().toString();
+        String first=UUID.randomUUID().toString(), second=UUID.randomUUID().toString();
+        byte[] content={0,1,2,3,4,5,6,7,8,9,10};
+        String digest=ResourceFiles.checksum(content), entry="resources/"+digest;
+        var graph=emptyExchangeGraph();
+        graph.put("classes",List.of(record("Class",clazz,ns,"name","Resource sample","descriptors",List.of(
+            record("ClassDescriptor",UUID.randomUUID().toString(),ns,"classId",clazz,"name","First","type","DResource"),
+            record("ClassDescriptor",UUID.randomUUID().toString(),ns,"classId",clazz,"name","Second","type","DResource")))));
+        graph.put("objects",List.of(record("Object",object,ns,"classId",clazz)));
+        graph.put("memberships",List.of(record("Membership",UUID.randomUUID().toString(),ns,"objectId",object,"classId",clazz)));
+        graph.put("descriptors",List.of(
+            record("Descriptor",UUID.randomUUID().toString(),ns,"objectId",object,"name","First","value",Map.of("resourceId",first)),
+            record("Descriptor",UUID.randomUUID().toString(),ns,"objectId",object,"name","Second","value",Map.of("resourceId",second))));
+        graph.put("resources",List.of(
+            Json.map("kind","DResource","id",first,"filename","first.bin","mediaType","application/octet-stream","bytes",(long)content.length,"entry",entry,"sha256",digest),
+            Json.map("kind","DResource","id",second,"filename","second.bin","mediaType","application/octet-stream","bytes",(long)content.length,"entry",entry,"sha256",digest)));
+        var reference=uploadSnapshot(receiver,receiver.namespace,exchangeManifest(ns),graph,Map.of(entry,content));
+        assertEquals(2L,reference.get("memberCount"));
+        var inspection=inspectExchange(receiver,reference);
+        var page=call(receiver,receiver.control,"deposit.exchange.memberPage",Arrays.asList(reference.get("packageId"),
+            reference.get("grant"),inspection.get("leaseId"),null,1L),null);
+        assertNotNull(page.get("nextCursor"));
+        assertArrayEquals(content,exchangeBytes(receiver,reference,inspection,entry));
+        assertThrows(ExceptionHandler.DepositException.class,()->begin(receiver,operationId(clock.get()),"server",
+            "deposit.import.cloneNamespace",List.of(packageSource(reference))));
+        var plan=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(reference),Map.of()));
+        tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(plan.get("planId")));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            var resources=core.nodes("DResource",Map.of("namespaceId",receiver.namespace));
+            assertEquals(2,resources.size());
+            assertNotEquals(CoreRepository.id(resources.get(0)),CoreRepository.id(resources.get(1)));
+            for(Node resource:resources)assertEquals(digest,resource.getProperty("checksum"));
+        }
+    }
+
+    private static Map<String,Object> record(String kind,String id,String namespace,Object... fields) {
+        var row=Json.map("kind",kind,"id",id,"namespaceId",namespace);
+        row.putAll(Json.map(fields));
+        return row;
+    }
+
+    private Map<String,Object> uploadSnapshot(Actor actor,String scope,Map<String,Object> manifest,Map<String,Object> graph,
+            Map<String,byte[]> resources) {
+        String upload=beginExchange(actor,scope,"snapshot",Map.of("includeHistory",false));
+        for(var member:Map.of("manifest",manifest,"graph",graph).entrySet()) {
+            byte[] bytes=Json.write(member.getValue()).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int split=bytes.length/2;
+            exchangeChunk(actor,scope,upload,member.getKey(),0,Arrays.copyOf(bytes,split));
+            exchangeChunk(actor,scope,upload,member.getKey(),split,Arrays.copyOfRange(bytes,split,bytes.length));
+        }
+        for(var member:resources.entrySet())exchangeChunk(actor,scope,upload,member.getKey(),0,member.getValue());
+        return tracked(actor,scope,"deposit.exchange.finishUpload",List.of(upload));
+    }
+
+    private Actor receivingNamespace(Actor source) {
+        var created=tracked(source,"server","deposit.create.namespace",List.of("Receiving "+UUID.randomUUID(),Map.of()));
+        return renew(new Actor(source.id,null,(String)created.get("id"),addConnection(),addConnection()));
+    }
+
+    private Map<String,Object> tracked(Actor actor,String scope,String name,List<Object> args) {
+        String id=operationId(clock.get());
+        assertEquals("REGISTERED",state(begin(actor,id,scope,name,args)));
+        return call(actor,actor.execution,name,args,id);
+    }
+
+    private Map<String,Object> exchangeManifest(String source) {
+        return Json.map("sourceNamespaceId",source,"name","Exchange "+UUID.randomUUID(),"description","",
+            "historyMode","disabled","exportedRevision",0L,"rootIds",List.of(),"scope","namespace","createdAt",ZonedDateTime.now().toString());
+    }
+
+    private static Map<String,Object> emptyExchangeGraph() {
+        var graph=new LinkedHashMap<String,Object>();
+        for(String name:List.of("classes","objects","descriptors","geometries","memberships","relationships",
+                "classRelationships","patterns","userTools","resources"))graph.put(name,List.of());
+        return graph;
+    }
+
+    private String beginExchange(Actor actor,String scope,String kind,Map<String,Object> metadata) {
+        return (String)tracked(actor,scope,"deposit.exchange.beginUpload",List.of(scope,kind,metadata)).get("uploadId");
+    }
+
+    private void exchangeChunk(Actor actor,String scope,String upload,String member,long offset,byte[] data) {
+        var result=tracked(actor,scope,"deposit.exchange.uploadChunk",
+            List.of(upload,member,offset,Base64.getEncoder().encodeToString(data),ResourceFiles.checksum(data)));
+        assertEquals(offset+data.length,result.get("nextOffset"));
+    }
+
+    private static Map<String,Object> packageSource(Map<String,Object> reference) {
+        return Map.of("packageId",reference.get("packageId"),"grant",reference.get("grant"));
+    }
+
+    private Map<String,Object> inspectExchange(Actor actor,Map<String,Object> reference) {
+        return call(actor,actor.control,"deposit.exchange.inspect",List.of(reference.get("packageId"),reference.get("grant")),null);
+    }
+
+    private byte[] exchangeBytes(Actor actor,Map<String,Object> reference,Map<String,Object> inspection,String member)throws Exception {
+        var out=new java.io.ByteArrayOutputStream();
+        for(;;){
+            var result=call(actor,actor.control,"deposit.exchange.readChunk",List.of(reference.get("packageId"),reference.get("grant"),
+                inspection.get("leaseId"),member,(long)out.size(),257L),null);
+            byte[] bytes=Base64.getDecoder().decode((String)result.get("bytesBase64"));
+            assertEquals((long)bytes.length,result.get("length"));
+            out.write(bytes);
+            if(bytes.length<257)return out.toByteArray();
+        }
+    }
+
     private String beginResource(Actor a) {
         String id=operationId(clock.get()), procedure="deposit.resource.beginUpload";
         var args=List.<Object>of("payload.bin",2L,ResourceFiles.checksum(new byte[]{1,2}),"application/octet-stream");
@@ -739,7 +1002,7 @@ class OperationAttemptTest {
         String token=ServerContext.randomToken();
         var session=new ServerContext.Session(actor.id,LoginContext.AUTH_DISABLED.subject().executingUser(),clock.get());
         session.namespace=actor.namespace;
-        session.baselines.put(actor.namespace,0L);
+        if(actor.namespace!=null)session.baselines.put(actor.namespace,0L);
         session.baselines.put("server",server.committedRevision());
         server.registerSession(Json.hash(token),session);
         return new Actor(actor.id,token,actor.namespace,actor.execution,actor.control);

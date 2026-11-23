@@ -40,6 +40,8 @@ public final class ProcedureService {
             case "deposit.get.queryPage"->Stream.of(new GetQueryService(c).getQueryPage(r));
             case "deposit.get.objectsByPattern"->new PatternService(c).search(r,false);
             case "deposit.get.objectsByPatternPage"->new PatternService(c).search(r,true);
+            case "deposit.exchange.export"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
+            case "deposit.exchange.beginUpload","deposit.exchange.uploadChunk","deposit.exchange.finishUpload","deposit.exchange.abortUpload","deposit.exchange.inspect","deposit.exchange.memberPage","deposit.exchange.graphPage","deposit.exchange.readChunk","deposit.exchange.discard"->Stream.of(new DataRow(new ExchangePackages(c).execute(p,r),c.meta()));
             case "deposit.get.data","deposit.get.namespaceData","deposit.save.data","deposit.load.data"->Stream.of(new DataRow(new ExchangeService(c).execute(p,r),c.meta()));
             case "deposit.import.analyze","deposit.get.importPlan","deposit.get.importResult","deposit.get.importResultPage","deposit.get.importResultEntry","deposit.import.apply","deposit.import.dataByPattern","deposit.import.cloneNamespace"->Stream.of(new DataRow(new ImportService(c).execute(p,r),c.meta()));
             case "deposit.get.cloneResult","deposit.get.cloneResultPage","deposit.get.cloneResultEntry"->Stream.of(new DataRow(new ImportService(c).execute(p,r),c.meta()));
