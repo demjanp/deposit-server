@@ -126,9 +126,28 @@ class OperationAttemptTest {
             "procedure","deposit.create.class","arguments",List.of("Cypher "+id,Map.of()));
         assertEquals("REGISTERED",state(ValueCodec.map(cypher(a.execution,
             "CALL deposit.action.begin($id,$scope,$procedure,$arguments,$token) YIELD data RETURN data",parameters).get("data"))));
-        cypher(a.execution,"CALL deposit.create.class($name,$patch,$id,$token) YIELD node RETURN node.id AS id",parameters);
+        var result=ValueCodec.map(cypher(a.execution,"""
+            CALL deposit.create.class($name,$patch,$id,$token) YIELD node
+            CALL deposit.utils.toData(node,$token) YIELD data
+            RETURN data
+            """,parameters).get("data"));
+        assertEquals("Cypher "+id,result.get("name"));
         assertEquals("COMMITTED",state(ValueCodec.map(cypher(a.control,
             "CALL deposit.get.operation($id,$scope,$token) YIELD data RETURN data",parameters).get("data"))));
+    }
+
+    @Test void otherProceduresStillCannotShareATrackedTransaction() {
+        Actor a=actor();
+        String id=operationId(clock.get());
+        var arguments=List.<Object>of("Mixed "+id,Map.of());
+        assertEquals("REGISTERED",state(begin(a,id,a.namespace,"deposit.create.class",arguments)));
+        var parameters=Json.map("id",id,"name",arguments.getFirst(),"patch",Map.of(),"token",a.token);
+        assertThrows(RuntimeException.class,()->cypher(a.execution,"""
+            CALL deposit.create.class($name,$patch,$id,$token) YIELD node
+            CALL deposit.get.session($token) YIELD data
+            RETURN node.id AS id,data
+            """,parameters));
+        assertEquals("FAILED_ROLLED_BACK",state(status(a,id,a.namespace)));
     }
 
     @Test void cancellationBeforeTheFinalGateRollsBackTheGraph() throws Exception {
@@ -1330,8 +1349,12 @@ class OperationAttemptTest {
         return call(actor,connection,procedure,args,id,()->{});
     }
     private Map<String,Object> call(Actor actor,Connection connection,String procedure,List<Object> args,String id,Runnable beforeCommit) {
+        return call(database,actor.token,connection,procedure,args,id,beforeCommit);
+    }
+    static Map<String,Object> call(GraphDatabaseAPI database,String token,Connection connection,
+            String procedure,List<Object> args,String id,Runnable beforeCommit) {
         try(var tx=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,connection.info())){
-            var context=new RequestContext(tx,Map.of("token",actor.token));
+            var context=new RequestContext(tx,Map.of("token",token));
             var actions=new SessionActionService(context);
             actions.beginPublic(procedure,args,id);
             Object row;
@@ -1372,7 +1395,7 @@ class OperationAttemptTest {
         connections.add(newConnection);
         return newConnection;
     }
-    private static String operationId(long time) {
+    static String operationId(long time) {
         long entropy=ThreadLocalRandom.current().nextLong();
         return new UUID((time<<16)|0x7000|(entropy&0xfff), (entropy&0x3fffffffffffffffL)|Long.MIN_VALUE).toString();
     }
@@ -1380,7 +1403,7 @@ class OperationAttemptTest {
         try { if (!latch.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("Test gate timed out"); }
         catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}
     }
-    private record Connection(String id) implements TrackedNetworkConnection {
+    record Connection(String id) implements TrackedNetworkConnection {
         public long connectTime(){return 0;}
         public String connectorId(){return "bolt";}
         public SocketAddress serverAddress(){return null;}

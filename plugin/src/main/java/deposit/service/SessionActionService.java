@@ -16,7 +16,11 @@ public final class SessionActionService extends BaseService {
     public SessionActionService(RequestContext c){super(c);scopeRules=new SessionActionScope(c);diagnostics=new SessionDiagnostics(c);}
     private boolean cancellation(String p){return Set.of("deposit.utils.cancel","deposit.utils.cancelRequest","deposit.get.requests","deposit.utils.logout").contains(p);}
     public void beginPublic(String procedure,List<Object> arguments,String operationId){
-        if(c.state.operationClaimed)c.fail("VALIDATION_FAILED","An operation must execute in a separate transaction");
+        // A native entity returned by the action can be serialized in the same
+        // transaction while it is still readable. The serializer authenticates
+        // the same session and checks the entity's scope as on any other call.
+        if(c.state.operationClaimed && !(c.state.operationFinal() && operationId==null && procedure.equals("deposit.utils.toData")))
+            c.fail("VALIDATION_FAILED","An operation must execute in a separate transaction");
         enforceAttempt=true;
         c.operationId=operationId;
         c.uploadContinuation=OperationAttemptService.uploadContinuation(procedure,arguments);
@@ -102,7 +106,7 @@ public final class SessionActionService extends BaseService {
         }});
     }
     public Stream<?> finish(Stream<?> result){
-        if(!c.state.operationClaimed)return result;
+        if(!c.state.operationClaimed || c.operationId==null)return result;
         try(result){
             var rows=result.iterator();
             if(!rows.hasNext())throw new IllegalStateException("Tracked procedure did not return a result");
