@@ -30,6 +30,9 @@ final class PreparedActionWorkflow extends BaseService {
             owner.authorize(procedure,scope,authorizationRole);
             var bindings=new LinkedHashMap<String,Object>();new ArgumentService(c,bindings,false).request(procedure,args);
             var properties=Json.map("operationId",UUID.randomUUID().toString(),"procedure",procedure,"scope",scope,"inputHash",hash,"bindings",Json.write(bindings),"runId",c.server.runId,"operational",owner.scopeRules.operational(procedure));
+            if(Set.of("deposit.resource.uploadChunk","deposit.resource.finishUpload","deposit.resource.abortUpload").contains(procedure)) {
+                properties.put("resourceUploadId",RequestContext.uuid(args.getFirst()));
+            }
             if(authorizationRole!=null)properties.put("authorizationRole",authorizationRole);
             if(!owner.scopeRules.operational(procedure))properties.put("expectedRevision",owner.scopeRules.baseline(scope));
             if(procedure.equals("deposit.delete.namespace")) {

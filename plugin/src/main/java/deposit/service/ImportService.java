@@ -121,7 +121,28 @@ public final class ImportService extends ActionService {
     }
 
     private Map<String,Object> getPlan(Map<String,Object> request){
-        fields(request,"planId");scoped("viewer");String id=RequestContext.uuid(request.get("planId"));repo.lockNamespace(c.namespaceId);Node plan=repo.find("DepositImportPlan","id",id);if(plan!=null&&!c.namespaceId.equals(plan.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Import plan belongs to another Namespace");if(plan==null||number(plan,"expiresAt",0)<=resources.now())c.fail("NOT_FOUND","Import plan is unavailable");if(!c.actorId.equals(plan.getProperty("actorId"))&&!"owner".equals(effectiveRole(c.namespaceId)))c.fail("NOT_FOUND","Import plan is unavailable");plan.setProperty("lastActivity",resources.now());plan.setProperty("expiresAt",resources.now()+24L*60*60*1000);return planData(plan);
+        fields(request,"planId","renewLease");
+        scoped("viewer");
+        String id=RequestContext.uuid(request.get("planId"));
+        Object rawRenew=request.get("renewLease");
+        if(rawRenew!=null&&!(rawRenew instanceof Boolean))c.fail("VALIDATION_FAILED","renewLease must be Boolean");
+        boolean renewLease=rawRenew==null||Boolean.TRUE.equals(rawRenew);
+        repo.lockNamespace(c.namespaceId);
+        Node plan=repo.find("DepositImportPlan","id",id);
+        if(plan!=null&&!c.namespaceId.equals(plan.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Import plan belongs to another Namespace");
+        long now=resources.now();
+        if(plan==null)c.fail("NOT_FOUND","Import plan is unavailable");
+        boolean authorized=c.actorId.equals(plan.getProperty("actorId"))||"owner".equals(effectiveRole(c.namespaceId));
+        if(!authorized)c.fail("NOT_FOUND","Import plan is unavailable");
+        if(number(plan,"expiresAt",0)<=now){
+            if(!renewLease)c.fail("PLAN_EXPIRED","Import plan is expired");
+            c.fail("NOT_FOUND","Import plan is unavailable");
+        }
+        if(renewLease){
+            plan.setProperty("lastActivity",now);
+            plan.setProperty("expiresAt",now+24L*60*60*1000);
+        }
+        return planData(plan);
     }
 
     private Map<String,Object> apply(Map<String,Object> request){
@@ -135,18 +156,32 @@ public final class ImportService extends ActionService {
             if(repo.sequence(c.namespaceId)!=number(plan,"targetRevision",-1))c.fail("PLAN_STALE","Receiving Namespace changed after import analysis");
             if(!plan.hasProperty("resultId"))c.fail("RESOURCE_CORRUPT","Import plan has no receipt-owned analysis result");
             String resultId=(String)plan.getProperty("resultId");Path path=stagedPath((String)plan.getProperty("stagingPath"));Map<String,Object> rules=Json.read((String)plan.getProperty("rules"));Map<String,Object> rowIds=importResults.mappingView(resultId,"_rowIds");Map<String,Object> blanks=importResults.mappingView(resultId,"_tabularBlanks");rules.put("_tabularIds",rowIds);rules.put("_tabularBlanks",blanks);
-            long expiry=resources.now()+30L*24*60*60*1000;Map<String,Object> result=withValidatedPackage(path,pkg->{
+            long expiry=resources.now()+30L*24*60*60*1000;long validationStarted=System.nanoTime();Map<String,Object> result=withValidatedPackage(path,pkg->{
+                recordStage7ApplyTiming("package-validation",validationStarted);
                 try(var indexes=scratch()){
                 Map<String,Object> resolved=Json.map("classMap",importResults.mappingView(resultId,"classMap"),"objectMappings",importResults.mappingView(resultId,"objectMappings"),"conflicts",List.of());
-                Map<String,Object> applied=applySnapshot(pkg,rules,resolved,path);
+                long materializationStarted=System.nanoTime();Map<String,Object> applied=applySnapshot(pkg,rules,resolved,path);
+                recordStage7ApplyTiming("graph-materialization",materializationStarted);
+                long rowMappingStarted=System.nanoTime();
                 if(!rowIds.isEmpty()){Map<String,Object> objectIds=ValueCodec.map(ValueCodec.map(applied.get("identityMappings")).get("Object"));Map<String,Object> rowMappings=indexes.orderedMap();for(var entry:rowIds.entrySet()){c.state.kernel.assertOpen();rowMappings.put((String)entry.getValue(),objectIds.get(entry.getKey()));}applied.put("rowMappings",rowMappings);}
-                return importResults.save(c.operationId,"apply",id,Math.addExact(c.revision,1),expiry,applied);
+                recordStage7ApplyTiming("row-mapping-entries-"+rowIds.size(),rowMappingStarted);
+                long receiptStarted=System.nanoTime();Map<String,Object> saved=importResults.save(c.operationId,"apply",id,Math.addExact(c.revision,1),expiry,applied);
+                recordStage7ApplyTiming("receipt-persistence",receiptStarted);return saved;
                 }catch(IOException failure){throw new UncheckedIOException(failure);}
             });
             plan.setProperty("state","applied");plan.setProperty("lastActivity",resources.now());plan.setProperty("expiresAt",expiry);
             releasePlanStagingAfterCommit(plan,path);
             return new Change(new Outcome(null,null,result),true);
         }).data();
+    }
+
+    private void recordStage7ApplyTiming(String phase,long started){
+        if(!Boolean.getBoolean("deposit.stage7.import.timing.enabled"))return;
+        String configured=System.getProperty("deposit.stage7.timing.progress");
+        if(configured==null||configured.isBlank())return;
+        String marker="apply-"+phase+" operation="+c.operationId+" elapsedMs="+java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
+        try{Files.writeString(Path.of(configured),marker+System.lineSeparator(),StandardCharsets.UTF_8,StandardOpenOption.CREATE,StandardOpenOption.APPEND);}
+        catch(IOException failure){throw new UncheckedIOException(failure);}
     }
 
     private Map<String,Object> cloneNamespace(Map<String,Object> request){

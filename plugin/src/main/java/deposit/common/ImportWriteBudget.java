@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Entity;
 
@@ -35,6 +36,7 @@ public final class ImportWriteBudget {
     private final Path databasePath,transactionLogPath;
     private long estimatedDatabaseBytes,reservedDatabaseBytes,estimatedLogBytes,reservedLogBytes;
     private boolean released,retainForCleanup;
+    private BooleanSupplier uncommittedPublication=()->false;
 
     private ImportWriteBudget(RequestContext context,StorageAdmission.Reservation reservation,
                               Path databasePath,Path transactionLogPath) {
@@ -136,6 +138,11 @@ public final class ImportWriteBudget {
         try{context.server.storage.admission.setWriteIntent(reservation,intent);}catch(IOException failure){throw new UncheckedIOException(failure);}
     }
 
+    /** Read publication ownership at transaction cleanup, regardless of callback order. */
+    public void retainOnUncommittedPublication(BooleanSupplier owner){
+        uncommittedPublication=java.util.Objects.requireNonNull(owner);
+    }
+
     public final class ScratchLease implements AutoCloseable {
         private long estimated,reserved;
         private boolean closed;
@@ -232,7 +239,7 @@ public final class ImportWriteBudget {
     private void releaseAfterTransaction() {
         if(released)return;released=true;
         if(context.state.importWriteBudget==this)context.state.importWriteBudget=null;
-        if(reservation==null||retainForCleanup)return;
+        if(reservation==null||retainForCleanup||uncommittedPublication.getAsBoolean())return;
         try{context.server.storage.admission.close(reservation);}
         catch(IOException failure){context.server.storage.diagnostic="Import database/result admission cleanup pending";}
     }

@@ -94,7 +94,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         if(existing!=null)existing.delete();
         String key=object.getProperty("namespaceId")+"/Membership/"+id(object);
         if(find("DepositEdgeIdentity","key",key)==null) {Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",key);registry.setProperty("id",id);}
-        Relationship rel=object.createRelationshipTo(clazz,RelationshipType.withName("MEMBER_OF"));properties.forEach(rel::setProperty);
+        Relationship rel=object.createRelationshipTo(clazz,RelationshipType.withName("MEMBER_OF"));properties.forEach((name,value)->{if(!name.equals("id"))rel.setProperty(name,value);});
         rel.setProperty("id",id);rel.setProperty("namespaceId",object.getProperty("namespaceId"));
         if(existing==null) {rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);}audit(rel,actor);return rel;
     }

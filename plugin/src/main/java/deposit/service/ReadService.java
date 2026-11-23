@@ -94,7 +94,7 @@ public final class ReadService extends BaseService {
         if(kind.equals("Class")||kind.equals("ClassDescriptor"))nodes=nodes.stream().sorted(Comparator.<Node>comparingLong(n->((Number)n.getProperty("order",0L)).longValue()).thenComparing(CoreRepository::id)).toList();
         for(Node n:nodes) {checkRevision();var data=kind.equals("Namespace")?namespaceData(n):repo.data(n);results.add(new Item(n,data));}
         if(kind.equals("Namespace")) {discoveryRequest=Map.copyOf(request);discoveryMode=administrativeMode();discoveryFingerprint=fingerprint(results.stream().map(Item::data).toList());}
-        checkRevision();return results;
+        checkDiscoveryRevision();return results;
     }
     private boolean matches(Node object,Map<String,Object> filters) {
         boolean match=true;
@@ -112,16 +112,19 @@ public final class ReadService extends BaseService {
         if(System.currentTimeMillis()-c.state.kernel.startTime()>30_000)c.fail("CANCELLED","Read timeout exceeded");
         long current=c.namespaceId==null?c.server.revision(c.state):repo.sequence(c.namespaceId);
         if(current!=c.revision)throw ExceptionHandler.error("REVISION_CONFLICT","Revision changed during read",c,false,Map.of("currentRevision",current));
+    }
+    private void checkDiscoveryRevision() {
+        checkRevision();
         if(discoveryRequest!=null&&(discoveryMode!=administrativeMode()||!discoveryFingerprint.equals(fingerprint(namespaces(discoveryRequest).stream().map(this::namespaceData).toList()))))c.fail("REVISION_CONFLICT","Accessible Namespace results changed");
     }
     private Stream<Item> stream(List<Item> items) {
         var iterator=items.iterator();
         var spliterator=new Spliterators.AbstractSpliterator<Item>(items.size(),Spliterator.ORDERED) {
             @Override public boolean tryAdvance(Consumer<? super Item> action) {
-                checkRevision();if(!iterator.hasNext())return false;action.accept(iterator.next());checkRevision();return true;
+                checkRevision();if(!iterator.hasNext()) {checkDiscoveryRevision();return false;}action.accept(iterator.next());checkRevision();return true;
             }
         };
-        return StreamSupport.stream(spliterator,false).onClose(this::checkRevision);
+        return StreamSupport.stream(spliterator,false).onClose(this::checkDiscoveryRevision);
     }
     public Stream<EntityRow> entities(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new EntityRow(i.node(),i.data(),c.meta()));}
     public Stream<RelRow> relationships(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new RelRow(i.rel(),i.data(),c.meta()));}
@@ -148,6 +151,6 @@ public final class ReadService extends BaseService {
         if(offset<0||offset>items.size())c.fail("VALIDATION_FAILED","Invalid cursor offset");
         int end=(int)Math.min(items.size(),offset+size);var data=Json.map("items",items.subList((int)offset,end).stream().map(Item::data).toList());var meta=c.meta();
         if(end<items.size())meta.put("nextCursor",CursorCodec.encode(c,Json.map("scope",scope,"actor",c.actorId,"hash",hash,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900_000L,"run",c.server.runId,"discovery",discoveryFingerprint,"administrative",administrativeMode())));
-        checkRevision();return new DataRow(data,meta);
+        checkDiscoveryRevision();return new DataRow(data,meta);
     }
 }

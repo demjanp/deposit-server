@@ -54,7 +54,7 @@ public final class SessionActionService extends BaseService {
             if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",actionNode.getProperty("namespaceRevision"));
         }else{
             c.actionScope=scopeRules.scope(procedure,arguments);c.operational=scopeRules.operational(procedure);
-            c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:scopeRules.baseline(c.actionScope);
+            if(c.operationId==null)c.operationId=UUID.randomUUID().toString();c.expectedRevision=c.operational?null:scopeRules.baseline(c.actionScope);
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);
             if(Set.of("deposit.save.data","deposit.get.data","deposit.get.namespaceData","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,scopeRules.exportRole(procedure,arguments));
             if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",scopeRules.baseline(scopeRules.active()));
@@ -110,8 +110,9 @@ public final class SessionActionService extends BaseService {
         String scope=c.actionScope!=null?c.actionScope:c.namespaceId==null?"server":c.namespaceId;
         long revision=c.revision,generation=c.observationGeneration;
         boolean committedAction=c.operationId!=null&&!c.operational&&!c.replayed;
+        boolean usesCurrentServerRevision=scope.equals("server")&&!depositCloneProcedure(c.procedure);
         c.state.afterCommit.add(()->{synchronized(c.session){
-            if(committedAction){c.session.baselines.put(scope,revision);c.session.observationGeneration++;}
+            if(committedAction){c.session.baselines.put(scope,usesCurrentServerRevision?c.server.committedRevision():revision);c.session.observationGeneration++;}
             else if(c.session.observationGeneration==generation)c.session.baselines.putIfAbsent(scope,revision);
         }});
     }

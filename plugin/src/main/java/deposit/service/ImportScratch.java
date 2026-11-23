@@ -12,6 +12,7 @@ import java.util.function.LongConsumer;
 final class ImportScratch implements AutoCloseable {
     final Path directory;final Connection db;final Runnable checkpoint,releaseAfterClose;final LongConsumer reserveBeforeWrite;
     private final Map<String,PreparedStatement> statements=new HashMap<>();
+    private final Map<String,PreparedStatement> idleQueries=new HashMap<>();
     private final Set<RowCursor> cursors=new HashSet<>();private int nextMap;RuntimeException interrupted;
     ImportScratch(Path parent,Runnable checkpoint)throws IOException {this(parent,checkpoint,ignored->{},()->{});}
     ImportScratch(Path parent,Runnable checkpoint,LongConsumer reserveBeforeWrite)throws IOException {this(parent,checkpoint,reserveBeforeWrite,()->{});}
@@ -41,14 +42,17 @@ final class ImportScratch implements AutoCloseable {
     private void bind(PreparedStatement statement,Object... values)throws SQLException{statement.clearParameters();for(int i=0;i<values.length;i++)statement.setObject(i+1,values[i]);}
     void update(String sql,Object... values){check();reserveBeforeWrite.accept(writeEstimate(sql,values));try{PreparedStatement statement=statements.get(sql);if(statement==null){statement=db.prepareStatement(sql);statements.put(sql,statement);}bind(statement,values);statement.executeUpdate();}catch(SQLException failure){throw failure(failure);}}
     private static long writeEstimate(String sql,Object[] values){try{return Math.addExact(512L,Json.write(List.of(sql,Arrays.asList(values))).getBytes(java.nio.charset.StandardCharsets.UTF_8).length);}catch(ArithmeticException overflow){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Import scratch estimate is not representable");}}
-    RowCursor query(String sql,Object... values){check();try{var statement=db.prepareStatement(sql);try{bind(statement,values);var cursor=new RowCursor(statement);cursors.add(cursor);return cursor;}catch(SQLException|RuntimeException failure){statement.close();throw failure;}}catch(SQLException failure){throw failure(failure);}}
+    RowCursor query(String sql,Object... values){check();try{var statement=idleQueries.remove(sql);if(statement==null)statement=db.prepareStatement(sql);try{bind(statement,values);var cursor=new RowCursor(sql,statement);cursors.add(cursor);return cursor;}catch(SQLException|RuntimeException failure){statement.close();throw failure;}}catch(SQLException failure){throw failure(failure);}}
     Map<String,Object> one(String sql,Object... values){try(var rows=query(sql,values)){return rows.hasNext()?rows.next():null;}}
     final class RowCursor implements Iterator<Map<String,Object>>,Iterable<Map<String,Object>>,AutoCloseable {
-        final PreparedStatement statement;final ResultSet rows;final String[] names;boolean next,closed;
-        RowCursor(PreparedStatement statement)throws SQLException{this.statement=statement;rows=statement.executeQuery();var metadata=rows.getMetaData();names=new String[metadata.getColumnCount()];for(int i=0;i<names.length;i++)names[i]=metadata.getColumnLabel(i+1);next=rows.next();}
+        final String sql;final PreparedStatement statement;final ResultSet rows;final String[] names;boolean next,closed;
+        RowCursor(String sql,PreparedStatement statement)throws SQLException{this.sql=sql;this.statement=statement;rows=statement.executeQuery();var metadata=rows.getMetaData();names=new String[metadata.getColumnCount()];for(int i=0;i<names.length;i++)names[i]=metadata.getColumnLabel(i+1);next=rows.next();}
         public Iterator<Map<String,Object>> iterator(){return this;}public boolean hasNext(){return next;}
         public Map<String,Object> next(){if(!next)throw new NoSuchElementException();check();try{var value=new LinkedHashMap<String,Object>();for(int i=0;i<names.length;i++)value.put(names[i],rows.getObject(i+1));next=rows.next();if(!next)close();return value;}catch(SQLException failure){throw failure(failure);}}
-        public void close(){if(closed)return;closed=true;next=false;try{rows.close();statement.close();}catch(SQLException failure){throw failure(failure);}finally{cursors.remove(this);}}
+        public void close(){if(closed)return;closed=true;next=false;try{rows.close();
+            // An open cursor must keep its statement: nested reads can use the same SQL.
+            if(idleQueries.putIfAbsent(sql,statement)!=null)statement.close();
+        }catch(SQLException failure){try{statement.close();}catch(SQLException suppressed){failure.addSuppressed(suppressed);}throw failure(failure);}finally{cursors.remove(this);}}
     }
     <T> Map<String,T> map(){return map(false);}
     <T> Map<String,T> orderedMap(){return map(true);}
@@ -90,5 +94,5 @@ final class ImportScratch implements AutoCloseable {
         };
     }
     private void removeDirectory()throws IOException{if(Files.exists(directory))try(var files=Files.walk(directory)){for(Path file:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(file);}}
-    public void close()throws IOException{try{for(var cursor:new ArrayList<>(cursors))cursor.close();for(var statement:statements.values())statement.close();org.sqlite.ProgressHandler.clearHandler(db);db.close();}catch(SQLException failure){throw new IOException("Unable to close import indexes",failure);}finally{try{removeDirectory();}finally{releaseAfterClose.run();}}}
+    public void close()throws IOException{try{for(var cursor:new ArrayList<>(cursors))cursor.close();for(var statement:idleQueries.values())statement.close();for(var statement:statements.values())statement.close();org.sqlite.ProgressHandler.clearHandler(db);db.close();}catch(SQLException failure){throw new IOException("Unable to close import indexes",failure);}finally{try{removeDirectory();}finally{releaseAfterClose.run();}}}
 }

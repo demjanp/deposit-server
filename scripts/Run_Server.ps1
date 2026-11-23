@@ -11,12 +11,17 @@ Use -Action Stop for Deposit's graceful shutdown, or -Action Status to inspect i
 Loopback Bolt port for the first setup (default 7687). Existing configuration wins.
 .PARAMETER SetupOnly
 Prepare the installation without starting it.
+.PARAMETER DpApiCredentialFile
+An owner-only DPAPI-encoded UTF-16LE password record used only for first setup.
+It is decrypted through an in-process SecureString; interactive setup is the
+default. The matching acceptance helper retains the record for test logins.
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('Run','Stop','Status')][string]$Action = 'Run',
     [ValidateRange(1024,65535)][int]$Port = 7687,
-    [switch]$SetupOnly
+    [switch]$SetupOnly,
+    [ValidateScript({[string]::IsNullOrWhiteSpace($_) -or (Test-Path -LiteralPath $_ -PathType Leaf)})][string]$DpApiCredentialFile
 )
 
 Set-StrictMode -Version Latest
@@ -174,7 +179,11 @@ try {
             Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination "$package\helpers" -Force
         }
 
-        $password = Read-Host 'Choose the Neo4j administrator password (at least 8 characters)' -AsSecureString
+        $password = if ($PSBoundParameters.ContainsKey('DpApiCredentialFile')) {
+            try {
+                Get-Content -LiteralPath $DpApiCredentialFile -Raw | ConvertTo-SecureString -ErrorAction Stop
+            } catch { throw 'Unable to decrypt the supplied test credential as the current Windows user' }
+        } else { Read-Host 'Choose the Neo4j administrator password (at least 8 characters)' -AsSecureString }
         $passwordPointer = [IntPtr]::Zero
         $argumentFile = Join-Path $localRoot 'private\initial-password.args'
         try {

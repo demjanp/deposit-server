@@ -39,7 +39,7 @@ public final class ProcedureCatalog {
   SPECS.put("deposit.save.data",new Spec("operational",true,List.of("selection","+")));
   SPECS.put("deposit.load.data",new Spec("namespace",false,List.of("resourceId")));
   SPECS.put("deposit.import.analyze",new Spec("operational",true,List.of("source","rules")));
-  SPECS.put("deposit.get.importPlan",new Spec("namespace",false,List.of("planId")));
+  SPECS.put("deposit.get.importPlan",new Spec("namespace",false,List.of("planId","renewLease")));
   SPECS.put("deposit.get.importResult",new Spec("namespace",false,List.of("resultId")));
   SPECS.put("deposit.get.importResultPage",new Spec("namespace",false,List.of("resultId","collection","cursor","limit")));
   SPECS.put("deposit.get.importResultEntry",new Spec("namespace",false,List.of("resultId","collection","key")));

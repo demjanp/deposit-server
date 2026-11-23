@@ -28,6 +28,12 @@ final class StorageMaintenanceJobs {
     private static final int CLONE_UPLOAD_CANDIDATE_BATCH = 64;
     private static final Set<String> CLONE_UPLOAD_PROCEDURES = Set.of("deposit.import.cloneNamespace","deposit.import.beginCloneUpload",
             "deposit.import.cloneUploadChunk","deposit.import.finishCloneUpload","deposit.import.abortCloneUpload");
+    // PreparedActionRepository always supplies a recovery key. Its presence lets Cypher use the composite constraint.
+    static final String CLONE_ACTIONS_FOR_ACTOR = """
+            MATCH (n:DepositPreparedAction {actorId: $actor})
+            WHERE n.recoveryKey IS NOT NULL
+            RETURN n
+            """;
     private static final String DELETE_TERMINAL_TRANSFER_CHUNKS = "MATCH (transfer:DepositTransfer) WHERE transfer.state IN ['finished','aborted','expired'] MATCH (chunk:DepositTransferChunk {uploadId: transfer.id}) WITH chunk LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
     private static final String DELETE_CLONE_UPLOAD_CHUNKS = "MATCH (chunk:DepositCloneUploadChunk {uploadId:$uploadId}) WITH chunk ORDER BY chunk.offset LIMIT $batchSize DELETE chunk RETURN count(*) AS deleted";
     private final ServerContext server;
@@ -91,7 +97,7 @@ final class StorageMaintenanceJobs {
             String state=text(upload,"state");long now=server.sessionTime();
             if(Set.of("uploading","finished").contains(state)){
                 if(number(upload,"expires",0)>now)return;
-                if(hasUnresolvedCloneAction(core,text(upload,"actorId")))return;
+                if(hasUnresolvedCloneAction(tx,core,text(upload,"actorId")))return;
                 upload.setProperty("state","expired");upload.setProperty("expires",0L);state="expired";
             }
             if(!Set.of("consumed","aborted","expired").contains(state)||number(upload,"expires",0)>server.sessionTime())return;
@@ -119,11 +125,12 @@ final class StorageMaintenanceJobs {
         }
     }
 
-    private boolean hasUnresolvedCloneAction(CoreRepository core,String actor){
-        for(Node action:core.nodes("DepositPreparedAction",Map.of("actorId",actor)))
-            if(CLONE_UPLOAD_PROCEDURES.contains(action.getProperty("procedure",""))
-                    &&core.receipt("server",(String)action.getProperty("operationId"))==null)return true;
-        return false;
+    private boolean hasUnresolvedCloneAction(Transaction tx, CoreRepository core, String actor) {
+        try (var rows = tx.execute(CLONE_ACTIONS_FOR_ACTOR, Map.of("actor", actor));
+             var actions = rows.<Node>columnAs("n")) {
+            return actions.stream().anyMatch(action -> CLONE_UPLOAD_PROCEDURES.contains(action.getProperty("procedure", ""))
+                    && core.receipt("server", (String) action.getProperty("operationId")) == null);
+        }
     }
 
     private boolean hasCommittedCloneReceipt(CoreRepository core,Node upload){
@@ -170,6 +177,10 @@ final class StorageMaintenanceJobs {
             CoreRepository core = core(tx);
             Node plan = core.find("DepositImportPlan", "id", id);
             if (plan == null || number(plan, "expiresAt", 0) > now) continue;
+            // Inspection can renew the plan while cleanup waits for its Namespace.
+            core.lockNamespace(text(plan, "namespaceId"));
+            plan = core.find("DepositImportPlan", "id", id);
+            if (plan == null || number(plan, "expiresAt", 0) > now) continue;
             String path = plan.hasProperty("stagingPath") ? text(plan, "stagingPath") : null;
             String admissionId=plan.hasProperty("admissionId")?text(plan,"admissionId"):null;
             if (path != null) Files.deleteIfExists(files.path(path));
@@ -185,6 +196,9 @@ final class StorageMaintenanceJobs {
 
     static long collectTerminalTransferChunks(Transaction tx,int batchSize){
         if(batchSize<1)throw new IllegalArgumentException("Chunk cleanup batch must be positive");
+        try(var result=tx.execute("MATCH (transfer:DepositTransfer) WHERE transfer.state IN ['finished','aborted','expired'] AND EXISTS { MATCH (chunk:DepositTransferChunk {uploadId:transfer.id}) } RETURN transfer.id LIMIT 1",Map.of())){
+            if(!result.hasNext())return 0;
+        }
         try(var result=tx.execute(DELETE_TERMINAL_TRANSFER_CHUNKS,Map.of("batchSize",batchSize))){
             return ((Number)result.next().get("deleted")).longValue();
         }

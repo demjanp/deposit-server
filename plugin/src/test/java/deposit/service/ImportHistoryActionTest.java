@@ -564,12 +564,36 @@ class ImportHistoryActionTest {
         assertEquals(replayed,actionReplay,"committed procedure replay must use the original recovery key and request hash");
     }
 
+    @Test void sequentialPreparedServerActionsObserveCommittedRevisionWithoutRefresh() throws Exception {
+        createNamespace("disabled");
+        try(var tx=database.beginTx()) {tx.findNode(Label.label("User"),"id",actor).setProperty("serverRole","administrator");tx.commit();}
+        apiCall(token,"deposit.utils.refresh",List.of("server"),true);
+        long revision=server.committedRevision();
+        String namespaceKey=UUID.randomUUID().toString();
+        apiCall(token,"deposit.action.prepare",List.of(namespaceKey,"deposit.create.namespace",List.of("Sequential server Namespace",Json.map("description","description","historyMode","disabled"))),true);
+        apiCall(token,"deposit.create.namespace",List.of("Sequential server Namespace",Json.map("description","description","historyMode","disabled")),true);
+        apiCall(token,"deposit.action.release",List.of(),true);
+        long namespaceRevision=server.committedRevision();
+        assertTrue(namespaceRevision>revision);
+        assertEquals(namespaceRevision,server.session(Json.hash(token)).baselines.get("server"));
+        String userKey=UUID.randomUUID().toString();
+        apiCall(token,"deposit.action.prepare",List.of(userKey,"deposit.create.user",List.of("sequential-user","Valid-password-123",Json.map("serverRole","user"))),true);
+        apiCall(token,"deposit.create.user",List.of("sequential-user","Valid-password-123",Json.map("serverRole","user")),true);
+        apiCall(token,"deposit.action.release",List.of(),true);
+        long userRevision=server.committedRevision();
+        assertEquals(namespaceRevision+1,userRevision);
+        assertEquals(userRevision,server.session(Json.hash(token)).baselines.get("server"));
+        assertNull(server.session(Json.hash(token)).preparedAction);
+        assertNull(server.session(Json.hash(token)).mutationOwner);
+    }
+
     private Map<String,Object> apiCall(String token,String procedure,List<Object> arguments,boolean commit) throws Exception {
         try(var tx=database.beginTx()) {
             var probe=new ApiProbe();probe.tx=tx;probe.log=org.neo4j.logging.NullLog.getInstance();
-            var row=(Results.DataRow)probe.call(token,procedure,arguments).findFirst().orElseThrow();
+            Object result=probe.call(token,procedure,arguments).findFirst().orElseThrow();
+            Map<String,Object> row=switch(result) {case Results.DataRow value->value.data;case Results.EntityRow value->value.data;case Results.ValueRow value->Json.map("value",value.value);default->throw new AssertionError("Unexpected public row: "+result.getClass());};
             if(commit)tx.commit();else tx.rollback();
-            return row.data;
+            return row;
         }
     }
 
@@ -656,6 +680,32 @@ class ImportHistoryActionTest {
         }
     }
 
+    @Test void publicActionBeginRetainsSuppliedOperationId() {
+        createNamespace("disabled");String operation=UUID.randomUUID().toString();
+        try(var tx=database.beginTx()) {
+            var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));context.state.observations.put(namespace,0L);context.publicCall=true;context.procedure="deposit.create.class";context.request=Json.map("name","Bound operation","properties",Json.map());
+            var actions=new SessionActionService(context);actions.begin(context.procedure,java.util.List.of("Bound operation",Json.map()));
+            assertEquals(operation,context.operationId,"the public operation envelope must retain its supplied identity for admission and replay");
+            assertEquals(namespace,context.actionScope);tx.rollback();
+        }
+    }
+
+    @Test void importApplyCapturesMembershipIdentityFromRestoredObjects() {
+        createNamespace("persistent");long revisionsBefore=revisionCount();String membership=UUID.randomUUID().toString();
+        invoke("deposit.import.apply",UUID.randomUUID().toString(),0,Json.map("planId",UUID.randomUUID().toString()),true,context->{
+            var repo=new CoreRepository(context.tx,context.timestamp);
+            Node object=repo.createRestored("Object",namespace,actor,Json.map("position",List.of(0.0,0.0)),UUID.randomUUID().toString());
+            Node clazz=repo.find("Class",Map.of("namespaceId",namespace,"name","Specimen"));repo.assignRestored(object,clazz,actor,membership);
+            assertEquals(membership,CoreRepository.id(repo.membership(object)));
+        });
+        try(var tx=database.beginTx()) {
+            var repo=new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC));Node root=repo.namespace(namespace);
+            Revision revision=new HistoryRepository(tx,repo).revision(namespace,(String)root.getProperty("headRevisionId"));
+            Map<String,Object> image=revision.after().get(HistoryCodec.key("Membership",membership));assertNotNull(image);
+            assertEquals(membership,image.get("id"));assertEquals(namespace,image.get("namespaceId"));
+        }
+        assertEquals(revisionsBefore+1,revisionCount());
+    }
     @Test void rollingBackImportApplyLeavesNoRevisionOrScratchIndex() throws Exception {
         createNamespace("persistent");long revisionsBefore=revisionCount();
         invoke("deposit.import.apply",UUID.randomUUID().toString(),0,Json.map("planId",UUID.randomUUID().toString()),false,context->{

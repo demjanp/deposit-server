@@ -11,6 +11,7 @@ public final class SchemaRepository {
             for(String label:List.of("Revision","DepositSnapshot","DepositHistoryEpoch"))tx.execute("CREATE CONSTRAINT deposit_"+label+"_identity IF NOT EXISTS FOR (n:"+label+") REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_revision_touch IF NOT EXISTS FOR (n:RevisionTouch) REQUIRE (n.namespaceId,n.revisionId,n.entityKey) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_revision_dependency IF NOT EXISTS FOR (n:RevisionDependency) REQUIRE (n.namespaceId,n.revisionId,n.entityKey) IS UNIQUE").close();
+            tx.execute("CREATE INDEX deposit_prepared_upload_action IF NOT EXISTS FOR (n:DepositPreparedAction) ON (n.actorId,n.scope,n.resourceUploadId)").close();
             tx.execute("CREATE INDEX deposit_revision_touch_epoch IF NOT EXISTS FOR (n:RevisionTouch) ON (n.namespaceId,n.historyEpochId)").close();
             tx.execute("CREATE INDEX deposit_revision_dependency_epoch IF NOT EXISTS FOR (n:RevisionDependency) ON (n.namespaceId,n.historyEpochId)").close();
             tx.execute("CREATE CONSTRAINT deposit_revision_tag IF NOT EXISTS FOR (n:RevisionTag) REQUIRE (n.namespaceId,n.revisionId) IS UNIQUE").close();

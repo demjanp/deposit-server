@@ -69,6 +69,22 @@ class ImportSnapshotMaterializerTest {
         }
     }
 
+    @Test void rollbackAfterPublicationRetainsReservationForOrphanReconciliation()throws Exception {
+        byte[] content="uncommitted publication bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);String checksum=ResourceFiles.checksum(content),sourceResource=UUID.randomUUID().toString(),actor=UUID.randomUUID().toString();Path archive=archive("rollback-publication.zip",checksum,content);
+        String operation=UUID.randomUUID().toString();
+        try(var tx=database.beginTx()){
+            var repo=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));repo.createRestored("User",null,actor,Map.of(),actor);var ns=repo.create("Namespace",null,actor,Json.map("name","Rollback target","description","","sequence",0L,"historyMode","disabled"));String namespace=CoreRepository.id(ns);repo.setRole(actor,namespace,"owner");
+            var context=new RequestContext(tx,Json.map("operationId",operation));context.actorId=actor;context.namespaceId=namespace;
+            var graph=graph(List.of(),List.of(),List.of(),List.of(resourceRecord(sourceResource,checksum,content.length)));
+            new ImportSnapshotMaterializer(context,repo,new ResourceRepository(tx,repo)).materialize(new ExchangePackageCodec.PackageData(Json.map("sourceNamespaceId","source-ns"),graph,Map.of()),archive,namespace,Map.of(),Map.of());
+            tx.rollback();
+        }
+        try(var paths=Files.list(server.storage.files.root.resolve("admission"))){
+            var rows=paths.toList();for(Path record:rows)System.out.println("ROLLBACK ADMISSION="+Files.readString(record));System.out.println("ROLLBACK_DIAGNOSTIC="+server.storage.diagnostic);assertEquals(2,rows.size(),"publication must not erase independent admission ownership on rollback");
+            assertEquals(1,server.storage.content.discover().size());for(Path path:rows){var record=Json.read(Files.readString(path));assertEquals(operation,record.get("operationId"));}
+        }
+    }
+
     @Test void applyMaterializesOnlyResourcesForCurrentDescriptorWrites()throws Exception {
         byte[] currentBytes="current descriptor content".getBytes(java.nio.charset.StandardCharsets.UTF_8),historyBytes="history only content".getBytes(java.nio.charset.StandardCharsets.UTF_8);String currentChecksum=ResourceFiles.checksum(currentBytes),historyChecksum=ResourceFiles.checksum(historyBytes),currentSource=UUID.randomUUID().toString(),historySource=UUID.randomUUID().toString(),actor=UUID.randomUUID().toString();Path archive=archive("mixed-package.zip",Map.of(currentChecksum,currentBytes,historyChecksum,historyBytes));
         try(var tx=database.beginTx()){

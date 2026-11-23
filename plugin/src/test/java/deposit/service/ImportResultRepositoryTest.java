@@ -28,10 +28,12 @@ class ImportResultRepositoryTest {
         management=new DatabaseManagementServiceBuilderImplementation(temporary.resolve("db"),type->type!=DepositExtension.class).build();
         database=(GraphDatabaseAPI)management.database("neo4j");server=ServerContext.attach(database.databaseId().databaseId().uuid());var databaseField=ServerContext.class.getDeclaredField("database");databaseField.setAccessible(true);databaseField.set(server,database);storage=new StorageManager(server,database);server.storage=storage;var ready=ServerContext.class.getDeclaredMethod("markReadyForTesting");ready.setAccessible(true);ready.invoke(server);
         largeKey="🔐".repeat(5_000);
+        SchemaRepository.initialize(database);
         try(var tx=database.beginTx()){
             var context=context(tx,actor);var repo=new ImportResultRepository(context);
             String longText="λ🙂".repeat(12_000);
-            Map<String,Object> data=Json.map("objectMappings",Json.map("source-1",null),"nested",Json.map(largeKey,"large-key-value","text",longText),"groups",List.of(Json.map("name","one"),Json.map("name","two"),Json.map("name","three")));
+            var admitted=new LinkedHashMap<String,Object>();admitted.put("source-1",null);for(int i=0;i<2000;i++)admitted.put("source-object-"+i,UUID.randomUUID().toString());
+            Map<String,Object> data=Json.map("objectMappings",admitted,"nested",Json.map(largeKey,"large-key-value","text",longText),"groups",List.of(Json.map("name","one"),Json.map("name","two"),Json.map("name","three")));
             Map<String,Object> envelope=repo.save(operation,"analysis","plan-1",7L,System.currentTimeMillis()+60_000,data);resultId=(String)envelope.get("resultId");
             context.revision=7L;var core=new CoreRepository(tx,java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC));core.saveReceipt(context,namespace,"request-hash",new Outcome(null,null,envelope));tx.commit();
         }
@@ -47,6 +49,31 @@ class ImportResultRepositoryTest {
             assertNotNull(nestedText);assertEquals("text",nestedText.get("type"));String textCollection=(String)nestedText.get("collection");Map<String,Object> textPage=repo.page(Json.map("resultId",resultId,"collection",textCollection,"cursor",null,"limit",10L));var chunks=(List<?>)textPage.get("entries");assertFalse(chunks.isEmpty());String chunk=(String)ValueCodec.map(chunks.getFirst()).get("value");assertTrue(chunk.startsWith("λ🙂"));assertTrue(chunk.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=ImportResultRepository.TEXT_CHUNK_BYTES);
             Map<String,Object> mapping=repo.mappingView(resultId,"objectMappings");assertTrue(mapping.containsKey("source-1"));assertNull(mapping.get("source-1"));
             Map<String,Object> nested=repo.mappingView(resultId,"nested");assertTrue(nested.containsKey(largeKey));assertEquals("large-key-value",nested.get(largeKey));assertEquals(largeKey,nested.entrySet().iterator().next().getKey());tx.commit();
+        }
+    }
+
+    @Test void completedApplyResultWithPlanIdIsPersistedAndReplayedAsApplied(){
+        String applyOperation=UUID.randomUUID().toString();
+        Map<String,Object> envelope;
+        try(var tx=database.beginTx()){
+            var context=context(tx,actor);
+            context.operationId=applyOperation;
+            context.revision=8L;
+            envelope=new ImportResultRepository(context).save(applyOperation,"apply","plan-1",8L,
+                    System.currentTimeMillis()+60_000,Map.of());
+            new CoreRepository(tx,context.timestamp).saveReceipt(context,namespace,"apply-request-hash",
+                    new Outcome(null,null,envelope));
+            tx.commit();
+        }
+        try(var tx=database.beginTx()){
+            var context=context(tx,actor);
+            var core=new CoreRepository(tx,context.timestamp);
+            Map<String,Object> replayed=core.replay(core.receipt(namespace,applyOperation),namespace).data();
+            assertEquals("apply",replayed.get("kind"));
+            assertEquals("plan-1",replayed.get("planId"));
+            assertEquals("APPLIED",replayed.get("state"));
+            assertEquals(envelope,replayed);
+            assertEquals(envelope,new ImportResultRepository(context).envelope((String)envelope.get("resultId")));
         }
     }
 
@@ -128,7 +155,7 @@ class ImportResultRepositoryTest {
             assertEquals(Set.of("plan","analysisResult"),inspected.keySet());
             assertEquals(Json.map("planId","plan-1","namespaceId",namespace,"state","applied","targetRevision",8L,"expiresAt",123456L),inspected.get("plan"));
             assertEquals(before,inspected.get("analysisResult"));
-            assertEquals("ready",ValueCodec.map(inspected.get("analysisResult")).get("state"));
+            assertEquals("PLAN_READY",ValueCodec.map(inspected.get("analysisResult")).get("state"));
             tx.rollback();
         }
     }
@@ -180,6 +207,21 @@ class ImportResultRepositoryTest {
             assertEquals(2L,ValueCodec.map(ValueCodec.map(envelope.get("collections")).get("objectMappings")).get("count"));tx.rollback();
         }
     }
+
+    @Test void mappedIncomingObjectLookupUsesCompositeResultIndex()throws java.security.NoSuchAlgorithmException{
+        String incoming="source-object-1999";
+        try(var tx=database.beginTx()){
+            var context=context(tx,actor);
+            var explanation=tx.execute("EXPLAIN MATCH (row:DepositImportResultEntry {resultId:$resultId,collectionId:$collectionId,mapKeyHash:$mapKeyHash,mapKey:$mapKey}) RETURN row",
+                    Map.of("resultId",resultId,"collectionId",incoming,"mapKeyHash",keyHash(incoming),"mapKey",incoming));
+            String detail=explanation.getExecutionPlanDescription().toString();explanation.close();
+            assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("PropertyFilteringIterator"),detail);
+            Map<String,Object> mappings=new ImportResultRepository(context).mappingView(resultId,"objectMappings");String target=(String)mappings.get(incoming);
+            assertNotNull(target);assertFalse(mappings.containsKey("source-missing-object"));
+            tx.rollback();
+        }
+    }
+    private static String keyHash(String key)throws java.security.NoSuchAlgorithmException{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
 
     private RequestContext context(Transaction tx,String who){var context=new RequestContext(tx,Map.of("token","test-token","operationId",operation));context.actorId=who;context.namespaceId=namespace;return context;}
 }

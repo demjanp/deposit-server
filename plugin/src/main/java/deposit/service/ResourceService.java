@@ -40,7 +40,7 @@ public final class ResourceService extends BaseService {
         }
         Map<String,Object> result;
         try {result=switch(method){case "beginUpload"->new ResourceTransferRepository(c,resources).begin(request);case "uploadChunk"->new ResourceTransferRepository(c,resources).chunk(request,transfer(request.get("uploadId"),true));case "finishUpload"->new ResourceTransferRepository(c,resources).finish(request,transfer(request.get("uploadId"),true));case "abortUpload"->new ResourceTransferRepository(c,resources).abort(request,transfer(request.get("uploadId"),false));default->throw new IllegalArgumentException();};}
-        catch(StorageAdmission.StoragePressureException e){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Insufficient available storage for the requested operation");}
+        catch(StorageAdmission.StoragePressureException e){throw ExceptionHandler.fail("LIMIT_EXCEEDED",e.getMessage());}
         catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Transfer storage unavailable");}
         repo.saveReceipt(c,c.namespaceId,hash,new Outcome(null,null,result));return result;
     }

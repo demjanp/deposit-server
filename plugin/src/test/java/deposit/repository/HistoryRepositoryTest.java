@@ -45,6 +45,64 @@ class HistoryRepositoryTest {
             try(var rows=tx.execute("EXPLAIN MATCH (d:RevisionDependency {namespaceId:$ns,revisionId:$id}) WHERE d.entityKey IS NOT NULL RETURN d.entityKey ORDER BY d.entityKey",Map.of("ns",namespace,"id",revision))){String plan=rows.getExecutionPlanDescription().toString();assertTrue(plan.contains("Index"),plan);}
         }
     }
+    @Test void restoredClassEdgeSurvivesDiskCaptureAndHistoryRestore()throws Exception{
+        String edgeId=UUID.randomUUID().toString(),secondEdge=UUID.randomUUID().toString();
+        String restoredClass;try(var tx=database.beginTx()){try{restoredClass=CoreRepository.id(core(tx).find("Class",Map.of("namespaceId",namespace,"name","Specimen")));}finally{tx.rollback();}}
+        try(var tx=database.beginTx()){
+            var core=core(tx);Node source=core.entity("Class",namespace,restoredClass);
+            Node object=core.createRestored("Object",namespace,actor,Json.map("position",List.of(0.0,0.0)),UUID.randomUUID().toString());core.assignRestored(object,source,actor,UUID.randomUUID().toString());
+            core.createRelationshipRestored(source,source,"related",Map.of("comment","restored"),actor,edgeId);
+            new HistoryRepository(tx,core).baseline(namespace,actor,0,"old-boot",ZonedDateTime.now(ZoneOffset.UTC));tx.rollback();
+        }
+        // Portable audit for the restored edge predates the restoring transaction and belongs to another actor.
+        String historicalActor=UUID.randomUUID().toString();
+        ZonedDateTime historical=ZonedDateTime.now(ZoneOffset.UTC).minusDays(1);String historicalCreated=historical.toString();
+        Map<String,Object> image=Json.map("kind","ClassRelationship","id",secondEdge,"namespaceId",namespace,"sourceId",restoredClass,"targetId",restoredClass,"label","linked","comment","restore","createdAt",historicalCreated,"createdBy",historicalActor);
+        try(var workspace=new HistoryWorkspace(temporary.resolve("restored-edge-scratch"),()->{},ignored->{},()->{});var tx=database.beginTx()){
+            var core=core(tx);var history=new HistoryRepository(tx,core);var current=history.capture(namespace);
+            var target=new TreeMap<String,Map<String,Object>>();current.forEach((key,value)->target.put(key,new LinkedHashMap<>(value)));
+            target.put(HistoryCodec.key(image),image);UndoPlan plan=HistoryPlanner.restore(1,current,target,"restored-class-edge").plan();
+            assertTrue(plan.conflicts().isEmpty(),plan.conflicts().toString());history.apply(namespace,actor,plan);
+            Relationship restored=core.relationship(namespace,"ClassRelationship",secondEdge);assertNotNull(restored);
+            assertEquals(restoredClass,CoreRepository.id(restored.getStartNode()));assertEquals(restoredClass,CoreRepository.id(restored.getEndNode()));
+            assertEquals("linked",restored.getProperty("label"));assertEquals("restore",restored.getProperty("comment"));
+            // Audit timestamps come from the preserved historical edge, not a later restore time.
+            assertEquals(historical.toInstant(),((ZonedDateTime)restored.getProperty("createdAt")).toInstant());
+            assertEquals(historicalActor,restored.getProperty("createdBy"));assertNotEquals(actor,restored.getProperty("createdBy"));
+            Map<String,Map<String,Object>> after=history.capture(namespace,workspace.newState());
+            assertEquals(target.keySet(),after.keySet());
+            for(String key:target.keySet())assertEquals(HistoryCodec.scientific(target.get(key)),HistoryCodec.scientific(after.get(key)),key);
+            Map<String,Object> captured=after.get(HistoryCodec.key(image));assertNotNull(captured);
+            for(String field:List.of("createdAt","createdBy","updatedAt","updatedBy"))assertNotNull(captured.get(field),field);
+            assertEquals(historicalCreated,captured.get("createdAt"));assertEquals(historicalActor,captured.get("createdBy"));
+            assertEquals(actor,captured.get("updatedBy"));assertEquals(secondEdge,captured.get("id"));
+            assertNotEquals(historicalCreated,captured.get("updatedAt"),"restoring writes a fresh update audit");
+            Map<String,Map<String,Object>> replay=history.capture(namespace,workspace.newState());
+            assertEquals(captured,replay.get(HistoryCodec.key(image)),"disk capture must replay the restored edge image unchanged");
+            for(String field:List.of("updatedAt","updatedBy"))image.put(field,captured.get(field));
+            assertEquals(target,after);tx.rollback();
+        }
+    }
+    @Test void restoredClassEdgeWithoutHistoricalAuditStillCarriesRestoreAudit()throws Exception{
+        String secondEdge=UUID.randomUUID().toString();
+        String restoredClass;try(var tx=database.beginTx()){try{restoredClass=CoreRepository.id(core(tx).find("Class",Map.of("namespaceId",namespace,"name","Specimen")));}finally{tx.rollback();}}
+        // A portable image may omit audit entirely; restoration must still leave a fully audited edge.
+        Map<String,Object> image=Json.map("kind","ClassRelationship","id",secondEdge,"namespaceId",namespace,"sourceId",restoredClass,"targetId",restoredClass,"label","linked","comment","restore");
+        try(var workspace=new HistoryWorkspace(temporary.resolve("unaudited-edge-scratch"),()->{},ignored->{},()->{});var tx=database.beginTx()){
+            var core=core(tx);var history=new HistoryRepository(tx,core);var current=history.capture(namespace);
+            var target=new TreeMap<String,Map<String,Object>>();current.forEach((key,value)->target.put(key,new LinkedHashMap<>(value)));
+            target.put(HistoryCodec.key(image),image);UndoPlan plan=HistoryPlanner.restore(1,current,target,"unaudited-class-edge").plan();
+            assertTrue(plan.conflicts().isEmpty(),plan.conflicts().toString());history.apply(namespace,actor,plan);
+            Relationship restored=core.relationship(namespace,"ClassRelationship",secondEdge);assertNotNull(restored);
+            assertEquals(secondEdge,CoreRepository.id(restored));assertEquals("linked",restored.getProperty("label"));
+            for(String field:List.of("createdAt","createdBy","updatedAt","updatedBy"))assertNotNull(restored.getProperty(field),field);
+            assertEquals(actor,restored.getProperty("createdBy"));assertEquals(actor,restored.getProperty("updatedBy"));
+            Map<String,Map<String,Object>> after=history.capture(namespace,workspace.newState());
+            Map<String,Object> captured=after.get(HistoryCodec.key(image));assertNotNull(captured);
+            for(String field:List.of("createdAt","createdBy","updatedAt","updatedBy"))assertNotNull(captured.get(field),field);
+            assertEquals(HistoryCodec.scientific(image),HistoryCodec.scientific(captured));tx.rollback();
+        }
+    }
     @Test void rollbackLeavesNoRevisionOrChildRecordsAndScratchCloses()throws Exception{
         long revisions,touches,dependencies;
         try(var tx=database.beginTx()){revisions=count(tx,"Revision");touches=count(tx,"RevisionTouch");dependencies=count(tx,"RevisionDependency");}

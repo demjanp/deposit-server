@@ -13,6 +13,44 @@ import deposit.service.PatternService;
 class ExchangePackageCodecTest {
     @TempDir Path temp;
 
+    @Test void workspaceSmallRecordsAvoidDiskFieldProbesWithoutLosingDuplicateChecks() throws Exception {
+        var json=new StringBuilder("{\"rows\":[");
+        for(int i=0;i<5000;i++){
+            if(i>0)json.append(',');
+            json.append("{\"kind\":\"Object\",\"id\":").append(i).append(",\"value\":{\"nested\":").append(i).append("}}");
+        }
+        json.append("],\"large\":{");
+        for(int i=0;i<34;i++){
+            if(i>0)json.append(',');
+            json.append("\"field").append(i).append("\":").append(i);
+        }
+        json.append("},\"").append("x".repeat(257)).append("\":true}");
+        try(var workspace=new PackageWorkspace(temp)){
+            var root=workspace.parse(new java.io.StringReader(json.toString()));
+            var rows=(List<?>)root.get("rows");
+            assertEquals(5000,rows.size());
+            assertEquals(4999L,ValueCodec.map(rows.get(4999)).get("id"));
+            assertEquals(4999L,ValueCodec.map(ValueCodec.map(rows.get(4999)).get("value")).get("nested"));
+            var large=ValueCodec.map(root.get("large"));
+            assertEquals(0L,large.get("field0"));
+            assertEquals(33L,large.get("field33"));
+            assertNull(large.get("absent"));
+            assertEquals(true,root.get("x".repeat(257)));
+            assertTrue(workspace.probeCount()<1000,"small row properties should not enter the disk field index");
+        }
+        for(int count:List.of(2,33,34)){
+            var object=new StringBuilder("{");
+            for(int i=0;i<count;i++){
+                if(i>0)object.append(',');
+                object.append("\"field").append(i==count-1?0:i).append("\":").append(i);
+            }
+            object.append('}');
+            try(var workspace=new PackageWorkspace(temp)){
+                assertThrows(java.io.IOException.class,()->workspace.parse(new java.io.StringReader(object.toString())));
+            }
+        }
+    }
+
 
     @Test void packageWriterCreatesValidPortableArchive() throws Exception {
         Path archive=temp.resolve("package.zip");
@@ -24,6 +62,25 @@ class ExchangePackageCodecTest {
         assertEquals("namespace",ExchangePackageCodec.validateSummary(archive).scope());
     }
 
+    @Test void namespaceUserToolSurvivesStreamingValidationAndStrictlyBindsToSource() throws Exception {
+        var manifest=manifest();String namespace=(String)manifest.get("sourceNamespaceId"),object=UUID.randomUUID().toString(),clazz=UUID.randomUUID().toString(),membership=UUID.randomUUID().toString();
+        var graph=graph();graph.put("classes",List.of(Json.map("kind","Class","id",clazz,"namespaceId",namespace,"name","Specimen","descriptors",List.of())));graph.put("objects",List.of(Json.map("kind","Object","id",object,"namespaceId",namespace,"classId",clazz)));graph.put("memberships",List.of(Json.map("kind","Membership","id",membership,"namespaceId",namespace,"objectId",object,"classId",clazz)));graph.put("userTools",List.of(Json.map("kind","UserTool","id",UUID.randomUUID().toString(),"namespaceId",namespace,"name","NetworkX tool","data","retain opaque data")));
+        Path valid=temp.resolve("networkx-current-data.zip");ExchangePackageCodec.write(valid,manifest,graph,null,Map.of());
+        var decoded=ExchangePackageCodec.validate(valid);var tool=ValueCodec.map(((List<?>)decoded.graph().get("userTools")).getFirst());assertEquals("NetworkX tool",tool.get("name"));assertEquals("retain opaque data",tool.get("data"));
+        ExchangePackageCodec.withValidatedPackage(valid,()->{},pkg->{assertEquals(tool,((List<?>)pkg.graph().get("userTools")).getFirst());return null;});
+        assertEquals(1L,ExchangePackageCodec.validateSummary(valid).counts().get("userTools"));
+        var subgraph=new LinkedHashMap<>(manifest);
+        subgraph.put("scope","subgraph");subgraph.put("rootIds",List.of(object));
+        Path rejected=temp.resolve("subgraph-with-user-tool.zip");
+        ExchangePackageCodec.write(rejected,subgraph,graph,null,Map.of());
+        assertAll(
+                ()->assertEquals("Subgraph packages cannot contain User Tools",assertThrows(java.io.IOException.class,
+                        ()->ExchangePackageCodec.validate(rejected)).getMessage()),
+                ()->assertEquals("Subgraph packages cannot contain User Tools",assertThrows(java.io.IOException.class,
+                        ()->ExchangePackageCodec.withValidatedPackage(rejected,()->{},pkg->null)).getMessage()));
+        var escaped=new LinkedHashMap<>(manifest);escaped.put("sourceNamespaceId",UUID.randomUUID().toString());Path mismatch=temp.resolve("networkx-escaped-tool.zip");ExchangePackageCodec.write(mismatch,escaped,graph,null,Map.of());assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validate(mismatch));
+        var malformed=new LinkedHashMap<String,Object>(tool);malformed.put("unexpected",true);graph.put("userTools",List.of(malformed));Path unknownField=temp.resolve("networkx-malformed-tool.zip");ExchangePackageCodec.write(unknownField,manifest,graph,null,Map.of());assertThrows(java.io.IOException.class,()->ExchangePackageCodec.validate(unknownField));
+    }
     @Test void depositVersionMayBeNullOrAValidServerVersionButNotEmptyOrMalformed() throws Exception {
         var detached=manifest();detached.put("depositVersion",null);
         Path detachedArchive=temp.resolve("detached.zip");ExchangePackageCodec.write(detachedArchive,detached,graph(),null,Map.of());

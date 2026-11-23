@@ -1771,10 +1771,11 @@
   {
     "name": "deposit.get.importPlan",
     "args": [
-      {"name": "planId", "type": "String", "binding": "planId"}
+      {"name": "planId", "type": "String", "binding": "planId"},
+      {"name": "renewLease", "type": "Boolean", "binding": "renewLease", "default": true}
     ],
     "output": "data",
-    "mode": "READ",
+    "mode": "WRITE",
     "scope": "namespace",
     "action": false
   },

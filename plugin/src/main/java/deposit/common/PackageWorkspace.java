@@ -55,7 +55,7 @@ final class PackageWorkspace implements AutoCloseable {
         if(value instanceof Text text&&text.owner()==this)return text.at;
         if(value==null)return allocate('n');
         if(value instanceof Boolean b)return allocate(b?'t':'f');
-        if(value instanceof Map<?,?> map){long at=allocate('o'),last=0,size=0;for(var entry:map.entrySet()){long key=string((String)entry.getKey()),child=write(entry.getValue());number(key,FIRST_OFFSET,child);fields.put(at+":"+fingerprint((String)entry.getKey()),key);if(last==0)number(at,FIRST_OFFSET,key);else number(last,NEXT_OFFSET,key);last=key;size=Math.addExact(size,1L);}count(at,size);return at;}
+        if(value instanceof Map<?,?> map){long at=allocate('o'),last=0,size=0;for(var entry:map.entrySet()){long key=string((String)entry.getKey()),child=write(entry.getValue());number(key,FIRST_OFFSET,child);if(last==0)number(at,FIRST_OFFSET,key);else number(last,NEXT_OFFSET,key);last=key;size=Math.addExact(size,1L);}count(at,size);if(size>32)indexFields(at);return at;}
         if(value instanceof Collection<?> list){long at=allocate('a'),last=0,size=0;for(Object item:list){long child=detach(write(item));if(last==0)number(at,FIRST_OFFSET,child);else number(last,NEXT_OFFSET,child);last=child;size=Math.addExact(size,1L);}count(at,size);return at;}
         if(value instanceof String s)return string(s);
         if(value instanceof Number n){long at=string(n.toString());nodes.seek(at);nodes.writeByte('d');return at;}
@@ -69,14 +69,21 @@ final class PackageWorkspace implements AutoCloseable {
     Map<String,Object> payload(Map<String,Object> source){return source instanceof TreeMapView view?new TreeMapView(view.at,true):source;}
     private String text(long at)throws IOException{long size=number(at,OWNER_OFFSET);if(size>Integer.MAX_VALUE)throw new IOException("String exceeds package bounds");char[] chars=new char[(int)size];nodes.seek(number(at,LENGTH_OFFSET));for(int start=0;start<chars.length;){int count=Math.min(chars.length-start,textBuffer.length/2);nodes.readFully(textBuffer,0,count*2);for(int i=0;i<count;i++)chars[start+i]=(char)((textBuffer[i*2]&255)<<8|(textBuffer[i*2+1]&255));start+=count;}return new String(chars);}
     private String key(long at)throws IOException{Object value=read(at);return value instanceof Text text?text.fingerprint(): (String)value;}
+    /** Most record maps are small; keep their property lookup off the random-access spill index. */
+    private String shortFieldKey(long at)throws IOException{return number(at,OWNER_OFFSET)>256?"\u0001"+new Text(at).fingerprint():"\u0000"+text(at);}
+    private static String shortFieldKey(String name){return name.length()>256?"\u0001"+fingerprint(name):"\u0000"+name;}
+    private void indexFields(long at)throws IOException{
+        for(long child=number(at,FIRST_OFFSET);child!=0;child=next(child)){
+            if(fields.put(at+":"+new Text(child).fingerprint(),child)!=null)throw new IOException("Duplicate JSON property");
+        }
+    }
     private Object fieldValue(long keyAt,long mapAt)throws IOException{return fieldValue(keyAt,mapAt,false);}
     private Object fieldValue(long keyAt,long mapAt,boolean payload)throws IOException{
         if(payload)return read(number(keyAt,FIRST_OFFSET),true);
         String key=key(keyAt);long valueAt=number(keyAt,FIRST_OFFSET);
         if(Set.of("comment","data","description","summary").contains(key)&&type(valueAt)=='s')return new Text(valueAt).fingerprint();
-        long owner=number(mapAt,OWNER_OFFSET)==0?mapAt:number(mapAt,OWNER_OFFSET);
         boolean journal=false;
-        if(key.equals("touches")||key.equals("dependencies")){Long revision=fields.get(owner+":"+fingerprint("revisionId")),changes=fields.get(owner+":"+fingerprint("changes"));journal=revision!=null&&changes!=null&&type(number(revision,FIRST_OFFSET))=='s'&&type(number(changes,FIRST_OFFSET))=='a';}
+        if(key.equals("touches")||key.equals("dependencies")){TreeMapView view=new TreeMapView(mapAt,payload);Long revision=view.field("revisionId"),changes=view.field("changes");journal=revision!=null&&changes!=null&&type(number(revision,FIRST_OFFSET))=='s'&&type(number(changes,FIRST_OFFSET))=='a';}
         return PackageIdentity.field(key,key.equals("wkt")?materializeText(read(valueAt)):read(valueAt),journal);
     }
     final class Text {
@@ -95,7 +102,21 @@ final class PackageWorkspace implements AutoCloseable {
         return view.dictionary();
     }
     private final class TreeMapView extends AbstractMap<String,Object> implements LongSized {
-        final long at;final boolean payload;TreeMapView(long at,boolean payload){this.at=at;this.payload=payload;}PackageWorkspace owner(){return PackageWorkspace.this;}
+        final long at;final boolean payload;private Map<String,Long> smallFields;
+        TreeMapView(long at,boolean payload){this.at=at;this.payload=payload;}PackageWorkspace owner(){return PackageWorkspace.this;}
+        private Long field(String name)throws IOException{
+            if(count(at)>32)return fields.get((number(at,OWNER_OFFSET)==0?at:number(at,OWNER_OFFSET))+":"+fingerprint(name));
+            if(smallFields==null){
+                var found=new HashMap<String,Long>();
+                long owner=number(at,OWNER_OFFSET)==0?at:number(at,OWNER_OFFSET);
+                for(long child=number(owner,FIRST_OFFSET);child!=0;child=PackageWorkspace.this.next(child)){
+                    if((found.size()&31)==0)cancelled();
+                    found.put(shortFieldKey(child),child);
+                }
+                smallFields=found;
+            }
+            return smallFields.get(shortFieldKey(name));
+        }
         Map<String,Object> dictionary(){return new AbstractMap<>(){
             public Set<Entry<String,Object>> entrySet(){return new AbstractSet<>(){
                 public int size(){return TreeMapView.this.size();}
@@ -104,8 +125,8 @@ final class PackageWorkspace implements AutoCloseable {
         };}
         @Override public int size(){try{return (int)Math.min(Integer.MAX_VALUE,count(at));}catch(IOException e){throw unchecked(e);}}
         public long longSize(){try{return count(at);}catch(IOException e){throw unchecked(e);}}
-        @Override public Object get(Object key){if(!(key instanceof String s))return null;Long child;try{child=fields.get((number(at,OWNER_OFFSET)==0?at:number(at,OWNER_OFFSET))+":"+fingerprint(s));}catch(IOException e){throw unchecked(e);}try{return child==null?null:fieldValue(child,at,payload);}catch(IOException e){throw unchecked(e);}}
-        @Override public boolean containsKey(Object key){try{return key instanceof String s&&fields.containsKey((number(at,OWNER_OFFSET)==0?at:number(at,OWNER_OFFSET))+":"+fingerprint(s));}catch(IOException e){throw unchecked(e);}}
+        @Override public Object get(Object key){if(!(key instanceof String s))return null;Long child;try{child=field(s);}catch(IOException e){throw unchecked(e);}try{return child==null?null:fieldValue(child,at,payload);}catch(IOException e){throw unchecked(e);}}
+        @Override public boolean containsKey(Object key){try{return key instanceof String s&&field(s)!=null;}catch(IOException e){throw unchecked(e);}}
         @Override public Set<Entry<String,Object>> entrySet(){return new AbstractSet<>(){
             public int size(){return TreeMapView.this.size();}
             public Iterator<Entry<String,Object>> iterator(){try{return new Iterator<>(){long child=number(at,FIRST_OFFSET);public boolean hasNext(){return child!=0;}public Entry<String,Object> next(){if(child==0)throw new NoSuchElementException();try{long current=child;child=PackageWorkspace.this.next(child);return new SimpleImmutableEntry<>(payload?text(current):key(current),fieldValue(current,at,payload));}catch(IOException e){throw unchecked(e);}}};}catch(IOException e){throw unchecked(e);}}
@@ -148,24 +169,29 @@ final class PackageWorkspace implements AutoCloseable {
         public void close()throws IOException{table.close();}
     }
     private final class Parser {
-        final PushbackReader reader;Parser(PushbackReader reader){this.reader=reader;}
-        int nonspace()throws IOException{int ch;while((ch=reader.read())!=-1){if(ch!=' '&&ch!='\t'&&ch!='\r'&&ch!='\n')return ch;}return -1;}
+        final PushbackReader reader;private final char[] input=new char[8192];private int cursor,limit,pushed=-2;Parser(PushbackReader reader){this.reader=reader;}
+        private int readChar()throws IOException{if(pushed!=-2){int ch=pushed;pushed=-2;return ch;}while(cursor==limit){limit=reader.read(input,0,input.length);cursor=0;if(limit<0)return -1;}return input[cursor++];}
+        private void unreadChar(int ch){if(pushed!=-2)throw new IllegalStateException("Parser pushback is full");pushed=ch;}
+        int nonspace()throws IOException{int ch;while((ch=readChar())!=-1){if(ch!=' '&&ch!='\t'&&ch!='\r'&&ch!='\n')return ch;}return -1;}
         void expect(int expected)throws IOException{if(nonspace()!=expected)throw new IOException("Invalid JSON delimiter");}
         long value(int depth)throws IOException{
             if(depth>1000)throw new IOException("JSON nesting exceeds parser safety bound");int ch=nonspace();
             if(ch=='"')return quoted();
-            if(ch=='{'||ch=='['){long at=allocate(ch=='{'?'o':'a'),last=0,count=0;int close=ch=='{'?'}':']';int first=nonspace();if(first==close)return at;reader.unread(first);
-                while(true){long child;if(ch=='{'){expect('"');child=quoted();String fingerprint=new Text(child).fingerprint();if(fields.put(at+":"+fingerprint,child)!=null)throw new IOException("Duplicate JSON property");expect(':');number(child,FIRST_OFFSET,value(depth+1));}else child=value(depth+1);
-                    if(last==0)number(at,FIRST_OFFSET,child);else number(last,NEXT_OFFSET,child);last=child;count=Math.addExact(count,1L);int delimiter=nonspace();if(delimiter==close)break;if(delimiter!=',')throw new IOException("Invalid JSON container");}
+            if(ch=='{'||ch=='['){long at=allocate(ch=='{'?'o':'a'),last=0,count=0;int close=ch=='{'?'}':']';int first=nonspace();if(first==close)return at;unreadChar(first);
+                Set<String> names=ch=='{'?new HashSet<>():null;
+                while(true){long child;if(ch=='{'){expect('"');child=quoted();if(names!=null&&!names.add(shortFieldKey(child)))throw new IOException("Duplicate JSON property");expect(':');number(child,FIRST_OFFSET,value(depth+1));}else child=value(depth+1);
+                    if(last==0)number(at,FIRST_OFFSET,child);else number(last,NEXT_OFFSET,child);last=child;count=Math.addExact(count,1L);
+                    if(ch=='{'&&count==33){indexFields(at);names=null;}else if(ch=='{'&&count>33&&fields.put(at+":"+new Text(child).fingerprint(),child)!=null)throw new IOException("Duplicate JSON property");
+                    int delimiter=nonspace();if(delimiter==close)break;if(delimiter!=',')throw new IOException("Invalid JSON container");}
                 count(at,count);return at;
             }
             if(ch=='n'){literal("ull");return allocate('n');}if(ch=='t'){literal("rue");return allocate('t');}if(ch=='f'){literal("alse");return allocate('f');}
-            if(ch=='-'||ch>='0'&&ch<='9'){var number=new StringBuilder();number.append((char)ch);while((ch=reader.read())!=-1&&(ch=='-'||ch=='+'||ch=='.'||ch=='e'||ch=='E'||ch>='0'&&ch<='9')){if(number.length()>1024)throw new IOException("Invalid scientific number");number.append((char)ch);}if(ch!=-1)reader.unread(ch);String s=number.toString();if(!s.matches("-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?"))throw new IOException("Invalid JSON number");long at=string(s);nodes.seek(at);nodes.writeByte('d');return at;}
+            if(ch=='-'||ch>='0'&&ch<='9'){var number=new StringBuilder();number.append((char)ch);while((ch=readChar())!=-1&&(ch=='-'||ch=='+'||ch=='.'||ch=='e'||ch=='E'||ch>='0'&&ch<='9')){if(number.length()>1024)throw new IOException("Invalid scientific number");number.append((char)ch);}if(ch!=-1)unreadChar(ch);String s=number.toString();if(!s.matches("-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?"))throw new IOException("Invalid JSON number");long at=string(s);nodes.seek(at);nodes.writeByte('d');return at;}
             throw new IOException("Invalid JSON token");
         }
-        void literal(String tail)throws IOException{for(int i=0;i<tail.length();i++)if(reader.read()!=tail.charAt(i))throw new IOException("Invalid JSON literal");}
+        void literal(String tail)throws IOException{for(int i=0;i<tail.length();i++)if(readChar()!=tail.charAt(i))throw new IOException("Invalid JSON literal");}
         long quoted()throws IOException{long at=allocate('s'),position=nodes.length();number(at,LENGTH_OFFSET,position);nodes.seek(position);long length=0;byte[] buffer=new byte[8192];int used=0;
-            while(true){int ch=reader.read();if(ch==-1)throw new IOException("Unterminated JSON String");if(ch=='"')break;if(ch<32)throw new IOException("Unescaped JSON control character");if(ch=='\\'){ch=reader.read();ch=switch(ch){case '"','\\','/'->ch;case 'b'->8;case 'f'->12;case 'n'->10;case 'r'->13;case 't'->9;case 'u'->{int decoded=0;for(int i=0;i<4;i++){int digit=Character.digit(reader.read(),16);if(digit<0)throw new IOException("Invalid unicode escape");decoded=decoded*16+digit;}yield decoded;}default->throw new IOException("Invalid JSON escape");};}
+            while(true){int ch=readChar();if(ch==-1)throw new IOException("Unterminated JSON String");if(ch=='"')break;if(ch<32)throw new IOException("Unescaped JSON control character");if(ch=='\\'){ch=readChar();ch=switch(ch){case '"','\\','/'->ch;case 'b'->8;case 'f'->12;case 'n'->10;case 'r'->13;case 't'->9;case 'u'->{int decoded=0;for(int i=0;i<4;i++){int digit=Character.digit(readChar(),16);if(digit<0)throw new IOException("Invalid unicode escape");decoded=decoded*16+digit;}yield decoded;}default->throw new IOException("Invalid JSON escape");};}
                 buffer[used++]=(byte)(ch>>>8);buffer[used++]=(byte)ch;length++;if(used==buffer.length){cancelled();appendNode(buffer);used=0;}}
             if(used>0)appendNode(buffer,0,used);number(at,OWNER_OFFSET,length);return at;
         }

@@ -26,7 +26,7 @@ public final class StorageAdmission implements AutoCloseable {
     private final String serverRunId;
     private final StorageVolumeIdentity volumes;
     private final Map<String,Reservation> reservations=new ConcurrentHashMap<>();
-    private final ReentrantLock stateLock=new ReentrantLock();
+    private final ReentrantLock stateLock=new ReentrantLock(true);
     private final Map<String,ReentrantLock> volumeLocks=new ConcurrentHashMap<>();
 
     public StorageAdmission(Path privateResourceRoot,String serverRunId)throws IOException {this(privateResourceRoot,serverRunId,new StorageVolumeIdentity());}
@@ -154,7 +154,8 @@ public final class StorageAdmission implements AutoCloseable {
     private static long addExact(long left,long right){try{return Math.addExact(left,right);}catch(ArithmeticException e){throw new StoragePressureException("Storage commitment is not representable");}}
     private static List<String> sorted(java.util.Collection<String> ids){return ids.stream().sorted().toList();}
     private void withLocks(List<String> ids,IoAction action)throws IOException {var locks=ids.stream().map(id->volumeLocks.computeIfAbsent(id,k->new ReentrantLock())).toList();var acquired=new ArrayList<ReentrantLock>();try{for(ReentrantLock lock:locks){if(!lock.tryLock())throw new StoragePressureException("Storage admission is busy");acquired.add(lock);}action.run();}finally{for(int i=acquired.size()-1;i>=0;i--)acquired.get(i).unlock();}}
-    private void lockForAdmission()throws IOException {if(!stateLock.tryLock())throw new StoragePressureException("Storage admission is busy");}
+    /** Never wait for storage admission while a caller may hold domain locks. */
+    private void lockForAdmission(){if(!stateLock.tryLock())throw new StoragePressureException("Storage admission is busy");}
     @FunctionalInterface private interface IoAction {void run()throws IOException;}
     private void requireActive(Reservation reservation)throws IOException {if(reservation==null||reservation.closed||reservations.get(reservation.id)!=reservation)throw new IOException("Storage reservation is not active");}
 

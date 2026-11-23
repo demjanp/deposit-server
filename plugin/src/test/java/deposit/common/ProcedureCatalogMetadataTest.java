@@ -34,7 +34,7 @@ class ProcedureCatalogMetadataTest {
 
     @Test void finalImportReadsMatchJavaSignaturesAndMetadata() throws Exception {
         var catalog = new ObjectMapper().readTree(Files.readString(repositoryRoot().resolve("runtime/public-api.json")));
-        assertEquals("READ", find(catalog, "deposit.get.importPlan").path("mode").asText());
+        assertEquals("WRITE", find(catalog, "deposit.get.importPlan").path("mode").asText());
         for (String name : List.of("deposit.get.importResultPage", "deposit.get.cloneResultPage")) {
             JsonNode entry = find(catalog, name);
             assertEquals("Map<String,Object>", argument(entry, "cursor").path("type").asText());
@@ -52,7 +52,10 @@ class ProcedureCatalogMetadataTest {
             .filter(candidate -> candidate.isAnnotationPresent(org.neo4j.procedure.Procedure.class)
                 && "deposit.get.importPlan".equals(candidate.getAnnotation(org.neo4j.procedure.Procedure.class).name()))
             .findFirst().orElseThrow();
-        assertEquals(org.neo4j.procedure.Mode.READ, method.getAnnotation(org.neo4j.procedure.Procedure.class).mode());
+        assertEquals(org.neo4j.procedure.Mode.WRITE, method.getAnnotation(org.neo4j.procedure.Procedure.class).mode());
+        assertEquals(Boolean.class, method.getParameters()[2].getType());
+        assertEquals("true", method.getParameters()[2].getAnnotation(org.neo4j.procedure.Name.class).defaultValue());
+        assertEquals("Boolean", argument(find(catalog, "deposit.get.importPlan"), "renewLease").path("type").asText());
     }
 
     @Test void publicPageLimitIsAcceptedByNeo4jProcedureTypeChecker() throws Exception {

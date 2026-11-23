@@ -55,7 +55,7 @@ public abstract class ActionService extends BaseService {
     private Map<String,Map<String,Object>> capture(deposit.repository.HistoryRepository history,String scope,HistoryWorkspace workspace){return workspace==null?history.capture(scope):history.capture(scope,workspace.newState());}
     private HistoryWorkspace historyWorkspace(){
         var budget=ImportWriteBudget.forRequest(c);var lease=budget.scratchLease();boolean[] cleaned={false};
-        try{var workspace=new HistoryWorkspace(c.server.storage.files.path("staging/imports"),()->c.state.kernel.assertOpen(),lease::reserve,()->{lease.close();cleaned[0]=true;},budget::ownHistoryWorkspace);c.state.release.add(()->{try{workspace.close();}catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();c.server.storage.diagnostic="Private history index cleanup pending";throw new UncheckedIOException(failure);}});return workspace;}
+        try{var workspace=new HistoryWorkspace(c.server.storage.files.path("staging/imports"),()->c.state.kernel.assertOpen(),lease::reserve,()->{lease.close();cleaned[0]=true;},budget::ownHistoryWorkspace);c.state.release.add(()->{try{workspace.close();}catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();c.server.storage.diagnostic="Private history index cleanup pending";}});return workspace;}
         catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();throw new UncheckedIOException(failure);}
         catch(RuntimeException failure){if(!cleaned[0])budget.retainForScratchCleanup();throw failure;}
     }

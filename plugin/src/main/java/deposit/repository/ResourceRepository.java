@@ -154,7 +154,8 @@ public final class ResourceRepository {
     public void expire(Node loc) {
         String id=CoreRepository.id(loc);lock(id);if(loc.hasProperty("deleting")||Boolean.TRUE.equals(loc.getProperty("collected",false)))return;
         Node t=loc.hasProperty("uploadId")?transfer(text(loc,"uploadId")):null;
-        if(t!=null&&"uploading".equals(t.getProperty("state"))&&number(t,"expires",0)<=now()) {t.setProperty("state","expired");}
+        if(t!=null&&"uploading".equals(t.getProperty("state"))&&number(t,"expires",0)<=now())t.setProperty("state","expired");
+        else if(t!=null&&"uploading".equals(t.getProperty("state")))return; // Active lease is already retained; no need to rescan grant/history/pending relations.
         orphan(loc);
     }
     public boolean eligible(Node loc,long age) {return !Boolean.TRUE.equals(loc.getProperty("collected",false))&&!loc.hasProperty("deleting")&&!protectedContent(loc)&&loc.hasProperty("orphanSince")&&now()-number(loc,"orphanSince",now())>=age;}

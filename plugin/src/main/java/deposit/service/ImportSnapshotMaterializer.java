@@ -50,11 +50,15 @@ private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path
     StorageAdmission.Reservation admission;try{admission=c.server.storage.admission.acquire("import-apply",ImportWriteBudget.reservationOwnerId(receiptScope,namespace,c.actorId,c.operationId),c.operationId,"import-resource-materialization",Map.of(resources.files.root,stagedBytes),Json.map("phase","resource-expansion","namespaceId",namespace,"receiptScope",receiptScope,"resultNamespaceId",namespace,"actorId",c.actorId,"operationId",c.operationId,"expectedBytes",stagedBytes));}catch(StorageAdmission.StoragePressureException pressure){c.fail("LIMIT_EXCEEDED",pressure.getMessage());return Map.of();}catch(IOException failure){c.fail("RESOURCE_CORRUPT","Unable to prepare import storage admission");return Map.of();}
     boolean[] committed={false};ResourceRepository.ImportedResources[] importedOwner={null};
     c.state.afterCommit.add(()->committed[0]=true);
-    // Install cleanup ownership before database admission or any other fallible work.
-    // If no ImportedResources capability is created, no publication could have started,
-    // so rollback may safely release this reservation.
-    c.state.release.add(()->{var imported=importedOwner[0];if(imported!=null&&(imported.publicationFailed()||imported.publicationStarted()&&!committed[0])){c.server.storage.diagnostic="Uncommitted import publication retained for startup orphan reconciliation";return;}try{c.server.storage.admission.close(admission);}catch(IOException failure){c.server.storage.diagnostic="Import storage admission cleanup pending";}});
-    ImportWriteBudget writeBudget=ImportWriteBudget.forRequest(c,receiptScope,namespace);writeBudget.reserveGraph(graph,currentResourceIds);
+    java.util.function.BooleanSupplier uncommittedPublication=()->{
+        var owner=importedOwner[0];
+        return owner!=null&&(owner.publicationFailed()||owner.publicationStarted()&&!committed[0]);
+    };
+    // Register cleanup before database admission, which can fail before publication.
+    c.state.release.add(()->{if(uncommittedPublication.getAsBoolean()){c.server.storage.diagnostic="Uncommitted import publication retained for startup orphan reconciliation";return;}try{c.server.storage.admission.close(admission);}catch(IOException failure){c.server.storage.diagnostic="Import storage admission cleanup pending";}});
+    ImportWriteBudget writeBudget=ImportWriteBudget.forRequest(c,receiptScope,namespace);
+    writeBudget.retainOnUncommittedPublication(uncommittedPublication);
+    writeBudget.reserveGraph(graph,currentResourceIds);
     var imported=resources.beginImport(namespace,c.actorId,admission);importedOwner[0]=imported;
     try(imported){
     Map<String,String> classes=mappings.orderedMap(),classDescriptors=mappings.orderedMap(),objects=mappings.orderedMap(),resourcesMap=mappings.orderedMap(),geometriesMap=mappings.orderedMap(),descriptors=mappings.orderedMap(),memberships=mappings.orderedMap(),relationships=mappings.orderedMap(),classRelationships=mappings.orderedMap(),patterns=mappings.orderedMap(),userTools=mappings.orderedMap(),mapping=mappings.orderedMap();long createdObjects=0;

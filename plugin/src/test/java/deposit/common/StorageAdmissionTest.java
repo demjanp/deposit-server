@@ -1,13 +1,62 @@
 package deposit.common;
 
+import com.sun.jna.Pointer;
 import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class StorageAdmissionTest {
     @TempDir Path root;
+
+    @Test void concurrentCapacityChecksFailFastInsteadOfWaitingUnderDomainLocks()throws Exception {
+        var insideCapacityCheck=new CountDownLatch(1);
+        var releaseCapacityCheck=new CountDownLatch(1);
+        var volumes=new StorageVolumeIdentity(new StorageVolumeIdentity.WindowsApi(){
+            @Override public StorageVolumeIdentity.Handle openDirectory(String path){return new StorageVolumeIdentity.Handle(Pointer.createConstant(1));}
+            @Override public String finalPath(StorageVolumeIdentity.Handle handle,int mode)throws java.io.IOException {
+                if(Thread.currentThread().getName().equals("admission-A")&&mode==1){
+                    insideCapacityCheck.countDown();
+                    try {
+                        if(!releaseCapacityCheck.await(10,TimeUnit.SECONDS))throw new java.io.IOException("Test capacity check was not released");
+                    }catch(InterruptedException failure){Thread.currentThread().interrupt();throw new java.io.IOException("Test capacity check interrupted",failure);}
+                }
+                return mode==1?"\\\\?\\Volume{01234567-89ab-cdef-0123-456789abcdef}\\":"\\Device\\HarddiskVolume1\\nested";
+            }
+            @Override public void close(StorageVolumeIdentity.Handle handle){}
+        });
+        var threadNumber=new AtomicInteger();
+        var pool=Executors.newFixedThreadPool(3,task->new Thread(task,"admission-"+(char)('A'+threadNumber.getAndIncrement())));
+        try(var admission=new StorageAdmission(root,"run-1",volumes)){
+            var existing=admission.acquire("existing","resource-upload",Map.of(root,1L));
+            try {
+                var checking=pool.submit(()->admission.acquire("checking","resource-upload",Map.of(root,1L)));
+                assertTrue(insideCapacityCheck.await(10,TimeUnit.SECONDS),"first admission did not enter capacity check");
+                var growing=pool.submit(()->{
+                    try{admission.grow(existing,Map.of(root,1L));return false;}
+                    catch(StorageAdmission.StoragePressureException expected){return "Storage admission is busy".equals(expected.getMessage());}
+                });
+                var acquiring=pool.submit(()->{
+                    try{admission.acquire("new","resource-upload",Map.of(root,1L));return false;}
+                    catch(StorageAdmission.StoragePressureException expected){return "Storage admission is busy".equals(expected.getMessage());}
+                });
+                assertTrue(growing.get(250,TimeUnit.MILLISECONDS),"grow must report busy immediately");
+                assertTrue(acquiring.get(250,TimeUnit.MILLISECONDS),"acquire must report busy immediately");
+                releaseCapacityCheck.countDown();
+                var checked=checking.get(10,TimeUnit.SECONDS);
+                admission.grow(existing,Map.of(root,1L));
+                var acquired=admission.acquire("new","resource-upload",Map.of(root,1L));
+                admission.close(checked);
+                admission.close(acquired);
+                admission.close(existing);
+            }finally{releaseCapacityCheck.countDown();pool.shutdownNow();assertTrue(pool.awaitTermination(10,TimeUnit.SECONDS));}
+        }finally{pool.shutdownNow();}
+    }
 
     @Test void acquireGrowMaterializeReleaseAndCloseUseFutureBytesOnly()throws Exception {
         try(var admission=new StorageAdmission(root,"run-1")){
