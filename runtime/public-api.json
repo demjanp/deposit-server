@@ -16,7 +16,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.class",
@@ -35,7 +41,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.class",
@@ -49,7 +61,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.class",
@@ -63,7 +81,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classPage",
@@ -82,7 +106,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.create.object",
@@ -101,7 +131,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.object",
@@ -120,7 +156,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.object",
@@ -134,7 +176,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.object",
@@ -148,7 +196,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.objectPage",
@@ -167,7 +221,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.create.descriptor",
@@ -191,7 +251,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.descriptor",
@@ -215,7 +281,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.descriptor",
@@ -229,7 +301,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.descriptor",
@@ -243,7 +321,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.descriptorPage",
@@ -262,7 +346,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.create.classDescriptor",
@@ -291,7 +381,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.classDescriptor",
@@ -310,7 +406,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.classDescriptor",
@@ -324,7 +426,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classDescriptor",
@@ -338,7 +446,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classDescriptorPage",
@@ -357,7 +471,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.create.userTool",
@@ -376,7 +496,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.userTool",
@@ -395,7 +521,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.userTool",
@@ -409,7 +541,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.userTool",
@@ -423,7 +561,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.userToolPage",
@@ -442,7 +586,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.create.relationship",
@@ -471,7 +621,13 @@
     "output": "rel",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.relationship",
@@ -490,7 +646,13 @@
     "output": "rel",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.relationship",
@@ -504,7 +666,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.relationship",
@@ -518,7 +686,13 @@
     "output": "rel",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.relationshipPage",
@@ -537,7 +711,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.create.classRelationship",
@@ -566,7 +746,13 @@
     "output": "rel",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.classRelationship",
@@ -585,7 +771,13 @@
     "output": "rel",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.classRelationship",
@@ -599,7 +791,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classRelationship",
@@ -613,7 +811,13 @@
     "output": "rel",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classRelationshipPage",
@@ -632,7 +836,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.membership",
@@ -651,7 +861,13 @@
     "output": "rel",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "rel": "Relationship"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.apply.batch",
@@ -665,7 +881,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.all",
@@ -679,7 +901,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.utils.bootstrap",
@@ -699,7 +927,13 @@
     "mode": "WRITE",
     "scope": "server",
     "action": false,
-    "admin": true
+    "admin": true,
+    "tokenIndex": null,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.utils.login",
@@ -718,7 +952,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": null,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.utils.logout",
@@ -726,7 +966,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.create.user",
@@ -750,7 +996,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.create.namespace",
@@ -769,7 +1021,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.set.user",
@@ -788,7 +1046,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.set.password",
@@ -807,7 +1071,13 @@
     "output": "value",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.set.namespace",
@@ -821,7 +1091,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.namespace",
@@ -835,7 +1111,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.set.namespaceRole",
@@ -854,7 +1136,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.activeNamespace",
@@ -868,7 +1156,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.activeNamespace",
@@ -876,7 +1170,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.set.administrativeMode",
@@ -890,7 +1190,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.administrativeMode",
@@ -898,7 +1204,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.user",
@@ -912,7 +1224,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.userPage",
@@ -931,7 +1249,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.namespace",
@@ -945,7 +1269,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.namespacePage",
@@ -964,7 +1294,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.objectClass",
@@ -978,7 +1314,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classMembers",
@@ -992,7 +1334,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.classMembersPage",
@@ -1011,7 +1359,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.objectByDescriptorId",
@@ -1025,7 +1379,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.namespaceRoles",
@@ -1033,7 +1393,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.namespaceRolesPage",
@@ -1047,7 +1413,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.operation",
@@ -1066,7 +1438,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.get.revision",
@@ -1074,7 +1452,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.history",
@@ -1082,7 +1466,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.historyPage",
@@ -1096,7 +1486,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.restorePreview",
@@ -1110,7 +1506,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.utils.undo",
@@ -1124,7 +1526,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.utils.redo",
@@ -1138,7 +1546,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.utils.restore",
@@ -1152,7 +1566,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.utils.canUndo",
@@ -1166,7 +1586,14 @@
     "output": "eligibility",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "value": "boolean",
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.utils.isRestored",
@@ -1174,7 +1601,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.versioningType",
@@ -1188,7 +1621,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.versionTag",
@@ -1207,7 +1646,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.query",
@@ -1231,7 +1676,15 @@
     "output": "query",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>",
+      "columns": "List<Map<String,Object>>",
+      "presence": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.queryPage",
@@ -1255,7 +1708,13 @@
     "output": "page",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.resource.beginUpload",
@@ -1284,7 +1743,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.resource.uploadChunk",
@@ -1313,7 +1778,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.resource.finishUpload",
@@ -1327,7 +1798,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.resource.abortUpload",
@@ -1341,7 +1818,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.resource.info",
@@ -1355,7 +1838,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.resource.downloadChunk",
@@ -1379,7 +1868,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.admin.pruneResources",
@@ -1393,7 +1888,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "prune",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.admin.pruneResourcesStatus",
@@ -1407,7 +1908,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.utils.coordinatesToWKT",
@@ -1431,7 +1938,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.utils.wktToCoordinates",
@@ -1450,7 +1963,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.utils.toData",
@@ -1464,7 +1983,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.session",
@@ -1472,7 +1997,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.utils.refresh",
@@ -1486,7 +2017,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.get.lastOperation",
@@ -1494,7 +2031,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.get.requests",
@@ -1502,7 +2045,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.utils.cancel",
@@ -1510,7 +2059,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.utils.cancelRequest",
@@ -1524,7 +2079,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.action.prepare",
@@ -1548,7 +2109,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.action.status",
@@ -1562,7 +2129,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.action.resume",
@@ -1576,7 +2149,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.action.release",
@@ -1584,7 +2163,13 @@
     "output": "value",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 0,
+    "resultColumns": {
+      "value": "Object"
+    },
+    "batchEligible": false,
+    "invocationOwner": "RecoveryCoordinator"
   },
   {
     "name": "deposit.create.pattern",
@@ -1608,7 +2193,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.delete.pattern",
@@ -1622,7 +2213,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.data",
@@ -1641,7 +2238,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.namespaceData",
@@ -1655,7 +2258,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.objectsByPattern",
@@ -1679,7 +2288,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.objectsByPatternPage",
@@ -1708,7 +2323,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.pattern",
@@ -1722,7 +2343,13 @@
     "output": "node",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.patternPage",
@@ -1741,7 +2368,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.load.data",
@@ -1755,198 +2388,471 @@
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.import.analyze",
     "args": [
-      {"name": "source", "type": "Object", "binding": "source"},
-      {"name": "rules", "type": "Map<String,Object>", "binding": "rules"}
+      {
+        "name": "source",
+        "type": "Object",
+        "binding": "source"
+      },
+      {
+        "name": "rules",
+        "type": "Map<String,Object>",
+        "binding": "rules"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.importPlan",
     "args": [
-      {"name": "planId", "type": "String", "binding": "planId"},
-      {"name": "renewLease", "type": "Boolean", "binding": "renewLease", "default": true}
+      {
+        "name": "planId",
+        "type": "String",
+        "binding": "planId"
+      },
+      {
+        "name": "renewLease",
+        "type": "Boolean",
+        "binding": "renewLease",
+        "default": true
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.importResult",
     "args": [
-      {"name": "resultId", "type": "String", "binding": "resultId"}
+      {
+        "name": "resultId",
+        "type": "String",
+        "binding": "resultId"
+      }
     ],
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.importResultPage",
     "args": [
-      {"name": "resultId", "type": "String", "binding": "resultId"},
-      {"name": "collection", "type": "String", "binding": "collection"},
-      {"name": "cursor", "type": "Map<String,Object>", "binding": "cursor"},
-      {"name": "limit", "type": "Long", "binding": "limit"}
+      {
+        "name": "resultId",
+        "type": "String",
+        "binding": "resultId"
+      },
+      {
+        "name": "collection",
+        "type": "String",
+        "binding": "collection"
+      },
+      {
+        "name": "cursor",
+        "type": "Map<String,Object>",
+        "binding": "cursor"
+      },
+      {
+        "name": "limit",
+        "type": "Long",
+        "binding": "limit"
+      }
     ],
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.importResultEntry",
     "args": [
-      {"name": "resultId", "type": "String", "binding": "resultId"},
-      {"name": "collection", "type": "String", "binding": "collection"},
-      {"name": "key", "type": "String", "binding": "key"}
+      {
+        "name": "resultId",
+        "type": "String",
+        "binding": "resultId"
+      },
+      {
+        "name": "collection",
+        "type": "String",
+        "binding": "collection"
+      },
+      {
+        "name": "key",
+        "type": "String",
+        "binding": "key"
+      }
     ],
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.import.apply",
     "args": [
-      {"name": "planId", "type": "String", "binding": "planId"}
+      {
+        "name": "planId",
+        "type": "String",
+        "binding": "planId"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.import.dataByPattern",
     "args": [
-      {"name": "pattern", "type": "Object", "binding": "pattern"},
-      {"name": "values", "type": "Map<String,Object>", "binding": "values"},
-      {"name": "rules", "type": "Map<String,Object>", "binding": "rules"}
+      {
+        "name": "pattern",
+        "type": "Object",
+        "binding": "pattern"
+      },
+      {
+        "name": "values",
+        "type": "Map<String,Object>",
+        "binding": "values"
+      },
+      {
+        "name": "rules",
+        "type": "Map<String,Object>",
+        "binding": "rules"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.import.rows",
     "args": [
-      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
-      {"name": "targets", "type": "Map<String,Object>", "binding": "targets"},
-      {"name": "relationships", "type": "List<Object>", "binding": "relationships"},
-      {"name": "rules", "type": "Map<String,Object>", "binding": "rules"}
+      {
+        "name": "source",
+        "type": "Map<String,Object>",
+        "binding": "source"
+      },
+      {
+        "name": "targets",
+        "type": "Map<String,Object>",
+        "binding": "targets"
+      },
+      {
+        "name": "relationships",
+        "type": "List<Object>",
+        "binding": "relationships"
+      },
+      {
+        "name": "rules",
+        "type": "Map<String,Object>",
+        "binding": "rules"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.load.csv",
     "args": [
-      {"name": "resourceId", "type": "String", "binding": "resourceId"},
-      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+      {
+        "name": "resourceId",
+        "type": "String",
+        "binding": "resourceId"
+      },
+      {
+        "name": "formatOptions",
+        "type": "Map<String,Object>",
+        "binding": "formatOptions"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.load.xlsx",
     "args": [
-      {"name": "resourceId", "type": "String", "binding": "resourceId"},
-      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+      {
+        "name": "resourceId",
+        "type": "String",
+        "binding": "resourceId"
+      },
+      {
+        "name": "formatOptions",
+        "type": "Map<String,Object>",
+        "binding": "formatOptions"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.load.gpkg",
     "args": [
-      {"name": "resourceId", "type": "String", "binding": "resourceId"},
-      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+      {
+        "name": "resourceId",
+        "type": "String",
+        "binding": "resourceId"
+      },
+      {
+        "name": "formatOptions",
+        "type": "Map<String,Object>",
+        "binding": "formatOptions"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.table",
-    "args": [{"name": "tableId", "type": "String", "binding": "tableId"}],
+    "args": [
+      {
+        "name": "tableId",
+        "type": "String",
+        "binding": "tableId"
+      }
+    ],
     "output": "query",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>",
+      "columns": "List<Map<String,Object>>",
+      "presence": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.tablePage",
     "args": [
-      {"name": "tableId", "type": "String", "binding": "tableId"},
-      {"name": "page", "type": "Map<String,Object>", "binding": "+"}
+      {
+        "name": "tableId",
+        "type": "String",
+        "binding": "tableId"
+      },
+      {
+        "name": "page",
+        "type": "Map<String,Object>",
+        "binding": "+"
+      }
     ],
     "output": "page",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.get.layout",
     "args": [
-      {"name": "selection", "type": "Map<String,Object>", "binding": "selection"},
-      {"name": "options", "type": "Map<String,Object>", "binding": "options"}
+      {
+        "name": "selection",
+        "type": "Map<String,Object>",
+        "binding": "selection"
+      },
+      {
+        "name": "options",
+        "type": "Map<String,Object>",
+        "binding": "options"
+      }
     ],
     "output": "data",
     "mode": "READ",
     "scope": "namespace",
-    "action": false
+    "action": false,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.save.csv",
     "args": [
-      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
-      {"name": "parameters", "type": "Map<String,Object>", "binding": "parameters"},
-      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+      {
+        "name": "source",
+        "type": "Map<String,Object>",
+        "binding": "source"
+      },
+      {
+        "name": "parameters",
+        "type": "Map<String,Object>",
+        "binding": "parameters"
+      },
+      {
+        "name": "formatOptions",
+        "type": "Map<String,Object>",
+        "binding": "formatOptions"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.save.xlsx",
     "args": [
-      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
-      {"name": "parameters", "type": "Map<String,Object>", "binding": "parameters"},
-      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+      {
+        "name": "source",
+        "type": "Map<String,Object>",
+        "binding": "source"
+      },
+      {
+        "name": "parameters",
+        "type": "Map<String,Object>",
+        "binding": "parameters"
+      },
+      {
+        "name": "formatOptions",
+        "type": "Map<String,Object>",
+        "binding": "formatOptions"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.save.gpkg",
     "args": [
-      {"name": "source", "type": "Map<String,Object>", "binding": "source"},
-      {"name": "parameters", "type": "Map<String,Object>", "binding": "parameters"},
-      {"name": "formatOptions", "type": "Map<String,Object>", "binding": "formatOptions"}
+      {
+        "name": "source",
+        "type": "Map<String,Object>",
+        "binding": "source"
+      },
+      {
+        "name": "parameters",
+        "type": "Map<String,Object>",
+        "binding": "parameters"
+      },
+      {
+        "name": "formatOptions",
+        "type": "Map<String,Object>",
+        "binding": "formatOptions"
+      }
     ],
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.save.data",
@@ -1965,7 +2871,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "operational",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.set.pattern",
@@ -1984,7 +2896,13 @@
     "output": "node",
     "mode": "WRITE",
     "scope": "namespace",
-    "action": true
+    "action": true,
+    "tokenIndex": 2,
+    "resultColumns": {
+      "node": "Node"
+    },
+    "batchEligible": true,
+    "invocationOwner": "Store"
   },
   {
     "name": "deposit.import.abortCloneUpload",
@@ -1998,7 +2916,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.import.beginCloneUpload",
@@ -2022,7 +2946,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.import.cloneNamespace",
@@ -2036,7 +2966,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.import.cloneUploadChunk",
@@ -2065,7 +3001,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.import.finishCloneUpload",
@@ -2079,7 +3021,13 @@
     "output": "data",
     "mode": "WRITE",
     "scope": "server",
-    "action": true
+    "action": true,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.cloneResult",
@@ -2093,7 +3041,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 1,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.cloneResultEntry",
@@ -2117,7 +3071,13 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 3,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   },
   {
     "name": "deposit.get.cloneResultPage",
@@ -2146,6 +3106,26 @@
     "output": "data",
     "mode": "READ",
     "scope": "server",
-    "action": false
+    "action": false,
+    "tokenIndex": 4,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
+  },
+  {
+    "name": "deposit.get.info",
+    "args": [],
+    "output": "data",
+    "mode": "READ",
+    "scope": "discovery",
+    "action": false,
+    "tokenIndex": null,
+    "resultColumns": {
+      "data": "Map<String,Object>"
+    },
+    "batchEligible": false,
+    "invocationOwner": "Client"
   }
 ]

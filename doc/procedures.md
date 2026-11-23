@@ -1,6 +1,6 @@
 ﻿# Procedure reference
 
-This guide covers the 123 procedures in runtime/public-api.json and the separately registered deposit.get.info: 124 active Deposit procedures. Each entry shows its purpose, inputs, access, and an example call. The [quickstart](quickstart.md) contains a complete first-run flow and the [sample seed script](sample-data/seed.cypher).
+The authoritative manifest is [runtime/public-api.json](../runtime/public-api.json), including the separately registered `deposit.get.info`. The Server plugin packages the same file. This guide gives procedure examples and access rules. The [quickstart](quickstart.md) contains a first-run flow and the [sample seed script](sample-data/seed.cypher).
 
 Examples use Cypher Shell parameters. Set token from the login result. The quickstart seed creates `Specimen` and `Context` classes and prints object IDs; assign those IDs to `$specimenId` and `$contextId` when needed. Other IDs come from the procedure that creates or returns them. Examples that use a `$name` parameter expect you to set it with Cypher Shell `:param` first. Map arguments show example shapes. Procedures that change data may create persistent records; use a disposable Namespace when trying them.
 

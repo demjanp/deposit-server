@@ -7,11 +7,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import deposit.api.DepositAPI;
+import deposit.service.DomainService;
 import org.junit.jupiter.api.Test;
+import org.neo4j.procedure.Name;
+import org.neo4j.procedure.Procedure;
+import org.deposit.runtime.Discovery;
 
 class ProcedureCatalogMetadataTest {
     private static Path repositoryRoot() {
@@ -22,14 +30,75 @@ class ProcedureCatalogMetadataTest {
     }
 
     @Test void publicCatalogMatchesProcedureCatalogScopeActionAndOrderedBindings() throws Exception {
-        var catalog = new ObjectMapper().readTree(Files.readString(repositoryRoot().resolve("runtime/public-api.json")));
+        byte[] authority = Files.readAllBytes(repositoryRoot().resolve("runtime/public-api.json"));
+        try (var packaged = DepositAPI.class.getResourceAsStream("/public-api.json")) {
+            assertNotNull(packaged, "Server plugin must include its procedure contract");
+            assertArrayEquals(authority, packaged.readAllBytes());
+        }
+        var catalog = new ObjectMapper().readTree(authority);
         var names = new HashSet<String>();
+        var registrations = new HashMap<String, Method>();
+        for (var owner : List.of(DepositAPI.class, Discovery.class)) {
+            for (Method method : owner.getDeclaredMethods()) {
+                var annotation = method.getAnnotation(Procedure.class);
+                if (annotation != null) {
+                    assertNull(registrations.put(annotation.name(), method), annotation.name());
+                }
+            }
+        }
         for (JsonNode entry : catalog) {
             String name = entry.path("name").asText();
             assertTrue(names.add(name), "duplicate catalog procedure " + name);
-            assertCatalogEntryMatchesImplementation(entry);
+            if (!name.equals("deposit.get.info")) {
+                assertCatalogEntryMatchesImplementation(entry);
+            }
+            assertRegistration(entry, registrations.get(name));
+            assertEquals(DomainService.COMMANDS.contains(name), entry.required("batchEligible").booleanValue(), name);
         }
+        assertEquals(registrations.keySet(), names);
+        names.remove("deposit.get.info");
         assertEquals(ProcedureCatalog.names(), names);
+    }
+
+    private static void assertRegistration(JsonNode entry, Method method) {
+        String name = entry.required("name").asText();
+        assertNotNull(method, name);
+        assertEquals(entry.required("mode").asText(), method.getAnnotation(Procedure.class).mode().name(), name);
+        var args = entry.required("args");
+        var token = entry.required("tokenIndex");
+        int tokenIndex = token.isNull() ? -1 : token.intValue();
+        assertTrue(token.isNull() || token.isIntegralNumber() && tokenIndex >= 0 && tokenIndex <= args.size(), name);
+        assertEquals(args.size() + (token.isNull() ? 0 : 1), method.getParameterCount(), name);
+        int domainIndex = 0;
+        for (int i = 0; i < method.getParameterCount(); i++) {
+            var parameter = method.getParameters()[i];
+            var binding = parameter.getAnnotation(Name.class);
+            assertNotNull(binding, name);
+            if (i == tokenIndex) {
+                assertEquals("token", binding.value(), name);
+                assertEquals(String.class, parameter.getType(), name);
+            } else {
+                var arg = args.get(domainIndex++);
+                assertEquals(arg.required("name").asText(), binding.value(), name + " argument " + i);
+                assertEquals(arg.required("type").asText(), manifestType(parameter.getParameterizedType()), name + " argument " + i);
+                assertEquals(arg.has("default") ? arg.required("default").asText() : Name.DEFAULT_VALUE,
+                    binding.defaultValue(), name + " default " + binding.value());
+            }
+        }
+        var returnType = (ParameterizedType) method.getGenericReturnType();
+        var row = (Class<?>) returnType.getActualTypeArguments()[0];
+        var columns = new HashMap<String, String>();
+        for (var field : row.getFields()) {
+            columns.put(field.getName(), manifestType(field.getGenericType()));
+        }
+        var declaredColumns = new HashMap<String, String>();
+        entry.required("resultColumns").forEachEntry((key, value) -> declaredColumns.put(key, value.asText()));
+        assertEquals(declaredColumns, columns, name + " result columns");
+    }
+
+    private static String manifestType(java.lang.reflect.Type type) {
+        return type.getTypeName().replace("java.lang.", "").replace("java.util.", "")
+            .replace("org.neo4j.graphdb.", "").replace(" ", "");
     }
 
     @Test void finalImportReadsMatchJavaSignaturesAndMetadata() throws Exception {
