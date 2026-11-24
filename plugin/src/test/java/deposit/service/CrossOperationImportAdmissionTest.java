@@ -73,7 +73,7 @@ class CrossOperationImportAdmissionTest {
  private Map<String,Object> planSnapshot(String planId) {
   var plan=server.storage.importPlans.plan(planId);
   assertNotNull(plan);
-  return Json.map("id",plan.id(),"state",plan.state(),"expiresAt",plan.expires(),"lastActivity",plan.lastActivity(),
+  return Json.map("id",plan.id(),"state",plan.state(),"expiresAt",plan.expires(),"createdAt",plan.created(),
    "resultId",plan.resultId(),"stagingPath",plan.stagingPath(),"admissionId",plan.admissionId());
  }
 

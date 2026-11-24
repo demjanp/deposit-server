@@ -160,7 +160,7 @@ public final class ImportService extends ActionService {
                 ||!c.actorId.equals(plan.actor()))
             c.fail("NOT_FOUND","Import plan is unavailable");
         if("ready".equals(plan.state())&&plan.expires()>resources.now()) {
-            plan=plan.transition("cancelled",resources.now(),plan.expires());
+            plan=plan.transition("cancelled",plan.expires());
             plans.save(plan,planUnit());
             releasePlanStagingAfterCommit(plan);
         }
@@ -207,7 +207,7 @@ public final class ImportService extends ActionService {
                 recordStage7ApplyTiming("receipt-persistence",receiptStarted);return saved;
             }catch(IOException failure){throw new UncheckedIOException(failure);}
         });
-        var settled=plan.transition("applied",resources.now(),(long)result.get("expiresAt"));
+        var settled=plan.transition("applied",(long)result.get("expiresAt"));
         plans.save(settled,planUnit());
         releasePlanStagingAfterCommit(settled);
         return new Change(new Outcome(null,null,result),true);
@@ -275,7 +275,7 @@ public final class ImportService extends ActionService {
                           ExchangePackageCodec.ArchiveIdentity identity,long targetRevision,long now,String rules,
                           Map<String,Object> result) {
         var plan=new Plan(id,c.namespaceId,c.actorId,packageId,grant,table,stagingPath,admission,
-            identity.bytes(),identity.sha256(),targetRevision,now,now,(long)result.get("expiresAt"),
+            identity.bytes(),identity.sha256(),targetRevision,now,(long)result.get("expiresAt"),
             "ready",rules,(String)result.get("resultId"),c.state.operationClaimed);
         UploadBinding.bindStaging(c,id);
         plans.save(plan,planUnit());

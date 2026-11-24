@@ -160,7 +160,7 @@ final class StorageMaintenanceJobs {
             boolean ready="ready".equals(plan.state());
             boolean abandoned=ready && UploadBinding.stagingAbandoned(server,id,plan.writerBound());
             if(!expired && ready && !abandoned)continue;
-            if(abandoned && !expired)plans.save(plan.transition("cancelled",now,plan.expires()),"");
+            if(abandoned && !expired)plans.save(plan.transition("cancelled",plan.expires()),"");
             if(plan.stagingPath()!=null)Files.deleteIfExists(files.path(plan.stagingPath()));
             if(plan.admissionId()!=null)server.storage.admission.closeIfPresent(plan.admissionId());
             if(expired)plans.delete(id);

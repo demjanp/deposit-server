@@ -388,7 +388,6 @@ final class OperationAttemptService extends BaseService {
             result.put("revision",data.get("revision"));
             result.put("kind",data.get("kind"));
             result.put("state",data.get("state"));
-            result.put("collections",data.get("collections"));
         }
         if (data != null) {
             for (String key : SUMMARY_KEYS) {

@@ -150,7 +150,7 @@ class LongActionSessionExpiryTest {
         }
         grantAdministratorAndNamespace(token,ns);
         String operation=UUID.randomUUID().toString(),planId=UUID.randomUUID().toString();
-        long initialActivity=now.get(), expiry=initialActivity+ImportResultContract.RETENTION;
+        long created=now.get(), expiry=created+ImportResultContract.RETENTION;
         Map<String,Object> analysis;
         try(var tx=database.beginTx()) {
             var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));
@@ -161,7 +161,7 @@ class LongActionSessionExpiryTest {
             analysis=new ImportResultRepository(context).save(operation,"analysis",planId,context.revision,Map.of());
             core.saveReceipt(context,ns,"analysis-request",new Results.Outcome(null,null,analysis));
             server.storage.importPlans.save(new deposit.repository.ImportPlanRepository.Plan(planId,ns,actor,
-                "inline",null,null,null,null,0,"0".repeat(64),context.revision,initialActivity,initialActivity,expiry,
+                "inline",null,null,null,null,0,"0".repeat(64),context.revision,created,expiry,
                 "ready","{}",(String)analysis.get("resultId"),false),server.operationalUnit(context.state.kernel));
             tx.commit();
         }
@@ -183,7 +183,7 @@ class LongActionSessionExpiryTest {
         try(var tx=database.beginTx()) {
             var plan=server.storage.importPlans.plan(planId);
             assertEquals(expiry,plan.expires());
-            assertEquals(initialActivity,plan.lastActivity());
+            assertEquals(created,plan.created());
         }
     }
 

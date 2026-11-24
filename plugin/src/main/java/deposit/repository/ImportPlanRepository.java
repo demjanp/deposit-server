@@ -13,11 +13,11 @@ public final class ImportPlanRepository {
 
     public record Plan(String id, String namespace, String actor, String sourcePackage, String sourceGrant,
                        String tableId, String stagingPath, String admissionId, long packageBytes,
-                       String packageSha256, long targetRevision, long created, long lastActivity,
+                       String packageSha256, long targetRevision, long created,
                        long expires, String state, String rules, String resultId, boolean writerBound) {
-        public Plan transition(String next, long activity, long expiry) {
+        public Plan transition(String next, long expiry) {
             return new Plan(id,namespace,actor,sourcePackage,sourceGrant,tableId,stagingPath,admissionId,
-                packageBytes,packageSha256,targetRevision,created,activity,expiry,next,rules,resultId,writerBound);
+                packageBytes,packageSha256,targetRevision,created,expiry,next,rules,resultId,writerBound);
         }
     }
 
@@ -29,7 +29,7 @@ public final class ImportPlanRepository {
                 id TEXT NOT NULL, namespace_id TEXT NOT NULL, actor_id TEXT NOT NULL, source_package_id TEXT NOT NULL,
                 source_grant_id TEXT, table_id TEXT, staging_path TEXT, admission_id TEXT,
                 package_bytes INTEGER NOT NULL, package_sha256 TEXT NOT NULL, target_revision INTEGER NOT NULL,
-                created_at INTEGER NOT NULL, last_activity_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+                created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
                 state TEXT NOT NULL, rules_json TEXT NOT NULL, result_id TEXT NOT NULL, writer_bound INTEGER NOT NULL,
                 unit_id TEXT NOT NULL, PRIMARY KEY (id,unit_id)
             ) STRICT
@@ -56,7 +56,7 @@ public final class ImportPlanRepository {
                         row.getString("actor_id"),row.getString("source_package_id"),row.getString("source_grant_id"),
                         row.getString("table_id"),row.getString("staging_path"),row.getString("admission_id"),
                         row.getLong("package_bytes"),row.getString("package_sha256"),row.getLong("target_revision"),
-                        row.getLong("created_at"),row.getLong("last_activity_at"),row.getLong("expires_at"),
+                        row.getLong("created_at"),row.getLong("expires_at"),
                         row.getString("state"),row.getString("rules_json"),row.getString("result_id"),
                         row.getBoolean("writer_bound")) : null;
                 }
@@ -66,7 +66,7 @@ public final class ImportPlanRepository {
 
     public void save(Plan plan, String unit) {
         store.write(3L*plan.rules().length(), db -> {
-            try (var insert = db.prepareStatement("INSERT OR REPLACE INTO import_plans VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+            try (var insert = db.prepareStatement("INSERT OR REPLACE INTO import_plans VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 insert.setString(1, plan.id());
                 insert.setString(2, plan.namespace());
                 insert.setString(3, plan.actor());
@@ -79,13 +79,12 @@ public final class ImportPlanRepository {
                 insert.setString(10, plan.packageSha256());
                 insert.setLong(11, plan.targetRevision());
                 insert.setLong(12, plan.created());
-                insert.setLong(13, plan.lastActivity());
-                insert.setLong(14, plan.expires());
-                insert.setString(15, plan.state());
-                insert.setString(16, plan.rules());
-                insert.setString(17, plan.resultId());
-                insert.setBoolean(18, plan.writerBound());
-                insert.setString(19, unit);
+                insert.setLong(13, plan.expires());
+                insert.setString(14, plan.state());
+                insert.setString(15, plan.rules());
+                insert.setString(16, plan.resultId());
+                insert.setBoolean(17, plan.writerBound());
+                insert.setString(18, unit);
                 insert.executeUpdate();
             }
             return null;

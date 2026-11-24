@@ -145,7 +145,7 @@ class StorageManagerImportRecoveryTest {
         String id=UUID.randomUUID().toString();
         if(actual!=null)storage.importResults.create(new deposit.repository.ImportResultStore.Root(id,actual,
             "server".equals(scope)?"server":"namespace",actor,operation,kind,"COMMITTED",0,null,
-            server.sessionTime()+ImportResultContract.RETENTION,null,"{}"),null);
+            server.sessionTime()+ImportResultContract.RETENTION,null),null);
         storage.operational.write(0,db->{
             try(var insert=db.prepareStatement("""
                     INSERT INTO operation_attempts(actor_id,scope,operation_id,input_hash,receipt_revision,administrative_mode,

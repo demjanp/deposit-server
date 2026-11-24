@@ -36,36 +36,29 @@ final class ImportResultRepository {
         var owner=clone?core.find("User","id",c.actorId):core.namespace(namespaceId);
         String unit=c.server.prepareWorkflowCommit(c,scope,owner);
         var root=new Root(id,namespaceId,clone?"server":"namespace",c.actorId,operationId,kind,state,
-            revision,planId,Long.MAX_VALUE,c.resultSourcePackage,"{}");
+            revision,planId,Long.MAX_VALUE,c.resultSourcePackage);
         results.create(root,unit);
-        var collections=new TreeMap<String,Object>();
         var metadata=new LinkedHashMap<String,Object>();
         for(var entry:data.entrySet()){
+            String name=entry.getKey();
+            boolean advertised=!name.startsWith("_");
             if(entry.getValue() instanceof Map<?,?> map){
-                var saved=saveCollection(id,entry.getKey(),"mapping",map);
-                if(!entry.getKey().startsWith("_"))collections.put(entry.getKey(),saved.descriptor());
+                saveCollection(id,UUID.randomUUID().toString(),name,"mapping",map,advertised);
             }else if(entry.getValue() instanceof Collection<?> values){
-                var saved=saveCollection(id,entry.getKey(),"sequence",values);
-                if(!entry.getKey().startsWith("_"))collections.put(entry.getKey(),saved.descriptor());
-            }else metadata.put(entry.getKey(),entry.getValue());
+                saveCollection(id,UUID.randomUUID().toString(),name,"sequence",values,advertised);
+            }else metadata.put(name,entry.getValue());
         }
-        if(!metadata.isEmpty())collections.put("metadata",saveCollection(id,"metadata","mapping",metadata).descriptor());
-        flushSegments();
+        if(!metadata.isEmpty())saveCollection(id,UUID.randomUUID().toString(),"metadata","mapping",metadata,true);
+        flushSegments(id);
         long published=c.server.sessionTime();
-        results.complete(id,unit,Math.addExact(published,ImportResultContract.RETENTION),Json.write(collections));
+        results.complete(id,unit,Math.addExact(published,ImportResultContract.RETENTION));
         return leasedEnvelope(results.root(id,unit),published);
     }
 
-    private CollectionRef saveCollection(String resultId,String name,String kind,Object input){
-        return saveCollection(resultId,UUID.randomUUID().toString(),name,kind,input);
-    }
-
-    private record CollectionRef(String id,Map<String,Object> descriptor) {}
-
-    private CollectionRef saveCollection(String resultId,String id,String name,String kind,Object input) {
+    private long saveCollection(String resultId,String id,String name,String kind,Object input,boolean advertised) {
         boolean mapping=kind.equals("mapping");
         Collection<?> values=mapping?((Map<?,?>)input).entrySet():(Collection<?>)input;
-        createCollection(resultId,id,name,kind);
+        results.createCollection(resultId,id,name,kind,advertised);
         long position=0;
         for(Object raw:values) {
             c.state.kernel.assertOpen();
@@ -87,22 +80,21 @@ final class ImportResultRepository {
                 mapping?Json.write(keyDescriptor):null,size>=0&&size<=ImportResultContract.TEXT_BYTES?key:null,
                 mapping?hash(key):null,size));
         }
-        results.completeCollection(resultId,id,position);
-        return new CollectionRef(id,Json.map("kind",kind,"count",position));
+        return position;
     }
 
     private Object describe(String resultId,Object value) {
         String kind=value instanceof Map<?,?>?"mapping":value instanceof Collection<?>?"sequence":null;
         if(kind!=null) {
             String id=UUID.randomUUID().toString();
-            var ref=saveCollection(resultId,id,id,kind,value);
-            return Json.map("type",kind,"collection",id,"count",ref.descriptor().get("count"));
+            long count=saveCollection(resultId,id,id,kind,value,false);
+            return Json.map("type",kind,"collection",id,"count",count);
         }
         var scalar=Json.map("type","scalar","value",value);
         if(value instanceof String text && encodedBytes(scalar)>TEXT_CHUNK_BYTES-64) {
             byte[] bytes=text.getBytes(StandardCharsets.UTF_8);
             String id=UUID.randomUUID().toString();
-            createCollection(resultId,id,id,"sequence");
+            results.createCollection(resultId,id,id,"sequence",false);
             long count=0;
             for(int start=0;start<bytes.length;) {
                 c.state.kernel.assertOpen();
@@ -119,7 +111,6 @@ final class ImportResultRepository {
                     null,null,null,-1));
                 start=end;
             }
-            results.completeCollection(resultId,id,count);
             return Json.map("type","text","collection",id,"bytes",(long)bytes.length);
         }
         return scalar;
@@ -127,18 +118,14 @@ final class ImportResultRepository {
 
     private static int encodedBytes(Object value) {return Json.write(value).getBytes(StandardCharsets.UTF_8).length;}
 
-    private void createCollection(String result,String id,String name,String kind) {
-        results.createCollection(result,id,name,kind);
-    }
-
     private void append(String result,String collection,Entry entry) {
-        segments.add(new Segment(result,collection,entry));
-        if(segments.size()==64)flushSegments();
+        segments.add(new Segment(collection,entry));
+        if(segments.size()==64)flushSegments(result);
     }
 
-    private void flushSegments() {
+    private void flushSegments(String result) {
         if(segments.isEmpty())return;
-        results.append(segments);
+        results.append(result,segments);
         segments.clear();
     }
 
@@ -164,12 +151,12 @@ final class ImportResultRepository {
         // Start the public admission and initial lease windows at the end of that work.
         String id=(String)envelope.get("resultId"),unit=c.server.operationalUnit(c.state.kernel);
         long now=c.server.sessionTime(), expires=Math.addExact(now,ImportResultContract.RETENTION);
-        results.complete(id,unit,expires,null);
+        results.complete(id,unit,expires);
         envelope.putAll(leasedEnvelope(results.root(id,unit),now));
         if(envelope.get("planId") instanceof String planId) {
             var plans=c.server.storage.importPlans;
             var plan=plans.plan(planId,unit);
-            if(plan!=null)plans.save(plan.transition(plan.state(),plan.lastActivity(),expires),unit);
+            if(plan!=null)plans.save(plan.transition(plan.state(),expires),unit);
         }
     }
 
@@ -208,7 +195,11 @@ final class ImportResultRepository {
         if(c.server.sessionTime()>=expiry(root))c.fail("PLAN_EXPIRED","Import plan input has expired");
     }
 
-    private Map<String,Object> envelope(Root root){var result=Json.map("format",ImportResultContract.FORMAT,"resultId",root.id(),"operationId",root.operation(),"kind",root.kind(),"state",root.state(),"namespaceId",root.namespace(),"planId",root.plan(),"revision",root.revision(),"expiresAt",root.expires(),"collections",Json.read(root.collections()));return result;}
+    private Map<String,Object> envelope(Root root){
+        return Json.map("format",ImportResultContract.FORMAT,"resultId",root.id(),"operationId",root.operation(),
+            "kind",root.kind(),"state",root.state(),"namespaceId",root.namespace(),"planId",root.plan(),
+            "revision",root.revision(),"expiresAt",root.expires(),"collections",results.advertisedCollections(root.id()));
+    }
 
     Map<String,Object> page(Map<String,Object> request) {
         BaseService.fields(request,"resultId","leaseId","collection","cursor","limit");
@@ -277,16 +268,9 @@ final class ImportResultRepository {
     }
 
     private ImportResultStore.Collection publicCollection(Root root,String name) {
-        var specs=ValueCodec.map(Json.read(root.collections()));
-        Object rawSpec=specs.get(name);
         var collection=results.collection(root.id(),name);
-        if(collection==null)
-            c.fail(rawSpec==null?"NOT_FOUND":"RESULT_UNAVAILABLE","Import result collection is unavailable");
-        if(rawSpec==null && !name.equals(collection.id()))
+        if(collection==null || !collection.advertised() && !name.equals(collection.id()))
             c.fail("NOT_FOUND","Import result collection is unavailable");
-        if(rawSpec!=null && (!collection.kind().equals(ValueCodec.map(rawSpec).get("kind"))
-                || !Long.valueOf(collection.count()).equals(ValueCodec.map(rawSpec).get("count"))))
-            c.fail("RESULT_UNAVAILABLE","Import result collection metadata differs");
         return collection;
     }
 

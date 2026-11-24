@@ -7,6 +7,9 @@ import deposit.repository.StagedTableRepository.Table;
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.*;
 import java.util.zip.ZipEntry;
@@ -61,30 +64,38 @@ public final class TabularService extends BaseService {
         Map<String,Object> types=options.containsKey("columnTypes")?ValueCodec.map(options.get("columnTypes")):Map.of();Map<String,Object> dateFormats=options.containsKey("dateFormats")?ValueCodec.map(options.get("dateFormats")):Map.of();
         Path input=null,table=null,rowIndex=null;boolean completed=false;String tableId=UUID.randomUUID().toString();
         try{
-            input=resources.files.path(Table.sourcePath(tableId));
+            if(!csv)input=resources.files.path(Table.sourcePath(tableId));
             table=resources.files.path(Table.path(tableId));
             rowIndex=resources.files.path(Table.rowIndexPath(tableId));
-            Files.createDirectories(input.getParent());
+            Files.createDirectories(table.getParent());
             var admission=c.server.storage.admission;
-            var staging=admission.acquire("tabular-load",tableId,c.operationId,"table-staging",Map.of(input,content.bytes()),
+            var staging=admission.acquire("tabular-load",tableId,c.operationId,"table-staging",
+                input==null?Map.of():Map.of(input,content.bytes()),
                 Json.map("phase","table-load","actorId",c.actorId,"receiptScope",c.namespaceId,"sourceResourceId",id));
             Path retainedSource=input,retainedTable=table,retainedIndex=rowIndex;
             boolean[] committed={false};
             c.state.afterCommit.add(()->committed[0]=true);
             c.state.release.add(()->{
-                boolean scratchAbsent=!Files.exists(retainedSource,LinkOption.NOFOLLOW_LINKS)
+                boolean scratchAbsent=(retainedSource==null||!Files.exists(retainedSource,LinkOption.NOFOLLOW_LINKS))
                     && !Files.exists(retainedTable.resolveSibling(retainedTable.getFileName()+".work"),LinkOption.NOFOLLOW_LINKS);
                 if(scratchAbsent&&(committed[0]||!Files.exists(retainedTable,LinkOption.NOFOLLOW_LINKS)&&!Files.exists(retainedIndex,LinkOption.NOFOLLOW_LINKS)))
                     try{admission.closeIfPresent(staging.id);}catch(IOException|RuntimeException e){c.server.storage.diagnostic="Table staging ownership cleanup pending";}
             });
-            try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(input,StandardOpenOption.CREATE_NEW)){
-                byte[] buffer=new byte[64*1024];int count;
-                while((count=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,count);}
-            }
-            if(Files.size(input)!=content.bytes()||!ResourceFiles.checksum(input).equals(content.checksum()))c.fail("RESOURCE_CORRUPT","Source resource changed during table load");
-            admission.materialized(staging,input,content.bytes());
             TabularJsonWriter.Target target=path->admission.openStagingOutput(staging,path,c.state.kernel::assertOpen);
-            var parsed=csv?CsvTableFormat.read(input,table,delimiter,header,types,dateFormats,decimal,c.state.kernel::assertOpen,target):xlsx?XlsxTableReader.parseXlsx(input,table,options,header,types,dateFormats,decimal,c.state.kernel::assertOpen,target):GeoPackageAdapter.load(input,table,options,types,dateFormats,decimal,c.state.kernel::assertOpen,target);
+            Map<String,Object> parsed;
+            if(csv){
+                parsed=CsvTableFormat.read(openCsvSource(content),table,delimiter,header,types,dateFormats,decimal,c.state.kernel::assertOpen,target);
+            }else{
+                try(InputStream in=resources.storage.open(content,0,content.bytes());OutputStream out=Files.newOutputStream(input,StandardOpenOption.CREATE_NEW)){
+                    byte[] buffer=new byte[64*1024];int count;
+                    while((count=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,count);}
+                }
+                if(Files.size(input)!=content.bytes()||!ResourceFiles.checksum(input).equals(content.checksum()))
+                    c.fail("RESOURCE_CORRUPT","Source resource changed during table load");
+                admission.materialized(staging,input,content.bytes());
+                parsed=xlsx?XlsxTableReader.parseXlsx(input,table,options,header,types,dateFormats,decimal,c.state.kernel::assertOpen,target)
+                    :GeoPackageAdapter.load(input,table,options,types,dateFormats,decimal,c.state.kernel::assertOpen,target);
+            }
             requireContentLimit(Files.size(table),"Generated table staging exceeds the content limit");
             long indexBytes=Math.multiplyExact(((Number)parsed.get("rowCount")).longValue(),Long.BYTES);
             admission.grow(staging,Map.of(rowIndex,indexBytes));
@@ -101,10 +112,45 @@ public final class TabularService extends BaseService {
             // if the caller later rolls back an otherwise successful load transaction.
             Path completedTable=table,completedIndex=rowIndex;
             c.state.release.add(()->{if(!committed[0]){discard(completedTable);discard(completedIndex);}});
-            Files.deleteIfExists(input);input=null;completed=true;return result;
+            if(input!=null)Files.deleteIfExists(input);
+            completed=true;return result;
         }catch(StorageAdmission.StoragePressureException|ArithmeticException e){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Insufficient or unrepresentable table staging capacity");}
         catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to stage table");}
         finally{if(!completed){if(table!=null)try{Files.deleteIfExists(table);}catch(IOException ignored){}if(rowIndex!=null)try{Files.deleteIfExists(rowIndex);}catch(IOException ignored){}if(input!=null)try{Files.deleteIfExists(input);}catch(IOException ignored){}}}
+    }
+
+    private InputStream openCsvSource(ResourceStorage.Content content)throws IOException {
+        final MessageDigest sha256;
+        try{sha256=MessageDigest.getInstance("SHA-256");}
+        catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
+        // open verifies the OCFL object. Check the bytes read by the parser through EOF as well.
+        return new DigestInputStream(resources.storage.open(content,0,content.bytes()),sha256) {
+            private long remaining=content.bytes();
+            private boolean verified;
+
+            @Override public int read()throws IOException {
+                c.state.kernel.assertOpen();
+                int value=super.read();
+                checkRead(value==-1?-1:1);
+                return value;
+            }
+
+            @Override public int read(byte[] buffer,int offset,int length)throws IOException {
+                c.state.kernel.assertOpen();
+                int count=super.read(buffer,offset,length);
+                checkRead(count);
+                return count;
+            }
+
+            private void checkRead(int count) {
+                if(count>=0)remaining-=count;
+                else if(!verified){
+                    verified=remaining==0&&HexFormat.of().formatHex(sha256.digest()).equals(content.checksum());
+                    if(!verified)c.fail("RESOURCE_CORRUPT","Source resource changed during table load");
+                }
+                if(remaining<0)c.fail("RESOURCE_CORRUPT","Source resource changed during table load");
+            }
+        };
     }
 
     private Map<String,Object> parseRecords(List<List<String>> records,int headerRow,Map<String,Object> typeMap,Map<String,Object> formats,String decimal){

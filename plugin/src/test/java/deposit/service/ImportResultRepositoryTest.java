@@ -38,7 +38,9 @@ class ImportResultRepositoryTest {
             var context=context(tx,actor);var repo=new ImportResultRepository(context);
             String longText="λ🙂".repeat(12_000);
             var admitted=new LinkedHashMap<String,Object>();admitted.put("source-1",null);for(int i=0;i<300;i++)admitted.put("source-object-"+i,UUID.randomUUID().toString());
-            Map<String,Object> data=Json.map("objectMappings",admitted,"nested",Json.map(largeKey,"large-key-value","text",longText),"groups",List.of(Json.map("name","one"),Json.map("name","two"),Json.map("name","three")));
+            Map<String,Object> data=Json.map("objectMappings",admitted,"nested",Json.map(largeKey,"large-key-value","text",longText),
+                "groups",List.of(Json.map("name","one"),Json.map("name","two"),Json.map("name","three")),
+                "empty",List.of(),"_private",Map.of("internal","mapping"));
             Map<String,Object> envelope=repo.save(operation,"analysis","plan-1",7L,data);resultId=(String)envelope.get("resultId");
             context.revision=7L;core.saveReceipt(context,namespace,"request-hash",new Outcome(null,null,envelope));tx.commit();
         }
@@ -58,6 +60,17 @@ class ImportResultRepositoryTest {
             assertNull(storage.operations.find(actor,namespace,operation));
             assertNull(storage.operations.findReceipt(UUID.randomUUID().toString(),namespace,operation,null));
             assertTrue(storage.operations.hasReceipt(namespace,operation,null));
+            var collections=ValueCodec.map(envelope.get("collections"));
+            assertEquals(List.of("empty","groups","nested","objectMappings"),new ArrayList<>(collections.keySet()));
+            assertEquals(Map.of("kind","sequence","count",0L),collections.get("empty"));
+            assertEquals(Map.of("kind","mapping","count",301L),collections.get("objectMappings"));
+            var empty=repo.page(Json.map("resultId",resultId,"leaseId",lease,"collection","empty","limit",1L));
+            assertEquals(List.of(),empty.get("entries"));
+            assertNull(empty.get("nextCursor"));
+            var hidden=assertThrows(ExceptionHandler.DepositException.class,()->repo.page(
+                Json.map("resultId",resultId,"leaseId",lease,"collection","_private","limit",1L)));
+            assertTrue(hidden.getMessage().contains("NOT_FOUND"));
+            assertEquals(Map.of("internal","mapping"),repo.mappingView(resultId,"_private"));
             Map<String,Object> page=repo.page(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","cursor",null,"limit",10L));List<?> entries=(List<?>)page.get("entries");Map<String,Object> first=ValueCodec.map(entries.get(0));Map<String,Object> keyDescriptor=ValueCodec.map(first.get("key"));assertEquals("text",keyDescriptor.get("type"));assertTrue(((String)keyDescriptor.get("collection")).length()>10);
             assertThrows(ExceptionHandler.DepositException.class,()->repo.entry(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","key",largeKey)));
             Map<String,Object> nestedText=null;for(Object raw:entries){Map<String,Object> entry=ValueCodec.map(raw);if("text".equals(ValueCodec.map(entry.get("key")).get("value")))nestedText=ValueCodec.map(entry.get("value"));}

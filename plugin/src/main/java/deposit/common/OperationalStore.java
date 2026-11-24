@@ -20,7 +20,7 @@ import org.neo4j.storageengine.api.StoreId;
 
 /** The private database shared by Deposit's operational repositories. */
 public final class OperationalStore implements AutoCloseable {
-    private static final int VERSION = 4;
+    private static final int VERSION = 5;
     private static final Set<PosixFilePermission> PRIVATE = PosixFilePermissions.fromString("rwx------");
     private final Path path;
     private final StorageAdmission admission;

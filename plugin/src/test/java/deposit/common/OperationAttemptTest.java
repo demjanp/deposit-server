@@ -727,7 +727,7 @@ class OperationAttemptTest {
         assertThrows(ExceptionHandler.DepositException.class,()->Table.path("../other"));
         server.storage.tables.create(metadata,null);
         server.storage.importPlans.save(new deposit.repository.ImportPlanRepository.Plan(table,a.namespace,a.id,table,null,
-            table,null,null,0,"0".repeat(64),0,clock.get(),clock.get(),expires+60_000L,"ready","{}",
+            table,null,null,0,"0".repeat(64),0,clock.get(),expires+60_000L,"ready","{}",
             UUID.randomUUID().toString(),false),"");
         server.storage.operational.read(db->{
             try(var sql=db.createStatement()){
@@ -1778,16 +1778,17 @@ class OperationAttemptTest {
         String planId=(String)plan.get("planId"), delayed=operationId(clock.get());
         List<Object> apply=List.of(planId);
         assertEquals("REGISTERED",state(begin(receiver,delayed,receiver.namespace,"deposit.import.apply",apply)));
-        String path;
-        try(var tx=database.beginTx()){
-            var core=new CoreRepository(tx,ZonedDateTime.now());
-            path=server.storage.importPlans.plan(planId).stagingPath();
-            assertTrue(Files.exists(server.storage.files.path(path)));
-        }
+        var ready=server.storage.importPlans.plan(planId);
+        String path=ready.stagingPath();
+        assertTrue(Files.exists(server.storage.files.path(path)));
         var params=Map.<String,Object>of("plan",planId,"token",receiver.token);
         String discard="CALL deposit.import.discardPlan($plan,$token) YIELD data RETURN data";
         assertEquals("cancelled",ValueCodec.map(cypher(receiver.control,discard,params).get("data")).get("state"));
         assertEquals("cancelled",ValueCodec.map(cypher(receiver.control,discard,params).get("data")).get("state"));
+        var cancelled=server.storage.importPlans.plan(planId);
+        assertEquals(ready.created(),cancelled.created());
+        assertEquals(ready.expires(),cancelled.expires());
+        assertNull(cancelled.stagingPath());
         assertFalse(Files.exists(server.storage.files.path(path)));
         assertThrows(ExceptionHandler.DepositException.class,()->call(receiver,receiver.execution,"deposit.import.apply",apply,delayed));
         try(var tx=database.beginTx()){
@@ -1854,6 +1855,8 @@ class OperationAttemptTest {
         var analysis=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(received),Map.of()));
         assertEquals("PLAN_READY",analysis.get("state"));
         String plan=(String)analysis.get("planId");
+        var readyPlan=server.storage.importPlans.plan(plan);
+        assertEquals(analysis.get("expiresAt"),readyPlan.expires());
         var inspected=call(receiver,receiver.control,"deposit.get.importPlan",List.of(plan),null);
         var analysisLease=ValueCodec.map(inspected.get("analysisResult"));
         assertEquals(analysis.get("resultId"),analysisLease.get("resultId"));
@@ -1868,9 +1871,34 @@ class OperationAttemptTest {
         assertEquals(plan,call(otherOwner,otherOwner.control,"deposit.get.importPlanMetadata",List.of(plan),null).get("planId"));
         assertTrue(assertThrows(ExceptionHandler.DepositException.class,
             ()->call(otherOwner,otherOwner.control,"deposit.get.importPlan",List.of(plan),null)).getMessage().contains("FORBIDDEN"));
-        var applied=tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(plan));
+        Map<String,Object> applied;
+        server.storageObserverForTesting(point->{
+            if("history-before-receipt".equals(point))clock.addAndGet(1_000);
+        });
+        try{applied=tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(plan));}
+        finally{server.storageObserverForTesting(point->{});}
         assertEquals("APPLIED",applied.get("state"));
+        var appliedPlan=server.storage.importPlans.plan(plan);
+        assertEquals("applied",appliedPlan.state());
+        assertEquals(readyPlan.created(),appliedPlan.created());
+        assertEquals(applied.get("expiresAt"),appliedPlan.expires());
+        assertTrue(appliedPlan.expires()>readyPlan.expires());
         String result=(String)applied.get("resultId"), operation=(String)applied.get("operationId");
+        server.storage.operational.read(db->{
+            try(var sql=db.prepareStatement("""
+                    SELECT json_type(result_json,'$.collections') FROM operation_attempts
+                    WHERE actor_id=? AND scope=? AND operation_id=?
+                    """)){
+                sql.setString(1,receiver.id);
+                sql.setString(2,receiver.namespace);
+                sql.setString(3,operation);
+                try(var row=sql.executeQuery()){
+                    assertTrue(row.next());
+                    assertNull(row.getString(1));
+                }
+            }
+            return null;
+        });
         var pageParams=Json.map("id",result,"lease",applied.get("leaseId"),"collection","identityMappings","token",receiver.token);
         var registeredPage=ValueCodec.map(cypher(receiver.control,
             "CALL deposit.get.importResultPage($id,$lease,$collection,null,1,$token) YIELD data RETURN data",pageParams).get("data"));
@@ -1901,6 +1929,7 @@ class OperationAttemptTest {
             assertEquals("COMMITTED",state(committed));
             assertEquals("RESULT_EXPIRED",committed.get("code"));
             assertEquals(result,ValueCodec.map(committed.get("result")).get("resultId"));
+            assertEquals(applied.get("collections"),ValueCodec.map(committed.get("result")).get("collections"));
             clock.set(deadline);
             Actor renewed=renew(receiver);
             assertTrue(assertThrows(ExceptionHandler.DepositException.class,
@@ -1928,7 +1957,10 @@ class OperationAttemptTest {
                 assertTrue(receipt.resultCollected());
                 assertTrue(ImportResultContract.verifiesResult(server.storage.importResults,receipt,receiver.namespace));
             }
-            assertEquals("COMMITTED",state(status(renewed,operation,receiver.namespace)));
+            var collected=status(renewed,operation,receiver.namespace);
+            assertEquals("COMMITTED",state(collected));
+            assertEquals("RESULT_EXPIRED",collected.get("code"));
+            assertEquals(applied.get("collections"),ValueCodec.map(collected.get("result")).get("collections"));
             jobs.expireImportPlans();
             maintenance.tick();
             assertEquals("OUTCOME_UNKNOWN",state(status(renewed,operation,receiver.namespace)));

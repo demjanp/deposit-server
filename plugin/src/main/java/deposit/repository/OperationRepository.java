@@ -95,11 +95,15 @@ public final class OperationRepository {
     public Attempt find(Key key) {
         return store.read(db -> {
             try(var query=db.prepareStatement("""
-                    SELECT * FROM operation_attempts WHERE actor_id=? AND scope=? AND operation_id=?
+                    SELECT a.*, CASE WHEN receipt_unit_id IS NULL AND result_collected=0
+                        AND import_result_id=json_extract(result_json,'$.resultId')
+                        THEN json_set(result_json,'$.collections',json((%s)))
+                        ELSE result_json END AS outcome
+                    FROM operation_attempts a WHERE actor_id=? AND scope=? AND operation_id=?
                       AND control_pending<>1 AND claim_deadline IS NOT NULL
-                    """)) {
+                    """.formatted(ImportResultStore.ADVERTISED_DESCRIPTORS.formatted("a.import_result_id")))) {
                 bindKey(query,1,key);
-                try(var row=query.executeQuery()) { return row.next()?read(row):null; }
+                try(var row=query.executeQuery()) { return row.next()?read(row,row.getString("outcome")):null; }
             }
         });
     }
@@ -430,16 +434,19 @@ public final class OperationRepository {
         });
     }
 
-    static void markResultCollected(Connection db,ImportResultStore.Root result)throws SQLException {
+    static void markResultCollected(Connection db,ImportResultStore.Root result,String descriptors)throws SQLException {
         try(var update=db.prepareStatement("""
-                UPDATE operation_attempts SET result_collected=1
+                UPDATE operation_attempts SET result_collected=1, result_json=CASE
+                    WHEN import_result_id=json_extract(result_json,'$.resultId')
+                    THEN json_set(result_json,'$.collections',json(?)) ELSE result_json END
                 WHERE actor_id=? AND scope=? AND operation_id=? AND import_result_id=?
                   AND result_namespace_id=? AND result_kind=? AND receipt_unit_id IS NULL
                 """)) {
-            bindKey(update,1,new Key(result.actor(),"server".equals(result.scope())?"server":result.namespace(),result.operation()));
-            update.setString(4,result.id());
-            update.setString(5,result.namespace());
-            update.setString(6,result.kind());
+            update.setString(1,descriptors);
+            bindKey(update,2,new Key(result.actor(),"server".equals(result.scope())?"server":result.namespace(),result.operation()));
+            update.setString(5,result.id());
+            update.setString(6,result.namespace());
+            update.setString(7,result.kind());
             update.executeUpdate();
         }
     }
@@ -619,6 +626,10 @@ public final class OperationRepository {
     }
 
     private static Attempt read(ResultSet row)throws SQLException {
+        return read(row,row.getString("result_json"));
+    }
+
+    private static Attempt read(ResultSet row,String result)throws SQLException {
         var key=new Key(row.getString("actor_id"),row.getString("scope"),row.getString("operation_id"));
         String packageId=row.getString("source_package_id");
         Source source=packageId==null?null:new Source(packageId,row.getString("source_grant_id"),row.getBoolean("receiving_upload"));
@@ -628,7 +639,7 @@ public final class OperationRepository {
         Long namespaceRevision=row.wasNull()?null:namespace;
         return new Attempt(key,row.getString("procedure"),row.getString("input_hash"),row.getString("authorization_scope"),
             row.getString("role"),expectedRevision,namespaceRevision,source,row.getString("upload_id"),row.getLong("claim_deadline"),
-            row.getString("state"),row.getLong("updated_at"),row.getString("cleanup_state"),row.getString("unit_id"),row.getString("result_json"));
+            row.getString("state"),row.getLong("updated_at"),row.getString("cleanup_state"),row.getString("unit_id"),result);
     }
 
     static void bindKey(PreparedStatement sql,int index,Key key)throws SQLException {
