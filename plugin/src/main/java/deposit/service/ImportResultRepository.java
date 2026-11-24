@@ -268,7 +268,7 @@ final class ImportResultRepository {
     }
 
     Map<String,Object> mappingView(String resultId,String name){Node collection=find(COLLECTION,Map.of("resultId",resultId,"name",name));if(collection==null){Node root=find(ROOT,Map.of("id",resultId));if(root!=null&&root.hasProperty("internalCollections")){Object id=ValueCodec.map(Json.read((String)root.getProperty("internalCollections"))).get(name);if(id instanceof String collectionId)collection=find(COLLECTION,Map.of("resultId",resultId,"id",collectionId));}}if(collection==null)return Map.of();String collectionId=(String)collection.getProperty("id");long count=((Number)collection.getProperty("count")).longValue();return new AbstractMap<>(){
-        public Object get(Object key){if(!(key instanceof String text))return null;Node row=lookup(collectionId,resultId,text);return row==null?null:decodeValue((String)row.getProperty("value"));}
+        public Object get(Object key){if(!(key instanceof String text))return null;Node row=lookup(collectionId,resultId,text);return row==null?null:decodeValue(resultId,(String)row.getProperty("value"));}
         public boolean containsKey(Object key){return key instanceof String text&&lookup(collectionId,resultId,text)!=null;}
         public int size(){return (int)Math.min(Integer.MAX_VALUE,count);}
         public Set<Entry<String,Object>> entrySet(){return new AbstractSet<>(){public int size(){return ImportResultRepository.this.size(count);}public Iterator<Entry<String,Object>> iterator(){return iteratorFor(collectionId,resultId,count);}};}
@@ -279,16 +279,44 @@ final class ImportResultRepository {
             private long nextPosition;private List<Node> batch=List.of();private int batchIndex;private boolean exhausted;
             private void fetch(){if(batchIndex<batch.size()||exhausted)return;c.state.kernel.assertOpen();var rows=c.tx.execute("MATCH (row:"+ENTRY+" {resultId:$resultId,collectionId:$collectionId}) WHERE row.position >= $position RETURN row ORDER BY row.position LIMIT $limit",Map.of("resultId",resultId,"collectionId",collectionId,"position",nextPosition,"limit",MAPPING_ITERATOR_BATCH));var found=new ArrayList<Node>(MAPPING_ITERATOR_BATCH);try{while(rows.hasNext())found.add((Node)rows.next().get("row"));}finally{rows.close();}batch=found;batchIndex=0;if(batch.isEmpty()){exhausted=true;if(nextPosition<count)c.fail("RESOURCE_CORRUPT","Import result mapping segment is missing");}}
             public boolean hasNext(){fetch();return !exhausted;}
-            public Map.Entry<String,Object> next(){if(!hasNext())throw new NoSuchElementException();Node row=batch.get(batchIndex++);long position=((Number)row.getProperty("position")).longValue();if(position!=nextPosition)c.fail("RESOURCE_CORRUPT","Import result mapping position is not contiguous");nextPosition=Math.addExact(nextPosition,1L);return new AbstractMap.SimpleImmutableEntry<>(decodeKey(row),decodeValue((String)row.getProperty("value")));}
+            public Map.Entry<String,Object> next(){if(!hasNext())throw new NoSuchElementException();Node row=batch.get(batchIndex++);long position=((Number)row.getProperty("position")).longValue();if(position!=nextPosition)c.fail("RESOURCE_CORRUPT","Import result mapping position is not contiguous");nextPosition=Math.addExact(nextPosition,1L);return new AbstractMap.SimpleImmutableEntry<>(decodeKey(row),decodeValue(resultId,(String)row.getProperty("value")));}
         };
     }
-    private String decodeKey(Node row){if(row.hasProperty("mapKey"))return (String)row.getProperty("mapKey");Object raw=Json.read((String)row.getProperty("key"));if(!(raw instanceof Map<?,?> descriptor))throw new IllegalStateException("Invalid import result mapping key");if("scalar".equals(descriptor.get("type"))&&descriptor.get("value") instanceof String text)return text;if(!"text".equals(descriptor.get("type")))throw new IllegalStateException("Invalid import result mapping key descriptor");String resultId=(String)row.getProperty("resultId"),collection=collectionIdFor(resultId,(String)descriptor.get("collection"));var parts=nodes(ENTRY,Map.of("resultId",resultId,"collectionId",collection));parts.sort(Comparator.comparingLong(n->((Number)n.getProperty("position")).longValue()));var text=new StringBuilder();for(Node part:parts){Object value=Json.read((String)part.getProperty("value"));if(!(value instanceof Map<?,?> chunk)||!"scalar".equals(chunk.get("type"))||!(chunk.get("value") instanceof String segment))throw new IllegalStateException("Invalid import result text segment");text.append(segment);}return text.toString();}
+    private String decodeKey(Node row){
+        if(row.hasProperty("mapKey"))return (String)row.getProperty("mapKey");
+        Object raw=Json.read((String)row.getProperty("key"));
+        if(!(raw instanceof Map<?,?> descriptor))throw new IllegalStateException("Invalid import result mapping key");
+        if("scalar".equals(descriptor.get("type"))&&descriptor.get("value") instanceof String text)return text;
+        if(!"text".equals(descriptor.get("type")))throw new IllegalStateException("Invalid import result mapping key descriptor");
+        return decodeText((String)row.getProperty("resultId"),(String)descriptor.get("collection"));
+    }
+    private String decodeText(String resultId,String collectionName){
+        String collectionId=collectionIdFor(resultId,collectionName);
+        var parts=nodes(ENTRY,Map.of("resultId",resultId,"collectionId",collectionId));
+        parts.sort(Comparator.comparingLong(n->((Number)n.getProperty("position")).longValue()));
+        var text=new StringBuilder();
+        for(Node part:parts){
+            c.state.kernel.assertOpen();
+            Object value=Json.read((String)part.getProperty("value"));
+            if(!(value instanceof Map<?,?> chunk)||!"scalar".equals(chunk.get("type"))||
+                !(chunk.get("value") instanceof String segment))throw new IllegalStateException("Invalid import result text segment");
+            text.append(segment);
+        }
+        return text.toString();
+    }
     private int size(long n){return (int)Math.min(Integer.MAX_VALUE,n);}
     private Node lookup(Node collection,String key){return lookup((String)collection.getProperty("id"),(String)collection.getProperty("resultId"),key);}
     private Node lookup(String collectionId,String resultId,String key){String keyHash=hash(key);for(Node candidate:nodes(ENTRY,Map.of("resultId",resultId,"collectionId",collectionId,"mapKeyHash",keyHash)))if(keyEquals(candidate,key))return candidate;return null;}
     private boolean keyEquals(Node row,String expected){if(row.hasProperty("mapKey"))return expected.equals(row.getProperty("mapKey"));if(((Number)row.getProperty("mapKeyLength",-1)).longValue()!=expected.getBytes(StandardCharsets.UTF_8).length)return false;Object raw=Json.read((String)row.getProperty("key"));if(!(raw instanceof Map<?,?> descriptor)||!"text".equals(descriptor.get("type")))return false;String textCollection=(String)descriptor.get("collection"),resultId=(String)row.getProperty("resultId");var parts=nodes(ENTRY,Map.of("resultId",resultId,"collectionId",collectionIdFor(resultId,textCollection)));parts.sort(Comparator.comparingLong(n->((Number)n.getProperty("position")).longValue()));byte[] wanted=expected.getBytes(StandardCharsets.UTF_8);int offset=0;for(Node part:parts){Object chunkDescriptor=Json.read((String)part.getProperty("value"));if(!(chunkDescriptor instanceof Map<?,?> chunk)||!"scalar".equals(chunk.get("type"))||!(chunk.get("value") instanceof String value))return false;byte[] bytes=value.getBytes(StandardCharsets.UTF_8);if(offset+bytes.length>wanted.length)return false;for(int i=0;i<bytes.length;i++)if(bytes[i]!=wanted[offset+i])return false;offset+=bytes.length;}return offset==wanted.length;}
     private String collectionIdFor(String resultId,String collectionName){Node collection=find(COLLECTION,Map.of("resultId",resultId,"name",collectionName));return collection==null?collectionName:(String)collection.getProperty("id");}
-    private Object decodeValue(String encoded){Object value=Json.read(encoded);if(value instanceof Map<?,?> map&&"scalar".equals(map.get("type")))return map.get("value");return value;}
+    private Object decodeValue(String resultId,String encoded){
+        Object value=Json.read(encoded);
+        if(value instanceof Map<?,?> descriptor){
+            if("scalar".equals(descriptor.get("type")))return descriptor.get("value");
+            if("text".equals(descriptor.get("type")))return decodeText(resultId,(String)descriptor.get("collection"));
+        }
+        return value;
+    }
     private Node requireRoot(String id) {
         Node root=find(ROOT,Map.of("id",id));
         if(root==null)c.fail("RESULT_UNAVAILABLE","Import result is unavailable");
