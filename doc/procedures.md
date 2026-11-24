@@ -2,7 +2,7 @@
 
 The authoritative manifest is [runtime/public-api.json](../runtime/public-api.json), including the separately registered `deposit.get.info`. The Server plugin packages the same file. This guide gives procedure examples and access rules. The [quickstart](quickstart.md) contains a first-run flow and the [sample seed script](sample-data/seed.cypher).
 
-Examples use Cypher Shell parameters. Set token from the login result. The quickstart seed creates `Specimen` and `Context` classes and prints object IDs; assign those IDs to `$specimenId` and `$contextId` when needed. Other IDs come from the procedure that creates or returns them. Examples that use a `$name` parameter expect you to set it with Cypher Shell `:param` first. Map arguments show example shapes. Procedures that change data may create persistent records; use a disposable Namespace when trying them.
+Examples use Cypher Shell parameters. Set token from the login result. The quickstart seed creates `Specimen` and `Context` classes and prints object IDs; assign those IDs to `$specimenId` and `$contextId` when needed. Other IDs come from the procedure that creates or returns them. Examples that use a `$name` parameter expect you to set it with Cypher Shell `:param` first. The individual procedure entries illustrate domain arguments and may omit operation bookkeeping. For procedures marked as tracked in the manifest, use the registration flow below and pass the registered ID immediately before the token. Use a disposable Namespace when trying mutations.
 
 The server checks account status, Namespace selection, and roles on every call. Reads usually need viewer access and edits usually need editor access. Special role rules are shown below. Namespace roles are viewer, editor, and owner; server administrators have server-wide rights.
 
@@ -11,19 +11,19 @@ Use SHOW PROCEDURES YIELD name WHERE name STARTS WITH 'deposit.' RETURN name ORD
 ## Single-attempt operations
 
 Generate a fresh UUIDv7 for each attempt. Register the procedure, exact ordered
-domain arguments and explicit Scope with `deposit.action.begin`. Commit the
+domain arguments and explicit scope with `deposit.action.begin`. Commit the
 registration before invoking the procedure once on the original authenticated
 Bolt connection in a separate transaction. Use `server` for Server scope and
 the Namespace UUID for Namespace scope.
 
 ```cypher
 CALL deposit.action.begin($operationId, $namespaceId, 'deposit.set.class',
-  [{name: 'Specimen'}, {comment: 'Example'}], $operationId, $token) YIELD data RETURN data;
+  [{name: 'Specimen'}, {comment: 'Example'}], $token) YIELD data RETURN data;
 CALL deposit.set.class({name: 'Specimen'}, {comment: 'Example'}, $operationId, $token)
   YIELD data RETURN data;
 ```
 
-Inspect the original attempt with `deposit.get.operation`. On a separate
+Inspect the original attempt with `deposit.get.operation(operationId, scope, token)`. On a separate
 connection, request cancellation with
 `deposit.action.cancel(operationId, scope, token)`. Wait for a definitive
 rollback before starting a fresh attempt. A committed operation stays committed.

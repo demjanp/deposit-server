@@ -1,6 +1,6 @@
-// Create this sample in a new, selected Namespace. Set the `token` parameter
-// with :param {token: '...'} in Cypher Shell before sourcing this file.
-CALL deposit.apply.batch([
+// Set token, namespaceId for the selected Namespace, and a fresh UUIDv7
+// operationId in Cypher Shell before sourcing this file.
+:param {sampleCommands: [
   {
     key: 'specimenClass',
     procedure: 'deposit.create.class',
@@ -66,6 +66,11 @@ CALL deposit.apply.batch([
       {}
     ]
   }
-], $token) YIELD data
+]}
+
+CALL deposit.action.begin($operationId, $namespaceId, 'deposit.apply.batch',
+  [$sampleCommands], $token) YIELD data RETURN data;
+
+CALL deposit.apply.batch($sampleCommands, $operationId, $token) YIELD data
 RETURN data;
 

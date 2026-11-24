@@ -56,11 +56,17 @@ Tokens expire and are invalidated by a server restart. Log in again when needed.
 
 ## 3. Create a sample Namespace
 
-Create a new Namespace, then select it in a separate command:
+Generate a fresh UUIDv7 using a local UUIDv7 generator. For example, run
+`py -3.14 -c "import uuid; print(uuid.uuid7())"` from PowerShell. Set
+`$operationId` to that value with `:param {operationId: 'paste-the-uuid-here'}`.
+In the same Cypher Shell session, run each statement as a separate transaction:
 
 ```cypher
-CALL deposit.create.namespace('Deposit sample', {historyMode: 'disabled'}, $token) YIELD node
-RETURN node.name AS namespace;
+CALL deposit.action.begin($operationId, 'server', 'deposit.create.namespace',
+  ['Deposit sample', {historyMode: 'disabled'}], $token) YIELD data RETURN data;
+
+CALL deposit.create.namespace('Deposit sample', {historyMode: 'disabled'}, $operationId, $token) YIELD node
+RETURN node.id AS namespaceId, node.name AS namespace;
 
 CALL deposit.set.activeNamespace('Deposit sample', $token) YIELD node
 RETURN node.name AS activeNamespace;
@@ -70,7 +76,9 @@ The Namespace is the sample collection. The user who creates it becomes its owne
 
 ## 4. Load the sample graph
 
-From the repository root, in a fresh Namespace, run the seed script:
+Set `$namespaceId` to the UUID returned by Namespace creation and replace
+`$operationId` with a fresh UUIDv7. From the repository root, run the seed
+script in the same Cypher Shell session:
 
 ```text
 :source doc/sample-data/seed.cypher
