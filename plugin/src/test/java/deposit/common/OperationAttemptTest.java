@@ -22,6 +22,7 @@ import org.neo4j.internal.kernel.api.connectioninfo.ClientConnectionInfo;
 import org.neo4j.internal.kernel.api.security.LoginContext;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.schema.Schema;
 import org.neo4j.kernel.api.net.*;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.monitoring.Monitors;
@@ -1005,6 +1006,122 @@ class OperationAttemptTest {
         assertFalse(finalState.keySet().stream().anyMatch(key->Set.of("DGeometry","Descriptor","Relationship").contains(HistoryCodec.kindFromKey(key))));
     }
 
+    @Test void relationshipMutationsUseScopedIdsAndCheckCurrentClassMembers() {
+        Actor a=actor(),foreign=actor();
+        tracked(a,a.namespace,"deposit.set.versioningType",List.of("persistent"));
+        var source=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Source",Map.of())).get("id"));
+        var target=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Target",Map.of())).get("id"));
+        var other=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Other",Map.of())).get("id"));
+        Object from=tracked(a,a.namespace,"deposit.create.object",List.of(source,Map.of())).get("id");
+        Object to=tracked(a,a.namespace,"deposit.create.object",List.of(target,Map.of())).get("id");
+        Object self=tracked(a,a.namespace,"deposit.create.object",List.of(other,Map.of())).get("id");
+        Object unrelated=tracked(a,a.namespace,"deposit.create.object",List.of(other,Map.of())).get("id");
+        var create=List.of(from,to,"link",Map.of("weight",1.0));
+        Object link=tracked(a,a.namespace,"deposit.create.relationship",create).get("id");
+        Object reverse=tracked(a,a.namespace,"deposit.create.relationship",List.of(to,from,"link",Map.of("weight",1.0))).get("id");
+        Object differentLabel=tracked(a,a.namespace,"deposit.create.relationship",List.of(from,to,"other",Map.of("weight",1.0))).get("id");
+        Object selfLink=tracked(a,a.namespace,"deposit.create.relationship",List.of(self,self,"link",Map.of("weight",1.0))).get("id");
+        for(String label:List.of("side one","side two","side three"))
+            tracked(a,a.namespace,"deposit.create.relationship",List.of(self,unrelated,label,Map.of("weight",1.0)));
+        Object classLink=call(a,a.control,"deposit.get.classRelationship",
+            List.of(Map.of("sourceId",source.get("id"),"targetId",target.get("id"),"label","link")),null).get("id");
+        Object selfClassLink=call(a,a.control,"deposit.get.classRelationship",
+            List.of(Map.of("sourceId",other.get("id"),"targetId",other.get("id"),"label","link")),null).get("id");
+        long revision;
+        try(var tx=database.beginTx()){
+            var index=tx.schema().getIndexByName("deposit_related_identity");
+            tx.schema().awaitIndexOnline(index,10,TimeUnit.SECONDS);
+            assertEquals(Schema.IndexState.ONLINE,tx.schema().getIndexState(index));
+            try(var explained=tx.execute("""
+                EXPLAIN MATCH ()-[edge:RELATED_TO {namespaceId:$namespace,id:$id}]->()
+                USING RANGE INDEX SEEK edge:RELATED_TO(namespaceId,id)
+                RETURN edge
+                """,Map.of("namespace",a.namespace,"id",link))){
+                String plan=explained.getExecutionPlanDescription().toString();
+                assertTrue(plan.contains("RelationshipIndexSeek")&&plan.contains("namespaceId, id"),plan);
+            }
+            revision=new CoreRepository(tx,ZonedDateTime.now()).sequence(a.namespace);
+        }
+
+        var points=new ArrayList<String>();
+        server.storageObserverForTesting(points::add);
+        try {
+            assertEquals(link,call(a,a.control,"deposit.get.relationship",List.of(selector(link)),null).get("id"));
+            assertEquals(classLink,call(a,a.control,"deposit.get.classRelationship",List.of(selector(classLink)),null).get("id"));
+            assertEquals(2.0,tracked(a,a.namespace,"deposit.set.relationship",List.of(link,Map.of("weight",2.0))).get("weight"));
+            assertEquals("updated",tracked(a,a.namespace,"deposit.set.classRelationship",
+                List.of(classLink,Map.of("comment","updated"))).get("comment"));
+            assertEquals(4,Collections.frequency(points,"relationship-composite-lookup"),points.toString());
+
+            String unknown=UUID.randomUUID().toString();
+            for(var candidate:List.of(classLink,unknown))
+                assertDepositError("NOT_FOUND",()->tracked(a,a.namespace,"deposit.set.relationship",List.of(candidate,Map.of("weight",9.0))));
+            for(var candidate:List.of(link,unknown))
+                assertDepositError("NOT_FOUND",()->tracked(a,a.namespace,"deposit.delete.classRelationship",List.of(candidate)));
+            assertDepositError("NOT_FOUND",()->tracked(foreign,foreign.namespace,"deposit.delete.relationship",List.of(link)));
+            assertDepositError("NOT_FOUND",()->tracked(foreign,foreign.namespace,"deposit.set.classRelationship",
+                List.of(classLink,Map.of("comment","foreign"))));
+            assertDepositError("VALIDATION_FAILED",()->tracked(a,a.namespace,"deposit.delete.relationship",List.of("bad-id")));
+
+            for(var used:List.of(classLink,selfClassLink))
+                assertDepositError("VALIDATION_FAILED",()->tracked(a,a.namespace,"deposit.delete.classRelationship",List.of(used)));
+            var update=batch("set","deposit.set.relationship",List.of(link,Map.of("weight",3.0)));
+            var removeClass=batch("removeClass","deposit.delete.classRelationship",List.of(classLink));
+            var removeLink=batch("removeLink","deposit.delete.relationship",List.of(link));
+            assertDepositError("VALIDATION_FAILED",()->tracked(a,a.namespace,"deposit.apply.batch",
+                List.of(List.of(update,removeClass,removeLink))));
+            assertDepositError("NOT_FOUND",()->tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(
+                update,removeLink,removeClass,batch("invalid","deposit.delete.relationship",List.of(unknown))))));
+            assertEquals(2.0,call(a,a.control,"deposit.get.relationship",List.of(selector(link)),null).get("weight"));
+            assertEquals("updated",call(a,a.control,"deposit.get.classRelationship",List.of(selector(classLink)),null).get("comment"));
+            assertEquals(selfLink,call(a,a.control,"deposit.get.relationship",List.of(selector(selfLink)),null).get("id"));
+            assertEquals(selfClassLink,call(a,a.control,"deposit.get.classRelationship",List.of(selector(selfClassLink)),null).get("id"));
+            try(var tx=database.beginTx()){
+                assertEquals(revision+2,new CoreRepository(tx,ZonedDateTime.now()).sequence(a.namespace));
+            }
+            assertFalse(points.contains("relationship-collection"),points.toString());
+            assertFalse(points.contains("history-capture"),points.toString());
+            points.clear();
+
+            var result=tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(update,removeLink,removeClass)));
+            assertNotNull(result.get("revisionId"));
+            var results=ValueCodec.map(result.get("results"));
+            assertEquals(3.0,ValueCodec.map(results.get("set")).get("weight"));
+            assertEquals(List.of(link),ValueCodec.map(results.get("removeLink")).get("deletedIds"));
+            assertEquals(List.of(classLink),ValueCodec.map(results.get("removeClass")).get("deletedIds"));
+            assertEquals(3,Collections.frequency(points,"relationship-composite-lookup"),points.toString());
+            assertFalse(points.contains("relationship-collection"),points.toString());
+            assertFalse(points.contains("history-capture"),points.toString());
+
+            var undo=tracked(a,a.namespace,"deposit.utils.undo",List.of(result.get("revisionId")));
+            assertEquals(2.0,call(a,a.control,"deposit.get.relationship",List.of(selector(link)),null).get("weight"));
+            assertEquals("updated",call(a,a.control,"deposit.get.classRelationship",List.of(selector(classLink)),null).get("comment"));
+            points.clear();
+            var redo=tracked(a,a.namespace,"deposit.utils.redo",List.of(undo.get("revisionId")));
+            assertEquals("redo",historyRevision(a,redo).kind());
+            assertEquals(2,Collections.frequency(points,"relationship-composite-lookup"),points.toString());
+            assertFalse(points.contains("relationship-collection"),points.toString());
+            points.clear();
+
+            assertEquals(List.of(selfLink),tracked(a,a.namespace,"deposit.delete.relationship",List.of(selfLink)).get("deletedIds"));
+            assertEquals(List.of(selfClassLink),tracked(a,a.namespace,"deposit.delete.classRelationship",List.of(selfClassLink)).get("deletedIds"));
+            assertFalse(points.contains("relationship-collection"),points.toString());
+            assertFalse(points.contains("history-capture"),points.toString());
+        } finally {server.storageObserverForTesting(ignored->{});}
+        assertDepositError("NOT_FOUND",()->call(a,a.control,"deposit.get.relationship",List.of(selector(link)),null));
+        assertDepositError("NOT_FOUND",()->call(a,a.control,"deposit.get.classRelationship",List.of(selector(classLink)),null));
+        assertEquals(reverse,call(a,a.control,"deposit.get.relationship",List.of(selector(reverse)),null).get("id"));
+        assertEquals(differentLabel,call(a,a.control,"deposit.get.relationship",List.of(selector(differentLabel)),null).get("id"));
+        try(var tx=database.beginTx()){
+            assertEquals(revision+7,new CoreRepository(tx,ZonedDateTime.now()).sequence(a.namespace));
+        }
+    }
+
+    private static void assertDepositError(String code,org.junit.jupiter.api.function.Executable action) {
+        var failure=assertThrows(ExceptionHandler.DepositException.class,action);
+        assertEquals(code,Json.read(failure.getMessage().substring("DEPOSIT_ERROR ".length())).get("code"));
+    }
+
     private static Map<String,Object> selector(Object id) {return Map.of("id",id);}
 
     private static Map<String,Object> pattern(String clazz,String field,String proposal) {
@@ -1627,6 +1744,81 @@ class OperationAttemptTest {
             assertEquals(1L,core.sequence(receiver.namespace));
             assertNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Verified specimen")));
         }
+
+        String waitingPlan=(String)tracked(receiver,receiver.namespace,"deposit.import.analyze",analyze).get("planId");
+        String waitingOperation=operationId(clock.get());
+        begin(receiver,waitingOperation,receiver.namespace,"deposit.import.apply",List.of(waitingPlan));
+        var points=new ConcurrentLinkedQueue<String>();
+        server.storageObserverForTesting(points::add);
+        try(var workers=Executors.newVirtualThreadPerTaskExecutor();var blocker=database.beginTx()){
+            var core=new CoreRepository(blocker,ZonedDateTime.now());
+            core.lockNamespace(receiver.namespace);
+            var waiting=workers.submit(()->cypher(receiver.execution,
+                "CALL deposit.import.apply($plan,$operation,$token) YIELD data RETURN data",
+                Map.of("plan",waitingPlan,"operation",waitingOperation,"token",receiver.token)));
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
+            boolean blocked=false;
+            do {
+                var status=cypher(receiver.control,"""
+                    SHOW TRANSACTIONS YIELD connectionId, currentQuery, status
+                    WHERE connectionId=$connection AND currentQuery CONTAINS 'deposit.import.apply'
+                          AND status STARTS WITH 'Blocked by'
+                    RETURN count(*) AS blocked
+                    """,Map.of("connection",receiver.execution.id));
+                blocked=Long.valueOf(1L).equals(status.get("blocked"));
+            } while(!blocked&&!waiting.isDone()&&System.nanoTime()<deadline);
+            assertTrue(blocked,"Import apply did not wait for the Namespace lock");
+            assertEquals("RUNNING",state(status(receiver,waitingOperation,receiver.namespace)));
+            assertFalse(points.contains("namespace-sequence-read"),points.toString());
+            Node namespace=core.namespace(receiver.namespace);
+            namespace.setProperty("description","Edit committed while apply was waiting");
+            assertEquals(2L,core.advanceNamespace(namespace,1L,receiver.id));
+            blocker.commit();
+            var failure=assertThrows(ExecutionException.class,()->waiting.get(10,TimeUnit.SECONDS));
+            assertTrue(failure.getCause().getMessage().contains("PLAN_STALE"),failure.toString());
+            assertEquals(1,Collections.frequency(points,"namespace-sequence-read"),points.toString());
+            assertFalse(points.contains("history-capture"),points.toString());
+        } finally {server.storageObserverForTesting(ignored->{});}
+        assertEquals("FAILED_ROLLED_BACK",state(status(receiver,waitingOperation,receiver.namespace)));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertEquals(2L,core.sequence(receiver.namespace));
+            assertEquals("Edit committed while apply was waiting",core.namespace(receiver.namespace).getProperty("description"));
+            assertEquals("ready",core.find("DepositImportPlan","id",waitingPlan).getProperty("state"));
+            assertNull(core.receipt(receiver.id,receiver.namespace,waitingOperation));
+            assertNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Verified specimen")));
+        }
+
+        var fresh=tracked(receiver,receiver.namespace,"deposit.import.analyze",analyze);
+        var session=server.session(Json.hash(receiver.token));
+        synchronized(session){session.baselines.put(receiver.namespace,0L);}
+        var observed=call(receiver,receiver.control,"deposit.get.session",List.of(),null);
+        assertEquals(0L,ValueCodec.map(observed.get("observed")).get(receiver.namespace));
+        String currentOperation=operationId(clock.get());
+        var currentApply=List.of(fresh.get("planId"));
+        assertEquals("REGISTERED",state(begin(receiver,currentOperation,receiver.namespace,"deposit.import.apply",currentApply)));
+        points.clear();
+        server.storageObserverForTesting(points::add);
+        Map<String,Object> applied;
+        try {
+            applied=call(receiver,receiver.execution,"deposit.import.apply",currentApply,currentOperation);
+        } finally {server.storageObserverForTesting(ignored->{});}
+        assertEquals(1,Collections.frequency(points,"namespace-sequence-read"),points.toString());
+        assertTrue(points.contains("history-capture"),points.toString());
+        assertEquals(3L,applied.get("revision"));
+        var committed=status(receiver,currentOperation,receiver.namespace);
+        assertEquals("COMMITTED",state(committed));
+        assertEquals(applied.get("resultId"),ValueCodec.map(committed.get("result")).get("resultId"));
+        observed=call(receiver,receiver.control,"deposit.get.session",List.of(),null);
+        assertEquals(3L,ValueCodec.map(observed.get("observed")).get(receiver.namespace));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertEquals(3L,core.sequence(receiver.namespace));
+            assertNotNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Verified specimen")));
+            var receipt=core.receipt(receiver.id,receiver.namespace,currentOperation);
+            assertEquals(3L,receipt.getProperty("revision"));
+            assertEquals(applied.get("resultId"),receipt.getProperty("importResultId"));
+        }
     }
 
     @Test void exchangeOversizedSelectorIsRejectedBeforeRegistration() {
@@ -1935,6 +2127,7 @@ class OperationAttemptTest {
             return switch(row) {
                 case DataRow data -> data.data;
                 case Results.EntityRow entity -> entity.data;
+                case Results.RelRow relationship -> relationship.data;
                 case Results.ValueRow value -> Map.of("value",value.value);
                 default -> throw new IllegalArgumentException("Unexpected test row");
             };

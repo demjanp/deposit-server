@@ -171,8 +171,8 @@ public final class ImportService extends ActionService {
     private Map<String,Object> apply(Map<String,Object> request){
         fields(request,"planId");String id=RequestContext.uuid(request.get("planId"));
         // The staged plan owns its independent target revision; session refresh cannot replace it.
-        c.operational=false;c.expectedRevision=repo.sequence(c.namespaceId);c.historyKind="import";
-        return action("deposit.import.apply",request,false,"editor",()->{
+        c.operational=false;c.historyKind="import";
+        return planBoundImportAction(request,()->{
             Node plan=repo.find("DepositImportPlan","id",id);if(plan!=null&&!c.namespaceId.equals(plan.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Import plan belongs to another Namespace");
             if(plan==null||number(plan,"expiresAt",0)<=resources.now()||!"ready".equals(plan.getProperty("state")))c.fail("NOT_FOUND","Unapplied import plan is unavailable");
             if(!c.actorId.equals(plan.getProperty("actorId"))&&(c.state.operationClaimed||!"owner".equals(effectiveRole(c.namespaceId))))c.fail("FORBIDDEN","Import plan belongs to another actor");
@@ -186,13 +186,18 @@ public final class ImportService extends ActionService {
                 if(!identity.equals(input.identity()))c.fail("RESOURCE_CORRUPT","Import source identity changed after analysis");
                 content=input.content();
             }
-            Path packageContent=content;
             if(c.revision!=number(plan,"targetRevision",-1))c.fail("PLAN_STALE","Receiving Namespace changed after import analysis");
-            if(!plan.hasProperty("resultId"))c.fail("RESOURCE_CORRUPT","Import plan has no receipt-owned analysis result");
-            String resultId=(String)plan.getProperty("resultId");importResults.pinForApply(resultId);Path path=stagedPath((String)plan.getProperty("stagingPath"));Map<String,Object> rules=Json.read((String)plan.getProperty("rules"));Map<String,Object> rowIds=importResults.mappingView(resultId,"_rowIds");Map<String,Object> blanks=importResults.mappingView(resultId,"_tabularBlanks");rules.put("_tabularIds",rowIds);rules.put("_tabularBlanks",blanks);
-            long validationStarted=System.nanoTime();Map<String,Object> result=withVerifiedPackage(path,identity,packageContent,false,c.state.kernel::assertOpen,pkg->{
-                recordStage7ApplyTiming("package-validation",validationStarted);
-                try(var indexes=scratch()){
+            Path packageContent=content;
+            return ()->applyPlan(id,plan,identity,packageContent);
+        }).data();
+    }
+
+    private Change applyPlan(String id,Node plan,ExchangePackageCodec.ArchiveIdentity identity,Path packageContent) {
+        if(!plan.hasProperty("resultId"))c.fail("RESOURCE_CORRUPT","Import plan has no receipt-owned analysis result");
+        String resultId=(String)plan.getProperty("resultId");importResults.pinForApply(resultId);Path path=stagedPath((String)plan.getProperty("stagingPath"));Map<String,Object> rules=Json.read((String)plan.getProperty("rules"));Map<String,Object> rowIds=importResults.mappingView(resultId,"_rowIds");Map<String,Object> blanks=importResults.mappingView(resultId,"_tabularBlanks");rules.put("_tabularIds",rowIds);rules.put("_tabularBlanks",blanks);
+        long validationStarted=System.nanoTime();Map<String,Object> result=withVerifiedPackage(path,identity,packageContent,false,c.state.kernel::assertOpen,pkg->{
+            recordStage7ApplyTiming("package-validation",validationStarted);
+            try(var indexes=scratch()){
                 Map<String,Object> resolved=Json.map("classMap",importResults.mappingView(resultId,"classMap"),"objectMappings",importResults.mappingView(resultId,"objectMappings"),"conflicts",List.of());
                 long materializationStarted=System.nanoTime();Map<String,Object> applied=applySnapshot(pkg,rules,resolved,path,packageContent);
                 recordStage7ApplyTiming("graph-materialization",materializationStarted);
@@ -201,12 +206,11 @@ public final class ImportService extends ActionService {
                 recordStage7ApplyTiming("row-mapping-entries-"+rowIds.size(),rowMappingStarted);
                 long receiptStarted=System.nanoTime();Map<String,Object> saved=importResults.save(c.operationId,"apply",id,Math.addExact(c.revision,1),applied);
                 recordStage7ApplyTiming("receipt-persistence",receiptStarted);return saved;
-                }catch(IOException failure){throw new UncheckedIOException(failure);}
-            });
-            plan.setProperty("state","applied");plan.setProperty("lastActivity",resources.now());plan.setProperty("expiresAt",result.get("expiresAt"));
-            releasePlanStagingAfterCommit(plan,path);
-            return new Change(new Outcome(null,null,result),true);
-        }).data();
+            }catch(IOException failure){throw new UncheckedIOException(failure);}
+        });
+        plan.setProperty("state","applied");plan.setProperty("lastActivity",resources.now());plan.setProperty("expiresAt",result.get("expiresAt"));
+        releasePlanStagingAfterCommit(plan,path);
+        return new Change(new Outcome(null,null,result),true);
     }
 
     private void recordStage7ApplyTiming(String phase,long started){

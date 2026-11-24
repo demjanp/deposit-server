@@ -133,7 +133,11 @@ public abstract class BaseService {
     public static int rank(String role) {return switch(role){case "viewer"->1;case "editor"->2;case "owner"->3;default->0;};}
     protected void readContext() {if(c.operationId!=null||c.expectedRevision!=null) c.fail("VALIDATION_FAILED","Read/session controls do not accept mutation context");}
     protected void mutation() {
-        if(c.operationId==null||c.expectedRevision==null) c.fail("VALIDATION_FAILED","operationId and expectedRevision required");
+        mutation(null);
+    }
+    final void mutation(String procedure) {
+        if(c.operationId==null||(c.expectedRevision==null&&!"deposit.import.apply".equals(procedure)))
+            c.fail("VALIDATION_FAILED","operationId and expectedRevision required");
         if(c.state.mutation) c.fail("VALIDATION_FAILED","Only one mutation is allowed per transaction; use batch for grouped actions");
         if(c.state.selection) c.fail("VALIDATION_FAILED","Selection and mutations need separate transactions");
         c.state.mutation=true;

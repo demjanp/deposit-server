@@ -12,9 +12,16 @@ public abstract class ActionService extends BaseService {
     protected ActionService(RequestContext c) {super(c);}
     protected record Change(Outcome outcome,boolean changed) {}
     protected Outcome action(String procedure,Map<String,Object> request,boolean serverScope,String role,Supplier<Change> work) {
+        return runAction(procedure,request,serverScope,role,work,null);
+    }
+    protected final Outcome planBoundImportAction(Map<String,Object> request,Supplier<Supplier<Change>> prepare) {
+        return runAction("deposit.import.apply",request,false,"editor",null,prepare);
+    }
+    private Outcome runAction(String procedure,Map<String,Object> request,boolean serverScope,String role,
+            Supplier<Change> work,Supplier<Supplier<Change>> prepareImport) {
         Node namespace;
         if(serverScope) {authenticate();namespace=null;}else namespace=scope(role);
-        mutation();
+        mutation(procedure);
         // Serialize durable actor/operation scope reservation across Namespaces.
         // Dedicated lock nodes avoid cycles with role edges. Always actor before scope.
         repo.lockActor(c.actorId);
@@ -22,10 +29,14 @@ public abstract class ActionService extends BaseService {
         if(!serverScope)repo.lockNamespace(c.namespaceId);
         String scope=serverScope?"server":c.namespaceId;
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"request",request,"expectedRevision",(Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure)||procedure.equals("deposit.import.cloneNamespace"))?null:c.expectedRevision)));
-        long lockedRevision=serverScope?c.server.revision(c.state):CoreRepository.sequence(namespace);
-        c.revision=lockedRevision;if(c.expectedRevision!=null)checkRevision();
         boolean importApply=procedure.equals("deposit.import.apply");
-        if(importApply)ImportWriteBudget.forRequest(c);
+        long lockedRevision=serverScope?c.server.revision(c.state):repo.namespaceSequence(namespace);
+        c.revision=lockedRevision;
+        if(importApply) {
+            ImportWriteBudget.forRequest(c);
+            // Validate the analyzed plan before capturing import history.
+            work=prepareImport.get();
+        } else checkRevision();
         boolean domain=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch"));
         boolean reversal=!serverScope&&Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure);
         boolean scientific=domain||importApply||reversal;

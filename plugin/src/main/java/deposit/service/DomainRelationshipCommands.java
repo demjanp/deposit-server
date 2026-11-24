@@ -61,7 +61,7 @@ final class DomainRelationshipCommands extends BaseService {
             return new ActionService.Change(new deposit.common.Results.Outcome(null,rel,repo.data(rel)),true);
         }
         if(verb.equals("set"))fields(request,"id",field);else fields(request,"id");
-        Relationship rel=repo.relationship(c.namespaceId,kind,RequestContext.uuid(request.get("id")));
+        Relationship rel=repo.readRelationship(c.namespaceId,kind,RequestContext.uuid(request.get("id")));
         if(rel==null)c.fail("NOT_FOUND","Relationship not found");
         if(verb.equals("set")) {
             var updates=new LinkedHashMap<String,Object>();
@@ -69,10 +69,8 @@ final class DomainRelationshipCommands extends BaseService {
             boolean changed=repo.update(rel,updates,c.actorId);
             return new ActionService.Change(new deposit.common.Results.Outcome(null,rel,repo.data(rel)),changed);
         }
-        if(!object)for(Relationship instance:repo.relationships(c.namespaceId,"Relationship")) {
-            c.state.kernel.assertOpen();
-            if(repo.objectClass(instance.getStartNode()).equals(rel.getStartNode())&&repo.objectClass(instance.getEndNode()).equals(rel.getEndNode())&&instance.getProperty("label").equals(rel.getProperty("label")))c.fail("VALIDATION_FAILED","Class Relationship is used");
-        }
+        if(!object&&repo.hasRelationshipInstance(rel,c.state.kernel::assertOpen))
+            c.fail("VALIDATION_FAILED","Class Relationship is used");
         var deleted=new ArrayList<String>();repo.remove(rel,deleted);
         return new ActionService.Change(new deposit.common.Results.Outcome(null,null,Json.map("deletedIds",deleted)),true);
     }

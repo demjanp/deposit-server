@@ -52,7 +52,11 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         if(context==null||!context.protectedAuthorization)return find("Namespace","id",id);
         return context.state.protectedNamespaces.computeIfAbsent(id,key->find("Namespace","id",key));
     }
-    public long sequence(String id) {Node ns=namespace(id);if(ns==null) throw ExceptionHandler.fail("NOT_FOUND","Namespace not found");return sequence(ns);}
+    public long sequence(String id) {Node ns=namespace(id);if(ns==null) throw ExceptionHandler.fail("NOT_FOUND","Namespace not found");return namespaceSequence(ns);}
+    public long namespaceSequence(Node namespace) {
+        observe("namespace-sequence-read");
+        return sequence(namespace);
+    }
     public static long sequence(Node namespace) {return ((Number)namespace.getProperty("sequence")).longValue();}
     public void lockNamespace(String id) {Node lock=find("DepositNamespaceLock","id",id);if(lock==null)throw new IllegalStateException("Namespace coordination missing");tx.acquireWriteLock(lock);}
     public void lockActor(String id) {tx.acquireWriteLock(find("DepositActorLock","id",id));}
@@ -256,6 +260,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         return relationships(namespace,category,()->{});
     }
     public List<Relationship> relationships(String namespace,String category,Runnable check) {
+        observe("relationship-collection");
         var results=new ArrayList<Relationship>();String label=category.equals("ClassRelationship")?"Class":"Object";
         for(Node source:nodes(label,Map.of("namespaceId",namespace))) {
             check.run();
@@ -284,6 +289,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         }
     }
     public Relationship readRelationship(String namespace,String category,String id) {
+        observe("relationship-composite-lookup");
         try(var edges=tx.findRelationships(RelationshipType.withName("RELATED_TO"),Map.of("namespaceId",namespace,"id",id))) {
             while(edges.hasNext()) {
                 Relationship edge=edges.next();
@@ -293,8 +299,29 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
             return null;
         }
     }
-    public Relationship relationship(String ns,String category,String id) {
-        for(var rel:relationships(ns,category))if(id.equals(id(rel)))return rel;return null;
+    public boolean hasRelationshipInstance(Relationship classRelationship,Runnable check) {
+        Object scope=classRelationship.getProperty("namespaceId");
+        Object label=classRelationship.getProperty("label");
+        Node sourceClass=classRelationship.getStartNode(),targetClass=classRelationship.getEndNode();
+        var object=Label.label("Object");
+        try(var members=sourceClass.getRelationships(Direction.INCOMING,RelationshipType.withName("MEMBER_OF"))) {
+            for(var member:members) {
+                check.run();
+                Node source=member.getStartNode();
+                if(!source.hasLabel(object)||!scope.equals(source.getProperty("namespaceId",null)))continue;
+                try(var edges=source.getRelationships(Direction.OUTGOING,RelationshipType.withName("RELATED_TO"))) {
+                    for(var edge:edges) {
+                        check.run();
+                        if(!label.equals(edge.getProperty("label",null))||!scope.equals(edge.getProperty("namespaceId",null)))continue;
+                        Node target=edge.getEndNode();
+                        if(!target.hasLabel(object)||!scope.equals(target.getProperty("namespaceId",null)))continue;
+                        var membership=membership(target);
+                        if(membership!=null&&targetClass.equals(membership.getEndNode()))return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
     public Relationship relationship(Node source,Node target,String label) {
         try(var edges=source.getRelationships(Direction.OUTGOING,RelationshipType.withName("RELATED_TO"))) {

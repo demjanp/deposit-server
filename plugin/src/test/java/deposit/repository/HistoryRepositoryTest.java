@@ -63,7 +63,7 @@ class HistoryRepositoryTest {
             var target=new TreeMap<String,Map<String,Object>>();current.forEach((key,value)->target.put(key,new LinkedHashMap<>(value)));
             target.put(HistoryCodec.key(image),image);UndoPlan plan=HistoryPlanner.restore(1,current,target,"restored-class-edge").plan();
             assertTrue(plan.conflicts().isEmpty(),plan.conflicts().toString());history.apply(namespace,actor,plan);
-            Relationship restored=core.relationship(namespace,"ClassRelationship",secondEdge);assertNotNull(restored);
+            Relationship restored=core.readRelationship(namespace,"ClassRelationship",secondEdge);assertNotNull(restored);
             assertEquals(restoredClass,CoreRepository.id(restored.getStartNode()));assertEquals(restoredClass,CoreRepository.id(restored.getEndNode()));
             assertEquals("linked",restored.getProperty("label"));assertEquals("restore",restored.getProperty("comment"));
             // Audit timestamps come from the preserved historical edge, not a later restore time.
@@ -93,7 +93,7 @@ class HistoryRepositoryTest {
             var target=new TreeMap<String,Map<String,Object>>();current.forEach((key,value)->target.put(key,new LinkedHashMap<>(value)));
             target.put(HistoryCodec.key(image),image);UndoPlan plan=HistoryPlanner.restore(1,current,target,"unaudited-class-edge").plan();
             assertTrue(plan.conflicts().isEmpty(),plan.conflicts().toString());history.apply(namespace,actor,plan);
-            Relationship restored=core.relationship(namespace,"ClassRelationship",secondEdge);assertNotNull(restored);
+            Relationship restored=core.readRelationship(namespace,"ClassRelationship",secondEdge);assertNotNull(restored);
             assertEquals(secondEdge,CoreRepository.id(restored));assertEquals("linked",restored.getProperty("label"));
             for(String field:List.of("createdAt","createdBy","updatedAt","updatedBy"))assertNotNull(restored.getProperty(field),field);
             assertEquals(actor,restored.getProperty("createdBy"));assertEquals(actor,restored.getProperty("updatedBy"));
