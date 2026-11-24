@@ -36,6 +36,8 @@ public final class RequestContext {
     public String actorId, namespaceId;
     public long revision;
     public ChangeSet journal;
+    public deposit.repository.PatternChanges patternChanges;
+    public deposit.repository.HistoryMutation historyMutation;
     public String historyKind="edit",historyLink,historyTarget;
     public RequestContext(Transaction tx,Map<String,Object> context) {
         this.tx=tx;

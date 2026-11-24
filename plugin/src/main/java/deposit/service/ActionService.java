@@ -2,8 +2,7 @@ package deposit.service;
 
 import deposit.common.*;
 import deposit.common.Results.Outcome;
-import deposit.repository.CoreRepository;
-import deposit.repository.HistoryWorkspace;
+import deposit.repository.*;
 import java.io.*;
 import java.util.*;
 import java.util.function.Supplier;
@@ -26,24 +25,48 @@ public abstract class ActionService extends BaseService {
         long lockedRevision=serverScope?c.server.revision(c.state):CoreRepository.sequence(namespace);
         c.revision=lockedRevision;if(c.expectedRevision!=null)checkRevision();
         boolean importApply=procedure.equals("deposit.import.apply");
-        boolean importAnalysis=Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern").contains(procedure);
         if(importApply)ImportWriteBudget.forRequest(c);
-        boolean scientific=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")||procedure.equals("deposit.import.apply")||Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure));
-        var history=new deposit.repository.HistoryRepository(c.tx,repo);
-        HistoryWorkspace workspace=importApply?historyWorkspace():null;
-        // Analysis, row paging and pattern samples are observations. They must not
-        // capture the receiving Namespace or invoke scientific Pattern maintenance.
-        Map<String,Map<String,Object>> beforeState=serverScope||importAnalysis?Map.of():capture(history,scope,workspace);
-        if(scientific&&!"disabled".equals(namespace.getProperty("historyMode")))c.journal=workspace==null?new ChangeSet(beforeState):workspace.journal(beforeState);
+        boolean domain=!serverScope&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch"));
+        boolean reversal=!serverScope&&Set.of("deposit.utils.undo","deposit.utils.redo","deposit.utils.restore").contains(procedure);
+        boolean scientific=domain||importApply||reversal;
+        boolean historyEnabled=scientific&&!"disabled".equals(namespace.getProperty("historyMode"));
+        var history=new HistoryRepository(c.tx,repo);
+        HistoryWorkspace workspace=importApply&&historyEnabled?historyWorkspace():null;
+        if(domain||procedure.equals("deposit.set.classDescriptorType")) {
+            c.patternChanges=new PatternChanges(repo,scope,()->c.state.kernel.assertOpen());
+            if(historyEnabled) {
+                c.journal=new ChangeSet();
+                c.historyMutation=new HistoryMutation(repo,history,c.patternChanges,scope,()->c.state.kernel.assertOpen(),c.journal);
+            }
+        } else if(workspace!=null)c.journal=workspace.journal(history.capture(scope,workspace.newState()));
         Change change=work.get();
-        if(!serverScope&&!importAnalysis){var patterns=new PatternService(c);boolean canonicalized=patterns.canonicalizeResolvedDeclarations();Map<String,Map<String,Object>> resulting=capture(history,scope,workspace);patterns.validateNamespace();patterns.validateDeclarationDeletion(beforeState,resulting);if(canonicalized&&!change.changed())change=new Change(change.outcome(),true);}
+        Map<String,Map<String,Object>> resulting=null;
+        boolean affectedPatterns=c.patternChanges!=null&&c.patternChanges.affected();
+        if(affectedPatterns||importApply||reversal) {
+            var patterns=new PatternCompatibilityService(c);
+            boolean canonicalized=affectedPatterns?patterns.validateAffected(c.patternChanges):patterns.validateAndCanonicalizeNamespace();
+            if(canonicalized&&!change.changed())change=new Change(change.outcome(),true);
+            if(!domain&&c.journal!=null&&(change.changed()||reversal)) {
+                resulting=workspace==null?history.capture(scope):history.capture(scope,workspace.newState());
+                if(reversal)patterns.validateDeclarationDeletion(c.journal.before,resulting);
+            }
+        }
         if(change.changed()) {
             if(serverScope) {
                 c.state.serverChanged=true;
                 c.revision=c.server.revision(c.state);
             }
             else c.revision=repo.advanceNamespace(namespace,lockedRevision,c.actorId);
-            if(c.journal!=null){c.journal.checkpoint(capture(history,scope,workspace));String revisionId=importApply?history.appendId(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp,ImportWriteBudget.forRequest(c)::reserveHistoryRecord):history.append(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,c.journal,c.historyLink,c.historyTarget,c.timestamp).id();if(!isImportResult(change.outcome().data()))change.outcome().data().put("revisionId",revisionId);}
+            if(c.journal!=null) {
+                if(domain)c.historyMutation.checkpoint();
+                else {
+                    history.refreshNamespaceImage(namespace,resulting);
+                    c.journal.checkpoint(resulting);
+                }
+                String revisionId=history.appendId(scope,c.actorId,c.operationId,c.revision,c.historyKind,procedure,
+                    c.journal,c.historyLink,c.historyTarget,c.timestamp,importApply?ImportWriteBudget.forRequest(c)::reserveHistoryRecord:null);
+                if(!isImportResult(change.outcome().data()))change.outcome().data().put("revisionId",revisionId);
+            }
         } else if(!isImportResult(change.outcome().data()))change.outcome().data().put("changed",false);
         if(scientific){c.server.storagePoint("history-before-receipt");c.state.afterCommit.add(()->c.server.storagePoint("history-after-commit"));}
         boolean importResult=isImportResult(change.outcome().data());
@@ -52,7 +75,6 @@ public abstract class ActionService extends BaseService {
         if(importResult&&c.state.importWriteBudget!=null)c.state.importWriteBudget.finish();
         return change.outcome();
     }
-    private Map<String,Map<String,Object>> capture(deposit.repository.HistoryRepository history,String scope,HistoryWorkspace workspace){return workspace==null?history.capture(scope):history.capture(scope,workspace.newState());}
     private HistoryWorkspace historyWorkspace(){
         var budget=ImportWriteBudget.forRequest(c);var lease=budget.scratchLease();boolean[] cleaned={false};
         try{var workspace=new HistoryWorkspace(c.server.storage.files.path("staging/imports"),()->c.state.kernel.assertOpen(),lease::reserve,()->{lease.close();cleaned[0]=true;},budget::ownHistoryWorkspace);c.state.release.add(()->{try{workspace.close();}catch(IOException failure){if(!cleaned[0])budget.retainForScratchCleanup();c.server.storage.diagnostic="Private history index cleanup pending";}});return workspace;}

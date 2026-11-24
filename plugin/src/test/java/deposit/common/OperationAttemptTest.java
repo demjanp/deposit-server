@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import deposit.common.Results.DataRow;
 import deposit.repository.CoreRepository;
+import deposit.repository.HistoryRepository;
 import deposit.repository.OperationAttemptRepository;
 import deposit.repository.SchemaRepository;
 import deposit.service.ProcedureService;
@@ -670,6 +671,8 @@ class OperationAttemptTest {
         var result=tracked(a,a.namespace,"deposit.apply.batch",List.of(commands));
         assertEquals(5,ValueCodec.map(result.get("results")).size());
 
+        var versioning=tracked(a,a.namespace,"deposit.set.versioningType",List.of("persistent"));
+        var before=historyState(a);
         var rejected=List.of(
             batch("class","deposit.create.class",List.of("Rollback batch",Map.of())),
             batch("declaration","deposit.create.classDescriptor",List.of(ref("class"),"Code","Integer",Map.of())),
@@ -684,7 +687,186 @@ class OperationAttemptTest {
         try(var tx=database.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now());
             assertNull(core.find("Class",Map.of("namespaceId",a.namespace,"name","Rollback batch")));
+            assertEquals(versioning.get("revisionId"),core.namespace(a.namespace).getProperty("headRevisionId"));
         }
+        assertEquals(before,historyState(a));
+    }
+
+    @Test void incrementalDescriptorHistoryMatchesCaptureAcrossModesAndUndoRedo() {
+        Actor a=actor();
+        Object clazz=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Sample",
+            Map.of("descriptors",List.of(Map.of("name","Score","type","Integer"))))).get("id"));
+        var object=tracked(a,a.namespace,"deposit.create.object",List.of(clazz,Map.of("descriptors",Map.of("Score",10L))));
+        Object objectId=object.get("id");
+        tracked(a,a.namespace,"deposit.create.pattern",List.of("By score",pattern("Sample","Score",null),Map.of()));
+
+        var points=new CopyOnWriteArrayList<String>();
+        server.storageObserverForTesting(points::add);
+        Map<String,Object> disabled,edit,unchanged,batch;
+        Map<String,Map<String,Object>> beforeEdit,afterEdit;
+        try {
+            disabled=tracked(a,a.namespace,"deposit.set.descriptor",List.of(objectId,"Score",20L));
+            assertFalse(disabled.containsKey("revisionId"));
+            assertEquals(20L,disabled.get("value"));
+            assertNoFullWriteScan(points);
+
+            tracked(a,a.namespace,"deposit.set.versioningType",List.of("persistent"));
+            beforeEdit=historyState(a);
+            points.clear();
+            edit=tracked(a,a.namespace,"deposit.set.descriptor",List.of(objectId,"Score",30L));
+            assertNotNull(edit.get("revisionId"));
+            unchanged=tracked(a,a.namespace,"deposit.set.descriptor",List.of(objectId,"Score",30L));
+            assertEquals(false,unchanged.get("changed"));
+            assertFalse(unchanged.containsKey("revisionId"));
+            afterEdit=historyState(a);
+
+            batch=tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(
+                batch("change","deposit.set.descriptor",List.of(objectId,"Score",40L)),
+                batch("revert","deposit.set.descriptor",List.of(objectId,"Score",30L)))));
+            assertNoFullWriteScan(points);
+        } finally {server.storageObserverForTesting(ignored->{});}
+
+        assertHistoryParity(a,edit,new ChangeSet(beforeEdit),afterEdit);
+        var reversed=historyRevision(a,batch);
+        var intermediate=HistoryCodec.copy(afterEdit);
+        intermediate.get(HistoryCodec.key("Descriptor",(String)edit.get("id"))).put("value",40L);
+        var oracle=new ChangeSet(afterEdit);
+        oracle.checkpoint(intermediate);
+        assertHistoryParity(a,batch,oracle,historyState(a));
+        assertEquals(historyRevision(a,edit).sequence()+1,reversed.sequence());
+        assertEquals(Set.of("value"),reversed.touches().get(HistoryCodec.key("Descriptor",(String)edit.get("id"))));
+
+        var undo=tracked(a,a.namespace,"deposit.utils.undo",List.of(batch.get("revisionId")));
+        assertEquals("undo",historyRevision(a,undo).kind());
+        var firstUndo=tracked(a,a.namespace,"deposit.utils.undo",List.of(edit.get("revisionId")));
+        assertEquals(20L,historyState(a).get(HistoryCodec.key("Descriptor",(String)edit.get("id"))).get("value"));
+        var redo=tracked(a,a.namespace,"deposit.utils.redo",List.of(firstUndo.get("revisionId")));
+        assertEquals("redo",historyRevision(a,redo).kind());
+        var beforeConversion=historyState(a);
+        String descriptorKey=HistoryCodec.key("Descriptor",(String)edit.get("id"));
+        assertEquals(30L,beforeConversion.get(descriptorKey).get("value"));
+        Object declarationId=beforeConversion.values().stream().filter(image->"ClassDescriptor".equals(image.get("kind")))
+            .findFirst().orElseThrow().get("id");
+        var conversion=tracked(a,a.namespace,"deposit.set.classDescriptor",List.of(selector(declarationId),
+            Map.of("type","Float","conversion","integerToFloat")));
+        var afterConversion=historyState(a);
+        assertHistoryParity(a,conversion,new ChangeSet(beforeConversion),afterConversion);
+        assertEquals(30.0,afterConversion.get(descriptorKey).get("value"));
+    }
+
+    @Test void affectedPatternsUseFinalBatchSchemaAndPreserveReferencedDeletionAcrossRename() {
+        Actor a=actor();
+        tracked(a,a.namespace,"deposit.set.versioningType",List.of("persistent"));
+        var clazz=tracked(a,a.namespace,"deposit.create.class",List.of("Sample",Map.of()));
+        Object classSelector=selector(clazz.get("id"));
+        var created=tracked(a,a.namespace,"deposit.create.pattern",List.of("By score",pattern("Sample","Score","Integer"),Map.of()));
+        Object patternSelector=selector(created.get("id"));
+        var before=historyState(a);
+        var mismatch=assertThrows(ExceptionHandler.DepositException.class,()->tracked(a,a.namespace,"deposit.create.classDescriptor",
+            List.of(classSelector,"Score","Float",Map.of())));
+        assertTrue(mismatch.getMessage().contains("VALIDATION_FAILED"),mismatch.getMessage());
+        assertEquals(before,historyState(a));
+
+        var resolved=tracked(a,a.namespace,"deposit.create.classDescriptor",List.of(classSelector,"Score","Integer",Map.of()));
+        var after=historyState(a);
+        assertHistoryParity(a,resolved,new ChangeSet(before),after);
+        String patternKey=HistoryCodec.key("Pattern",(String)created.get("id"));
+        assertFalse(Json.write(after.get(patternKey).get("definition")).contains("\"type\""));
+
+        Object declarationSelector=selector(resolved.get("id"));
+        var rename=batch("rename","deposit.set.class",List.of(classSelector,Map.of("name","Renamed")));
+        var delete=batch("delete","deposit.delete.classDescriptor",List.of(declarationSelector));
+        var rejected=assertThrows(ExceptionHandler.DepositException.class,()->tracked(a,a.namespace,"deposit.apply.batch",
+            List.of(List.of(rename,delete,batch("proposal","deposit.set.pattern",List.of(patternSelector,
+                Map.of("definition",pattern("Renamed","Score","Integer"))))))));
+        assertTrue(rejected.getMessage().contains("Class declaration is referenced by a Pattern"),rejected.getMessage());
+        assertEquals(after,historyState(a));
+
+        var accepted=tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(rename,delete,
+            batch("remove","deposit.delete.pattern",List.of(patternSelector)))));
+        var finalState=historyState(a);
+        var renamed=HistoryCodec.copy(after);
+        renamed.get(HistoryCodec.key("Class",(String)clazz.get("id"))).put("name","Renamed");
+        renamed.get(patternKey).put("definition",PatternCodec.normalize(pattern("Renamed","Score",null)));
+        var withoutDeclaration=HistoryCodec.copy(renamed);
+        withoutDeclaration.remove(HistoryCodec.key("ClassDescriptor",(String)resolved.get("id")));
+        var oracle=new ChangeSet(after);
+        oracle.checkpoint(renamed);
+        oracle.checkpoint(withoutDeclaration);
+        assertHistoryParity(a,accepted,oracle,finalState);
+        assertFalse(finalState.containsKey(patternKey));
+        assertEquals("Renamed",finalState.get(HistoryCodec.key("Class",(String)clazz.get("id"))).get("name"));
+    }
+
+    @Test void incrementalHistoryMatchesCaptureForOwnedGeometryAndCascadingEdges() {
+        Actor a=actor();
+        tracked(a,a.namespace,"deposit.set.versioningType",List.of("persistent"));
+        var clazz=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Specimen",Map.of())).get("id"));
+        var destination=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Destination",Map.of())).get("id"));
+        Object target=tracked(a,a.namespace,"deposit.create.object",List.of(clazz,Map.of())).get("id");
+        var before=historyState(a);
+        var created=tracked(a,a.namespace,"deposit.create.object",List.of(clazz,Map.of("descriptors",Map.of(
+            "Shape",Map.of("type","DGeometry","value",Map.of("wkt","POINT (1 2)","axisOrder","xy","dimensions",2L))))));
+        var current=historyState(a);
+        assertHistoryParity(a,created,new ChangeSet(before),current);
+
+        Object source=created.get("id");
+        var links=tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(
+            batch("relate","deposit.create.relationship",List.of(source,target,"near",Map.of("weight",1.0))),
+            batch("move","deposit.set.descriptor",List.of(source,"Shape",Map.of("wkt","POINT (3 4)","axisOrder","xy","dimensions",2L))))));
+        var linked=historyState(a);
+        assertHistoryParity(a,links,new ChangeSet(current),linked);
+
+        var moved=tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(
+            batch("move","deposit.set.membership",List.of(source,destination)))));
+        var beforeDelete=historyState(a);
+        assertHistoryParity(a,moved,new ChangeSet(linked),beforeDelete);
+
+        var removed=tracked(a,a.namespace,"deposit.delete.object",List.of(source));
+        var finalState=historyState(a);
+        assertHistoryParity(a,removed,new ChangeSet(beforeDelete),finalState);
+        assertFalse(finalState.keySet().stream().anyMatch(key->Set.of("DGeometry","Descriptor","Relationship").contains(HistoryCodec.kindFromKey(key))));
+    }
+
+    private static Map<String,Object> selector(Object id) {return Map.of("id",id);}
+
+    private static Map<String,Object> pattern(String clazz,String field,String proposal) {
+        Map<String,Object> descriptor=proposal==null?Map.of("name",field):Map.of("name",field,"type",proposal);
+        return Map.of("objects",Map.of("root",Map.of("className",clazz,"root",true,"descriptors",List.of(descriptor))));
+    }
+
+    private static void assertNoFullWriteScan(List<String> points) {
+        assertTrue(points.contains("history-before-receipt"));
+        assertFalse(points.contains("history-capture"),points.toString());
+        assertFalse(points.contains("pattern-definitions-scan"),points.toString());
+    }
+
+    private Map<String,Map<String,Object>> historyState(Actor actor) {
+        try(var tx=database.beginTx()) {
+            return new HistoryRepository(tx,new CoreRepository(tx,ZonedDateTime.now())).capture(actor.namespace);
+        }
+    }
+
+    private Revision historyRevision(Actor actor,Map<String,Object> result) {
+        assertNotNull(result.get("revisionId"),result.toString());
+        try(var tx=database.beginTx()) {
+            return new HistoryRepository(tx,new CoreRepository(tx,ZonedDateTime.now())).revision(actor.namespace,(String)result.get("revisionId"));
+        }
+    }
+
+    private void assertHistoryParity(Actor actor,Map<String,Object> result,ChangeSet oracle,Map<String,Map<String,Object>> finalState) {
+        oracle.checkpoint(finalState);
+        var stored=historyRevision(actor,result);
+        assertEquals(oracle.touches,stored.touches());
+        assertEquals(oracle.dependencies,stored.dependencies());
+        var before=new TreeMap<String,Map<String,Object>>();
+        var after=new TreeMap<String,Map<String,Object>>();
+        for(String key:oracle.touches.keySet()) {
+            if(oracle.before.containsKey(key))before.put(key,oracle.before.get(key));
+            if(oracle.after.containsKey(key))after.put(key,oracle.after.get(key));
+        }
+        assertEquals(Json.write(before),Json.write(stored.before()));
+        assertEquals(Json.write(after),Json.write(stored.after()));
     }
 
     @Test void strongestBatchRoleAndFinalAuthorizationUseCurrentGrants() {

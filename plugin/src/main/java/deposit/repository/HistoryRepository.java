@@ -17,22 +17,75 @@ public final class HistoryRepository {
     }
     /** Stream images into the supplied state index, which may live entirely on disk. */
     public Map<String,Map<String,Object>> capture(String ns,Map<String,Map<String,Object>> out){
-        Node root=core.namespace(ns);var n=image(root,"Namespace","name","description");n.put("namespaceId",ns);out.put(HistoryCodec.key(n),n);
-        for(String kind:List.of("Class","Object","ClassDescriptor","Descriptor","Pattern","UserTool"))try(ResourceIterator<Node> nodes=core.scanNodes(kind,Map.of("namespaceId",ns))){while(nodes.hasNext()){Node node=nodes.next();
-            Map<String,Object> m=switch(kind){case "Class"->image(node,kind,"name","position","order","comment");case "Object"->image(node,kind,"position");case "ClassDescriptor"->image(node,kind,"name","type","order","comment");case "Descriptor"->image(node,kind,"name");case "Pattern"->image(node,kind,"name","comment");case "UserTool"->image(node,kind,"name","data","comment");default->throw new IllegalStateException();};
-            if(kind.equals("Pattern"))m.put("definition",Json.read((String)node.getProperty("definition")));
-            if(kind.equals("ClassDescriptor"))m.put("classId",node.getProperty("ownerId"));
-            if(kind.equals("Descriptor")){
-                m.put("objectId",node.getProperty("ownerId"));m.put("value",core.descriptorValue(node));
-                var edge=node.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.OUTGOING);
-                if(edge!=null){Node g=edge.getEndNode();m.put("geometryId",CoreRepository.id(g));var gi=image(g,"DGeometry","wkt","geometryType","srid","verticalSrid","axisOrder","dimensions");gi.put("descriptorId",CoreRepository.id(node));out.put(HistoryCodec.key(gi),gi);}
+        core.observe("history-capture");
+        captureImages(core.namespace(ns),out,null);
+        for(String kind:List.of("Class","Object","ClassDescriptor","Descriptor","Pattern","UserTool"))
+            try(var nodes=core.scanNodes(kind,Map.of("namespaceId",ns))) {
+                while(nodes.hasNext())captureImages(nodes.next(),out,null);
             }
-            if(kind.equals("Object")){var edge=core.membership(node);if(edge==null)throw new IllegalStateException("Object missing membership");var mi=core.data(edge);out.put(HistoryCodec.key(mi),mi);}
-            out.put(HistoryCodec.key(m),m);
-        }}
         for(String kind:List.of("Relationship","ClassRelationship")){String label=kind.equals("ClassRelationship")?"Class":"Object";try(ResourceIterator<Node> nodes=core.scanNodes(label,Map.of("namespaceId",ns))){while(nodes.hasNext())try(ResourceIterable<Relationship> edges=nodes.next().getRelationships(Direction.OUTGOING,RelationshipType.withName("RELATED_TO"))){for(Relationship edge:edges){if(kind.equals(core.kind(edge))&&ns.equals(edge.getEndNode().getProperty("namespaceId",null))){var m=core.data(edge);out.put(HistoryCodec.key(m),m);}}}}}
         return out;
     }
+    void captureImages(Entity entity,ChangeSet.Images images) {
+        captureImages(entity,images.state(),images);
+    }
+
+    private void captureImages(Entity entity,Map<String,Map<String,Object>> out,ChangeSet.Images affected) {
+        if(entity instanceof Relationship edge) {
+            var data=core.data(edge);out.put(HistoryCodec.key(data),data);return;
+        }
+        Node node=(Node)entity;
+        String kind=CoreRepository.kind(node);
+        var data=switch(kind) {
+            case "Namespace" -> image(node,kind,"name","description");
+            case "Class" -> image(node,kind,"name","position","order","comment");
+            case "Object" -> image(node,kind,"position");
+            case "ClassDescriptor" -> image(node,kind,"name","type","order","comment");
+            case "Descriptor" -> image(node,kind,"name");
+            case "Pattern" -> image(node,kind,"name","comment");
+            case "UserTool" -> image(node,kind,"name","data","comment");
+            default -> throw new IllegalStateException("Invalid scientific image: "+kind);
+        };
+        switch(kind) {
+            case "Namespace" -> data.put("namespaceId",CoreRepository.id(node));
+            case "Pattern" -> data.put("definition",Json.read((String)node.getProperty("definition")));
+            case "ClassDescriptor" -> data.put("classId",node.getProperty("ownerId"));
+            case "Descriptor" -> {
+                var membership=core.membership(core.owner(node));
+                Node clazz=membership.getEndNode();
+                Node declaration=core.declaration(clazz,(String)data.get("name"));
+                String type=(String)declaration.getProperty("type");
+                Object value=core.descriptorValue(node,type);
+                data.put("objectId",node.getProperty("ownerId"));data.put("value",value);
+                if(affected!=null) {
+                    String key=HistoryCodec.key(data);
+                    affected.descriptorSchema().put(key,HistoryCodec.descriptorSchemaReferences(
+                        CoreRepository.id(membership),CoreRepository.id(clazz),CoreRepository.id(declaration)));
+                    if(value!=null&&type.equals("DResource"))
+                        affected.resources().put(key,(String)ValueCodec.map(value).get("resourceId"));
+                }
+                var geometryEdge=node.getSingleRelationship(RelationshipType.withName("HAS_GEOMETRY"),Direction.OUTGOING);
+                if(geometryEdge!=null) {
+                    Node geometry=geometryEdge.getEndNode();
+                    data.put("geometryId",CoreRepository.id(geometry));
+                    var owned=image(geometry,"DGeometry","wkt","geometryType","srid","verticalSrid","axisOrder","dimensions");
+                    owned.put("descriptorId",CoreRepository.id(node));out.put(HistoryCodec.key(owned),owned);
+                }
+            }
+            case "Object" -> {
+                var membership=core.membership(node);
+                if(membership==null)throw new IllegalStateException("Object missing membership");
+                captureImages(membership,out,null);
+            }
+            default -> {}
+        }
+        out.put(HistoryCodec.key(data),data);
+    }
+
+    public void refreshNamespaceImage(Node namespace,Map<String,Map<String,Object>> state) {
+        captureImages(namespace,state,null);
+    }
+
     private Node node(String label,Map<String,Object> props){Node n=tx.createNode(Label.label(label));props.forEach((k,v)->{if(v!=null)n.setProperty(k,v);});return n;}
     public Node epoch(String ns,String id){return core.entity("DepositHistoryEpoch",ns,id);}
     public boolean available(Node revision){Node e=epoch((String)revision.getProperty("namespaceId"),(String)revision.getProperty("historyEpochId"));return e!=null&&!Boolean.TRUE.equals(e.getProperty("expired",false));}
@@ -87,14 +140,14 @@ public final class HistoryRepository {
             if(entityKind==null)entityKind=HistoryCodec.kindFromKey(entity);
             Map<String,Object> snapshotProperties=Json.map("id",UUID.randomUUID().toString(),"namespaceId",ns,"revisionId",id,"historyEpochId",epoch,"entityId",entityId,"entityKind",entityKind,"beforeExists",before!=null,"afterExists",after!=null,"beforeJson",before==null?null:Json.write(before),"afterJson",after==null?null:Json.write(after));
             if(budget!=null)budget.reserveHistoryRecord(snapshotProperties,3);Node snapshot=node("DepositSnapshot",snapshotProperties);
-            revision.createRelationshipTo(snapshot,RelationshipType.withName("HAS_CHANGE"));retain(ns,snapshot,before,changes.before);retain(ns,snapshot,after,changes.after);
+            revision.createRelationshipTo(snapshot,RelationshipType.withName("HAS_CHANGE"));retain(ns,snapshot,changes.retainedResource(before,true));retain(ns,snapshot,changes.retainedResource(after,false));
         }
         root.setProperty("headRevisionId",id);
         return id;
     }
-    private void retain(String ns,Node snapshot,Map<String,Object> image,Map<String,Map<String,Object>> state){
-        if(image==null||!"Descriptor".equals(image.get("kind"))||image.get("value")==null||!"DResource".equals(HistoryCodec.descriptorType(state,image)))return;
-        String id=(String)ValueCodec.map(image.get("value")).get("resourceId");Node resource=validateResource(ns,id);
+    private void retain(String ns,Node snapshot,String id){
+        if(id==null)return;
+        Node resource=validateResource(ns,id);
         try(var links=snapshot.getRelationships(Direction.OUTGOING,RelationshipType.withName("RETAINS_RESOURCE"))){for(var link:links)if(link.getEndNode().equals(resource))return;}
         snapshot.createRelationshipTo(resource,RelationshipType.withName("RETAINS_RESOURCE"));new ResourceRepository(tx,core).orphan(new ResourceRepository(tx,core).location(id));
     }

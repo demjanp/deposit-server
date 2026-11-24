@@ -55,7 +55,7 @@ public final class BatchService extends ActionService {
                     var resolved=new ArgumentService(c,bindings,true).bind(command.procedure(),fields,arguments);
                     applyDescriptorTypes(command,resolved);
                     Change step=domain.authorizedCommand(command.procedure(),resolved);changed|=step.changed();
-                    if(c.journal!=null)c.journal.checkpoint(new deposit.repository.HistoryRepository(c.tx,repo).capture(c.namespaceId));
+                    if(c.historyMutation!=null)c.historyMutation.checkpoint();
                     var saved=Json.read(Json.write(step.outcome().data()));if(!step.changed())saved.put("changed",false);
                     results.put(command.key(),saved);
                 }catch(ExceptionHandler.DepositException failure) {throw commandError(failure,command.key(),index);}

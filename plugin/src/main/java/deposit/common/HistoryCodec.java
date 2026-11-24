@@ -34,13 +34,19 @@ public final class HistoryCodec {
         for(var image:state.values())if("ClassDescriptor".equals(image.get("kind"))&&clazz.equals(image.get("classId"))&&Objects.equals(descriptor.get("name"),image.get("name")))return ValueCodec.type(image.get("type"));
         invalid("Missing historical declaration");return null;
     }
+    public static Set<String> descriptorSchemaReferences(String membershipId,String classId,String declarationId) {
+        var ids=new TreeSet<String>();
+        ids.add(key("Membership",membershipId));ids.add(key("Class",classId));
+        if(declarationId!=null)ids.add(key("ClassDescriptor",declarationId));
+        return ids;
+    }
     public static Set<String> schemaReferences(Map<String,Map<String,Object>> state,Map<String,Object> image){
         var ids=new TreeSet<String>();if(image==null)return ids;
         if("Pattern".equals(image.get("kind"))){Object definition=image.get("definition");if(definition instanceof Map<?,?> d&&d.get("objects") instanceof Map<?,?> roles)for(Object raw:roles.values()){var role=ValueCodec.map(raw);String className=(String)role.get("className");for(var clazz:state.values())if("Class".equals(clazz.get("kind"))&&Objects.equals(className,clazz.get("name"))){ids.add(key(clazz));Set<String> fields=PatternCodec.referencedDescriptors(role);for(var declaration:state.values())if("ClassDescriptor".equals(declaration.get("kind"))&&Objects.equals(clazz.get("id"),declaration.get("classId"))&&fields.contains(declaration.get("name")))ids.add(key(declaration));}}}
         if("Class".equals(image.get("kind"))){for(var pattern:state.values())if("Pattern".equals(pattern.get("kind"))){Object definition=pattern.get("definition");if(definition instanceof Map<?,?> d&&d.get("objects") instanceof Map<?,?> roles&&roles.values().stream().anyMatch(raw->Objects.equals(image.get("name"),ValueCodec.map(raw).get("className"))))ids.add(key(pattern));}}
         if("ClassDescriptor".equals(image.get("kind"))){var clazz=find(state,image.get("classId"),"Class");if(clazz!=null)for(var pattern:state.values())if("Pattern".equals(pattern.get("kind"))){var roles=ValueCodec.map(ValueCodec.map(pattern.get("definition")).get("objects"));if(roles.values().stream().anyMatch(raw->{var role=ValueCodec.map(raw);return Objects.equals(clazz.get("name"),role.get("className"))&&PatternCodec.referencedDescriptors(role).contains(image.get("name"));}))ids.add(key(pattern));}}
         if(!"Descriptor".equals(image.get("kind")))return ids;
-        for(var m:state.values())if("Membership".equals(m.get("kind"))&&Objects.equals(image.get("objectId"),m.get("objectId"))){ids.add(key(m));ids.add(key("Class",(String)m.get("classId")));for(var d:state.values())if("ClassDescriptor".equals(d.get("kind"))&&Objects.equals(m.get("classId"),d.get("classId"))&&Objects.equals(image.get("name"),d.get("name")))ids.add(key(d));}return ids;
+        for(var m:state.values())if("Membership".equals(m.get("kind"))&&Objects.equals(image.get("objectId"),m.get("objectId"))){ids.addAll(descriptorSchemaReferences((String)m.get("id"),(String)m.get("classId"),null));for(var d:state.values())if("ClassDescriptor".equals(d.get("kind"))&&Objects.equals(m.get("classId"),d.get("classId"))&&Objects.equals(image.get("name"),d.get("name")))ids.add(key(d));}return ids;
     }
     private static void requires(Map<String,Map<String,Object>> state,Object id,String kind){if(find(state,id,kind)==null)invalid("Invalid historical endpoint category");}
     private static void shape(Map<String,Object> m,String kind){

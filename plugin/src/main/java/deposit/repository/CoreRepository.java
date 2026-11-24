@@ -19,6 +19,9 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         this.tx=tx;this.timestamp=timestamp;this.context=context;
         projections=new CoreProjectionRepository(this);receipts=new OperationReceiptRepository(tx,this);
     }
+    private HistoryMutation historyMutation() {return context==null?null:context.historyMutation;}
+    private PatternChanges patternChanges() {return context==null?null:context.patternChanges;}
+    void observe(String point) {if(context!=null)context.server.storagePoint(point);}
     public Node find(String label,String property,Object value) {return tx.findNode(Label.label(label),property,value);}
     public Node find(String label,Map<String,Object> properties) {
         try(var nodes=tx.findNodes(Label.label(label),properties)) {return nodes.hasNext()?nodes.next():null;}
@@ -83,18 +86,47 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         properties.forEach((k,v)->{if(v!=null)n.setProperty(k,property(v));});
         if(label.equals("User"))tx.createNode(Label.label("DepositActorLock")).setProperty("id",id(n));
         if(namespace!=null && Set.of("Class","Object","Pattern","UserTool").contains(label)) namespace(namespace).createRelationshipTo(n,RelationshipType.withName("CONTAINS"));
+        var history=historyMutation();if(history!=null)history.created(n);
+        var patterns=patternChanges();
+        if(patterns!=null)switch(label) {
+            case "Class" -> patterns.classChanged(n,null,(String)n.getProperty("name"));
+            case "ClassDescriptor" -> patterns.declarationCreated(n);
+            case "Pattern" -> patterns.patternCreated(n);
+            default -> {}
+        }
         return n;
     }
     private static Object property(Object v) {if(v instanceof List<?> list) return list.stream().mapToDouble(x->((Number)x).doubleValue()).toArray();return v;}
-    public boolean update(Entity node,Map<String,Object> values,String actor) {
+    public boolean update(Entity entity,Map<String,Object> values,String actor) {
         boolean changed=false;
+        var history=historyMutation();
+        var patterns=patternChanges();
         for(var entry:values.entrySet()) {
-            Object value=entry.getValue()==null?null:property(entry.getValue());Object old=node.getProperty(entry.getKey(),null);
-            if(!Objects.deepEquals(old,value)) {changed=true;if(value==null)node.removeProperty(entry.getKey());else node.setProperty(entry.getKey(),value);}
+            String field=entry.getKey();
+            Object value=entry.getValue()==null?null:property(entry.getValue());Object old=entity.getProperty(field,null);
+            if(Objects.deepEquals(old,value))continue;
+            if(!changed&&history!=null)history.changing(entity);
+            changed=true;
+            Node pattern=null;
+            if(patterns!=null&&entity instanceof Node node) {
+                if(field.equals("name")&&node.hasLabel(Label.label("Class")))patterns.classChanged(node,(String)old,(String)value);
+                if(field.equals("type")&&node.hasLabel(Label.label("ClassDescriptor")))patterns.declarationChanged(node);
+                if(field.equals("definition")&&node.hasLabel(Label.label("Pattern"))) {
+                    pattern=node;
+                    patterns.definitionChanging(pattern);
+                }
+            }
+            if(value==null)entity.removeProperty(field);else entity.setProperty(field,value);
+            if(pattern!=null)patterns.definitionChanged(pattern);
         }
-        if(changed) audit(node,actor);return changed;
+        if(changed)auditProperties(entity,actor);
+        return changed;
     }
-    public void audit(Entity node,String actor) {node.setProperty("updatedAt",timestamp);node.setProperty("updatedBy",actor);}
+    public void audit(Entity entity,String actor) {
+        var history=historyMutation();if(history!=null)history.changing(entity);
+        auditProperties(entity,actor);
+    }
+    private void auditProperties(Entity entity,String actor) {entity.setProperty("updatedAt",timestamp);entity.setProperty("updatedBy",actor);}
     public long advanceNamespace(Node namespace,long sequence,String actor) {
         long next=sequence+1;
         namespace.setProperty("sequence",next);
@@ -109,6 +141,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public Relationship assignRestored(Node object,Node clazz,String actor,String restoredId) {
         Relationship existing=membership(object);
         if(existing!=null && existing.getEndNode().equals(clazz)) return existing;
+        var history=historyMutation();if(history!=null)history.changing(object);
         String id=restoredId!=null?restoredId:existing==null?UUID.randomUUID().toString():id(existing);
         var properties=existing==null?new HashMap<String,Object>():new HashMap<>(existing.getAllProperties());
         if(existing!=null)existing.delete();
@@ -116,7 +149,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         if(find("DepositEdgeIdentity","key",key)==null) {Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",key);registry.setProperty("id",id);}
         Relationship rel=object.createRelationshipTo(clazz,RelationshipType.withName("MEMBER_OF"));properties.forEach((name,value)->{if(!name.equals("id"))rel.setProperty(name,value);});
         rel.setProperty("id",id);rel.setProperty("namespaceId",object.getProperty("namespaceId"));
-        if(existing==null) {rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);}audit(rel,actor);return rel;
+        if(existing==null) {rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);}auditProperties(rel,actor);return rel;
     }
     public Node declaration(Node clazz,String name) {return find("ClassDescriptor",Map.of("namespaceId",clazz.getProperty("namespaceId"),"ownerId",id(clazz),"name",name));}
     public Node descriptor(Node object,String name) {return find("Descriptor",Map.of("namespaceId",object.getProperty("namespaceId"),"ownerId",id(object),"name",name));}
@@ -140,12 +173,15 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     @Override public Node geometry(Node descriptor) {return geometry().geometry(descriptor);}
     private ResourceRepository resources(){return new ResourceRepository(tx,this);}
     public Object descriptorValue(Node descriptor) {
-        String type=descriptorType(descriptor);
+        return descriptorValue(descriptor,descriptorType(descriptor));
+    }
+    Object descriptorValue(Node descriptor,String type) {
         if(type.equals("DGeometry")){var g=geometry();Node node=g.geometry(descriptor);return node==null?null:g.value(node);}
         if(type.equals("DResource")){Node node=resources().linked(descriptor);return node==null?null:Json.map("resourceId",id(node));}
         return ValueCodec.decode(type,descriptor.getProperty("value",null));
     }
     public boolean writeValue(Node descriptor,String type,Object value,String actor) {
+        var history=historyMutation();if(history!=null)history.changing(descriptor);
         boolean changed=false;String encoding=switch(type){case "DGeometry"->"geometry";case "DResource"->"resource";case "List","DDict"->"json";default->"native";};
         if(type.equals("DGeometry"))changed=geometry().write(descriptor,value,actor);
         else if(type.equals("DResource")){
@@ -220,11 +256,14 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public Relationship createRelationshipRestored(Node source,Node target,String label,Map<String,Object> properties,String actor,String restoredId) {
         Relationship rel=source.createRelationshipTo(target,RelationshipType.withName("RELATED_TO"));
         rel.setProperty("id",restoredId);rel.setProperty("namespaceId",source.getProperty("namespaceId"));rel.setProperty("label",label);
-        rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);audit(rel,actor);
+        rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);auditProperties(rel,actor);
         properties.forEach((key,value)->{if(value!=null)rel.setProperty(key,value);});
-        Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",edgeKey(rel));registry.setProperty("id",id(rel));return rel;
+        Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",edgeKey(rel));registry.setProperty("id",id(rel));
+        var history=historyMutation();if(history!=null)history.created(rel);
+        return rel;
     }
     public void remove(Relationship rel,List<String> deleted) {
+        var history=historyMutation();if(history!=null)history.deleting(rel);
         Node registry=find("DepositEdgeIdentity","key",edgeKey(rel));
         if(registry==null||!id(rel).equals(registry.getProperty("id")))throw new IllegalStateException("Missing edge identity");
         registry.delete();deleted.add(id(rel));rel.delete();
@@ -236,12 +275,21 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         registry.setProperty("id",id);rel.setProperty("id",id);
     }
     public void remove(Node node,List<String> deleted) {
+        var history=historyMutation();if(history!=null)history.deleting(node);
+        String kind=kind(node);
+        var patterns=patternChanges();
+        if(patterns!=null)switch(kind) {
+            case "Class" -> patterns.classChanged(node,(String)node.getProperty("name"),null);
+            case "ClassDescriptor" -> patterns.declarationRemoved(node);
+            case "Pattern" -> patterns.patternRemoved(node);
+            default -> {}
+        }
         deleted.add(id(node));
-        if(kind(node).equals("Descriptor"))removeValue(node,deleted);
-        if(kind(node).equals("Object")) {
+        if(kind.equals("Descriptor"))removeValue(node,deleted);
+        if(kind.equals("Object")) {
             for(Node d:children(node,"Descriptor"))remove(d,deleted);
         }
-        if(kind(node).equals("Class")) for(Node d:children(node,"ClassDescriptor"))remove(d,deleted);
+        if(kind.equals("Class")) for(Node d:children(node,"ClassDescriptor"))remove(d,deleted);
         try(var edges=node.getRelationships()) {for(var rel:edges) {if(rel.hasProperty("id"))remove(rel,deleted);else rel.delete();}}
         node.delete();
     }

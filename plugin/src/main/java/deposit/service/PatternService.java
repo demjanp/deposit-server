@@ -9,17 +9,12 @@ import java.util.stream.*;
 
 /** Pattern canonicalization, Namespace compatibility and deterministic structural binding. */
 public final class PatternService extends BaseService {
-    private final PatternCompatibilityService compatibility;
-    public PatternService(RequestContext c){super(c);compatibility=new PatternCompatibilityService(c);}
+    public PatternService(RequestContext c) {super(c);}
 
     public static Map<String,Object> normalizeDefinition(Map<String,Object> source) {
         return PatternCodec.normalize(source);
     }
-    public void validateNamespace(){compatibility.validateNamespace();}
-    public void validateNamespace(String namespaceId){compatibility.validateNamespace(namespaceId);}
-    public void validateDeclarationDeletion(Map<String,Map<String,Object>> before,Map<String,Map<String,Object>> after){compatibility.validateDeclarationDeletion(before,after);}
-    /** Remove now-resolved declaration proposals inside the existing action/transaction. */
-    public boolean canonicalizeResolvedDeclarations(){return compatibility.canonicalizeResolvedDeclarations();}
+    public void validateNamespace(String namespaceId){new PatternCompatibilityService(c).validateNamespace(namespaceId);}
     private Node pattern(Object selector){Node n=null;if(selector instanceof Map<?,?> m){var map=ValueCodec.map(m);fields(map,"id");n=repo.entity("Pattern",c.namespaceId,RequestContext.uuid(map.get("id")));}else{String s=string(selector);n=repo.find("Pattern",Map.of("namespaceId",c.namespaceId,"name",name(s)));}if(n==null)c.fail("NOT_FOUND","Pattern not found");return n;}
     private List<Map<String,Object>> bindings(Node pattern,Object values){return bindings(pattern,values,Map.of());}
     private List<Map<String,Object>> bindings(Node pattern,Object values,Map<String,Object> rules){return bindings(pattern,values,rules,null,false);}

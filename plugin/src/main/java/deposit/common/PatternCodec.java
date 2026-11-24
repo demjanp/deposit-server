@@ -71,9 +71,20 @@ public final class PatternCodec {
     }
     static void validate(Collection<Map<String,Object>> definitions,Map<String,? extends Map<String,String>> schema,PackageWorkspace workspace) {
         if(workspace!=null){validateStored(definitions,schema,workspace);return;}
-        Map<String,String> tuples=workspace==null?new HashMap<>():workspace.map(),proposals=workspace==null?new HashMap<>():workspace.map();
-        for(var definition:definitions)for(Object raw:ValueCodec.map(normalize(definition).get("objects")).values()) {
-            var role=ValueCodec.map(raw);String clazz=(String)role.get("className");Map<String,String> declarations=schema.get(clazz);
+        validateMatching(definitions,schema,null);
+    }
+
+    /** Live definitions are normalized at the write boundary. Compare matching rules for affected classes. */
+    public static void validateAffected(Collection<Map<String,Object>> definitions,Map<String,? extends Map<String,String>> schema,Set<String> classes) {
+        validateMatching(definitions,schema,classes);
+    }
+
+    private static void validateMatching(Collection<Map<String,Object>> definitions,Map<String,? extends Map<String,String>> schema,Set<String> classes) {
+        Map<String,String> tuples=new HashMap<>(),proposals=new HashMap<>();
+        for(var definition:definitions)for(Object raw:ValueCodec.map((classes==null?normalize(definition):definition).get("objects")).values()) {
+            var role=ValueCodec.map(raw);String clazz=(String)role.get("className");
+            if(classes!=null&&!classes.contains(clazz))continue;
+            Map<String,String> declarations=schema.get(clazz);
             if(declarations==null)fail("Pattern references an unknown Class: "+clazz);
             var available=new HashSet<String>();
             for(Object rawDescriptor:(List<?>)role.get("descriptors")) {

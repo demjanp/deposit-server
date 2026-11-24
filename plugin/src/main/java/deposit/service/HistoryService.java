@@ -46,6 +46,7 @@ public final class HistoryService extends ActionService {
         return action("deposit.utils."+kind,request,false,kind.equals("restore")?"owner":"editor",()->{
             UndoPlan plan=kind.equals("restore")?previewRestore(id).plan():inverse(id,kind.equals("redo"),false);
             if(!plan.conflicts().isEmpty())throw ExceptionHandler.error("REVISION_CONFLICT","History plan conflicts",c,false,Json.map("conflicts",plan.conflicts()));
+            c.journal=new ChangeSet(plan.changes().before);
             if(kind.equals("restore")&&plan.changes().touches.isEmpty()){
                 var data=plan.data();data.put("kind",kind);data.put("changed",false);
                 return new Change(new Outcome(null,null,data),false);

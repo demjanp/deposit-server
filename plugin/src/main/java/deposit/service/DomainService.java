@@ -2,6 +2,7 @@ package deposit.service;
 
 import deposit.common.*;
 import deposit.common.Results.Outcome;
+import deposit.repository.PatternChanges;
 import java.util.*;
 import org.neo4j.graphdb.*;
 
@@ -130,7 +131,13 @@ public final class DomainService extends ActionService {
             return new Change(outcome(n),changed);
     }
     private boolean renamePatternReferences(String oldName,String newName){
-        boolean changed=false;for(Node pattern:repo.nodes("Pattern",Map.of("namespaceId",c.namespaceId))){Map<String,Object> definition=Json.read((String)pattern.getProperty("definition"));Map<String,Object> objects=ValueCodec.map(definition.get("objects"));boolean edit=false;for(Object raw:objects.values()){var role=ValueCodec.map(raw);if(oldName.equals(role.get("className"))){role.put("className",newName);edit=true;}}if(edit){repo.update(pattern,Map.of("definition",Json.write(definition)),c.actorId);changed=true;}}return changed;
+        boolean changed=false;
+        for(var pattern:c.patternChanges.referencing(oldName)) {
+            var definition=Json.read(Json.write(pattern.data()));
+            for(var role:PatternChanges.roles(definition))if(oldName.equals(role.get("className")))role.put("className",newName);
+            changed=repo.update(pattern.node(),Map.of("definition",Json.write(definition)),c.actorId)||changed;
+        }
+        return changed;
     }
     public Outcome remove(String kind,Map<String,Object> request) {return action("deposit.delete."+lower(kind),request,false,"editor",()->removeCommand(kind,request));}
     private Change removeCommand(String kind,Map<String,Object> request) {
@@ -162,6 +169,8 @@ public final class DomainService extends ActionService {
                 converted.put(d,ValueCodec.normalize(type,value));
             }
             if(changed) {
+                // Capture values using their old declaration before changing the storage type.
+                if(c.historyMutation!=null)for(Node descriptor:converted.keySet())c.historyMutation.changing(descriptor);
                 repo.update(declaration,Map.of("type",type),c.actorId);
                 for(var entry:converted.entrySet())repo.writeValue(entry.getKey(),type,entry.getValue(),c.actorId);
             }
