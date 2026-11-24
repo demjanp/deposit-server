@@ -1,6 +1,7 @@
 package deposit.repository;
 
 import deposit.common.*;
+import deposit.repository.ResourceTransferStore.Transfer;
 import java.util.*;
 import java.nio.file.*;
 import java.nio.file.Path;
@@ -16,9 +17,15 @@ public final class ResourceRepository {
         this.tx=tx;this.core=core;var internal=(InternalTransaction)tx;server=ServerContext.forDatabase(internal.getDatabaseId());files=server.storage.files;storage=server.storage.content;
     }
     public long now(){return server.sessionTime();}
-    public void lock(String id){var internal=(InternalTransaction)tx;server.holdStorage(server.state(internal.kernelTransaction()),id);}
-    public Node record(String label,String id,Map<String,Object> fields){Node n=tx.createNode(Label.label(label));n.setProperty("id",id);fields.forEach((k,v)->{if(v!=null)n.setProperty(k,v);});return n;}
-    public Node location(String id){return core.find("DepositResourceLocation","id",id);}
+    public void lock(String id){
+        var kernel=((InternalTransaction)tx).kernelTransaction();
+        server.holdStorage(server.state(kernel),id);
+        server.storage.transfers.requireSettled(id,server.operationalUnit(kernel));
+    }
+    public Transfer location(String id){
+        var transfer=resourceTransfer(id);
+        return transfer==null||"finished".equals(transfer.state())?null:transfer;
+    }
     public Node completed(String id){return core.find("DResource","id",id);}
     public Node resource(String ns,String id){
         Node resource=core.entity("DResource",ns,id);
@@ -28,33 +35,45 @@ public final class ResourceRepository {
             &&ns.equals(CoreRepository.id(ownership.getStartNode()))?resource:null;
     }
 
-    public record ResourceState(Node completed,Node provisional) {
-        public Node lifecycle(){return completed==null?provisional:completed;}
-    }
-    public ResourceState state(String id){
-        Node completed=completed(id);
-        return new ResourceState(completed,completed==null?location(id):null);
+    public record ResourceState(Node completed,Transfer transfer) {
+        public Transfer provisional() { return completed==null && transfer!=null && !"finished".equals(transfer.state())?transfer:null; }
+        public boolean exists() { return completed!=null||provisional()!=null; }
+        public String namespace() { return completed!=null?text(completed,"namespaceId"):provisional().namespace(); }
+        public long bytes() { return completed!=null?number(completed,"bytes",0):provisional().bytes(); }
+        public String deleting() { return completed!=null?(String)completed.getProperty("deleting",null):provisional().deleting(); }
+        public Long orphanSince() { return completed!=null?(Long)completed.getProperty("orphanSince",null):provisional().orphanSince(); }
     }
 
-    public List<Node> collectionCandidates(String namespace){
+    public ResourceState state(String id){
+        return new ResourceState(completed(id),resourceTransfer(id));
+    }
+
+    public Map<String,String> collectionCandidates(String namespace){
         var scope=namespace==null?Map.<String,Object>of():Map.<String,Object>of("namespaceId",namespace);
-        var records=new ArrayList<>(core.nodes("DepositResourceLocation",scope));
+        var candidates=new TreeMap<String,String>();
+        for(var transfer:server.storage.transfers.scoped(namespace))
+            if(!"finished".equals(transfer.state()))candidates.put(transfer.resource(),transfer.namespace());
         String filter=namespace==null?"":" AND r.namespaceId=$namespaceId AND r.detached IS NULL";
         try(var rows=tx.execute("MATCH (r:DResource) WHERE r.orphanSince IS NOT NULL"+filter+" RETURN r",scope)){
-            while(rows.hasNext())records.add((Node)rows.next().get("r"));
+            while(rows.hasNext()){
+                Node resource=(Node)rows.next().get("r");
+                candidates.put(CoreRepository.id(resource),text(resource,"namespaceId"));
+            }
         }
-        records.sort(Comparator.comparing(CoreRepository::id));
-        return records;
+        return candidates;
     }
 
     /** Publish the completed graph identity after the caller has verified publication. */
     public Node complete(String ns,String filename,String mediaType,ResourceStorage.Content content,String actor,ZonedDateTime timestamp){
         Node owner=core.namespace(ns);
         if(owner==null)throw ExceptionHandler.fail("NOT_FOUND","Resource Namespace not found");
-        Node resource=record("DResource",content.resourceId(),Json.map("namespaceId",ns,"filename",filename,
+        Node resource=tx.createNode(Label.label("DResource"));
+        resource.setProperty("id",content.resourceId());
+        Json.map("namespaceId",ns,"filename",filename,
             "storedFilename",content.storedFilename(),"bytes",content.bytes(),"checksum",content.checksum(),
             "mediaType",mediaType,"state","ready","createdBy",actor,"updatedBy",actor,
-            "createdAt",timestamp,"updatedAt",timestamp,"leaseUntil",now()+ResourceFiles.LEASE));
+            "createdAt",timestamp,"updatedAt",timestamp,"leaseUntil",now()+ResourceFiles.LEASE)
+            .forEach((key,value)->{if(value!=null)resource.setProperty(key,value);});
         owner.createRelationshipTo(resource,RelationshipType.withName("OWNS_RESOURCE"));
         return resource;
     }
@@ -70,48 +89,43 @@ public final class ResourceRepository {
 
     public static long number(Node n,String key,long fallback){return ((Number)n.getProperty(key,fallback)).longValue();}
     public static String text(Node n,String key){return (String)n.getProperty(key);}
-    public Node transfer(String id){return core.find("DepositTransfer","id",id);}
-    public Node resourceTransfer(String id){return core.find("DepositTransfer","resourceId",id);}
-    public Node upload(Node record){
-        if(record.hasLabel(Label.label("DResource")))return resourceTransfer(CoreRepository.id(record));
-        return record.hasProperty("uploadId")?transfer(text(record,"uploadId")):null;
+    public Transfer transfer(String id){return server.storage.transfers.transfer(id);}
+    public Transfer resourceTransfer(String id){
+        var kernel=((InternalTransaction)tx).kernelTransaction();
+        return server.storage.transfers.resource(id,server.operationalUnit(kernel));
     }
     public boolean live(String id){
         Node resource=completed(id);
         return resource!=null&&resource.hasRelationship(Direction.INCOMING,RelationshipType.withName("HAS_RESOURCE"));
     }
     public boolean protectedContent(Node loc) {
-        if(live(CoreRepository.id(loc)))return true;
-        if(retained(CoreRepository.id(loc)))return true;
-        if(server.hasReaderPin(CoreRepository.id(loc)))return true;
-        if(number(loc,"leaseUntil",0)>now())return true;
-        for(Node lease:core.nodes("DepositResourceLease",Map.of("resourceId",CoreRepository.id(loc))))if(!"history".equals(lease.getProperty("type",""))&&number(lease,"expires",Long.MAX_VALUE)>now())return true;
-        for(Node grant:core.nodes("DepositExportGrant",Map.of("resourceId",CoreRepository.id(loc))))if(number(grant,"expires",0)>now())return true;
-        return false;
+        return number(loc,"leaseUntil",0)>now() || linkedProtection(CoreRepository.id(loc));
+    }
+    public boolean protectedContent(ResourceState resource) {
+        return resource.completed()!=null?protectedContent(resource.completed()):
+            resource.provisional().expires()>now() || linkedProtection(resource.provisional().resource());
+    }
+    private boolean linkedProtection(String id) {
+        return live(id)||retained(id)||server.hasReaderPin(id)||server.storage.tables.protects(id,now())
+            ||server.storage.exportGrants.protects(id,now());
     }
     public void orphan(Node loc) {if(protectedContent(loc))loc.removeProperty("orphanSince");else if(!loc.hasProperty("orphanSince"))loc.setProperty("orphanSince",now());}
-    public void renew(Node transfer) {
-        long until=now()+ResourceFiles.LEASE;transfer.setProperty("expires",until);Node record=state(text(transfer,"resourceId")).lifecycle();record.setProperty("leaseUntil",until);record.removeProperty("orphanSince");
-    }
     public boolean accessible(Node resource,String actor,String role,boolean renew) {
         String id=CoreRepository.id(resource);if(resource.hasProperty("deleting")||Boolean.TRUE.equals(resource.getProperty("detached",false)))return false;
         boolean namespaceReader=role!=null&&Set.of("viewer","editor","owner").contains(role);
         if(namespaceReader&&live(id))return true;
         if(namespaceReader&&retained(id))return true;
         // The creator lease is an upload recovery path only. Generated exports are
-        // authorized exclusively by their actor-bound DepositExportGrant.
+        // authorized through their actor-bound export grant.
         if(actor.equals(resource.getProperty("createdBy"))&&number(resource,"leaseUntil",0)>now()) {
-            Node t=resourceTransfer(id);
-            if(t!=null&&"finished".equals(t.getProperty("state",null))&&actor.equals(t.getProperty("actorId",null))
-                &&resource.getProperty("namespaceId").equals(t.getProperty("namespaceId",null))&&number(t,"expires",0)>now()) {
+            var t=resourceTransfer(id);
+            if(t!=null&&"finished".equals(t.state())&&actor.equals(t.actor())
+                &&text(resource,"namespaceId").equals(t.namespace())&&t.expires()>now()) {
                 return true;
             }
         }
-        for(Node grant:core.nodes("DepositExportGrant",Map.of("resourceId",id,"namespaceId",resource.getProperty("namespaceId"),"actorId",actor))) {
-            if(number(grant,"expires",0)>now()&&(!Boolean.TRUE.equals(grant.getProperty("history",false))||Objects.equals(role,"owner"))) {
-                return true;
-            }
-        }return false;
+        return server.storage.exportGrants.permits(id,text(resource,"namespaceId"),actor,
+            Objects.equals(role,"owner"),now());
     }
     public boolean retained(String id) {
         Node resource=completed(id);if(resource==null)return false;
@@ -228,12 +242,32 @@ public final class ResourceRepository {
         server.storage.admission.release(reservation,Map.of(files.root,content.bytes()));
     }
     public Map<String,Object> info(Node r){String url=server.downloadPublicBaseUrl==null?null:ResourceLinkEncoder.url(server.downloadPublicBaseUrl,(String)r.getProperty("namespaceId"),CoreRepository.id(r));return Json.map("resourceId",CoreRepository.id(r),"filename",r.getProperty("filename"),"storedFilename",r.getProperty("storedFilename"),"downloadUrl",url,"bytes",r.getProperty("bytes"),"checksum",r.getProperty("checksum"),"mediaType",r.getProperty("mediaType"),"state",r.getProperty("state"));}
-    public void expire(Node loc) {
-        String id=CoreRepository.id(loc);lock(id);if(loc.hasProperty("deleting")||Boolean.TRUE.equals(loc.getProperty("collected",false)))return;
-        Node t=upload(loc);
-        if(t!=null&&"uploading".equals(t.getProperty("state"))&&!t.hasProperty("writerIncarnation")&&number(t,"expires",0)<=now())t.setProperty("state","expired");
-        else if(t!=null&&"uploading".equals(t.getProperty("state")))return; // Active lease is already retained; no need to rescan grant/history/pending relations.
-        orphan(loc);
+    public void expire(String id) {
+        lock(id);
+        var resource=state(id);
+        if(!resource.exists()||resource.deleting()!=null)return;
+        if(resource.completed()!=null) {
+            orphan(resource.completed());
+            return;
+        }
+        var transfer=resource.provisional();
+        if(transfer.collected()||transfer.quarantined())return;
+        String next=transfer.state();
+        if("uploading".equals(next)) {
+            if(transfer.writerBound()||transfer.expires()>now())return;
+            next="expired";
+        }
+        boolean protectedContent=protectedContent(resource);
+        Long orphan=protectedContent?null:transfer.orphanSince();
+        if(orphan==null&&!protectedContent)orphan=now();
+        if(!next.equals(transfer.state())||!Objects.equals(orphan,transfer.orphanSince()))
+            server.storage.transfers.save(transfer.progress(transfer.nextOffset(),next,transfer.expires(),transfer.admissionId(),orphan),"");
     }
-    public boolean eligible(Node loc,long age) {return !Boolean.TRUE.equals(loc.getProperty("collected",false))&&!loc.hasProperty("deleting")&&!Boolean.TRUE.equals(loc.getProperty("quarantined",false))&&!protectedContent(loc)&&loc.hasProperty("orphanSince")&&now()-number(loc,"orphanSince",now())>=age;}
+
+    public boolean eligible(ResourceState resource,long age) {
+        var provisional=resource.provisional();
+        return resource.exists() && resource.deleting()==null
+            && (provisional==null||!provisional.collected()&&!provisional.quarantined()&&!"uploading".equals(provisional.state()))
+            && !protectedContent(resource) && resource.orphanSince()!=null && now()-resource.orphanSince()>=age;
+    }
 }

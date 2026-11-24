@@ -3,6 +3,7 @@ package deposit.service;
 import deposit.common.*;
 import deposit.common.Results.Outcome;
 import deposit.repository.*;
+import deposit.repository.ResourceTransferStore.Transfer;
 import java.util.*;
 import java.nio.file.*;
 import java.io.*;
@@ -12,13 +13,13 @@ import static deposit.repository.ResourceRepository.*;
 public final class ResourceService extends BaseService {
     private final ResourceRepository resources;
     public ResourceService(RequestContext c){super(c);resources=new ResourceRepository(c.tx,repo);}
-    private Node transfer(Object id,boolean active) {
-        Node t=resources.transfer(RequestContext.uuid(id));
-        if(t==null||!c.actorId.equals(t.getProperty("actorId")))c.fail("NOT_FOUND","Upload not found");
-        if(!c.namespaceId.equals(t.getProperty("namespaceId")))c.fail("SCOPE_MISMATCH","Upload belongs to another Namespace");
-        resources.lock(text(t,"resourceId"));
-        UploadBinding.require(c,t);
-        if(active&&(!Set.of("uploading","finished").contains(text(t,"state"))||!t.hasProperty("writerIncarnation")&&number(t,"expires",0)<=resources.now()))c.fail("NOT_FOUND","Upload expired or aborted");return t;
+    private Transfer transfer(Object id,boolean active) {
+        Transfer t=resources.transfer(RequestContext.uuid(id));
+        if(t==null||!c.actorId.equals(t.actor()))c.fail("NOT_FOUND","Upload not found");
+        if(!c.namespaceId.equals(t.namespace()))c.fail("SCOPE_MISMATCH","Upload belongs to another Namespace");
+        resources.lock(t.resource());
+        UploadBinding.requireUpload(c,t.id(),t.writerBound());
+        if(active&&(!Set.of("uploading","finished").contains(t.state())||!t.writerBound()&&t.expires()<=resources.now()))c.fail("NOT_FOUND","Upload expired or aborted");return t;
     }
     private void operational() {
         OperationalGuards.operationalContext(c);
@@ -56,24 +57,56 @@ public final class ResourceService extends BaseService {
         if(scope.equals("namespace"))scoped("viewer");else c.revision=c.server.revision(c.state);
         if(dryRun)readContext();else operational();
         String bindingScope=scope.equals("all")?"server":c.namespaceId;
+        if(!dryRun&&bindingScope.equals("server"))c.server.lockServer(c.state);
         long hours=integer(request.getOrDefault("minimumAgeHours",48L));if(hours<0||hours>Long.MAX_VALUE/3_600_000)c.fail("VALIDATION_FAILED","Invalid minimum age");long age=hours*3_600_000;
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
-        List<Node> locations=resources.collectionCandidates(scope.equals("all")?null:c.namespaceId);
-        for(String ns:locations.stream().map(n->text(n,"namespaceId")).distinct().sorted().toList())repo.lockNamespace(ns);
-        var candidates=new ArrayList<String>();long bytes=0;for(Node candidate:locations){String id=CoreRepository.id(candidate);resources.lock(id);Node loc=resources.state(id).lifecycle();if(loc!=null&&resources.eligible(loc,age)){candidates.add(id);try{bytes=Math.addExact(bytes,number(loc,"bytes",0));}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}}}
+        var locations=resources.collectionCandidates(scope.equals("all")?null:c.namespaceId);
+        for(String ns:new TreeSet<>(locations.values()))repo.lockNamespace(ns);
+        var candidates=new ArrayList<String>();long bytes=0;
+        for(String id:locations.keySet()) {
+            resources.lock(id);
+            var resource=resources.state(id);
+            if(resources.eligible(resource,age)){
+                candidates.add(id);
+                try{bytes=Math.addExact(bytes,resource.bytes());}
+                catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}
+            }
+        }
         if(dryRun)return Json.map("candidateIds",candidates,"counts",(long)candidates.size(),"eligibleBytes",bytes);
-        String job=UUID.randomUUID().toString();resources.record("DepositPruneJob",job,Json.map("scope",bindingScope,"actorId",c.actorId,"minimumAge",age,"createdAt",resources.now(),"incarnation",c.server.runId));
-        for(String id:candidates)resources.record("DepositPruneItem",job+"/"+id,Json.map("jobId",job,"resourceId",id,"state","pending","reclaimedBytes",0L));
-        var result=Json.map("pruneId",job,"candidateIds",candidates,"counts",(long)candidates.size(),"scheduledBytes",bytes);repo.saveReceipt(c,bindingScope,hash,new Outcome(null,null,result));return result;
+        String job=UUID.randomUUID().toString();
+        var owner=bindingScope.equals("server")?user:repo.namespace(c.namespaceId);
+        String unit=c.server.prepareWorkflowCommit(c,bindingScope,owner);
+        c.server.storage.pruning.create(new PruneRepository.Job(job,bindingScope,c.actorId,age,resources.now(),c.server.runId),
+            candidates,unit);
+        var result=Json.map("pruneId",job,"candidateIds",candidates,"counts",(long)candidates.size(),"scheduledBytes",bytes);
+        repo.saveReceipt(c,bindingScope,hash,new Outcome(null,null,result));
+        return result;
     }
     public Map<String,Object> status(Map<String,Object> request) {
-        fields(request,"pruneId");readContext();admin(authenticate());Node job=repo.find("DepositPruneJob","id",RequestContext.uuid(request.get("pruneId")));if(job==null)c.fail("NOT_FOUND","Collection job not found");
-        if(!"server".equals(job.getProperty("scope"))) {scoped("viewer");if(!c.namespaceId.equals(job.getProperty("scope")))c.fail("SCOPE_MISMATCH","Job belongs to another Namespace");}else c.revision=c.server.revision(c.state);
-        return jobStatus(repo,CoreRepository.id(job));
-    }
-    public static Map<String,Object> jobStatus(CoreRepository repo,String id) {
-        long pending=0,completed=0,failed=0,bytes=0;var diagnostics=new ArrayList<String>();
-        for(Node item:repo.nodes("DepositPruneItem",Map.of("jobId",id))) {switch(text(item,"state")){case "completed","skipped"->completed++;case "failed"->{failed++;diagnostics.add((String)item.getProperty("diagnostic","Collection failed"));}default->pending++;}try{bytes=Math.addExact(bytes,number(item,"reclaimedBytes",0));}catch(ArithmeticException overflow){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Reclaimed resource size is not representable");}}
-        return Json.map("pruneId",id,"state",pending>0?"pending":failed>0?"failed":"completed","pending",pending,"completed",completed,"failed",failed,"reclaimedBytes",bytes,"diagnostics",diagnostics);
+        fields(request,"pruneId");readContext();admin(authenticate());
+        var pruning=c.server.storage.pruning;
+        var job=pruning.job(RequestContext.uuid(request.get("pruneId")));
+        if(job==null)c.fail("NOT_FOUND","Collection job not found");
+        if(!"server".equals(job.scope())) {
+            scoped("viewer");
+            if(!c.namespaceId.equals(job.scope()))c.fail("SCOPE_MISMATCH","Job belongs to another Namespace");
+        }else c.revision=c.server.revision(c.state);
+        long pending=0,completed=0,failed=0,bytes=0;
+        var diagnostics=new ArrayList<String>();
+        for(var item:pruning.items(job.id())) {
+            switch(item.state()) {
+                case "completed","skipped" -> completed++;
+                case "failed" -> {
+                    failed++;
+                    diagnostics.add(Objects.requireNonNullElse(item.diagnostic(),"Collection failed"));
+                }
+                default -> pending++;
+            }
+            try{bytes=Math.addExact(bytes,item.reclaimed());}
+            catch(ArithmeticException overflow){throw ExceptionHandler.fail("LIMIT_EXCEEDED","Reclaimed resource size is not representable");}
+        }
+        if(pruning.job(job.id())==null)c.fail("NOT_FOUND","Collection job not found");
+        return Json.map("pruneId",job.id(),"state",pending>0?"pending":failed>0?"failed":"completed",
+            "pending",pending,"completed",completed,"failed",failed,"reclaimedBytes",bytes,"diagnostics",diagnostics);
     }
 }

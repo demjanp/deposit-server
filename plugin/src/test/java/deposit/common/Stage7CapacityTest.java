@@ -409,11 +409,25 @@ class Stage7CapacityTest {
     private Map<String,Object> call(String procedure,UUID operation,Map<String,Object> request)throws Exception {try(var tx=database.beginTx()){
         var envelope=new LinkedHashMap<String,Object>();envelope.put("token",token);if(operation!=null)envelope.put("operationId",operation.toString());var context=new RequestContext(tx,envelope);context.publicCall=true;context.procedure=procedure;context.request=request;var actions=new deposit.service.SessionActionService(context);actions.begin(procedure,ProcedureCatalog.spec(procedure).bindings().stream().map(request::get).collect(java.util.stream.Collectors.toList()));var row=(DataRow)new deposit.service.ProcedureService(context).execute().findFirst().orElseThrow();actions.observe();tx.commit();return row.data;
     }}
-    private void assertRolledBack(UUID operation,String planId,String preexistingObject)throws Exception{try(var tx=database.beginTx()){assertNull(tx.findNode(Label.label("DepositReceipt"),"operationId",operation.toString()));assertNull(tx.findNode(Label.label("DepositImportResult"),"operationId",operation.toString()));assertEquals("ready",tx.findNode(Label.label("DepositImportPlan"),"id",planId).getProperty("state"));assertEquals(1L,countNodes(tx,"Object"),"only the pre-existing receiving Object must remain after induced apply rollback");assertEquals(preexistingObject,uniqueObjectId(),"induced failure must not duplicate or replace the pre-existing receiving Object");assertEquals(1L,countNodes(tx,"DResource"),"the original scientific record remains");assertNotNull(tx.findNode(Label.label("DResource"),"id",id("old-resource",0)),"the original pre-existing DResource identity must remain");tx.rollback();}}
+    private void assertRolledBack(UUID operation,String planId,String preexistingObject)throws Exception{try(var tx=database.beginTx()){assertNull(server.storage.receipts.find(actor,namespace,operation.toString(),null));assertFalse(hasResult(operation.toString()));assertEquals("ready",server.storage.importPlans.plan(planId).state());assertEquals(1L,countNodes(tx,"Object"),"only the pre-existing receiving Object must remain after induced apply rollback");assertEquals(preexistingObject,uniqueObjectId(),"induced failure must not duplicate or replace the pre-existing receiving Object");assertEquals(1L,countNodes(tx,"DResource"),"the original scientific record remains");assertNotNull(tx.findNode(Label.label("DResource"),"id",id("old-resource",0)),"the original pre-existing DResource identity must remain");tx.rollback();}}
     private String onlyObjectId()throws Exception {try(var tx=database.beginTx()){try(var nodes=tx.findNodes(Label.label("Object"))){assertTrue(nodes.hasNext());String id=CoreRepository.id(nodes.next());assertFalse(nodes.hasNext());tx.rollback();return id;}}}
     private String uniqueObjectId()throws Exception {try(var tx=database.beginTx()){try(var nodes=tx.findNodes(Label.label("Object"))){assertTrue(nodes.hasNext());String id=CoreRepository.id(nodes.next());assertFalse(nodes.hasNext());return id;}finally{tx.rollback();}}}
     private String onlyPreexistingObjectAfterImport(String previous)throws Exception {try(var tx=database.beginTx()){int seen=0;String remaining=null;try(var nodes=tx.findNodes(Label.label("Object"))){while(nodes.hasNext()){String id=CoreRepository.id(nodes.next());if(id.equals(previous)){remaining=id;seen++;}}}assertEquals(1,seen,"exact pre-existing receiving Object identity must remain");tx.rollback();return remaining;}}
-    private String planIdFor(UUID operation)throws Exception {try(var tx=database.beginTx()){String result=(String)tx.findNode(Label.label("DepositImportResult"),"operationId",operation.toString()).getProperty("id");try(var plans=tx.findNodes(Label.label("DepositImportPlan"),"resultId",result)){assertTrue(plans.hasNext());return CoreRepository.id(plans.next());}}}
+    private String planIdFor(UUID operation) {
+        var receipt=server.storage.receipts.find(actor,namespace,operation.toString(),null);
+        assertNotNull(receipt);
+        var result=server.storage.importResults.root(receipt.importResultId(),null);
+        assertNotNull(result);
+        return result.plan();
+    }
+    private boolean hasResult(String operation) {
+        return server.storage.operational.read(db->{
+            try(var query=db.prepareStatement("SELECT 1 FROM import_results WHERE operation_id=? AND unit_id IS NULL AND abandoned=0")){
+                query.setString(1,operation);
+                try(var rows=query.executeQuery()){return rows.next();}
+            }
+        });
+    }
     private static Map<String,Object> withoutLease(Map<String,Object> envelope) {
         var result=new LinkedHashMap<>(envelope);
         result.remove("leaseId");

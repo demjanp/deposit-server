@@ -3,6 +3,9 @@ package deposit.common;
 import static deposit.repository.ResourceRepository.*;
 import deposit.repository.CoreRepository;
 import deposit.repository.ResourceRepository;
+import deposit.repository.ResourceTransferStore.Cleanup;
+import deposit.repository.ResourceTransferStore.Transfer;
+import deposit.repository.PruneRepository.Item;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -29,6 +32,7 @@ final class StorageMaintenanceJobs {
     private final ResourceFiles files;
     private final Supplier<ResourceStorage> content;
     private final Consumer<String> diagnostic;
+    private String exchangeCursor="",planCursor="",quarantineCursor="";
 
     StorageMaintenanceJobs(ServerContext server, GraphDatabaseAPI db, ResourceFiles files,
                            Supplier<ResourceStorage> content, Consumer<String> diagnostic) {
@@ -44,30 +48,22 @@ final class StorageMaintenanceJobs {
     }
 
     void expireTables() throws IOException {
-        long now = server.sessionTime();
-        List<String> expired = new ArrayList<>();
-        try (var tx = db.beginTx()) {
-            CoreRepository core = core(tx);
-            for (Node table : core.nodes("DepositTabularTable", Map.of())) {
-                if (number(table, "expiresAt", 0) <= now)
-                    expired.add(CoreRepository.id(table));
-            }
-        }
-        for (String id : expired) try (var tx = db.beginTx()) {
-            CoreRepository core = core(tx);
-            Node table = core.find("DepositTabularTable", "id", id);
-            if (table == null || number(table, "expiresAt", 0) > now) continue;
-            core.lockNamespace(text(table, "namespaceId"));
-            table = core.find("DepositTabularTable", "id", id);
-            if (table == null || number(table, "expiresAt", 0) > now) continue;
-            Files.deleteIfExists(files.path(text(table, "path")));
-            if (table.hasProperty("rowIndexPath")) Files.deleteIfExists(files.path(text(table, "rowIndexPath")));
-            String source = text(table, "sourceResourceId");
-            for (Node plan : core.nodes("DepositImportPlan", Map.of("tableId", id))) plan.removeProperty("tableId");
-            for (Node lease : core.nodes("DepositResourceLease", Map.of("tableId", id))) lease.delete();
-            table.delete();
+        long now=server.sessionTime();
+        var tables=server.storage.tables;
+        for(String id:tables.expired(now))try(var tx=db.beginTx()) {
+            var core=core(tx);
+            var table=tables.table(id);
+            if(table==null)continue;
+            core.lockNamespace(table.namespace());
+            table=tables.table(id);
+            if(table==null||table.expires()>now)continue;
             var resources=new ResourceRepository(tx,core);
-            Node resource=resources.completed(source);
+            resources.lock(table.resource());
+            Files.deleteIfExists(files.path(table.path()));
+            Files.deleteIfExists(files.path(table.rowIndexPath()));
+            server.storage.importPlans.clearTable(id);
+            tables.delete(id);
+            Node resource=resources.completed(table.resource());
             if(resource!=null)resources.orphan(resource);
             tx.commit();
         }
@@ -75,343 +71,380 @@ final class StorageMaintenanceJobs {
 
     void expireExchange() throws IOException {
         long now=server.sessionTime();
-        var candidates=new LinkedHashSet<String>();
-        try(var tx=db.beginTx()){
-            try(var rows=tx.execute("""
-                    MATCH (stage:DepositExchangeStage)
-                    WHERE (stage.cleanupAfter <= $now AND coalesce(stage.cleaned,false)=false)
-                        OR stage.inputCleanup=true OR stage.removeAfter <= $now
-                    RETURN stage.id AS id LIMIT 64
-                    """,Map.of("now",now))){
-                while(rows.hasNext())candidates.add((String)rows.next().get("id"));
-            }
-            var core=core(tx);
-            try(var writers=core.scanNodes("DepositExchangeStage",Map.of("state","uploading"))){
-                while(writers.hasNext()&&candidates.size()<128){
-                    Node writer=writers.next();
-                    if(UploadBinding.abandoned(server,core,writer))candidates.add(CoreRepository.id(writer));
-                }
+        var exchange=server.storage.exchange;
+        var candidates=new LinkedHashSet<>(exchange.cleanupCandidates(now));
+        var writers=exchange.uploading(exchangeCursor);
+        exchangeCursor="";
+        for(var writer:writers) {
+            if(UploadBinding.abandonedUpload(server,writer.id(),writer.writerBound()))
+                candidates.add(writer.id());
+            if(candidates.size()==128) {
+                exchangeCursor=writer.id();
+                break;
             }
         }
+        if(exchangeCursor.isEmpty()&&writers.size()==128)exchangeCursor=writers.getLast().id();
         for(String id:candidates)cleanExchange(id,now);
     }
 
     private void cleanExchange(String id,long now)throws IOException {
-        String closed=null;
-        try(var tx=db.beginTx()){
+        var exchange=server.storage.exchange;
+        try(var tx=db.beginTx()) {
+            var kernel=((org.neo4j.kernel.impl.coreapi.InternalTransaction)tx).kernelTransaction();
+            server.lockExchange(kernel,id);
+            var stage=exchange.stage(id);
+            if(stage==null)return;
             var core=core(tx);
-            Node stage=core.find("DepositExchangeStage","id",id);
-            if(stage==null)return;
-            tx.acquireWriteLock(stage);
-            stage=core.find("DepositExchangeStage","id",id);
-            if(stage==null)return;
-            if("uploading".equals(stage.getProperty("state"))&&UploadBinding.abandoned(server,core,stage)){
-                stage.setProperty("state","aborted");
-                stage.setProperty("cleanupAfter",now);
-                stage.setProperty("removeAfter",now+ResourceFiles.LEASE);
+            if("uploading".equals(stage.state()) && (stage.expiresAt()<=now
+                    || UploadBinding.abandonedUpload(server,id,stage.writerBound()))) {
+                stage=stage.cleanup("aborted",now,now+ResourceFiles.LEASE,false,false);
+                exchange.save(stage,"");
             }
-            boolean removing=(long)stage.getProperty("cleanupAfter",Long.MAX_VALUE)<=now;
-            boolean input=Boolean.TRUE.equals(stage.getProperty("inputCleanup",false));
-            if((removing&&!Boolean.TRUE.equals(stage.getProperty("cleaned",false)))||input){
+            boolean removing=stage.cleanupAfter()<=now && !server.storage.importPlans.protectsPackage(id,now);
+            if(removing && !stage.cleaned() || stage.inputCleanup()) {
                 String path="staging/exchange/"+RequestContext.uuid(id);
-                if(removing)files.deleteOwnedStagingTree(path);
-                else files.deleteOwnedStagingTree(path+"/input");
-                long deleted;
-                try(var rows=tx.execute("""
-                        MATCH (member:DepositExchangeUploadMember {uploadId:$id})
-                        WITH member LIMIT 256 DELETE member RETURN count(*) AS deleted
-                        """,Map.of("id",id))){
-                    deleted=(long)rows.next().get("deleted");
-                }
-                if(deleted<256){
-                    stage.removeProperty("inputCleanup");
-                    if(removing){
-                        UploadBinding.cleaned(core,id);
-                        try(var attempts=core.scanNodes("DepositOperationAttempt",Map.of("uploadId",id))){
-                            if(!attempts.hasNext())stage.setProperty("cleaned",true);
-                        }
-                    }
-                }
+                files.deleteOwnedStagingTree(removing?path:path+"/input");
+                boolean done=exchange.deleteMembers(id)<256;
+                if(done&&removing)done=server.storage.attempts.cleanUpload(id,true);
+                stage=stage.cleanup(stage.state(),stage.cleanupAfter(),stage.removeAfter(),!done && stage.inputCleanup(),
+                    removing && done);
+                if(!"uploading".equals(stage.state())) server.stagingWriters.remove(id);
+                exchange.save(stage,"");
             }
-            if(Boolean.TRUE.equals(stage.getProperty("cleaned",false))&&(long)stage.getProperty("removeAfter",Long.MAX_VALUE)<=now){
-                closed=(String)stage.getProperty("admissionId");
-                stage.delete();
+            if(stage.cleaned() && stage.removeAfter()<=now) {
+                server.storage.admission.closeIfPresent(stage.admissionId());
+                exchange.deleteStage(id);
             }
             tx.commit();
         }
-        if(closed!=null)server.storage.admission.closeIfPresent(closed);
     }
 
     void expireImportResults() {
-        // Stateless leases have a fixed maximum deadline. Collect only after that deadline,
-        // holding the result lock against leased readers and already-admitted apply calls.
         long cutoff=server.sessionTime()-ImportResultContract.READER;
+        var store=server.storage.importResults;
+        String id=store.expired(cutoff);
+        if(id==null)return;
         try(var tx=db.beginTx()) {
-            String id;
-            try(var candidates=tx.execute("""
-                    MATCH (result:DepositImportResult) WHERE result.expiresAt <= $cutoff
-                    RETURN result.id AS id ORDER BY result.expiresAt LIMIT 1
-                    """,Map.of("cutoff",cutoff))) {
-                if(!candidates.hasNext())return;
-                id=(String)candidates.next().get("id");
-            }
-            Node result=core(tx).find(ImportResultContract.LABEL,"id",id);
-            if(result==null)return;
-            tx.acquireWriteLock(result);
-            result=core(tx).find(ImportResultContract.LABEL,"id",id);
-            if(result==null)return;
-            if(number(result,"expiresAt",Long.MAX_VALUE)>server.sessionTime()-ImportResultContract.READER)return;
-            if(deleteResultSegments(tx,"DepositImportResultEntry",id)<256
-                    && deleteResultSegments(tx,"DepositImportResultCollection",id)<256) {
-                CoreRepository core=core(tx);
-                String namespace=text(result,"namespaceId");
-                String scope="server".equals(text(result,"scope"))?"server":namespace;
-                Node receipt=core.receipt(text(result,"actorId"),scope,text(result,"operationId"));
-                if(receipt!=null && id.equals(receipt.getProperty("importResultId",null))
-                        && ImportResultContract.verifiesResult(core,receipt,namespace)) {
-                    receipt.setProperty("importResultCollected",true);
-                }
-                result.delete();
-            }
+            var kernel=((org.neo4j.kernel.impl.coreapi.InternalTransaction)tx).kernelTransaction();
+            server.lockImportResult(kernel,id);
+            var result=store.collectable(id);
+            if(result!=null && result.expires()<=cutoff && store.deleteSegments(id))
+                store.deleteRoot(result);
             tx.commit();
-        }
-    }
-
-    private long deleteResultSegments(Transaction tx,String label,String resultId) {
-        try(var rows=tx.execute("MATCH (segment:"+label+" {resultId:$id}) "
-                +"WITH segment LIMIT 256 DELETE segment RETURN count(*) AS deleted",Map.of("id",resultId))) {
-            return (long)rows.next().get("deleted");
         }
     }
 
     void expireImportPlans() throws IOException {
-        long now = server.sessionTime();
-        List<String> settled = new ArrayList<>();
-        try (var tx = db.beginTx()) {
-            for (Node plan : core(tx).nodes("DepositImportPlan", Map.of()))
-                if (number(plan, "expiresAt", 0) <= now || abandonedPlan(plan))
-                    settled.add(CoreRepository.id(plan));
-        }
-        for (String id : settled) try (var tx = db.beginTx()) {
-            CoreRepository core = core(tx);
-            Node plan = core.find("DepositImportPlan", "id", id);
-            if (plan == null) continue;
-            core.lockNamespace(text(plan, "namespaceId"));
-            plan = core.find("DepositImportPlan", "id", id);
-            if (plan == null) continue;
-            boolean expired = number(plan, "expiresAt", 0) <= now;
-            if (!expired && !abandonedPlan(plan)) continue;
-            tx.acquireWriteLock(plan);
-            String path = plan.hasProperty("stagingPath") ? text(plan, "stagingPath") : null;
-            String admissionId = (String)plan.getProperty("admissionId",null);
-            if (path != null) Files.deleteIfExists(files.path(path));
-            if (expired) plan.delete();
-            else {
-                plan.setProperty("state","cancelled");
-                plan.removeProperty("stagingPath");
-                plan.removeProperty("admissionId");
-            }
-            tx.commit();
-            if(admissionId!=null)try{server.storage.admission.closeIfPresent(admissionId);}catch(IOException failure){diagnostic.accept("Import plan storage admission cleanup pending");}
-        }
-    }
-
-    private boolean abandonedPlan(Node plan) {
-        return "ready".equals(plan.getProperty("state",null)) && UploadBinding.abandoned(server,plan);
-    }
-
-    void process(String id, boolean recovery) {
-        try (var tx = db.beginTx()) {
-            CoreRepository core = core(tx);
-            ResourceRepository resources = new ResourceRepository(tx, core);
-            Node loc=resources.state(id).lifecycle();
-            if(loc==null)return;
-            core.lockNamespace(text(loc,"namespaceId"));
-            resources.lock(id);
-            var resource=resources.state(id);
-            loc=resource.lifecycle();
-            if(loc==null||Boolean.TRUE.equals(loc.getProperty("collected",false))||Boolean.TRUE.equals(loc.getProperty("quarantined",false))
-                    ||loc.hasProperty("deleting"))return;
-            Node upload=resources.upload(loc);
-            if(resource.provisional()!=null&&upload!=null&&upload.hasProperty("writerIncarnation")
-                    &&("aborted".equals(upload.getProperty("state"))||"uploading".equals(upload.getProperty("state"))&&UploadBinding.abandoned(server,core,upload))){
-                cleanAbandonedResourceUpload(core,resources,loc,upload);
-                tx.commit();
-                return;
-            }
-            resources.expire(loc);
-            if(resource.completed()!=null){
-                if(recovery)content.get().verify(resources.content(loc));
-                if(upload!=null&&upload.hasProperty("stagingPath")){
-                    content.get().verify(resources.content(loc));
-                    server.storagePoint("staging-cleanup-before");
-                    Files.deleteIfExists(files.path(text(upload,"stagingPath")));
-                    server.storagePoint("staging-cleanup-after");
-                    upload.removeProperty("stagingPath");
+        long now=server.sessionTime();
+        var plans=server.storage.importPlans;
+        var candidates=new LinkedHashSet<>(plans.cleanupCandidates(now));
+        if(candidates.size()<128) {
+            var bound=plans.boundPlans(planCursor);
+            planCursor="";
+            for(String id:bound) {
+                if(UploadBinding.stagingAbandoned(server,id,true))candidates.add(id);
+                if(candidates.size()==128) {
+                    planCursor=id;
+                    break;
                 }
             }
-            loc.removeProperty("diagnostic");
+            if(planCursor.isEmpty()&&bound.size()==128)planCursor=bound.getLast();
+        }
+        for(String id:candidates)try(var tx=db.beginTx()) {
+            var plan=plans.plan(id);
+            if(plan==null)continue;
+            core(tx).lockNamespace(plan.namespace());
+            plan=plans.plan(id);
+            if(plan==null)continue;
+            boolean expired=plan.expires()<=now;
+            boolean ready="ready".equals(plan.state());
+            boolean abandoned=ready && UploadBinding.stagingAbandoned(server,id,plan.writerBound());
+            if(!expired && ready && !abandoned)continue;
+            if(abandoned && !expired)plans.save(plan.transition("cancelled",now,plan.expires()),"");
+            if(plan.stagingPath()!=null)Files.deleteIfExists(files.path(plan.stagingPath()));
+            if(plan.admissionId()!=null)server.storage.admission.closeIfPresent(plan.admissionId());
+            if(expired)plans.delete(id);
+            else plans.clearStaging(id);
+            UploadBinding.forgetStaging(server,id);
             tx.commit();
-        } catch (Exception e) {
-            recordFailure(id, "Resource recovery pending: " + e.getClass().getSimpleName());
-            if (recovery) throw new IllegalStateException("Cannot reconcile resource " + id, e);
         }
     }
 
-    private void cleanAbandonedResourceUpload(CoreRepository core, ResourceRepository resources, Node loc, Node upload) throws IOException {
-        String id=CoreRepository.id(loc), uploadId=CoreRepository.id(upload), namespace=text(loc,"namespaceId");
-        upload.setProperty("state","expired");
-        upload.setProperty("writerFenced",true);
-        upload.setProperty("expires",0L);
-        loc.setProperty("leaseUntil",0L);
-        if(!id.equals(upload.getProperty("resourceId")) || !namespace.equals(upload.getProperty("namespaceId"))
-                || resources.completed(id)!=null || resources.protectedContent(loc)) {
-            loc.setProperty("quarantined",true);
-            String message="Abandoned upload ownership or reachability requires verification";
-            loc.setProperty("diagnostic",message);
-            diagnostic.accept(message);
-            UploadBinding.cleanupFailed(core,uploadId);
-            return;
-        }
-        if (loc.hasProperty("stagingPath")) {
-            String expected="staging/"+namespace+"/"+uploadId+".part";
-            if (!expected.equals(text(loc,"stagingPath"))) throw new IOException("Abandoned upload staging ownership is unclear");
-            Files.deleteIfExists(files.path(expected));
-            loc.removeProperty("stagingPath");
-        }
-        if (content.get().exists(id)) {
-            content.get().verify(resources.content(loc));
-            content.get().purge(id);
-        }
-        if (upload.hasProperty("admissionId")) server.storage.admission.closeIfPresent(text(upload,"admissionId"));
-        loc.setProperty("collected",true);
-        loc.removeProperty("diagnostic");
-        UploadBinding.cleaned(core,uploadId);
-    }
-
-    private void recordFailure(String id, String message) {
-        diagnostic.accept(message);
-        try (var tx = db.beginTx()) {
-            CoreRepository core = core(tx);
+    void process(String id,boolean recovery) {
+        try(var tx=db.beginTx()) {
+            var core=core(tx);
             var resources=new ResourceRepository(tx,core);
-            Node loc=resources.state(id).lifecycle();
-            if(loc!=null){
-                core.lockNamespace(text(loc,"namespaceId"));resources.lock(id);
-                loc=resources.state(id).lifecycle();
-                if(loc!=null)loc.setProperty("diagnostic",message);
+            var resource=resources.state(id);
+            if(!resource.exists())return;
+            core.lockNamespace(resource.namespace());
+            resources.lock(id);
+            resource=resources.state(id);
+            if(!resource.exists()||resource.deleting()!=null)return;
+            var transfer=resource.transfer();
+            if(resource.provisional()!=null) {
+                if(transfer.collected()||transfer.quarantined())return;
+                if(transfer.writerBound() && ("aborted".equals(transfer.state())||"expired".equals(transfer.state())
+                        || "uploading".equals(transfer.state())&&UploadBinding.abandonedUpload(server,transfer.id(),true))) {
+                    cleanAbandonedUpload(resources,transfer);
+                    tx.commit();
+                    return;
+                }
+            }
+            resources.expire(id);
+            var completed=resource.completed();
+            if(completed!=null) {
+                if(recovery||transfer!=null&&transfer.stagingPath()!=null)content.get().verify(resources.content(completed));
+                if(transfer!=null&&transfer.stagingPath()!=null) {
+                    server.storagePoint("staging-cleanup-before");
+                    deleteUploadStaging(transfer);
+                    server.storagePoint("staging-cleanup-after");
+                    server.storage.transfers.save(transfer.cleanup(null,null,false,false,null),"");
+                    UploadBinding.forgetStaging(server,transfer.id());
+                }
+                completed.removeProperty("diagnostic");
             }
             tx.commit();
-        } catch (Exception ignored) { }
+        } catch(Exception failure) {
+            recordFailure(id,"Resource recovery pending: "+failure.getClass().getSimpleName());
+            if(recovery)throw new IllegalStateException("Cannot reconcile resource "+id,failure);
+        }
+    }
+
+    private void cleanAbandonedUpload(ResourceRepository resources,Transfer transfer)throws IOException {
+        String id=transfer.resource();
+        transfer=transfer.progress(transfer.nextOffset(),"expired",0,transfer.admissionId(),transfer.orphanSince());
+        server.storage.transfers.save(transfer,"");
+        if(resources.completed(id)!=null||resources.protectedContent(resources.state(id))) {
+            String message="Abandoned upload ownership or reachability requires verification";
+            server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),null,false,true,message),"");
+            diagnostic.accept(message);
+            server.storage.attempts.cleanUpload(transfer.id(),false);
+            return;
+        }
+        String expected="staging/"+transfer.namespace()+"/"+transfer.id()+".part";
+        if(transfer.stagingPath()!=null&&!expected.equals(transfer.stagingPath())) {
+            String message="Abandoned upload staging ownership requires verification";
+            server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),null,false,true,message),"");
+            server.storage.attempts.cleanUpload(transfer.id(),false);
+            diagnostic.accept(message);
+            return;
+        }
+        deleteUploadStaging(transfer);
+        if(content.get().exists(id)) {
+            content.get().verify(transfer.content());
+            content.get().purge(id);
+        }
+        if(content.get().exists(id))throw new IOException("Abandoned upload purge incomplete");
+        if(transfer.admissionId()!=null)server.storage.admission.closeIfPresent(transfer.admissionId());
+        server.storage.transfers.save(transfer.cleanup(null,null,true,false,null),"");
+        server.storage.attempts.cleanUpload(transfer.id(),true);
+        UploadBinding.forgetStaging(server,transfer.id());
+    }
+
+    private void deleteUploadStaging(Transfer transfer)throws IOException {
+        if(transfer.stagingPath()==null)return;
+        String expected="staging/"+transfer.namespace()+"/"+transfer.id()+".part";
+        if(!expected.equals(transfer.stagingPath()))throw new IOException("Upload staging ownership is unclear");
+        Files.deleteIfExists(files.path(expected));
+    }
+
+    private void recordFailure(String id,String message) {
+        diagnostic.accept(message);
+        try(var tx=db.beginTx()) {
+            var core=core(tx);
+            var resources=new ResourceRepository(tx,core);
+            var resource=resources.state(id);
+            if(!resource.exists())return;
+            core.lockNamespace(resource.namespace());
+            resources.lock(id);
+            resource=resources.state(id);
+            if(resource.completed()!=null)resource.completed().setProperty("diagnostic",message);
+            else if(resource.provisional()!=null){
+                var transfer=resource.provisional();
+                server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),transfer.deleting(),
+                    transfer.collected(),transfer.quarantined(),message),"");
+            }
+            tx.commit();
+        }catch(Exception ignored){ }
     }
 
     void collect(String itemId) {
+        var pruning=server.storage.pruning;
+        Item item=pruning.item(itemId);
+        if(!actionable(item))return;
         StorageAdmission.Reservation reservation;
-        try{reservation=server.storage.admission.acquire("maintenance-prune",itemId,null,"prune-maintenance",Map.of(files.root,64L*1024),Json.map("phase","prepare","itemId",itemId));}
-        catch(IOException|StorageAdmission.StoragePressureException pressure){diagnostic.accept("Collection admission pending: "+pressure.getClass().getSimpleName());return;}
-        boolean[] resolved={false};
-        try (var tx = db.beginTx()) {
-            CoreRepository core = core(tx);
-            ResourceRepository resources = new ResourceRepository(tx, core);
-            Node item = core.find("DepositPruneItem", "id", itemId);
-            if (item == null || !Set.of("pending", "deleting", "failed").contains(text(item, "state"))) {resolved[0]=true;return;}
-            String resource = text(item, "resourceId");
-            Node loc=resources.state(resource).lifecycle();
-            Node job=core.find("DepositPruneJob","id",item.getProperty("jobId"));
-            if(loc!=null)core.lockNamespace(text(loc,"namespaceId"));
-            resources.lock(resource);
-            var resourceState=resources.state(resource);
-            loc=resourceState.lifecycle();
-            if(loc==null||Boolean.TRUE.equals(loc.getProperty("collected",false))){
-                item.setProperty("state","completed");tx.commit();resolved[0]=true;return;
+        try {
+            reservation=server.storage.admission.acquire("maintenance-prune",itemId,null,"prune-maintenance",
+                Map.of(files.root,64L*1024),Json.map("phase","prepare","itemId",itemId));
+        }catch(IOException|StorageAdmission.StoragePressureException pressure){
+            diagnostic.accept("Collection admission pending: "+pressure.getClass().getSimpleName());
+            return;
+        }
+        boolean resolved=false;
+        try(var tx=db.beginTx()) {
+            var core=core(tx);
+            var resources=new ResourceRepository(tx,core);
+            String id=item.resource();
+            var resource=resources.state(id);
+            if(resource.exists())core.lockNamespace(resource.namespace());
+            resources.lock(id);
+            item=pruning.item(itemId);
+            if(!actionable(item)) {
+                resolved=true;
+                return;
             }
-            Node staging=resourceState.completed()==null?loc:resources.upload(loc);
-            long age = number(job, "minimumAge", 0);
-            if ("failed".equals(item.getProperty("state")))
-                item.setProperty("state", itemId.equals(loc.getProperty("deleting", null)) ? "deleting" : "pending");
-            if (text(item, "state").equals("pending")) {
-                if (job.hasProperty("incarnation") && !server.runId.equals(job.getProperty("incarnation"))) {
-                    item.setProperty("state","skipped");tx.commit();resolved[0]=true;return;
+            resource=resources.state(id);
+            var transfer=resource.transfer();
+            long now=resources.now();
+            if(!resource.exists()||resource.provisional()!=null&&resource.provisional().collected()) {
+                if(content.get().exists(id)||transfer!=null&&transfer.stagingPath()!=null
+                        && Files.exists(files.path(transfer.stagingPath()),LinkOption.NOFOLLOW_LINKS))
+                    throw new IOException("Missing collection owner with retained physical data");
+                pruning.transition(item,"completed",item.deletionBytes(),reclaimed(item),null,now);
+                resolved=true;
+                return;
+            }
+            var job=pruning.job(item.job());
+            String deleting=resource.deleting();
+            if(!itemId.equals(deleting)) {
+                if(!server.runId.equals(job.incarnation()) || !resources.eligible(resource,job.minimumAge())) {
+                    pruning.transition(item,"skipped",null,0,null,now);
+                    resolved=true;
+                    return;
                 }
-                if (!resources.eligible(loc, age)) { item.setProperty("state", "skipped"); tx.commit();resolved[0]=true;return; }
-                loc.setProperty("deleting", itemId);
-                item.setProperty("state", "deleting");
-                item.setProperty("deletionBytes", physicalBytes(resource,staging));
-                tx.commit();resolved[0]=true;return;
+                long bytes=physicalBytes(id,transfer==null?null:transfer.stagingPath());
+                pruning.transition(item,"deleting",bytes,0,null,now);
+                if(resource.completed()!=null)resource.completed().setProperty("deleting",itemId);
+                else server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),itemId,false,false,null),"");
+                tx.commit();
+                resolved=true;
+                return;
             }
-            if (!itemId.equals(loc.getProperty("deleting", null))) throw new IllegalStateException("Collection intent mismatch");
-            if (resources.protectedContent(loc) || resources.now() - number(loc, "orphanSince", resources.now()) < age) {
-                loc.removeProperty("deleting"); item.setProperty("state", "skipped"); tx.commit();resolved[0]=true;return;
+            if(item.deletionBytes()==null)throw new IllegalStateException("Collection intent lacks physical scope");
+            if(resources.protectedContent(resource)||resource.orphanSince()==null
+                    ||now-resource.orphanSince()<job.minimumAge()) {
+                if(resource.completed()!=null)resource.completed().removeProperty("deleting");
+                else server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),null,false,false,null),"");
+                tx.commit();
+                pruning.transition(item,"skipped",null,0,null,now);
+                resolved=true;
+                return;
             }
             server.storagePoint("collection-before");
-            content.get().purge(resource);
-            if(staging!=null&&staging.hasProperty("stagingPath"))Files.deleteIfExists(files.path(text(staging,"stagingPath")));
+            content.get().purge(id);
+            if(transfer!=null)deleteUploadStaging(transfer);
             server.storagePoint("collection-after");
-            if (content.get().exists(resource)) throw new IOException("Resource purge incomplete");
-            if(staging!=null)staging.removeProperty("stagingPath");
-            if(resourceState.completed()!=null){
-                try(var edges=loc.getRelationships()){for(Relationship edge:edges)edge.delete();}
-                loc.delete();
-            }else{
-                loc.setProperty("collected",true);loc.removeProperty("deleting");loc.setProperty("leaseUntil",0L);
+            if(content.get().exists(id))throw new IOException("Resource purge incomplete");
+            if(transfer!=null) {
+                if(transfer.admissionId()!=null)server.storage.admission.closeIfPresent(transfer.admissionId());
+                server.storage.transfers.save(transfer.cleanup(null,null,true,false,null),"");
+                server.storage.attempts.cleanUpload(transfer.id(),true);
+                UploadBinding.forgetStaging(server,transfer.id());
             }
-            item.setProperty("reclaimedBytes", number(item, "deletionBytes", 0)); item.setProperty("state", "completed"); item.removeProperty("diagnostic"); tx.commit();resolved[0]=true;
-        } catch (Exception e) {
-            String message = "Collection failed: " + e.getClass().getSimpleName();
+            if(resource.completed()!=null) {
+                try(var edges=resource.completed().getRelationships()){
+                    for(Relationship edge:edges)edge.delete();
+                }
+                resource.completed().delete();
+            }
+            tx.commit();
+            pruning.transition(item,"completed",item.deletionBytes(),reclaimed(item),null,now);
+            resolved=true;
+        }catch(Exception failure) {
+            String message="Collection failed: "+failure.getClass().getSimpleName();
             diagnostic.accept(message);
-            try (var tx = db.beginTx()) {
-                Node item = core(tx).find("DepositPruneItem", "id", itemId);
-                if (item != null) { item.setProperty("state", "failed"); item.setProperty("diagnostic", message); }
-                tx.commit();
-            } catch (Exception ignored) { }
-        } finally {if(resolved[0])try{server.storage.admission.close(reservation);}catch(IOException failure){diagnostic.accept("Collection admission cleanup pending");}}
+            try {
+                var current=pruning.item(itemId);
+                if(actionable(current))pruning.transition(current,"failed",current.deletionBytes(),0,message,server.sessionTime());
+            }catch(RuntimeException ignored){ }
+        }finally{
+            if(resolved)try{server.storage.admission.close(reservation);}
+            catch(IOException failure){diagnostic.accept("Collection admission cleanup pending");}
+        }
+    }
+
+    private static boolean actionable(Item item) {
+        return item!=null && Set.of("pending","deleting","failed").contains(item.state());
+    }
+
+    private static long reclaimed(Item item) {
+        return item.deletionBytes()==null?0:item.deletionBytes();
+    }
+
+    void expireTransfers() throws IOException {
+        long now=server.sessionTime();
+        var transfers=server.storage.transfers;
+        for(String id:transfers.expired(now))try(var tx=db.beginTx()) {
+            var transfer=transfers.transfer(id);
+            if(transfer==null)continue;
+            var core=core(tx);
+            core.lockNamespace(transfer.namespace());
+            new ResourceRepository(tx,core).lock(transfer.resource());
+            transfer=transfers.transfer(id);
+            if(transfer==null||transfer.expires()>now||transfer.stagingPath()!=null||transfer.quarantined()
+                    ||transfer.deleting()!=null||!transfer.collected()&&!"finished".equals(transfer.state()))continue;
+            server.storage.attempts.cleanUpload(id,true);
+            if(transfer.admissionId()!=null)server.storage.admission.closeIfPresent(transfer.admissionId());
+            UploadBinding.forgetStaging(server,id);
+            transfers.delete(id);
+            tx.commit();
+        }
     }
 
     void discoverOrphans() {
-        Set<String> knownIds = new HashSet<>(), knownStaging = new HashSet<>();
-        try (var tx = db.beginTx()) {
-            for (Node loc : core(tx).nodes("DepositResourceLocation", Map.of())) {
-                knownIds.add(CoreRepository.id(loc));
-                if (loc.hasProperty("stagingPath")) knownStaging.add(text(loc, "stagingPath").replace('\\', '/'));
-            }
+        Set<String> knownIds=new HashSet<>(),knownStaging=new HashSet<>();
+        var transfers=server.storage.transfers;
+        try(var tx=db.beginTx()){
             for(Node resource:core(tx).nodes("DResource",Map.of()))knownIds.add(CoreRepository.id(resource));
-            for(Node transfer:core(tx).nodes("DepositTransfer",Map.of()))
-                if(transfer.hasProperty("stagingPath"))knownStaging.add(text(transfer,"stagingPath").replace('\\','/'));
-            for (Node plan : core(tx).nodes("DepositImportPlan", Map.of()))
-                if (number(plan, "expiresAt", 0) > server.sessionTime() && plan.hasProperty("stagingPath")) knownStaging.add(text(plan, "stagingPath").replace('\\', '/'));
-            for (Node table : core(tx).nodes("DepositTabularTable", Map.of())) if (number(table, "expiresAt", 0) > server.sessionTime()) {
-                if (table.hasProperty("path")) knownStaging.add(text(table, "path").replace('\\', '/'));
-                if (table.hasProperty("rowIndexPath")) knownStaging.add(text(table, "rowIndexPath").replace('\\', '/'));
-            }
-
         }
-        String unknown = "00000000-0000-0000-0000-000000000000";
+        for(var transfer:transfers.scoped(null)){
+            knownIds.add(transfer.resource());
+            if(transfer.stagingPath()!=null)knownStaging.add(transfer.stagingPath());
+        }
+        knownStaging.addAll(server.storage.importPlans.stagingPaths());
+        knownStaging.addAll(server.storage.tables.stagingPaths());
+        final String unknown="00000000-0000-0000-0000-000000000000";
         try {
-            for (var found : content.get().discover()) if (!knownIds.contains(found.resourceId())) {
-                try (var tx = db.beginTx()) {
-                    CoreRepository core = core(tx); ResourceRepository resources = new ResourceRepository(tx, core);
-                    core.lockNamespace(unknown);
-                    resources.record("DepositResourceLocation", found.resourceId(), Json.map("namespaceId", unknown, "storedFilename", found.storedFilename(), "bytes", found.bytes(), "checksum", found.checksum(), "published", true, "quarantined",true,"orphanSince", server.sessionTime(), "leaseUntil", 0L));
-                    tx.commit();
+            for(var orphan:transfers.quarantined("",-1)) {
+                if(orphan.stagingPath()!=null){
+                    if(!Files.notExists(files.path(orphan.stagingPath()),LinkOption.NOFOLLOW_LINKS))knownStaging.add(orphan.stagingPath());
+                    else transfers.clearQuarantine(orphan.id());
+                }else if(content.get().exists(orphan.id()))knownIds.add(orphan.id());
+                else transfers.clearQuarantine(orphan.id());
+            }
+            for(var found:content.get().discover())if(!knownIds.contains(found.resourceId()))
+                transfers.quarantine(new Cleanup(found.resourceId(),unknown,found.storedFilename(),null,found.bytes(),
+                    found.checksum(),server.sessionTime()));
+            try(var paths=Files.walk(files.root.resolve("staging"))) {
+                for(Path path:paths.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).toList()) {
+                    String relative=files.root.relativize(path).toString().replace('\\','/');
+                    if(knownStaging.contains(relative) || relative.startsWith("staging/exchange/")
+                            && server.storage.exchange.hasStage(relative.split("/",4)[2]))continue;
+                    files.path(relative);
+                    transfers.quarantine(new Cleanup(UUID.randomUUID().toString(),unknown,null,relative,
+                        Files.size(path),ResourceFiles.checksum(path),server.sessionTime()));
                 }
             }
-            try (var paths = Files.walk(files.root.resolve("staging"))) {
-                for (Path path : paths.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)).toList()) {
-                    String relative = files.root.relativize(path).toString().replace('\\', '/'); files.path(relative);
-                    if (knownStaging.contains(relative)) continue;
-                    try (var tx = db.beginTx()) {
-                        CoreRepository core = core(tx); ResourceRepository resources = new ResourceRepository(tx, core);
-                        core.lockNamespace(unknown);
-                        resources.record("DepositResourceLocation", UUID.randomUUID().toString(), Json.map("namespaceId", unknown, "stagingPath", relative, "bytes", Files.size(path), "checksum", ResourceFiles.checksum(path), "quarantined",true,"orphanSince", server.sessionTime(), "leaseUntil", 0L));
-                        tx.commit();
-                    }
-                }
-            }
-        } catch (Exception e) { throw new IllegalStateException("Cannot reconcile resource orphans", e); }
+        }catch(Exception failure){throw new IllegalStateException("Cannot reconcile resource orphans",failure);}
     }
 
-    private long physicalBytes(String resource,Node staging) throws IOException {
-        long bytes = content.get().physicalBytes(resource);
-        if (staging!=null&&staging.hasProperty("stagingPath")) { Path path = files.path(text(staging, "stagingPath")); if (Files.exists(path)) try { bytes = Math.addExact(bytes, Files.size(path)); } catch (ArithmeticException overflow) { throw new IOException("Resource physical size is not representable", overflow); } }
-        return bytes;
+    void expireQuarantine() throws IOException {
+        var transfers=server.storage.transfers;
+        var records=transfers.quarantined(quarantineCursor,128);
+        for(var orphan:records) {
+            boolean absent=orphan.stagingPath()==null?!content.get().exists(orphan.id()):
+                Files.notExists(files.path(orphan.stagingPath()),LinkOption.NOFOLLOW_LINKS);
+            if(absent)transfers.clearQuarantine(orphan.id());
+        }
+        quarantineCursor=records.size()==128?records.getLast().id():"";
+    }
+
+    private long physicalBytes(String resource,String stagingPath)throws IOException {
+        long bytes=content.get().physicalBytes(resource);
+        if(stagingPath==null)return bytes;
+        Path path=files.path(stagingPath);
+        if(!Files.exists(path))return bytes;
+        try{return Math.addExact(bytes,Files.size(path));}
+        catch(ArithmeticException overflow){throw new IOException("Resource physical size is not representable",overflow);}
     }
 }

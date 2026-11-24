@@ -1,26 +1,28 @@
 package deposit.service;
 
 import deposit.common.*;
-import deposit.repository.CoreRepository;
+import deposit.repository.ExchangeRepository;
+import deposit.repository.ExchangeRepository.Member;
+import deposit.repository.ExchangeRepository.Stage;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import org.bouncycastle.crypto.digests.SHA256Digest;
-import org.neo4j.graphdb.Node;
 
 /** Staging and immutable package grants shared by export, intake and import. */
 final class ExchangePackages extends BaseService {
-    static final String LABEL="DepositExchangeStage", MEMBER="DepositExchangeUploadMember";
     static final String SOURCE="source-export", RECEIVING="receiving-upload";
     private static final long RETENTION=ResourceFiles.LEASE, READER=15L*60*1000;
     private static final Set<String> MEMBERS=Set.of("manifest","graph","history");
     private final ResourceFiles files;
+    private final ExchangeRepository stages;
 
     ExchangePackages(RequestContext c) {
         super(c);
         files=c.server.storage.files;
+        stages=c.server.storage.exchange;
     }
 
     Map<String,Object> execute(String procedure,Map<String,Object> request) {
@@ -51,7 +53,7 @@ final class ExchangePackages extends BaseService {
     static String relative(String id) {return "staging/exchange/"+id;}
     private long now(){return c.server.sessionTime();}
     private void checkpoint(){c.state.kernel.assertOpen();}
-    private Path path(Node stage,String name)throws IOException {return files.path(relative(CoreRepository.id(stage))+"/"+name);}
+    private Path path(Stage stage,String name)throws IOException {return files.path(relative(stage.id())+"/"+name);}
 
     static void validateBegin(List<Object> arguments) {
         String kind=string(arguments.get(1));
@@ -65,37 +67,35 @@ final class ExchangePackages extends BaseService {
     }
 
     String writerScope(Object raw) {
-        Node stage=repo.find(LABEL,"id",RequestContext.uuid(raw));
-        if(stage==null || !c.actorId.equals(stage.getProperty("actorId",null)) || !stage.hasProperty("inputKind"))throw unavailable();
-        return (String)stage.getProperty("scope");
+        Stage stage=stages.stage(RequestContext.uuid(raw));
+        if(stage==null || !c.actorId.equals(stage.actorId()) || stage.inputKind()==null)throw unavailable();
+        return stage.scope();
     }
 
-    Node writer(Object raw,String scope,boolean abort) {
+    Stage writer(Object raw,String scope,boolean abort) {
         return checkWriter(writerNode(raw,scope),abort);
     }
 
-    private Node writerNode(Object raw,String scope) {
+    private Stage writerNode(Object raw,String scope) {
         String id=RequestContext.uuid(raw);
-        Node stage=repo.find(LABEL,"id",id);
-        if(stage==null || !c.actorId.equals(stage.getProperty("actorId",null))
-                || !stage.hasProperty("inputKind") || !scope.equals(stage.getProperty("scope",null)))throw unavailable();
+        stages.requireSettled(id,c.server.operationalUnit(c.state.kernel));
+        Stage stage=stages.stage(id);
+        if(stage==null || !c.actorId.equals(stage.actorId())
+                || stage.inputKind()==null || !scope.equals(stage.scope()))throw unavailable();
         return stage;
     }
 
-    private Node checkWriter(Node stage,boolean abort) {
-        String state=(String)stage.getProperty("state");
-        if(!state.equals("uploading") && !(abort && state.equals("aborted")))
+    private Stage checkWriter(Stage stage,boolean abort) {
+        String state=stage.state();
+        if(!state.equals("uploading") && !(abort && state.equals("aborted"))
+                || !abort && stage.expiresAt()<=now())
             throw ExceptionHandler.fail("UPLOAD_FENCED","Exchange writer is unavailable");
-        UploadBinding.require(c,stage);
-        if(c.state.operationClaimed)c.checkSourceAuthorization=()->UploadBinding.require(c,stage);
+        UploadBinding.requireUpload(c,stage.id(),stage.writerBound());
+        if(c.state.operationClaimed)c.checkSourceAuthorization=()->UploadBinding.requireUpload(c,stage.id(),stage.writerBound());
         if(!abort) {
-            try(var attempts=repo.scanNodes("DepositOperationAttempt",Map.of("uploadId",CoreRepository.id(stage)))) {
-                while(attempts.hasNext()) {
-                    var attempt=attempts.next();
-                    if(!Objects.equals(c.operationId,attempt.getProperty("operationId"))
-                            && UploadBinding.failedStep(c.server,attempt.getAllProperties()))
-                        throw ExceptionHandler.fail("UPLOAD_FENCED","Exchange upload was interrupted. Start a new upload");
-                }
+            for(var attempt:c.server.storage.attempts.uploadAttempts(stage.id())) {
+                if(!Objects.equals(c.operationId,attempt.key().id()) && UploadBinding.failedStep(c.server,attempt))
+                    throw ExceptionHandler.fail("UPLOAD_FENCED","Exchange upload was interrupted. Start a new upload");
             }
         }
         return stage;
@@ -115,14 +115,15 @@ final class ExchangePackages extends BaseService {
         validateBegin(Arrays.asList(request.get("scope"),request.get("inputKind"),request.get("metadata")));
         String scope=c.actionScope;
         lockReceiving(scope);
-        Node stage=create(scope,"uploading");
-        stage.setProperty("inputKind",request.get("inputKind"));
-        stage.setProperty("includeHistory",Boolean.TRUE.equals(ValueCodec.map(request.get("metadata")).get("includeHistory")));
-        UploadBinding.bind(c,stage);
-        return Json.map("uploadId",CoreRepository.id(stage),"expiresAt",now()+RETENTION);
+        long expires = now()+RETENTION;
+        var stage=create(scope,"uploading",string(request.get("inputKind")),
+            Boolean.TRUE.equals(ValueCodec.map(request.get("metadata")).get("includeHistory")),expires);
+        UploadBinding.bindStaging(c,stage.id());
+        stages.save(stage,unit(scope));
+        return Json.map("uploadId",stage.id(),"expiresAt",expires);
     }
 
-    private Node create(String scope,String state)throws IOException {
+    private Stage create(String scope,String state,String kind,boolean history,long expiry)throws IOException {
         String id=UUID.randomUUID().toString();
         String directory=relative(id);
         var intent=Json.map("phase","exchange-stage","actorId",c.actorId,"receiptScope",scope,"stagingPath",directory);
@@ -141,16 +142,16 @@ final class ExchangePackages extends BaseService {
         Files.createDirectories(root.getParent());
         Files.createDirectory(root);
         created[0]=true;
-        return repo.createRestored(LABEL,null,c.actorId,Json.map("actorId",c.actorId,"scope",scope,"state",state,"admissionId",owner.id),id);
+        return Stage.open(id,c.actorId,scope,state,owner.id,kind,history,c.state.operationClaimed && kind!=null,expiry);
     }
 
     private Map<String,Object> chunk(Map<String,Object> request)throws IOException {
         String scope=c.actionScope;
         lockReceiving(scope);
-        Node stage=writerNode(request.get("uploadId"),scope);
-        c.tx.acquireWriteLock(stage);
+        c.server.lockExchange(c.state.kernel,RequestContext.uuid(request.get("uploadId")));
+        Stage stage=writerNode(request.get("uploadId"),scope);
         checkWriter(stage,false);
-        String id=CoreRepository.id(stage);
+        String id=stage.id();
         String name=memberName(stage,request.get("member"));
         long offset=integer(request.get("offset"));
         String encoded=string(request.get("bytesBase64"));
@@ -159,15 +160,15 @@ final class ExchangePackages extends BaseService {
         try {bytes=Base64.getDecoder().decode(encoded);}
         catch(IllegalArgumentException failure){throw ExceptionHandler.fail("VALIDATION_FAILED","Invalid Base64");}
         if(bytes.length>ResourceFiles.MAX_CHUNK)c.fail("LIMIT_EXCEEDED","Exchange chunk exceeds limit");
-        Node member=repo.find(MEMBER,Map.of("uploadId",id,"name",name));
-        long previous=member==null?0L:(long)member.getProperty("bytes");
+        Member member=stages.member(id,name);
+        long previous=member==null?0L:member.size();
         boolean empty=bytes.length==0;
         if(offset!=previous || empty && (member!=null || !name.startsWith("resources/")))
             c.fail("VALIDATION_FAILED","Exchange member offset or chunk length is invalid");
         long next=Math.addExact(offset,bytes.length);
-        var digest=member==null?new SHA256Digest():new SHA256Digest((byte[])member.getProperty("digestState"));
+        var digest=member==null?new SHA256Digest():new SHA256Digest(member.digest());
         Path staged=path(stage,stagedFile(name));
-        if(member!=null)verifyTail(staged,previous,(String)member.getProperty("tailSha256"));
+        if(member!=null)verifyTail(staged,previous,member.tailSha256());
 
         var admission=c.server.storage.admission;
         var reservation=admission.acquire("exchange-write",UUID.randomUUID().toString(),c.operationId,"exchange-chunk",
@@ -175,39 +176,56 @@ final class ExchangePackages extends BaseService {
         try {
             files.append(relative(id)+"/"+stagedFile(name),offset,bytes);
             updateDigest(digest,staged,offset-offset%64,next-next%64);
-            if(member==null)member=repo.create(MEMBER,null,c.actorId,Json.map("uploadId",id,"name",name));
-            member.setProperty("bytes",next);
-            member.setProperty("digestState",digest.getEncodedState());
-            member.setProperty("tailSha256",tailDigest(staged,next));
+            stages.save(id,new Member(name,next,digest.getEncodedState(),tailDigest(staged,next)),unit(scope));
         } finally {admission.close(reservation);}
         return Json.map("uploadId",id,"member",name,"nextOffset",next);
     }
 
-    private static String memberName(Node stage,Object raw) {
+    private static String memberName(Stage stage,Object raw) {
         String name=string(raw);
-        if("zip".equals(stage.getProperty("inputKind"))) {
+        if("zip".equals(stage.inputKind())) {
             if(name.equals("package"))return name;
-        } else if(MEMBERS.contains(name) && (!name.equals("history") || Boolean.TRUE.equals(stage.getProperty("includeHistory")))
+        } else if(MEMBERS.contains(name) && (!name.equals("history") || Boolean.TRUE.equals(stage.includeHistory()))
                 || resource(name))return name;
         throw ExceptionHandler.fail("VALIDATION_FAILED","Unsupported Exchange upload member");
     }
     private static boolean resource(String name){return name.matches("resources/[a-f0-9]{64}");}
     private static String stagedFile(String name){return name.equals("package")?"package.zip":"input/"+name;}
 
-    private ExchangePackageCodec.StagedMember member(Node stage,String name,boolean required)throws IOException {
-        Node member=repo.find(MEMBER,Map.of("uploadId",CoreRepository.id(stage),"name",name));
+    private ExchangePackageCodec.StagedMember member(Stage stage,String name,boolean required)throws IOException {
+        Member member=stages.member(stage.id(),name);
         if(member==null) {
             if(required)throw malformed();
             return null;
         }
-        return member(nodeProperties(member),stage);
+        return member(member,stage);
     }
-    private record MemberRecord(String name,long size,byte[] digest,String tailSha256) {}
-    private static MemberRecord nodeProperties(Node member) {
-        return new MemberRecord((String)member.getProperty("name"),(long)member.getProperty("bytes"),
-            (byte[])member.getProperty("digestState"),(String)member.getProperty("tailSha256"));
+
+    private Iterable<ExchangePackageCodec.StagedMember> resourceMembers(Stage stage) {
+        return () -> new Iterator<>() {
+            private Iterator<Member> page = Collections.emptyIterator();
+            private String after = "resources/";
+            private boolean exhausted;
+
+            @Override public boolean hasNext() {
+                if (!page.hasNext() && !exhausted) {
+                    page = stages.resourceMembers(stage.id(), after).iterator();
+                    exhausted = !page.hasNext();
+                }
+                return !exhausted;
+            }
+
+            @Override public ExchangePackageCodec.StagedMember next() {
+                if (!hasNext()) throw new NoSuchElementException();
+                var row = page.next();
+                after = row.name();
+                try { return member(row, stage); }
+                catch (IOException failure) { throw new UncheckedIOException(failure); }
+            }
+        };
     }
-    private ExchangePackageCodec.StagedMember member(MemberRecord record,Node stage)throws IOException {
+
+    private ExchangePackageCodec.StagedMember member(Member record,Stage stage)throws IOException {
         var digest=new SHA256Digest(record.digest());
         Path path=path(stage,stagedFile(record.name()));
         verifyTail(path,record.size(),record.tailSha256());
@@ -233,7 +251,7 @@ final class ExchangePackages extends BaseService {
 
     private void updateDigest(SHA256Digest digest,Path path,long start,long end)throws IOException {
         // Persist SHA state only on a block boundary. Pending bytes stay in
-        // the private staging file instead of a Neo4j property.
+        // the private staging file.
         if(start==end)return;
         try(var channel=FileChannel.open(path,StandardOpenOption.READ)){
             channel.position(start);
@@ -252,34 +270,25 @@ final class ExchangePackages extends BaseService {
     private Map<String,Object> finish(Map<String,Object> request)throws IOException {
         String scope=c.actionScope;
         lockReceiving(scope);
-        Node stage=writerNode(request.get("uploadId"),scope);
-        c.tx.acquireWriteLock(stage);
+        c.server.lockExchange(c.state.kernel,RequestContext.uuid(request.get("uploadId")));
+        Stage stage=writerNode(request.get("uploadId"),scope);
         checkWriter(stage,false);
-        String id=CoreRepository.id(stage);
+        String id=stage.id();
         Path archive=path(stage,"package.zip");
         var finished=new ExchangeBudget(c,"exchange-finish");
         try {
             ExchangePackageCodec.ArchiveIdentity identity;
-            if("zip".equals(stage.getProperty("inputKind"))) {
+            if("zip".equals(stage.inputKind())) {
                 var uploaded=member(stage,"package",true);
                 uploaded.verify(this::checkpoint);
                 identity=new ExchangePackageCodec.ArchiveIdentity(uploaded.bytes(),uploaded.sha256());
             }
             else {
-                try(var records=repo.scanNodes(MEMBER,Map.of("uploadId",id))) {
-                    Iterable<ExchangePackageCodec.StagedMember> resources=()->records.stream()
-                        .filter(row->resource((String)row.getProperty("name"))).map(row->{
-                            try {return member(nodeProperties(row),stage);}
-                            catch(IOException failure){throw new UncheckedIOException(failure);}
-                        }).iterator();
-                    ExchangePackageCodec.writeSnapshot(archive,member(stage,"manifest",true),member(stage,"graph",true),
-                        member(stage,"history",false),resources,(boolean)stage.getProperty("includeHistory"),finished,this::checkpoint);
-                }
+                ExchangePackageCodec.writeSnapshot(archive,member(stage,"manifest",true),member(stage,"graph",true),
+                    member(stage,"history",false),resourceMembers(stage),stage.includeHistory(),finished,this::checkpoint);
                 identity=ExchangePackageCodec.ArchiveIdentity.read(archive,this::checkpoint);
             }
-            var reference=publish(stage,RECEIVING,false,finished,identity);
-            stage.setProperty("inputCleanup",true);
-            return reference;
+            return publish(stage,RECEIVING,false,finished,identity);
         } catch(IOException|UncheckedIOException failure) {
             throw malformed();
         } finally {finished.close();}
@@ -288,24 +297,23 @@ final class ExchangePackages extends BaseService {
     private Map<String,Object> abort(Map<String,Object> request) {
         String scope=c.actionScope;
         lockReceiving(scope);
-        Node stage=writer(request.get("uploadId"),scope,true);
-        c.tx.acquireWriteLock(stage);
-        String id=CoreRepository.id(stage);
-        if("uploading".equals(stage.getProperty("state"))) {
-            stage.setProperty("state","aborted");
-            stage.setProperty("cleanupAfter",now());
-            stage.setProperty("removeAfter",now()+RETENTION);
+        c.server.lockExchange(c.state.kernel,RequestContext.uuid(request.get("uploadId")));
+        Stage stage=writer(request.get("uploadId"),scope,true);
+        String id=stage.id();
+        if("uploading".equals(stage.state())) {
+            long now=now();
+            stages.save(stage.cleanup("aborted",now,now+RETENTION,false,false),unit(scope));
         }
         return Json.map("uploadId",id,"state","aborted");
     }
 
-    Node createExport()throws IOException {return create(c.namespaceId,"creating");}
-    Path archive(Node stage)throws IOException {return path(stage,"package.zip");}
-    Path content(Node stage)throws IOException {return path(stage,"content");}
-    Map<String,Object> publish(Node stage,String kind,boolean history,ExportRecords.StorageBudget budget)throws IOException {
+    Stage createExport()throws IOException {return create(c.namespaceId,"creating",null,false,Long.MAX_VALUE);}
+    Path archive(Stage stage)throws IOException {return path(stage,"package.zip");}
+    Path content(Stage stage)throws IOException {return path(stage,"content");}
+    Map<String,Object> publish(Stage stage,String kind,boolean history,ExportRecords.StorageBudget budget)throws IOException {
         return publish(stage,kind,history,budget,ExchangePackageCodec.ArchiveIdentity.read(archive(stage),this::checkpoint));
     }
-    private Map<String,Object> publish(Node stage,String kind,boolean history,ExportRecords.StorageBudget budget,
+    private Map<String,Object> publish(Stage stage,String kind,boolean history,ExportRecords.StorageBudget budget,
             ExchangePackageCodec.ArchiveIdentity identity)throws IOException {
         Path archive=archive(stage);
         var index=path(stage,"content");
@@ -313,16 +321,9 @@ final class ExchangePackages extends BaseService {
         try(var channel=FileChannel.open(archive,StandardOpenOption.WRITE)){channel.force(true);}
         long expires=now()+RETENTION;
         String grant=UUID.randomUUID().toString();
-        stage.setProperty("grant",grant);
-        stage.setProperty("grantKind",kind);
-        stage.setProperty("history",history);
-        stage.setProperty("state","ready");
-        stage.setProperty("bytes",identity.bytes());
-        stage.setProperty("sha256",identity.sha256());
-        stage.setProperty("expiresAt",expires);
-        stage.setProperty("cleanupAfter",Math.addExact(expires,READER));
-        stage.setProperty("removeAfter",Math.addExact(expires,READER));
-        return Json.map("packageId",CoreRepository.id(stage),"grant",grant,"bytes",identity.bytes(),"sha256",identity.sha256(),"expiresAt",expires,"memberCount",count);
+        stages.save(stage.ready(grant,kind,history,identity.bytes(),identity.sha256(),expires,
+            Math.addExact(expires,READER)),unit(stage.scope()));
+        return Json.map("packageId",stage.id(),"grant",grant,"bytes",identity.bytes(),"sha256",identity.sha256(),"expiresAt",expires,"memberCount",count);
     }
 
     static Map<String,Object> source(Object raw) {
@@ -332,60 +333,59 @@ final class ExchangePackages extends BaseService {
         return source;
     }
 
-    Node input(String id,String grant,String receivingScope,boolean acquiring,boolean pin) {
-        Node stage=c.resolved(LABEL,null,id);
-        if(stage==null)stage=access(id,grant);
-        if(pin)c.tx.acquireReadLock(stage);
+    Stage input(String id,String grant,String receivingScope,boolean acquiring,boolean pin) {
+        if(pin)c.server.lockExchange(c.state.kernel,id);
+        else stages.requireSettled(id,c.server.operationalUnit(c.state.kernel));
+        Stage stage=access(id,grant);
         authorize(stage,grant,"editor");
-        if(!"ready".equals(stage.getProperty("state",null)) || acquiring && (long)stage.getProperty("expiresAt",0L)<=now())
+        if(!"ready".equals(stage.state()) || acquiring && stage.expiresAt()<=now())
             throw unavailable();
-        String scope=(String)stage.getProperty("scope");
-        if(RECEIVING.equals(stage.getProperty("grantKind")) && !scope.equals(receivingScope))throw unavailable();
-        if(pin)c.remember(LABEL,null,id,stage);
+        String scope=stage.scope();
+        if(RECEIVING.equals(stage.grantKind()) && !scope.equals(receivingScope))throw unavailable();
         return stage;
     }
 
     void authorizeResultSource(String id) {
-        Node stage=repo.find(LABEL,"id",id);
+        c.server.lockExchange(c.state.kernel,id);
+        Stage stage=stages.stage(id);
         if(stage==null)throw unavailable();
-        c.tx.acquireReadLock(stage);
-        if(!SOURCE.equals(stage.getProperty("grantKind",null))
-                || !"ready".equals(stage.getProperty("state",null))
-                || (long)stage.getProperty("expiresAt",0L)<=now())throw unavailable();
-        authorize(stage,stage.getProperty("grant"),"viewer");
+        if(!SOURCE.equals(stage.grantKind())
+                || !"ready".equals(stage.state())
+                || stage.expiresAt()<=now())throw unavailable();
+        authorize(stage,stage.grant(),"viewer");
     }
 
-    boolean sourceExport(Node stage) {return SOURCE.equals(stage.getProperty("grantKind",null));}
+    boolean sourceExport(Stage stage) {return SOURCE.equals(stage.grantKind());}
 
-    private Node access(Object rawId,Object rawGrant) {
-        Node stage=repo.find(LABEL,"id",RequestContext.uuid(rawId));
-        if(stage==null || !c.actorId.equals(stage.getProperty("actorId",null))
-                || !(rawGrant instanceof String grant) || !grant.equals(stage.getProperty("grant",null)))throw unavailable();
+    private Stage access(Object rawId,Object rawGrant) {
+        Stage stage=stages.stage(RequestContext.uuid(rawId));
+        if(stage==null || !c.actorId.equals(stage.actorId())
+                || !(rawGrant instanceof String grant) || !grant.equals(stage.grant()))throw unavailable();
         return stage;
     }
 
-    private void authorize(Node stage,Object rawGrant,String receivingRole) {
-        if(!c.actorId.equals(stage.getProperty("actorId",null)) || !Objects.equals(rawGrant,stage.getProperty("grant",null)))
+    private void authorize(Stage stage,Object rawGrant,String receivingRole) {
+        if(!c.actorId.equals(stage.actorId()) || !Objects.equals(rawGrant,stage.grant()))
             throw unavailable();
-        String scope=(String)stage.getProperty("scope");
+        String scope=stage.scope();
         if(scope.equals("server"))return;
-        boolean source=SOURCE.equals(stage.getProperty("grantKind"));
-        String required=source?(Boolean.TRUE.equals(stage.getProperty("history",false))?"owner":"viewer"):receivingRole;
+        boolean source=SOURCE.equals(stage.grantKind());
+        String required=source?(Boolean.TRUE.equals(stage.history())?"owner":"viewer"):receivingRole;
         String current=effectiveRole(scope);
         if(current==null || repo.namespace(scope)==null || rank(current)<rank(required))throw unavailable();
     }
 
-    private Node readStage(Map<String,Object> request) {
-        Node stage=access(request.get("packageId"),request.get("grant"));
-        c.tx.acquireReadLock(stage);
+    private Stage readStage(Map<String,Object> request) {
+        c.server.lockExchange(c.state.kernel,RequestContext.uuid(request.get("packageId")));
+        Stage stage=access(request.get("packageId"),request.get("grant"));
         authorize(stage,request.get("grant"),"viewer");
         return stage;
     }
 
     private Map<String,Object> inspect(Map<String,Object> request)throws IOException {
-        Node stage=readStage(request);
-        long now=now(), expires=(long)stage.getProperty("expiresAt",0L);
-        if(!"ready".equals(stage.getProperty("state")) || now>=expires)throw unavailable();
+        Stage stage=readStage(request);
+        long now=now(), expires=stage.expiresAt();
+        if(!"ready".equals(stage.state()) || now>=expires)throw unavailable();
         long deadline=now+READER;
         var envelope=ExchangePackageIndex.inspect(path(stage,ExchangePackageIndex.FILE));
         var result=new LinkedHashMap<>(envelope);
@@ -395,15 +395,15 @@ final class ExchangePackages extends BaseService {
         return result;
     }
 
-    private Map<String,Object> leaseBinding(Node stage,long deadline,String nonce) {
-        return Json.map("type","exchange-lease","packageId",CoreRepository.id(stage),"actorId",c.actorId,
-            "scope",stage.getProperty("scope"),"grant",stage.getProperty("grant"),"expires",deadline,"nonce",nonce);
+    private Map<String,Object> leaseBinding(Stage stage,long deadline,String nonce) {
+        return Json.map("type","exchange-lease","packageId",stage.id(),"actorId",c.actorId,
+            "scope",stage.scope(),"grant",stage.grant(),"expires",deadline,"nonce",nonce);
     }
 
-    private record ReadLease(Node stage,String id,long deadline) {}
+    private record ReadLease(Stage stage,String id,long deadline) {}
 
     private ReadLease lease(Map<String,Object> request) {
-        Node stage=readStage(request);
+        Stage stage=readStage(request);
         String id=string(request.get("leaseId"));
         if(id.length()>2048)throw unavailable();
         Map<String,Object> decoded;
@@ -411,7 +411,7 @@ final class ExchangePackages extends BaseService {
         catch(RuntimeException failure){throw unavailable();}
         if(!(decoded.get("expires") instanceof Long deadline) || deadline<=now()
                 || !(decoded.get("nonce") instanceof String nonce) || !leaseBinding(stage,deadline,nonce).equals(decoded)
-                || !Set.of("ready","discarded").contains(stage.getProperty("state")))throw unavailable();
+                || !Set.of("ready","discarded").contains(stage.state()))throw unavailable();
         return new ReadLease(stage,id,deadline);
     }
 
@@ -430,12 +430,12 @@ final class ExchangePackages extends BaseService {
         }
         var page=ExchangePackageIndex.page(path(lease.stage(),ExchangePackageIndex.FILE),collection,position,(int)limit);
         if(page==null || now()>=lease.deadline())throw unavailable();
-        return Json.map("packageId",CoreRepository.id(lease.stage()),"collection",collection,"entries",page.entries(),
+        return Json.map("packageId",lease.stage().id(),"collection",collection,"entries",page.entries(),
             "nextCursor",page.nextPosition()==null?null:pageCursor(lease,collection,page.nextPosition()));
     }
 
     private Map<String,Object> pageCursor(ReadLease lease,String collection,long position) {
-        var fields=Json.map("packageId",CoreRepository.id(lease.stage()),"leaseId",lease.id(),"collection",collection,"position",position);
+        var fields=Json.map("packageId",lease.stage().id(),"leaseId",lease.id(),"collection",collection,"position",position);
         String proof=CursorCodec.requestHash(c,Json.map("type","exchange-cursor","actorId",c.actorId,"cursor",fields));
         fields.put("integrity",proof);
         return fields;
@@ -444,12 +444,12 @@ final class ExchangePackages extends BaseService {
     private Map<String,Object> read(Map<String,Object> request)throws IOException {
         ReadLease lease=lease(request);
         String member=string(request.get("member"));
-        Node stage=lease.stage();
+        Stage stage=lease.stage();
         long offset=integer(request.get("offset")), requested=integer(request.get("length")), size;
         if(offset<0 || requested<1 || requested>ResourceFiles.MAX_CHUNK)c.fail("VALIDATION_FAILED","Invalid Exchange read range");
         Path path;
         if(member.equals("package")) {
-            size=(long)stage.getProperty("bytes");
+            size=stage.bytes();
             path=archive(stage);
         } else {
             if(!resource(member))throw unavailable();
@@ -477,14 +477,20 @@ final class ExchangePackages extends BaseService {
         if(c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","Exchange discard requires a separate transaction");
         c.state.mutation=true;
         repo.lockActor(c.actorId);
-        Node stage=access(request.get("packageId"),request.get("grant"));
-        c.tx.acquireWriteLock(stage);
+        c.server.lockExchange(c.state.kernel,RequestContext.uuid(request.get("packageId")));
+        Stage stage=access(request.get("packageId"),request.get("grant"));
         authorize(stage,request.get("grant"),"viewer");
-        if("ready".equals(stage.getProperty("state"))) {
-            stage.setProperty("state","discarded");
-            stage.setProperty("cleanupAfter",Math.min((long)stage.getProperty("cleanupAfter"),now()+READER));
+        if("ready".equals(stage.state())) {
+            stages.save(stage.cleanup("discarded",Math.min(stage.cleanupAfter(),now()+READER),
+                stage.removeAfter(),stage.inputCleanup(),stage.cleaned()),unit("server"));
         }
-        return Json.map("packageId",CoreRepository.id(stage),"state","discarded");
+        return Json.map("packageId",stage.id(),"state","discarded");
+    }
+
+    private String unit(String scope) {
+        var owner=scope.equals("server")?repo.find("User","id",c.actorId):repo.namespace(scope);
+        if(owner==null)throw unavailable();
+        return c.server.prepareWorkflowCommit(c,scope,owner);
     }
 
     private static RuntimeException unavailable() {

@@ -1,8 +1,7 @@
 package deposit.service;
 
 import deposit.common.*;
-import deposit.repository.CoreRepository;
-import org.neo4j.graphdb.Node;
+import deposit.repository.StagedTableRepository.Table;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** Table admission shares the Namespace lock with table and source-lease cleanup. */
@@ -11,19 +10,19 @@ final class StagedTable extends BaseService {
 
     StagedTable(RequestContext c) { super(c); }
 
-    Node acquire(Object raw) {
+    Table acquire(Object raw) {
         String id = RequestContext.uuid(raw);
         repo.lockNamespace(c.namespaceId);
-        Node table = repo.find("DepositTabularTable", "id", id);
-        if (table != null && !c.namespaceId.equals(table.getProperty("namespaceId")))
+        Table table = c.server.storage.tables.table(id);
+        if (table != null && !c.namespaceId.equals(table.namespace()))
             c.fail("SCOPE_MISMATCH", "Table belongs to another Namespace");
         long now = c.server.sessionTime();
-        if (table == null || (long)table.getProperty("expiresAt") <= now
-                || !c.actorId.equals(table.getProperty("creatorId")) && !"owner".equals(effectiveRole(c.namespaceId)))
+        if (table == null || table.expires() <= now
+                || !c.actorId.equals(table.actor()) && !"owner".equals(effectiveRole(c.namespaceId)))
             c.fail("NOT_FOUND", "Table is unavailable");
         c.state.tableReadConnection=((InternalTransaction)c.tx).clientInfo().connectionId();
         c.state.tableReadDeadline = now + READER_GRACE;
-        table.setProperty("lastAccessAt", now);
+        c.server.storage.tables.touch(id,now);
         return table;
     }
 

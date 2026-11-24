@@ -1,10 +1,9 @@
 package deposit.common;
 
-import deposit.repository.CoreRepository;
+import deposit.repository.ExchangeRepository.Stage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.UUID;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -28,14 +27,9 @@ public final class ExchangeTestFixture {
         ExchangePackageIndex.build(staged,directory.resolve("content"),null,()->{});
         server.storage.admission.materialized(owner,server.storage.files.root,size);
         long expires=server.sessionTime()+86_400_000L;
-        try(var tx=database.beginTx()){
-            var core=new CoreRepository(tx,ZonedDateTime.now());
-            core.createRestored("DepositExchangeStage",null,actor,Json.map("actorId",actor,"scope",scope,
-                "admissionId",owner.id,"grant",grant,"grantKind","receiving-upload","history",false,"state","ready",
-                "bytes",size,"sha256",ResourceFiles.checksum(staged),"expiresAt",expires,
-                "cleanupAfter",expires+900_000L,"removeAfter",expires+900_000L),id);
-            tx.commit();
-        }
+        var stage=Stage.open(id,actor,scope,"creating",owner.id,null,false,false,Long.MAX_VALUE)
+            .ready(grant,"receiving-upload",false,size,ResourceFiles.checksum(staged),expires,expires+900_000L);
+        server.storage.exchange.save(stage,"");
         return Map.of("packageId",id,"grant",grant);
     }
 }

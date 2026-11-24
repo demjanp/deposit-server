@@ -27,6 +27,7 @@ class ImportResultRepositoryTest {
         previousConfig=System.getProperty("deposit.config");Path resources=temporary.resolve("resources"),exports=temporary.resolve("exports");java.nio.file.Files.createDirectories(resources);java.nio.file.Files.createDirectories(exports);Path config=temporary.resolve("deposit-test.properties");var properties=new java.util.Properties();properties.setProperty("resourceRoot",resources.toString());properties.setProperty("exportRoot",exports.toString());try(var out=java.nio.file.Files.newOutputStream(config)){properties.store(out,"test");}System.setProperty("deposit.config",config.toString());
         management=new DatabaseManagementServiceBuilderImplementation(temporary.resolve("db"),type->type!=DepositExtension.class).build();
         database=(GraphDatabaseAPI)management.database("neo4j");server=ServerContext.attach(database.databaseId().databaseId().uuid());var databaseField=ServerContext.class.getDeclaredField("database");databaseField.setAccessible(true);databaseField.set(server,database);storage=new StorageManager(server,database);server.storage=storage;var ready=ServerContext.class.getDeclaredMethod("markReadyForTesting");ready.setAccessible(true);ready.invoke(server);
+        database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class).addMonitorListener(server);
         largeKey="🔐".repeat(5_000);
         SchemaRepository.initialize(database);
         try(var tx=database.beginTx()){
@@ -42,11 +43,17 @@ class ImportResultRepositoryTest {
             context.revision=7L;core.saveReceipt(context,namespace,"request-hash",new Outcome(null,null,envelope));tx.commit();
         }
     }
-    @AfterEach void close(){if(storage!=null)storage.close();if(management!=null)management.shutdown();if(database!=null)ServerContext.detach(database.databaseId().databaseId().uuid());if(previousConfig==null)System.clearProperty("deposit.config");else System.setProperty("deposit.config",previousConfig);}
+    @AfterEach void close(){
+        if(database!=null)database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class).removeMonitorListener(server);
+        if(storage!=null)storage.close();
+        if(management!=null)management.shutdown();
+        if(database!=null)ServerContext.detach(database.databaseId().databaseId().uuid());
+        if(previousConfig==null)System.clearProperty("deposit.config");else System.setProperty("deposit.config",previousConfig);
+    }
 
     @Test void storesPagedNestedAndChunkedValuesAndSupportsExactLargeKeyLookup(){
         try(var tx=database.beginTx()){
-            var context=context(tx,actor);var repo=new ImportResultRepository(context);Map<String,Object> envelope=repo.envelope(resultId);Object lease=envelope.get("leaseId");assertEquals(ImportResultContract.FORMAT,envelope.get("format"));assertFalse(envelope.containsKey("objectMappings"));Node receipt=new CoreRepository(tx,context.timestamp).receipt(namespace,operation);assertEquals(resultId,receipt.getProperty("importResultId"));assertFalse(receipt.hasProperty("outcome"));
+            var context=context(tx,actor);var repo=new ImportResultRepository(context);Map<String,Object> envelope=repo.envelope(resultId);Object lease=envelope.get("leaseId");assertEquals(ImportResultContract.FORMAT,envelope.get("format"));assertFalse(envelope.containsKey("objectMappings"));var receipt=new CoreRepository(tx,context.timestamp).receipt(namespace,operation);assertEquals(resultId,receipt.importResultId());
             Map<String,Object> page=repo.page(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","cursor",null,"limit",10L));List<?> entries=(List<?>)page.get("entries");Map<String,Object> first=ValueCodec.map(entries.get(0));Map<String,Object> keyDescriptor=ValueCodec.map(first.get("key"));assertEquals("text",keyDescriptor.get("type"));assertTrue(((String)keyDescriptor.get("collection")).length()>10);
             assertThrows(ExceptionHandler.DepositException.class,()->repo.entry(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","key",largeKey)));
             Map<String,Object> nestedText=null;for(Object raw:entries){Map<String,Object> entry=ValueCodec.map(raw);if("text".equals(ValueCodec.map(entry.get("key")).get("value")))nestedText=ValueCodec.map(entry.get("value"));}
@@ -54,6 +61,20 @@ class ImportResultRepositoryTest {
             Map<String,Object> mapping=repo.mappingView(resultId,"objectMappings");assertTrue(mapping.containsKey("source-1"));assertNull(mapping.get("source-1"));
             Map<String,Object> nested=repo.mappingView(resultId,"nested");assertTrue(nested.containsKey(largeKey));assertEquals("large-key-value",nested.get(largeKey));assertEquals(largeKey,nested.entrySet().iterator().next().getKey());tx.commit();
         }
+        String rolledBackOperation=UUID.randomUUID().toString(), rolledBackResult;
+        try(var tx=database.beginTx()) {
+            var context=context(tx,actor);
+            context.operationId=rolledBackOperation;
+            var envelope=new ImportResultRepository(context).save(rolledBackOperation,"analysis",null,7,
+                Map.of("objects",List.of("pending")));
+            rolledBackResult=(String)envelope.get("resultId");
+            new CoreRepository(context).saveReceipt(context,namespace,"rollback",new Outcome(null,null,envelope));
+            assertNull(storage.importResults.root(rolledBackResult,null));
+            assertNull(storage.receipts.find(actor,namespace,rolledBackOperation,null));
+            tx.rollback();
+        }
+        assertNull(storage.importResults.root(rolledBackResult,null));
+        assertNull(storage.receipts.find(actor,namespace,rolledBackOperation,null));
     }
 
     @Test void completedApplyResultWithPlanIdIsPersistedAndReplayedAsApplied(){
@@ -73,8 +94,8 @@ class ImportResultRepositoryTest {
             var context=context(tx,actor);
             var core=new CoreRepository(tx,context.timestamp);
             var receipt=core.receipt(namespace,applyOperation);
-            assertEquals(envelope.get("resultId"),receipt.getProperty("importResultId"));
-            assertFalse(receipt.hasProperty("outcome"));
+            assertEquals(envelope.get("resultId"),receipt.importResultId());
+
             assertEquals(withoutLease(envelope), withoutLease(new ImportResultRepository(context).envelope((String)envelope.get("resultId"))));
         }
     }
@@ -150,7 +171,7 @@ class ImportResultRepositoryTest {
         }
     }
 
-    @Test void largeConflictDetailsStayPagedAndCollectionCountsComeFromStreaming(){
+    @Test void largeConflictDetailsStayPagedAndCollectionCountsComeFromStreaming() throws Exception {
         SchemaRepository.initialize(database);String diagnosticOperation=UUID.randomUUID().toString();String diagnosticResult;
         try(var tx=database.beginTx();var scratch=new DiskJsonList(temporary,"conflicts-");var detailRows=new DiskJsonList(temporary,"pattern-details-")){
             for(int i=0;i<600;i++)detailRows.add(Json.map("name","Pattern-"+i,"objects",List.of("role-"+i)));
@@ -162,9 +183,8 @@ class ImportResultRepositoryTest {
             var rowMetadata=new LinkedHashMap<String,Object>();for(int i=0;i<600;i++)rowMetadata.put("source-"+i,Json.map("blank",i%2==0));
             var context=context(tx,actor);context.operationId=diagnosticOperation;var repository=new ImportResultRepository(context);
             var envelope=repository.save(diagnosticOperation,"analysis",null,7L,Json.map("conflicts",conflicts,"_tabularBlanks",rowMetadata));diagnosticResult=(String)envelope.get("resultId");assertEquals("IMPORT_CONFLICT",envelope.get("state"));
-            context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.receipt(namespace,diagnosticOperation).getProperty("importResultId"));assertNull(tx.findNode(Label.label("DepositImportPlan"),"resultId",diagnosticResult));tx.commit();
+            context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.receipt(namespace,diagnosticOperation).importResultId());assertNull(server.storage.importResults.root(diagnosticResult,server.operationalUnit(context.state.kernel)).plan());tx.commit();
         }catch(Exception failure){throw new AssertionError(failure);}
-        refreshIndexStatistics();
         try(var tx=database.beginTx()){
             var repository=new ImportResultRepository(context(tx,actor));Object lease=repository.envelope(diagnosticResult).get("leaseId");var first=repository.page(Json.map("resultId",diagnosticResult,"leaseId",lease,"collection","conflicts","cursor",null,"limit",1L));
             var conflictDescriptor=ValueCodec.map(((List<?>)first.get("entries")).getFirst());
@@ -177,8 +197,13 @@ class ImportResultRepositoryTest {
             var view=new ImportResultRepository(context(tx,actor)).mappingView(diagnosticResult,"_tabularBlanks");var iterator=view.entrySet().iterator();int count=0;String first=null,last=null;while(iterator.hasNext()){String key=iterator.next().getKey();if(count==0)first=key;last=key;count++;}
             assertEquals(600,count);assertEquals("source-0",first);assertEquals("source-599",last);
             assertTrue(view.containsKey("source-599"),"the final hash-key bucket must remain readable without full collection scans");
-            String explain="EXPLAIN MATCH (row:DepositImportResultEntry {resultId:$resultId,collectionId:$collectionId}) WHERE row.position >= $position RETURN row ORDER BY row.position LIMIT $limit";
-            var query=tx.execute(explain,Map.of("resultId",diagnosticResult,"collectionId",collectionId(tx,diagnosticResult,"_tabularBlanks"),"position",0L,"limit",128L));String detail=query.getExecutionPlanDescription().toString();query.close();assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("NodeByLabelScan"),detail);tx.rollback();
+            String detail=explain("""
+                SELECT * FROM import_result_entries WHERE result_id=? AND collection_id=? AND position>=?
+                ORDER BY position LIMIT ?
+                """,diagnosticResult,collectionId(diagnosticResult,"_tabularBlanks"),0L,128L);
+            assertTrue(detail.contains("SEARCH"),detail);
+            assertFalse(detail.contains("SCAN"),detail);
+            tx.rollback();
         }
         try(var tx=database.beginTx()){
             String operationId=UUID.randomUUID().toString();var context=new RequestContext(tx,Map.of("token","test-token","operationId",operationId));context.actorId=actor;context.namespaceId=namespace;var repo=new ImportResultRepository(context);
@@ -190,32 +215,35 @@ class ImportResultRepositoryTest {
         }
     }
 
-    @Test void mappedIncomingObjectLookupUsesCompositeResultIndex()throws java.security.NoSuchAlgorithmException{
+    @Test void mappedIncomingObjectLookupUsesCompositeResultIndex()throws Exception{
         String incoming="source-object-299";
-        refreshIndexStatistics();
         try(var tx=database.beginTx()){
             var context=context(tx,actor);
-            var explanation=tx.execute("EXPLAIN MATCH (row:DepositImportResultEntry {resultId:$resultId,collectionId:$collectionId,mapKeyHash:$mapKeyHash,mapKey:$mapKey}) RETURN row",
-                    Map.of("resultId",resultId,"collectionId",collectionId(tx,resultId,"objectMappings"),"mapKeyHash",keyHash(incoming),"mapKey",incoming));
-            String detail=explanation.getExecutionPlanDescription().toString();explanation.close();
-            assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("PropertyFilteringIterator"),detail);
+            String detail=explain("""
+                SELECT * FROM import_result_entries WHERE result_id=? AND collection_id=? AND map_key_hash=?
+                ORDER BY position
+                """,resultId,collectionId(resultId,"objectMappings"),keyHash(incoming));
+            assertTrue(detail.contains("SEARCH")&&detail.contains("import_result_key"),detail);
             Map<String,Object> mappings=new ImportResultRepository(context).mappingView(resultId,"objectMappings");String target=(String)mappings.get(incoming);
             assertNotNull(target);assertFalse(mappings.containsKey("source-missing-object"));
             tx.rollback();
         }
     }
 
-    private void refreshIndexStatistics(){
-        try(var tx=database.beginTx();var result=tx.execute("CALL db.prepareForReplanning(30)")){
-            while(result.hasNext())result.next();
-            tx.commit();
+    private String explain(String sql,Object... parameters)throws java.sql.SQLException {
+        Path file=storage.files.root.resolve("operational/operational.sqlite");
+        try(var db=java.sql.DriverManager.getConnection("jdbc:sqlite:"+file);
+            var query=db.prepareStatement("EXPLAIN QUERY PLAN "+sql)){
+            for(int i=0;i<parameters.length;i++)query.setObject(i+1,parameters[i]);
+            try(var rows=query.executeQuery()){
+                assertTrue(rows.next());
+                return rows.getString("detail");
+            }
         }
     }
 
-    private static String collectionId(Transaction tx,String resultId,String name){
-        try(var rows=tx.findNodes(Label.label("DepositImportResultCollection"),Map.of("resultId",resultId,"name",name))){
-            return (String)rows.next().getProperty("id");
-        }
+    private String collectionId(String result,String name) {
+        return storage.importResults.collection(result,name).id();
     }
 
     private static String keyHash(String key)throws java.security.NoSuchAlgorithmException{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}

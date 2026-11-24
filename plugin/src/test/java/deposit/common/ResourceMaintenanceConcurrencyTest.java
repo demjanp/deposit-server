@@ -112,10 +112,12 @@ class ResourceMaintenanceConcurrencyTest {
         }finally{if(observer!=null)observer.invoke(server,(java.util.function.Consumer<String>)point->{});closeFixture();}
     }
     private void createExpiredLocation(ResourceRepository repo,String id,int index) {
-        Node loc=repo.record("DepositResourceLocation",id,Json.map("namespaceId",namespace,"uploadId",id,"storedFilename","background-"+index+".zip","bytes",0L,"checksum",ResourceFiles.checksum(new byte[0]),"leaseUntil",0L,"published",false));
-        loc.setProperty("stagingPath","staging/background-"+index+".part");
-        try{Files.createDirectories(server.storage.files.path("staging/background-"+index+".part").getParent());Files.write(server.storage.files.path("staging/background-"+index+".part"),new byte[0]);}catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}
-        repo.record("DepositTransfer",id,Json.map("state","expired","expires",0L,"resourceId",id));
+        String path="staging/background-"+index+".part",filename="background-"+index+".zip";
+        try{Files.createDirectories(server.storage.files.path(path).getParent());Files.write(server.storage.files.path(path),new byte[0]);}
+        catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}
+        server.storage.transfers.save(new ResourceTransferStore.Transfer(id,id,namespace,actor,filename,filename,
+            "application/zip",0,ResourceFiles.checksum(new byte[0]),0,"expired",0,null,path,false,null,null,false,false,null),"");
+
     }
     private ResourceRepository repository(org.neo4j.graphdb.Transaction tx){return new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC)));}
     private Callable<Map<String,Object>> depositCall(String procedure,Map<String,Object> request){
@@ -132,7 +134,7 @@ class ResourceMaintenanceConcurrencyTest {
     }
     private void verifyContent(String id,String expected)throws Exception {
         ResourceStorage.Content content;
-        try(var tx=database.beginTx()){content=repository(tx).content(repository(tx).location(id));}
+        try(var tx=database.beginTx()){content=repository(tx).content(repository(tx).completed(id));}
         var digest=MessageDigest.getInstance("SHA-256");long bytes=0;byte[] buffer=new byte[65536];
         try(var in=server.storage.content.open(content,0,PAYLOAD)){int n;while((n=in.read(buffer))!=-1){digest.update(buffer,0,n);bytes+=n;}}
         assertEquals(PAYLOAD,bytes);assertEquals(expected,HexFormat.of().formatHex(digest.digest()));

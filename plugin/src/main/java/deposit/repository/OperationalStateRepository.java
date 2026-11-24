@@ -93,7 +93,7 @@ public final class OperationalStateRepository {
         }
     }
 
-    private static Admission admission(Connection db) throws SQLException {
+    static Admission admission(Connection db) throws SQLException {
         try (var query = db.prepareStatement("SELECT rejected_through, observed_time FROM server_state WHERE id=1");
              var row = query.executeQuery()) {
             if (!row.next()) throw new SQLException("Missing operation admission state");

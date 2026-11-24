@@ -53,8 +53,8 @@ final class TransactionLifecycle {
         try {
             settleOperationalState(state, committed);
             if (state.operationClaimed) {
-                if (!committed && state.operationCancelled()) server.rememberCancelled(state);
                 state.operationSettled=true;
+                server.completeOperation(state);
             }
             if (committed) {
                 if (state.serverChanged) revision++;
@@ -79,11 +79,20 @@ final class TransactionLifecycle {
     }
 
     private void settleOperationalState(ServerContext.TxState state, boolean committed) {
-        if (state.bootstrapUser == null && state.pendingCommit == null) return;
+        if (state.bootstrapUser == null && state.pendingCommit == null && state.pendingRegistration == null) return;
         try {
+            if(state.pendingRegistration!=null) {
+                server.storage.attempts.settleRegistration(state.pendingRegistration,committed,server.sessionTime());
+                if(committed==state.registrationCancellation)server.forgetOperationBinding(state.pendingRegistration);
+                return;
+            }
             server.storagePoint("operational-before-settlement");
             if (state.bootstrapUser != null) server.storage.operationalState.settleBootstrap(state.bootstrapUser, committed);
-            else server.storage.operationalCommits.settle(state.pendingCommit.id(), committed, server.sessionTime());
+            else {
+                var unit=state.pendingCommit;
+                boolean outputIntent=!committed&&server.storage.admission.hasOutputIntent(unit.actor(),unit.scope(),unit.operation());
+                server.storage.operationalCommits.settle(unit.id(),committed,server.sessionTime(),state.operationCancelled(),outputIntent);
+            }
         } catch (RuntimeException failure) {
             // The pending row remains the fence after the in-memory locks are released.
             server.storage.diagnostic = "Operational commit settlement pending";

@@ -84,10 +84,20 @@ public final class StorageAdmission implements AutoCloseable {
             for(var reservation:reservations.values()){
                 if(Objects.equals(operationId,reservation.operationId)&&actor.equals(reservation.writeIntent.get("actorId"))
                         && scope.equals(reservation.writeIntent.get("receiptScope"))
-                        && java.util.Set.of("ocfl-publication","tabular-load","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind))return true;
+                        && java.util.Set.of("ocfl-publication","tabular-load","import-plan","export-scratch",
+                            "exchange-stage","import-apply","import-write","tabular-export").contains(reservation.ownerKind))return true;
             }
             return false;
         }finally{stateLock.unlock();}
+    }
+
+    boolean hasCollectionDependency(String item,String resource) {
+        stateLock.lock();
+        try {
+            return reservations.values().stream().anyMatch(reservation ->
+                "maintenance-prune".equals(reservation.ownerKind) && item.equals(reservation.ownerId)
+                || "ocfl-publication".equals(reservation.ownerKind) && resource.equals(reservation.ownerId));
+        } finally { stateLock.unlock(); }
     }
 
     public OutputStream openStagingOutput(Reservation reservation,Path path,Runnable checkpoint)throws IOException {

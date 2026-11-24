@@ -3,7 +3,9 @@ package deposit.service;
 import deposit.common.*;
 import deposit.common.Results.*;
 import deposit.repository.OperationAttemptRepository;
-import deposit.repository.OperationalCommitRepository;
+import deposit.repository.OperationAttemptRepository.Attempt;
+import deposit.repository.OperationAttemptRepository.Key;
+import deposit.repository.OperationAttemptRepository.Source;
 import java.util.*;
 import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
@@ -25,7 +27,7 @@ final class OperationAttemptService extends BaseService {
 
     OperationAttemptService(RequestContext c) {
         super(c);
-        attempts = new OperationAttemptRepository(c.tx);
+        attempts = c.server.storage.attempts;
         scopes = new SessionActionScope(c);
     }
 
@@ -67,44 +69,30 @@ final class OperationAttemptService extends BaseService {
         authorize(procedure, namespace, role, false);
         String hash = fingerprint(procedure, arguments);
         c.server.lockOperationAdmission(c.state.kernel);
-        Node node = attempts.find(c.actorId, scope, id);
-        if (node != null) {
-            c.tx.acquireReadLock(node);
-            checkControlSource(node,procedure);
-            if (node.hasProperty("procedure") && (!procedure.equals(node.getProperty("procedure"))
-                    || !hash.equals(node.getProperty("inputHash")) || !namespace.equals(node.getProperty("authorizationScope"))))
-                c.fail("OPERATION_MISMATCH", "Operation input changed");
-            return status(node, id, scope, false);
+        var key=new Key(c.actorId,scope,id);
+        var attempt=attempts.find(key);
+        if(attempt!=null) {
+            checkControlSource(attempt);
+            if(attempt.procedure()!=null && (!procedure.equals(attempt.procedure()) || !hash.equals(attempt.inputHash())
+                    || !namespace.equals(attempt.authorizationScope())))
+                c.fail("OPERATION_MISMATCH","Operation input changed");
+            return status(attempt,id,scope,false);
         }
-        long now = c.server.sessionTime();
-        if (!c.server.storage.operationalState.admit(id, now))
-            c.fail("OPERATION_ID_EXPIRED", "Operation ID is outside its admission window");
-        String connection = connection();
-        if (!c.server.connectionLive(connection)) c.fail("AUTH_FAILED", "A live Bolt execution connection is required");
-        String uploadId = writer(procedure, arguments, scope);
-        Map<String,Object> bindings = new LinkedHashMap<>();
-        Map<String,Object> resolved = new ArgumentService(c, bindings, false).request(procedure, arguments);
-        SourceBinding source = bindSource(procedure, scope, resolved);
-        node = attempts.create(c.actorId, scope, id);
-        node.setProperty("procedure", procedure);
-        node.setProperty("inputHash", hash);
-        node.setProperty("authorizationScope", namespace);
-        node.setProperty("role", role);
-        node.setProperty("connectionId", connection);
-        node.setProperty("sessionHash", c.state.tokenHash);
-        node.setProperty("incarnation", c.server.runId);
-        node.setProperty("bindings", Json.write(bindings));
-        if (uploadId != null) node.setProperty("uploadId", uploadId);
-        if (source != null) {
-            node.setProperty("sourceExchange",source.packageId);
-            node.setProperty("sourceGrant",source.grantId);
-            if(source.receivingUpload)node.setProperty("receivingUpload",true);
-        }
-        node.setProperty("claimDeadline", OperationAttemptRepository.idTime(id) + OperationAttemptRepository.RETENTION);
-        if (!scopes.operational(procedure)) node.setProperty("expectedRevision", scopes.baseline(scope));
-        if (procedure.equals("deposit.delete.namespace")) node.setProperty("namespaceRevision", scopes.baseline(namespace));
-        OperationAttemptRepository.transition(node, "REGISTERED", now);
-        return status(node, id, scope, false);
+        long now=c.server.sessionTime();
+        if(!c.server.storage.operationalState.admit(id,now))
+            c.fail("OPERATION_ID_EXPIRED","Operation ID is outside its admission window");
+        String connection=connection();
+        if(!c.server.connectionLive(connection))c.fail("AUTH_FAILED","A live Bolt execution connection is required");
+        String uploadId=writer(procedure,arguments,scope);
+        Map<String,Object> bindings=new LinkedHashMap<>();
+        Map<String,Object> resolved=new ArgumentService(c,bindings,false).request(procedure,arguments);
+        Source source=bindSource(procedure,scope,resolved);
+        Long revision=scopes.operational(procedure)?null:scopes.baseline(scope);
+        Long namespaceRevision=procedure.equals("deposit.delete.namespace")?scopes.baseline(namespace):null;
+        attempt=new Attempt(key,procedure,hash,namespace,role,revision,namespaceRevision,source,uploadId,
+            OperationAttemptRepository.idTime(id)+OperationAttemptRepository.RETENTION,"REGISTERED",now,"none",null,null);
+        c.server.registerOperation(c.state,attempt,new ServerContext.OperationBinding(c.state.tokenHash,connection,bindings));
+        return status(attempt,id,scope,false);
     }
 
     private static boolean batchNeedsOwner(String procedure,List<Object> arguments) {
@@ -120,41 +108,35 @@ final class OperationAttemptService extends BaseService {
         c.operational = scopes.operational(procedure);
         c.inputHash = fingerprint(procedure, arguments);
         String connection = connection();
-        Map<String,Object> saved;
-        try (var registration = c.server.database().beginTx()) {
-            var records = new OperationAttemptRepository(registration);
-            Node node = records.find(c.actorId, operationScope, id);
-            if (node == null) throw unavailable();
-            registration.acquireWriteLock(node);
-            saved = node.getAllProperties();
-            String state = (String)saved.get("state");
-            if (!state.equals("REGISTERED")) failClaim(state);
-            if (!procedure.equals(saved.get("procedure")) || !c.inputHash.equals(saved.get("inputHash")))
-                c.fail("OPERATION_MISMATCH", "Operation input changed");
-            long now = c.server.sessionTime();
-            if (!c.server.runId.equals(saved.get("incarnation")) || now >= (long)saved.get("claimDeadline")
-                    || !Objects.equals(connection,saved.get("connectionId")) || !c.state.tokenHash.equals(saved.get("sessionHash"))
-                    || !c.server.connectionLive(connection))
-                c.fail("OPERATION_NOT_CLAIMABLE", "Execution binding expired or changed. Inspect the operation");
-            if (procedure.equals("deposit.delete.namespace") && !scopes.active().equals(saved.get("authorizationScope")))
-                c.fail("SCOPE_MISMATCH", "Deletion target changed");
-            authorize(procedure,(String)saved.get("authorizationScope"),(String)saved.get("role"),true);
-            checkSource(saved,true);
-            writer(procedure, arguments, operationScope);
-            c.state.operationConnection = connection;
-            c.state.operationActor = c.actorId;
-            c.state.operationScope = operationScope;
-            c.state.operationId = id;
-            c.state.operationClaimed = true;
-            node.setProperty("requestId", c.requestId);
-            node.setProperty("transactionSequence", c.state.kernel.getTransactionSequenceNumber());
-            OperationAttemptRepository.transition(node, "RUNNING", now);
-            c.server.beginOperationalCommit(c.state, c.actorId, operationScope, id, c.inputHash);
-            registration.commit();
+        var key=new Key(c.actorId,operationScope,id);
+        var saved=attempts.find(key);
+        if(saved==null)throw unavailable();
+        if(!"REGISTERED".equals(saved.state()))failClaim(saved.state());
+        if(!procedure.equals(saved.procedure())||!c.inputHash.equals(saved.inputHash()))
+            c.fail("OPERATION_MISMATCH","Operation input changed");
+        var binding=c.server.operationBinding(key);
+        if(!registrationLive(saved,c.server.sessionTime()) || binding==null
+                || !Objects.equals(connection,binding.connection()) || !c.state.tokenHash.equals(binding.session()))
+            c.fail("OPERATION_NOT_CLAIMABLE","Execution binding expired or changed. Inspect the operation");
+        if(procedure.equals("deposit.delete.namespace")&&!scopes.active().equals(saved.authorizationScope()))
+            c.fail("SCOPE_MISMATCH","Deletion target changed");
+        authorize(procedure,saved.authorizationScope(),saved.role(),true);
+        checkSource(saved,true);
+        writer(procedure,arguments,operationScope);
+        c.state.operationConnection=connection;
+        c.state.operationActor=c.actorId;
+        c.state.operationScope=operationScope;
+        c.state.operationId=id;
+        try(var claim=c.server.database().beginTx()) {
+            c.server.lockAttempt(((InternalTransaction)claim).kernelTransaction(),key);
+            if(!registrationLive(saved,c.server.sessionTime()))
+                c.fail("OPERATION_NOT_CLAIMABLE","Execution binding expired or changed. Inspect the operation");
+            c.server.beginOperationalCommit(c.state,c.actorId,operationScope,id,c.inputHash);
+            claim.commit();
         }
-        c.expectedRevision = (Long)saved.get("expectedRevision");
-        c.request = new ArgumentService(c, Json.read((String)saved.get("bindings")), true).request(procedure, arguments);
-        if (procedure.equals("deposit.delete.namespace")) c.request.put("expectedNamespaceRevision", saved.get("namespaceRevision"));
+        c.expectedRevision=saved.expectedRevision();
+        c.request=new ArgumentService(c,binding.selectors(),true).request(procedure,arguments);
+        if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",saved.namespaceRevision());
     }
 
     void finish(Object row) {
@@ -164,171 +146,148 @@ final class OperationAttemptService extends BaseService {
         if (!serverScope) repo.lockNamespace(c.actionScope);
         Node owner = serverScope ? repo.find("User", "id", c.actorId) : repo.namespace(c.actionScope);
         if (owner == null) c.fail("OUTCOME_UNKNOWN", "Operation commit marker owner is unavailable");
-        Node node = attempts.find(c.actorId, c.actionScope, c.operationId);
-        if (node == null) c.fail("OUTCOME_UNKNOWN", "Operation claim is unavailable");
-        c.tx.acquireWriteLock(node);
-        if (!"RUNNING".equals(OperationAttemptRepository.state(node))
-                || !c.requestId.equals(node.getProperty("requestId", null))
+        var key=new Key(c.actorId,c.actionScope,c.operationId);
+        c.server.lockAttempt(c.state.kernel,key);
+        var attempt=attempts.find(key);
+        if(attempt==null)c.fail("OUTCOME_UNKNOWN","Operation claim is unavailable");
+        if(!"RUNNING".equals(attempt.state())||c.server.operationWorker(key)!=c.state
                 || !c.server.connectionLive(c.state.operationConnection))
-            c.fail("CANCELLED", "Operation cancelled before the commit boundary");
-        String procedure = c.procedure;
-        String outcome = domainWrite(procedure) ? "COMMITTED" : "COMPLETED_NO_DOMAIN_WRITE";
-        c.server.prepareOperationalCommit(c.state, owner, outcome, Json.write(summary(row)));
-        if (!c.state.enterOperationFinal()) c.fail("CANCELLED", "Operation cancelled before the commit boundary");
-        // A deletion checks the target owner under the authorization and Namespace
-        // locks before removing it. Account self-changes have the same pre-write check.
-        if (!procedure.equals("deposit.delete.namespace") && !c.state.selfAccountChange)
-            authorize(procedure,(String)node.getProperty("authorizationScope"),(String)node.getProperty("role"),true);
+            c.fail("CANCELLED","Operation cancelled before the commit boundary");
+        String procedure=c.procedure;
+        String outcome=domainWrite(procedure)?"COMMITTED":"COMPLETED_NO_DOMAIN_WRITE";
+        c.server.prepareOperationalCommit(c.state,owner,outcome,Json.write(summary(row)));
+        if(!c.state.enterOperationFinal())c.fail("CANCELLED","Operation cancelled before the commit boundary");
+        // Deletion and account self-changes have already checked the target before their writes.
+        if(!procedure.equals("deposit.delete.namespace")&&!c.state.selfAccountChange)
+            authorize(procedure,attempt.authorizationScope(),attempt.role(),true);
         c.checkSourceAuthorization.run();
-        checkSource(node.getAllProperties(),false);
-        c.server.writeOperationalMarker(c.state, owner);
-        OperationAttemptRepository.transition(node, outcome, c.server.sessionTime());
-        node.removeProperty("uploadId");
-        OperationAttemptRepository.clearClaim(node);
+        checkSource(attempt,false);
+        c.server.writeOperationalMarker(c.state,owner);
     }
 
-    Map<String,Object> inspect(Map<String,Object> request, boolean cancel) {
-        String id = OperationAttemptRepository.id(request.get("operationId"));
-        String scope = scope(request.get("scope"));
-        Node node = attempts.find(c.actorId, scope, id);
-        if (node == null && cancel) {
+    Map<String,Object> inspect(Map<String,Object> request,boolean cancel) {
+        String id=OperationAttemptRepository.id(request.get("operationId"));
+        String scope=scope(request.get("scope"));
+        var key=new Key(c.actorId,scope,id);
+        var attempt=attempts.find(key);
+        if(attempt==null&&cancel) {
             separate();
             c.server.lockOperationAdmission(c.state.kernel);
-            node = attempts.find(c.actorId, scope, id);
-            if (node == null) {
-                authorize(null, scope, "viewer", false);
-                long now = c.server.sessionTime();
-                if (!c.server.storage.operationalState.admit(id, now)) return status(null,id,scope,false);
-                node = attempts.create(c.actorId, scope, id);
-                node.setProperty("claimDeadline", OperationAttemptRepository.idTime(id) + OperationAttemptRepository.RETENTION);
-                OperationAttemptRepository.transition(node, "CANCELLED_ROLLED_BACK", now);
-                return status(node, id, scope, false);
+            attempt=attempts.find(key);
+            if(attempt==null) {
+                authorize(null,scope,"viewer",false);
+                long now=c.server.sessionTime();
+                if(!c.server.storage.operationalState.admit(id,now))return status(null,id,scope,false);
+                attempt=new Attempt(key,null,null,null,null,null,null,null,null,
+                    OperationAttemptRepository.idTime(id)+OperationAttemptRepository.RETENTION,
+                    "CANCELLED_ROLLED_BACK",now,"none",null,null);
+                c.server.registerOperation(c.state,attempt,null);
+                return status(attempt,id,scope,false);
             }
         }
-        if (node == null) {
-            authorize(null, scope, "viewer", false);
-            return status(null, id, scope, false);
+        if(attempt==null) {
+            authorize(null,scope,"viewer",false);
+            return status(null,id,scope,false);
         }
-        boolean sanitized = checkAccess(node, scope, cancel);
-        if (cancel && OperationAttemptRepository.open(OperationAttemptRepository.state(node))) {
-            separate();
-            var worker = worker(node.getAllProperties());
-            if (worker != null) worker.signalOperationCancellation();
-            c.tx.acquireWriteLock(node);
-            sanitized = checkAccess(node, scope, true);
-            String current = OperationAttemptRepository.state(node);
-            if (OperationAttemptRepository.open(current)) {
-                var values = node.getAllProperties();
-                boolean live = !current.equals("REGISTERED") && worker(values) != null;
-                var completion = completion(scope, id);
-                if (!live && completion != null && !completion.settled()) return status(node, id, scope, sanitized);
-                long sequence = (long)values.getOrDefault("transactionSequence",-1L);
-                boolean aborted = current.equals("REGISTERED") || current.equals("CANCEL_REQUESTED")
-                    || c.server.runId.equals(values.get("incarnation")) && c.server.settledCancelled(sequence);
-                OperationAttemptRepository.transition(node, live ? "CANCEL_REQUESTED" : aborted ? "CANCELLED_ROLLED_BACK" : "FAILED_ROLLED_BACK", c.server.sessionTime());
-                if (node.hasProperty("uploadId")) node.setProperty("cleanupState","pending");
-                if (!live) {
-                    OperationAttemptRepository.clearClaim(node);
-                    c.state.afterCommit.add(()->c.server.forgetCancelled(sequence));
+        boolean sanitized=checkAccess(attempt,scope,cancel);
+        if(cancel&&OperationAttemptRepository.open(attempt.state())) {
+            if(!c.state.selection)separate();
+            var worker=c.server.operationWorker(key);
+            if(worker!=null)worker.signalOperationCancellation();
+            c.server.lockAttempt(c.state.kernel,key);
+            attempt=attempts.find(key);
+            if(attempt==null)return status(null,id,scope,false);
+            sanitized=checkAccess(attempt,scope,true);
+            if(OperationAttemptRepository.open(attempt.state())) {
+                worker=c.server.operationWorker(key);
+                boolean live=worker!=null&&worker.operationClaimed&&!worker.operationSettled;
+                if("REGISTERED".equals(attempt.state())) {
+                    if(c.server.cancelRegistration(c.state,key))attempt=attempt.cancelled(c.server.sessionTime());
+                    else attempt=attempts.find(key);
+                }else if(live&&!worker.operationFinal()) {
+                    attempts.cancel(attempt,true,c.server.sessionTime());
+                    attempt=attempts.find(key);
                 }
             }
-        } else c.tx.acquireReadLock(node);
-        return status(node, id, scope, sanitized);
+        }
+        return status(attempt,id,scope,sanitized);
     }
 
-    private boolean checkAccess(Node node, String scope, boolean cancel) {
-        String procedure = (String)node.getProperty("procedure", null);
-        if (procedure == null) {
-            authorize(null, scope, "viewer", false);
+    private boolean checkAccess(Attempt attempt,String scope,boolean cancel) {
+        String procedure=attempt.procedure();
+        if(procedure==null) {
+            authorize(null,scope,"viewer",false);
             return false;
         }
-        if ("server".equals(scope) && SERVER_RECEIPTS.contains(procedure)
-                && "COMMITTED".equals(OperationAttemptRepository.state(node))) {
+        if("server".equals(scope)&&SERVER_RECEIPTS.contains(procedure)&&"COMMITTED".equals(attempt.state())) {
             checkAccount(false);
-            if (!cancel || procedure.equals("deposit.delete.namespace")) return true;
-            var completion = completion(scope, (String)node.getProperty("operationId"));
-            if (completion == null || !completion.settled()) return true;
-            var result=Json.read(completion.result());
-            if (!(result.get("namespaceId") instanceof String namespace)) throw unavailable();
+            if(!cancel||procedure.equals("deposit.delete.namespace"))return true;
+            if(attempt.result()==null)return true;
+            var result=Json.read(attempt.result());
+            if(!(result.get("namespaceId") instanceof String namespace))throw unavailable();
             authorize(procedure,namespace,"viewer",false);
         }
-        authorize(procedure,(String)node.getProperty("authorizationScope"),(String)node.getProperty("role"),false);
-        checkControlSource(node,procedure);
+        authorize(procedure,attempt.authorizationScope(),attempt.role(),false);
+        checkControlSource(attempt);
         return false;
     }
 
-    private void checkControlSource(Node attempt,String procedure) {
-        // A verified receiving upload confers no source access. Its deletion must
-        // leave status and cancellation available under the original receiving policy.
-        if(Boolean.TRUE.equals(attempt.getProperty("receivingUpload",false)))return;
-        if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(OperationAttemptRepository.state(attempt))
-                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(procedure))
-            checkSource(attempt.getAllProperties(),true);
+    private void checkControlSource(Attempt attempt) {
+        // Receiving stage disposal leaves status and cancellation under the receiving policy.
+        if(attempt.source()!=null&&attempt.source().receivingUpload())return;
+        if(!Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(attempt.state())
+                || !Set.of("deposit.import.analyze","deposit.import.rows","deposit.import.dataByPattern","deposit.import.apply").contains(attempt.procedure()))
+            checkSource(attempt,true);
     }
 
-    private Map<String,Object> status(Node node, String id, String scope, boolean sanitized) {
-        var values = node == null ? Map.<String,Object>of() : node.getAllProperties();
-        String state = (String)values.getOrDefault("state", "OUTCOME_UNKNOWN");
-        long now = c.server.sessionTime();
-        var completion = completion(scope, id);
-        boolean successful = state.equals("COMMITTED") || state.equals("COMPLETED_NO_DOMAIN_WRITE");
-        if (successful && (completion == null || !completion.settled() || !state.equals(completion.state()))
-                || completion != null && !completion.settled() && worker(values) == null) state = "OUTCOME_UNKNOWN";
-        String code = state.equals("OUTCOME_UNKNOWN") ? "OUTCOME_UNKNOWN" : null;
-        Map<String,Object> result = sanitized || !successful || code != null ? null : Json.read(completion.result());
-        if (state.equals("REGISTERED") && !registrationLive(values, Long.MIN_VALUE)) state = "CANCELLED_ROLLED_BACK";
-        if (state.equals("RUNNING") || state.equals("CANCEL_REQUESTED")) {
-            var worker = worker(values);
-            if (worker == null) state = state.equals("CANCEL_REQUESTED")
-                || c.server.runId.equals(values.get("incarnation")) && c.server.settledCancelled((long)values.get("transactionSequence"))
-                ? "CANCELLED_ROLLED_BACK" : "FAILED_ROLLED_BACK";
-            else if (worker.operationCancelled()) state="CANCEL_REQUESTED";
-            else if (!registrationLive(values, Long.MIN_VALUE)) {
+    private Map<String,Object> status(Attempt attempt,String id,String scope,boolean sanitized) {
+        String state=attempt==null?"OUTCOME_UNKNOWN":attempt.state();
+        long now=c.server.sessionTime();
+        boolean successful="COMMITTED".equals(state)||"COMPLETED_NO_DOMAIN_WRITE".equals(state);
+        if(successful&&attempt.result()==null)state="OUTCOME_UNKNOWN";
+        if("REGISTERED".equals(state)&&!registrationLive(attempt,now))state="CANCELLED_ROLLED_BACK";
+        if("RUNNING".equals(state)||"CANCEL_REQUESTED".equals(state)) {
+            var worker=c.server.operationWorker(attempt.key());
+            if(worker==null||worker.operationSettled)state="OUTCOME_UNKNOWN";
+            else if(worker.operationCancelled())state="CANCEL_REQUESTED";
+            else if(!registrationLive(attempt,Long.MIN_VALUE)&&!worker.operationFinal()) {
                 worker.signalOperationCancellation();
-                state = "CANCEL_REQUESTED";
+                state="CANCEL_REQUESTED";
             }
         }
+        String code="OUTCOME_UNKNOWN".equals(state)?"OUTCOME_UNKNOWN":null;
+        Map<String,Object> result=sanitized||!successful||code!=null?null:Json.read(attempt.result());
         if(result!=null && ImportResultContract.FORMAT.equals(result.get("format"))) {
-            Node root=repo.find(ImportResultContract.LABEL,"id",result.get("resultId"));
+            var root=c.server.storage.importResults.root((String)result.get("resultId"),null);
             if(now>=(long)result.get("expiresAt"))code="RESULT_EXPIRED";
-            else if(root==null || !id.equals(root.getProperty("operationId",null))
-                    || !c.actorId.equals(root.getProperty("actorId",null))
-                    || !Objects.equals(result.get("expiresAt"),root.getProperty("expiresAt",null)))code="RESULT_UNAVAILABLE";
-            else if(root.getProperty("sourcePackageId",null) instanceof String source) {
-                try {new ExchangePackages(c).authorizeResultSource(source);}
+            else if(root==null || !id.equals(root.operation()) || !c.actorId.equals(root.actor())
+                    || !Objects.equals(result.get("expiresAt"),root.expires()))code="RESULT_UNAVAILABLE";
+            else if(root.sourcePackage()!=null) {
+                try {new ExchangePackages(c).authorizeResultSource(root.sourcePackage());}
                 catch(ExceptionHandler.DepositException denied) {code="RESULT_UNAVAILABLE";}
             }
-        } else if (result != null && state.equals("COMPLETED_NO_DOMAIN_WRITE")) {
-            if (now - (long)values.get("updatedAt") >= OperationAttemptRepository.RETENTION) {
-                code = "RESULT_EXPIRED";
-                result = null;
-            } else if (Set.of("deposit.exchange.export","deposit.exchange.finishUpload","deposit.get.data","deposit.get.namespaceData").contains(values.get("procedure"))
+        } else if(result!=null && state.equals("COMPLETED_NO_DOMAIN_WRITE")) {
+            if(now-attempt.updated()>=OperationAttemptRepository.RETENTION) {
+                code="RESULT_EXPIRED";
+                result=null;
+            } else if(Set.of("deposit.exchange.export","deposit.exchange.finishUpload","deposit.get.data","deposit.get.namespaceData").contains(attempt.procedure())
                     && result.get("packageId") instanceof String packageId) {
-                Node stage=repo.find(ExchangePackages.LABEL,"id",packageId);
-                if(stage==null || (long)stage.getProperty("expiresAt",0L)<=now) {code="RESULT_EXPIRED"; result=null;}
-                else if(!"ready".equals(stage.getProperty("state",null))) {code="RESULT_UNAVAILABLE"; result=null;}
-            } else if (EXPORTS.contains(values.get("procedure")) && !result.containsKey("resourceId") && !result.containsKey("packageId")) {
-                code = "RESULT_UNAVAILABLE";
+                var stage=c.server.storage.exchange.stage(packageId);
+                if(stage==null||stage.expiresAt()<=now){code="RESULT_EXPIRED";result=null;}
+                else if(!"ready".equals(stage.state())){code="RESULT_UNAVAILABLE";result=null;}
+            } else if(EXPORTS.contains(attempt.procedure())&&!result.containsKey("resourceId")&&!result.containsKey("packageId")) {
+                code="RESULT_UNAVAILABLE";
             }
         }
-        return Json.map("operationId", id, "scope", scope, "procedure", values.get("procedure"), "state", state,
-            "cleanupState", values.getOrDefault("cleanupState", "none"), "updatedAt", values.getOrDefault("updatedAt", now),
-            "code", code, "result", result);
+        return Json.map("operationId",id,"scope",scope,"procedure",attempt==null?null:attempt.procedure(),"state",state,
+            "cleanupState",attempt==null?"none":attempt.cleanup(),"updatedAt",attempt==null?now:attempt.updated(),
+            "code",code,"result",result);
     }
 
-    private OperationalCommitRepository.Completion completion(String scope, String operation) {
-        return c.server.storage.operationalCommits.completion(c.actorId, scope, operation);
-    }
-
-    private boolean registrationLive(Map<String,Object> values, long now) {
-        return c.server.runId.equals(values.get("incarnation")) && now < (long)values.get("claimDeadline")
-            && c.server.sessionLive((String)values.get("sessionHash")) && c.server.connectionLive((String)values.get("connectionId"));
-    }
-
-    private ServerContext.TxState worker(Map<String,Object> values) {
-        if (!c.server.runId.equals(values.get("incarnation")) || !(values.get("transactionSequence") instanceof Long sequence)) return null;
-        var state = c.server.activeTransaction(sequence);
-        return state != null && !state.operationSettled && state.requestIds.contains(values.get("requestId")) ? state : null;
+    private boolean registrationLive(Attempt attempt,long now) {
+        var binding=c.server.operationBinding(attempt.key());
+        return binding!=null && now<attempt.claimDeadline() && c.server.sessionLive(binding.session())
+            && c.server.connectionLive(binding.connection());
     }
 
     private void authorize(String procedure,String namespace,String role,boolean execution) {
@@ -366,54 +325,53 @@ final class OperationAttemptService extends BaseService {
     private String writer(String procedure, List<Object> arguments, String scope) {
         if(EXCHANGE_STEPS.contains(procedure)) {
             var packages=new ExchangePackages(c);
-            return deposit.repository.CoreRepository.id(packages.writer(arguments.getFirst(),scope,procedure.endsWith("abortUpload")));
+            return packages.writer(arguments.getFirst(),scope,procedure.endsWith("abortUpload")).id();
         }
         if (!RESOURCE_STEPS.contains(procedure)) return null;
         String id = RequestContext.uuid(arguments.getFirst());
-        Node upload = repo.find("DepositTransfer", "id", id);
-        if (upload == null || !c.actorId.equals(upload.getProperty("actorId", null))
-                || !scope.equals(upload.getProperty("namespaceId", null))) throw unavailable();
-        if (!"uploading".equals(upload.getProperty("state")))
+        var upload=c.server.storage.transfers.transfer(id);
+        if (upload == null || !c.actorId.equals(upload.actor())
+                || !scope.equals(upload.namespace())) throw unavailable();
+        if (!"uploading".equals(upload.state()))
             c.fail("UPLOAD_FENCED", "Upload writer is no longer open");
-        UploadBinding.require(c, upload);
-        for (Node attempt : repo.nodes("DepositOperationAttempt", Map.of("uploadId", id))) {
-            if (!Objects.equals(c.operationId,attempt.getProperty("operationId")) && UploadBinding.failedStep(c.server,attempt.getAllProperties()))
+        c.server.storage.transfers.requireSettled(upload.resource(),c.server.operationalUnit(c.state.kernel));
+        UploadBinding.requireUpload(c,id,upload.writerBound());
+        for(var attempt:attempts.uploadAttempts(id)) {
+            if(!Objects.equals(c.operationId,attempt.key().id()) && UploadBinding.failedStep(c.server,attempt))
                 c.fail("UPLOAD_FENCED", "Upload was interrupted. Begin a new upload at offset zero");
         }
         return id;
     }
 
-    private record SourceBinding(String packageId, String grantId, boolean receivingUpload) {}
-
-    private SourceBinding bindSource(String procedure, String scope, Map<String,Object> request) {
+    private Source bindSource(String procedure, String scope, Map<String,Object> request) {
         return switch (procedure) {
             case "deposit.import.analyze", "deposit.import.cloneNamespace" ->
                 bindExchange(scope,ValueCodec.map(request.get("source")));
             case "deposit.import.apply" -> {
-                Node plan = repo.find("DepositImportPlan","id",RequestContext.uuid(request.get("planId")));
-                if (plan == null || !scope.equals(plan.getProperty("namespaceId",null)) || !c.actorId.equals(plan.getProperty("actorId",null))
-                        || !"ready".equals(plan.getProperty("state",null)) || (long)plan.getProperty("expiresAt",0L)<=c.server.sessionTime())
+                var plan=c.server.storage.importPlans.plan(RequestContext.uuid(request.get("planId")));
+                if (plan == null || !scope.equals(plan.namespace()) || !c.actorId.equals(plan.actor())
+                        || !"ready".equals(plan.state()) || plan.expires()<=c.server.sessionTime())
                     throw unavailable();
-                if(!UploadBinding.ownedByConnection(c,plan))
+                if(!UploadBinding.stagingOwnedBy(c,plan.id()))
                     c.fail("PLAN_FENCED","Import plan is unavailable. Analyze the original input again");
-                Object grantId = plan.getProperty("sourceGrantId",null);
-                yield grantId == null ? null : bindExchange(scope,Map.of("packageId",plan.getProperty("sourcePackageId"),"grant",grantId));
+                Object grantId = plan.sourceGrant();
+                yield grantId == null ? null : bindExchange(scope,Map.of("packageId",plan.sourcePackage(),"grant",grantId));
             }
             default -> null;
         };
     }
 
-    private SourceBinding bindExchange(String scope,Map<String,Object> raw) {
+    private Source bindExchange(String scope,Map<String,Object> raw) {
         var source=ExchangePackages.source(raw);
         String id=RequestContext.uuid(source.get("packageId")), grant=string(source.get("grant"));
         var packages=new ExchangePackages(c);
-        Node stage=packages.input(id,grant,scope,true,false);
-        return new SourceBinding(id,grant,!packages.sourceExport(stage));
+        var stage=packages.input(id,grant,scope,true,false);
+        return new Source(id,grant,!packages.sourceExport(stage));
     }
 
-    private void checkSource(Map<String,Object> attempt, boolean acquiring) {
-        if(attempt.get("sourceExchange") instanceof String id)
-            new ExchangePackages(c).input(id,(String)attempt.get("sourceGrant"),(String)attempt.get("scope"),acquiring,false);
+    private void checkSource(Attempt attempt,boolean acquiring) {
+        var source=attempt.source();
+        if(source!=null)new ExchangePackages(c).input(source.packageId(),source.grant(),attempt.key().scope(),acquiring,false);
     }
 
     private static String scope(Object raw) { return "server".equals(raw) ? "server" : RequestContext.uuid(raw); }

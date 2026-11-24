@@ -74,7 +74,9 @@ class TabularListenerAvailabilityTest {
         Object value=links?Json.map("resourceId",resource):"scalar";
         String relative="staging/"+id+".json";
         Files.writeString(server.storage.files.path(relative),Json.write(Json.map("columns",columns,"rows",List.of(Json.map("rowId","1","values",Json.map("value",value),"presence",Json.map("value",true))))));
-        node(tx,"DepositTabularTable",Json.map("id",id,"namespaceId",namespace,"creatorId",actor,"expiresAt",server.sessionTime()+60_000,"valid",true,"columnsJson",Json.write(columns),"rowCount",1L,"path",relative));
+        server.storage.tables.create(new deposit.repository.StagedTableRepository.Table(id,namespace,actor,
+            UUID.randomUUID().toString(),relative,relative+".idx",server.sessionTime(),server.sessionTime()+60_000,
+            Json.write(columns),1,true,"[]",false),UUID.randomUUID().toString(),null);
     }
     @AfterEach void cleanup() {
         try { if(downloads!=null)downloads.close();if(server!=null&&server.storage!=null)server.storage.close(); }
@@ -91,7 +93,19 @@ class TabularListenerAvailabilityTest {
             } finally { if(committed)server.commit(kernel);else{tx.rollback();server.rollback(kernel,null);} }
         }
     }
-    List<Long> counts(){try(var tx=database.beginTx()){var counts=new ArrayList<Long>();for(String label:List.of("DResource","DepositResourceLocation","DepositExportGrant","DepositReceipt"))try(var nodes=tx.findNodes(Label.label(label))){counts.add(nodes.stream().count());}return counts;}}
+    List<Long> counts(){
+        long resources;
+        try(var tx=database.beginTx();var nodes=tx.findNodes(Label.label("DResource"))){resources=nodes.stream().count();}
+        return server.storage.operational.read(db->{
+            var counts=new ArrayList<Long>();
+            counts.add(resources);
+            try(var sql=db.createStatement()){
+                for(String table:List.of("resource_transfers","export_grants","operation_receipts"))
+                    try(var rows=sql.executeQuery("SELECT count(*) FROM "+table)){assertTrue(rows.next());counts.add(rows.getLong(1));}
+            }
+            return counts;
+        });
+    }
     Set<Path> privateStaging()throws Exception{try(var paths=Files.walk(server.storage.files.root.resolve("staging"))){return paths.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toSet());}}
     Set<ResourceStorage.Content> published()throws Exception{return new HashSet<>(server.storage.content.discover());}
     void assertUnavailable(String format)throws Exception {
@@ -131,9 +145,8 @@ class TabularListenerAvailabilityTest {
         downloads.stopAccepting();
         assertTrue(server.storage.content.exists((String)result.get("resourceId")));
         try(var tx=database.beginTx()){
-            var receipt=tx.findNode(Label.label("DepositReceipt"),"operationId",operation);
+            var receipt=server.storage.receipts.find(actor,namespace,operation,null);
             assertNotNull(receipt);
-            assertFalse(receipt.hasProperty("outcome"));
         }
     }
     @Test void missingListenerFailsClosedDespiteRetainedConfiguredUrl()throws Exception {

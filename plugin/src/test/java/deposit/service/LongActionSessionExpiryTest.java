@@ -160,10 +160,9 @@ class LongActionSessionExpiryTest {
             context.revision=core.sequence(ns);
             analysis=new ImportResultRepository(context).save(operation,"analysis",planId,context.revision,Map.of());
             core.saveReceipt(context,ns,"analysis-request",new Results.Outcome(null,null,analysis));
-            var plan=tx.createNode(Label.label("DepositImportPlan"));
-            Json.map("id",planId,"namespaceId",ns,"actorId",actor,"state","ready",
-                    "targetRevision",context.revision,"expiresAt",expiry,"lastActivity",initialActivity,
-                    "resultId",analysis.get("resultId")).forEach(plan::setProperty);
+            server.storage.importPlans.save(new deposit.repository.ImportPlanRepository.Plan(planId,ns,actor,
+                "inline",null,null,null,null,0,"0".repeat(64),context.revision,initialActivity,initialActivity,expiry,
+                "ready","{}",(String)analysis.get("resultId"),false),server.operationalUnit(context.state.kernel));
             tx.commit();
         }
         now.set(expiry-1);
@@ -182,9 +181,9 @@ class LongActionSessionExpiryTest {
             tx.commit();
         }
         try(var tx=database.beginTx()) {
-            var plan=tx.findNode(Label.label("DepositImportPlan"),"id",planId);
-            assertEquals(expiry,plan.getProperty("expiresAt"));
-            assertEquals(initialActivity,plan.getProperty("lastActivity"));
+            var plan=server.storage.importPlans.plan(planId);
+            assertEquals(expiry,plan.expires());
+            assertEquals(initialActivity,plan.lastActivity());
         }
     }
 

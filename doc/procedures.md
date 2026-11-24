@@ -26,9 +26,14 @@ CALL deposit.set.class({name: 'Specimen'}, {comment: 'Example'}, $operationId, $
 Inspect the original attempt with `deposit.get.operation(operationId, scope, token)`. On a separate
 connection, request cancellation with
 `deposit.action.cancel(operationId, scope, token)`. Wait for a definitive
-rollback before starting a fresh attempt. A committed operation stays committed.
-An unknown outcome requires inspection of the original operation. Cleanup
-progress is reported separately in `cleanupState`.
+rollback before starting a fresh attempt. Cleanup progress is reported in
+`cleanupState`.
+
+The server retains settled attempts and receipts for at least 24 hours, and
+longer while a dependent handle or cleanup needs them. After collection,
+inspection can return `OUTCOME_UNKNOWN`. Treat the outcome as unknown and
+keep the original operation ID for investigation. The server rejects attempts
+to register the expired ID again.
 
 ## Administration
 

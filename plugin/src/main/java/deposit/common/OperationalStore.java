@@ -6,13 +6,22 @@ import java.nio.file.attribute.*;
 import java.sql.*;
 import java.util.List;
 import java.util.Set;
+import deposit.repository.ExchangeRepository;
+import deposit.repository.ExportGrantRepository;
+import deposit.repository.ImportResultStore;
+import deposit.repository.OperationReceiptRepository;
+import deposit.repository.OperationAttemptRepository;
+import deposit.repository.StagedTableRepository;
+import deposit.repository.ImportPlanRepository;
+import deposit.repository.ResourceTransferStore;
+import deposit.repository.PruneRepository;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.storageengine.api.StorageEngine;
 import org.neo4j.storageengine.api.StoreId;
 
 /** The private database shared by Deposit's operational repositories. */
 public final class OperationalStore implements AutoCloseable {
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final Set<PosixFilePermission> PRIVATE = PosixFilePermissions.fromString("rwx------");
     private final Path path;
     private final StorageAdmission admission;
@@ -122,27 +131,15 @@ public final class OperationalStore implements AutoCloseable {
                     observed_time INTEGER NOT NULL DEFAULT -1
                 ) STRICT
                 """);
-            sql.execute("""
-                CREATE TABLE operation_attempts (
-                    actor_id TEXT NOT NULL,
-                    scope TEXT NOT NULL,
-                    operation_id TEXT NOT NULL,
-                    input_hash TEXT NOT NULL,
-                    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('Namespace', 'User')),
-                    owner_id TEXT NOT NULL,
-                    unit_id TEXT NOT NULL UNIQUE,
-                    previous_marker TEXT,
-                    state TEXT,
-                    result_json TEXT,
-                    settled_at INTEGER,
-                    PRIMARY KEY (actor_id, scope, operation_id)
-                ) STRICT
-                """);
-            sql.execute("""
-                CREATE UNIQUE INDEX operation_pending_owner ON operation_attempts(owner_kind, owner_id)
-                WHERE state IS NOT NULL AND settled_at IS NULL
-                """);
-            sql.execute("CREATE INDEX operation_unsettled ON operation_attempts(unit_id) WHERE settled_at IS NULL");
+            OperationAttemptRepository.initialize(sql);
+            ExchangeRepository.initialize(sql);
+            ExportGrantRepository.initialize(sql);
+            ImportResultStore.initialize(sql);
+            OperationReceiptRepository.initialize(sql);
+            StagedTableRepository.initialize(sql);
+            ImportPlanRepository.initialize(sql);
+            ResourceTransferStore.initialize(sql);
+            PruneRepository.initialize(sql);
             try (var insert = anchor.prepareStatement(
                     "INSERT INTO server_state(id,store_created_at,store_random) VALUES (1,?,?)")) {
                 insert.setLong(1, store.getCreationTime());

@@ -8,7 +8,7 @@ import org.neo4j.graphdb.*;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** Graph storage only. Authorization and action boundaries belong to services. */
-public final class CoreRepository implements CoreProjectionRepository.Access, OperationReceiptRepository.Access {
+public final class CoreRepository implements CoreProjectionRepository.Access {
     static final String IDENTITY_KEY="identityKey";
     private static final RelationshipType MEMBER_OF=RelationshipType.withName("MEMBER_OF");
     private static final RelationshipType RELATED_TO=RelationshipType.withName("RELATED_TO");
@@ -16,12 +16,11 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     private final RequestContext context;
     private final ZonedDateTime timestamp;
     private final CoreProjectionRepository projections;
-    private final OperationReceiptRepository receipts;
     public CoreRepository(Transaction tx,ZonedDateTime timestamp) {this(tx,timestamp,null);}
     public CoreRepository(RequestContext context) {this(context.tx,context.timestamp,context);}
     private CoreRepository(Transaction tx,ZonedDateTime timestamp,RequestContext context) {
         this.tx=tx;this.timestamp=timestamp;this.context=context;
-        projections=new CoreProjectionRepository(this);receipts=new OperationReceiptRepository(tx,this);
+        projections=new CoreProjectionRepository(this);
     }
     private HistoryMutation historyMutation() {return context==null?null:context.historyMutation;}
     private PatternChanges patternChanges() {return context==null?null:context.patternChanges;}
@@ -380,10 +379,20 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         try(var edges=node.getRelationships()) {for(var rel:edges) {if(rel.hasProperty("id"))remove(rel,deleted);else rel.delete();}}
         node.delete();
     }
-    public Node receipt(String scope,String operation) {return receipts.receipt(scope,operation);}
-    public Node receipt(String actor,String scope,String operation) {return receipts.receipt(actor,scope,operation);}
-    public Node receipt(RequestContext context,String scope) {return receipt(context.actorId,scope,context.operationId);}
-    public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {receipts.saveReceipt(c,scope,hash,outcome);}
+    public OperationReceiptRepository.Receipt receipt(String scope,String operation) {return receipt(null,scope,operation);}
+    public OperationReceiptRepository.Receipt receipt(String actor,String scope,String operation) {
+        var internal=(InternalTransaction)tx;
+        var server=ServerContext.forDatabase(internal.getDatabaseId());
+        return server.storage.receipts.find(actor,scope,operation,server.operationalUnit(internal.kernelTransaction()));
+    }
+    public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {
+        saveReceipt(c,scope,hash,outcome,null);
+    }
+    public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome,String deletedNamespace) {
+        var owner=scope.equals("server")?find("User","id",c.actorId):namespace(scope);
+        String unit=c.server.prepareWorkflowCommit(c,scope,owner);
+        c.server.storage.receipts.save(c,scope,hash,outcome,deletedNamespace,unit);
+    }
     public boolean hasUsers() {
         try (var users = tx.findNodes(Label.label("User"))) { return users.hasNext(); }
     }
@@ -400,11 +409,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         // Remove owned values while ownership/declarations still exist; operational records survive.
         for(Node descriptor:nodes("Descriptor",Map.of("namespaceId",namespace))) {var ids=new ArrayList<String>();removeValue(descriptor,ids);deleted.addAll(ids);}
         geometry().deleteLayers(namespace);
-        for(Node grant:nodes("DepositExportGrant",Map.of("namespaceId",namespace)))grant.setProperty("expires",0L);
         var resources=resources();
-        for(Node loc:nodes("DepositResourceLocation",Map.of("namespaceId",namespace))){
-            resources.lock(id(loc));loc.setProperty("leaseUntil",0L);resources.orphan(loc);
-        }
         // Remove history ownership and retention before detaching completed resources.
         new HistoryRecordDeletion(tx).deleteNamespace(namespace);
         for(Node resource:nodes("DResource",Map.of("namespaceId",namespace))){

@@ -125,19 +125,42 @@ class StorageManagerImportRecoveryTest {
     }
 
     private void writeCloneReceipt(String scope,String actor,String operation,String resultNamespace) {
-        String resultId=UUID.randomUUID().toString();try(var tx=database.beginTx()){
-            Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId",resultNamespace);result.setProperty("scope","server");result.setProperty("actorId",actor);result.setProperty("operationId",operation);result.setProperty("kind","clone");
-            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",actor);receipt.setProperty("importResultId",resultId);receipt.setProperty("resultNamespaceId",resultNamespace);receipt.setProperty("resultKind","clone");tx.commit();
-        }
+        writeReceiptRows(scope,actor,operation,resultNamespace,resultNamespace,"clone");
     }
 
-    private void writeReceipt(StorageAdmission.Reservation reservation,String resultMode) {writeReceipt(reservation,resultMode,(String)reservation.writeIntent().get("actorId"));}
+    private void writeReceipt(StorageAdmission.Reservation reservation,String resultMode) {
+        writeReceipt(reservation,resultMode,(String)reservation.writeIntent().get("actorId"));
+    }
     private void writeReceipt(StorageAdmission.Reservation reservation,String resultMode,String receiptActor) {
-        String scope=(String)reservation.writeIntent().get("receiptScope"),operation=reservation.operationId,resultId=UUID.randomUUID().toString();
-        try(var tx=database.beginTx()){
-            if(!"missing-result".equals(resultMode)){Node result=tx.createNode(Label.label("DepositImportResult"));result.setProperty("id",resultId);result.setProperty("namespaceId","mismatched-result-scope".equals(resultMode)?UUID.randomUUID().toString():scope);result.setProperty("scope","server".equals(scope)?"server":"namespace");result.setProperty("actorId",receiptActor);result.setProperty("operationId",operation);result.setProperty("kind","apply");}
-            Node receipt=tx.createNode(Label.label("DepositReceipt"));receipt.setProperty("scope",scope);receipt.setProperty("operationId",operation);receipt.setProperty("actorId",receiptActor);receipt.setProperty("importResultId",resultId);
-            receipt.setProperty("resultNamespaceId",scope);receipt.setProperty("resultKind","apply");tx.commit();
-        }
+        String scope=(String)reservation.writeIntent().get("receiptScope");
+        String actual=switch(resultMode) {
+            case "missing-result" -> null;
+            case "mismatched-result-scope" -> UUID.randomUUID().toString();
+            default -> scope;
+        };
+        writeReceiptRows(scope,receiptActor,reservation.operationId,scope,actual,"apply");
+    }
+
+    private void writeReceiptRows(String scope,String actor,String operation,String expected,String actual,String kind) {
+        String id=UUID.randomUUID().toString();
+        if(actual!=null)storage.importResults.create(new deposit.repository.ImportResultStore.Root(id,actual,
+            "server".equals(scope)?"server":"namespace",actor,operation,kind,"COMMITTED",0,null,
+            server.sessionTime()+ImportResultContract.RETENTION,null,"{}"),null);
+        storage.operational.write(0,db->{
+            try(var insert=db.prepareStatement("""
+                    INSERT INTO operation_receipts(actor_id,scope,operation_id,request_hash,revision,administrative_mode,
+                        import_result_id,result_kind,result_namespace_id,settled_at,id_time) VALUES (?,?,?,'hash',0,0,?,?,?,?, -1)
+                    """)) {
+                insert.setString(1,actor);
+                insert.setString(2,scope);
+                insert.setString(3,operation);
+                insert.setString(4,id);
+                insert.setString(5,kind);
+                insert.setString(6,expected);
+                insert.setLong(7,server.sessionTime());
+                insert.executeUpdate();
+            }
+            return null;
+        });
     }
 }

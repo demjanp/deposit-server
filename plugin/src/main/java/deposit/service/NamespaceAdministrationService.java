@@ -28,12 +28,21 @@ final class NamespaceAdministrationService extends ActionService {
         long sequence=CoreRepository.sequence(namespace);c.revision=c.server.revision(c.state);checkRevision();
         if(integer(request.get("expectedNamespaceRevision"))!=sequence)c.fail("REVISION_CONFLICT","Namespace revision changed");
         if(!string(request.get("confirmNamespaceName")).equals(namespace.getProperty("name")))c.fail("VALIDATION_FAILED","Namespace name confirmation changed");
-        String hash=deletionHash(request,target);List<String> deleted=repo.deleteNamespace(target);
+        String hash=deletionHash(request,target);
+        String unit=c.server.prepareWorkflowCommit(c,"server",repo.find("User","id",c.actorId));
+        c.server.storage.exportGrants.expireNamespace(target,unit);
+        var resources=new deposit.repository.ResourceRepository(c.tx,repo);
+        for(var transfer:c.server.storage.transfers.scoped(target)) {
+            if("finished".equals(transfer.state())||transfer.collected()||transfer.deleting()!=null)continue;
+            resources.lock(transfer.resource());
+            c.server.storage.transfers.save(transfer.progress(transfer.nextOffset(),"aborted",0,
+                transfer.admissionId(),resources.now()),unit);
+        }
+        List<String> deleted=repo.deleteNamespace(target);
         c.state.invalidateAuthorization();
         c.clearResolved();
         c.namespaceId=null;c.state.serverChanged=true;c.revision=c.server.revision(c.state);
-        Outcome result=new Outcome(null,null,Json.map("deletedIds",deleted));repo.saveReceipt(c,"server",hash,result);
-        repo.receipt(c,"server").setProperty("deletedNamespaceId",target);
+        Outcome result=new Outcome(null,null,Json.map("deletedIds",deleted));repo.saveReceipt(c,"server",hash,result,target);
         c.state.afterCommit.add(()->c.server.clearNamespace(target));return result;
     }
     private String deletionHash(Map<String,Object> request,String target) {

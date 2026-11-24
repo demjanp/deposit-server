@@ -1,98 +1,89 @@
 package deposit.common;
 
-import deposit.repository.CoreRepository;
-import java.util.Map;
-import java.util.List;
-import org.neo4j.graphdb.Label;
-import org.neo4j.graphdb.Node;
+import deposit.repository.OperationAttemptRepository.Attempt;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** Incomplete staging belongs to its original Bolt connection and session. */
 public final class UploadBinding {
-    private static final List<String> WRITERS=List.of("DepositTransfer","DepositExchangeStage");
     private UploadBinding() {}
 
-    public static void bind(RequestContext context, Node writer) {
+    record Writer(String actor, String session, String connection) {}
+
+    public static void bindStaging(RequestContext context, String id) {
         if (!context.state.operationClaimed) return;
-        writer.setProperty("writerIncarnation", context.server.runId);
-        writer.setProperty("writerSession", context.state.tokenHash);
-        writer.setProperty("writerConnection", connection(context));
+        var writer = new Writer(context.actorId, context.state.tokenHash, connection(context));
+        context.server.stagingWriters.put(id, writer);
+        var committed = new boolean[1];
+        context.state.afterCommit.add(() -> committed[0] = true);
+        context.state.release.add(() -> {
+            if (!committed[0]) context.server.stagingWriters.remove(id, writer);
+        });
     }
 
-    public static void require(RequestContext context, Node writer) {
+    public static void requireUpload(RequestContext context, String id, boolean bound) {
         if (!context.publicCall || context.operationId == null && !"deposit.action.begin".equals(context.procedure)) return;
-        if (!ownedByConnection(context,writer))
+        if (!bound || !stagingOwnedBy(context, id, context.state.tokenHash, context.actorId))
             context.fail("UPLOAD_FENCED", "Upload writer is unavailable. Begin a new upload at offset zero");
     }
 
-    public static boolean ownedByConnection(RequestContext context,Node writer) {
-        return context.server.runId.equals(writer.getProperty("writerIncarnation",null))
-            && context.state.tokenHash.equals(writer.getProperty("writerSession",null))
-            && java.util.Objects.equals(connection(context),writer.getProperty("writerConnection",null))
-            && !abandoned(context.server,writer);
+    public static boolean stagingOwnedBy(RequestContext context,String id) {
+        return stagingOwnedBy(context,id,context.state.tokenHash,context.actorId);
     }
 
-    public static boolean abandoned(ServerContext server, Node writer) {
-        return writer.hasProperty("writerIncarnation") && (!server.runId.equals(writer.getProperty("writerIncarnation"))
-            || !server.sessionLive((String)writer.getProperty("writerSession"))
-            || !server.connectionLive((String)writer.getProperty("writerConnection"))
-            || Boolean.TRUE.equals(writer.getProperty("writerFenced", false)));
+    public static boolean stagingAbandoned(ServerContext server,String id,boolean bound) {
+        var writer=server.stagingWriters.get(id);
+        return bound && (writer==null || !live(server,writer));
+    }
+
+    public static void forgetStaging(ServerContext server,String id) {
+        server.stagingWriters.remove(id);
+    }
+
+    private static boolean stagingOwnedBy(RequestContext context, String id, String session, String actor) {
+        var writer = context.server.stagingWriters.get(id);
+        return writer != null && actor.equals(writer.actor()) && session.equals(writer.session())
+            && Objects.equals(connection(context), writer.connection()) && live(context.server, writer);
+    }
+
+    private static boolean live(ServerContext server, Writer writer) {
+        return server.sessionLive(writer.session()) && server.connectionLive(writer.connection());
+    }
+
+    static boolean abandonedUpload(ServerContext server,String id,boolean bound) {
+        if(stagingAbandoned(server,id,bound))return true;
+        return server.storage.attempts.uploadAttempts(id).stream().anyMatch(attempt->failedStep(server,attempt));
     }
 
     static boolean validContinuation(RequestContext c,String hash,String actor) {
         if(c.uploadContinuation==null)return false;
-        for(String label:WRITERS){
-            Node writer=c.tx.findNode(Label.label(label),"id",c.uploadContinuation);
-            if(writer!=null && "uploading".equals(writer.getProperty("state",null))
-                    && actor.equals(writer.getProperty("actorId",null))
-                    && hash.equals(writer.getProperty("writerSession",null))
-                    && java.util.Objects.equals(connection(c),writer.getProperty("writerConnection",null))
-                    && !abandoned(c.server,writer))
-                return true;
-        }
-        return false;
+        var stage = c.server.storage.exchange.stage(c.uploadContinuation);
+        if (stage != null && "uploading".equals(stage.state())
+                && stagingOwnedBy(c, c.uploadContinuation, hash, actor)) return true;
+        var transfer=c.server.storage.transfers.transfer(c.uploadContinuation);
+        return transfer!=null&&"uploading".equals(transfer.state())
+            &&stagingOwnedBy(c,c.uploadContinuation,hash,actor);
     }
 
     static boolean hasLiveWriter(RequestContext c,String hash) {
-        for(String label:WRITERS)try(var writers=c.tx.findNodes(Label.label(label),"writerSession",hash)){
-            while(writers.hasNext()){
-                Node writer=writers.next();
-                if("uploading".equals(writer.getProperty("state",null))&&!abandoned(c.server,writer))return true;
-            }
+        for(var entry:c.server.stagingWriters.entrySet()) {
+            var writer=entry.getValue();
+            if(!hash.equals(writer.session())||!live(c.server,writer))continue;
+            var stage=c.server.storage.exchange.stage(entry.getKey());
+            if(stage!=null&&"uploading".equals(stage.state()))return true;
+            var transfer=c.server.storage.transfers.transfer(entry.getKey());
+            if(transfer!=null&&"uploading".equals(transfer.state()))return true;
         }
         return false;
     }
 
-    static boolean abandoned(ServerContext server, CoreRepository core, Node writer) {
-        if (abandoned(server, writer)) return true;
-        return core.nodes("DepositOperationAttempt", Map.of("uploadId", CoreRepository.id(writer))).stream()
-            .anyMatch(attempt -> failedStep(server, attempt.getAllProperties()));
-    }
-
-    static void cleaned(CoreRepository core, String uploadId) {
-        for (Node attempt : core.nodes("DepositOperationAttempt", Map.of("uploadId", uploadId))) {
-            if (!"RUNNING".equals(attempt.getProperty("state"))) {
-                attempt.setProperty("cleanupState", "complete");
-                attempt.removeProperty("uploadId");
-            }
-        }
-    }
-
-    static void cleanupFailed(CoreRepository core, String uploadId) {
-        for (Node attempt : core.nodes("DepositOperationAttempt", Map.of("uploadId", uploadId))) {
-            if (!deposit.repository.OperationAttemptRepository.open((String)attempt.getProperty("state")))
-                attempt.setProperty("cleanupState","failed");
-        }
-    }
-
-    public static boolean failedStep(ServerContext server, Map<String,Object> attempt) {
-        String state = (String)attempt.get("state");
-        if (state.equals("FAILED_ROLLED_BACK") || state.equals("CANCELLED_ROLLED_BACK") || state.equals("CANCEL_REQUESTED")) return true;
-        if (!server.runId.equals(attempt.get("incarnation"))) return true;
-        if (state.equals("REGISTERED")) return server.sessionTime() >= (long)attempt.get("claimDeadline");
-        if (!state.equals("RUNNING")) return false;
-        var worker = server.activeTransaction((long)attempt.get("transactionSequence"));
-        return worker == null || worker.operationSettled;
+    public static boolean failedStep(ServerContext server,Attempt attempt) {
+        return switch(attempt.state()) {
+            case "FAILED_ROLLED_BACK","CANCELLED_ROLLED_BACK","CANCEL_REQUESTED" -> true;
+            case "REGISTERED" -> server.sessionTime()>=attempt.claimDeadline();
+            default -> false;
+        };
     }
 
     private static String connection(RequestContext context) {

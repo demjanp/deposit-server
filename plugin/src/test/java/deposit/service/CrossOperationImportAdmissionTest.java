@@ -70,12 +70,11 @@ class CrossOperationImportAdmissionTest {
    tx.rollback();return row;
   }
  }
- private Map<String,Object> planSnapshot(String planId)throws Exception {
-  try(var tx=database.beginTx()){
-   Node plan=tx.findNode(Label.label("DepositImportPlan"),"id",planId);assertNotNull(plan);
-   Map<String,Object> values=new LinkedHashMap<>(plan.getAllProperties());
-   tx.rollback();return values;
-  }
+ private Map<String,Object> planSnapshot(String planId) {
+  var plan=server.storage.importPlans.plan(planId);
+  assertNotNull(plan);
+  return Json.map("id",plan.id(),"state",plan.state(),"expiresAt",plan.expires(),"lastActivity",plan.lastActivity(),
+   "resultId",plan.resultId(),"stagingPath",plan.stagingPath(),"admissionId",plan.admissionId());
  }
 
  private Map<String,Object> publishPackage()throws Exception {

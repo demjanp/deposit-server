@@ -71,24 +71,26 @@ class ResourceMaintenanceExpiryTest {
         try(var tx=database.beginTx()){
             var resources=repository(tx);
             for(String id:active){
-                Node loc=resources.location(id),transfer=resources.transfer((String)loc.getProperty("uploadId"));
-                assertEquals("uploading",transfer.getProperty("state"));assertEquals(expires,ResourceRepository.number(transfer,"expires",0));
-                assertEquals(lease,ResourceRepository.number(loc,"leaseUntil",0));
-                assertEquals(orphanSince,ResourceRepository.number(loc,"orphanSince",0),"active lease must return before orphan() mutates the location");
+                var transfer=resources.location(id);
+                assertEquals("uploading",transfer.state());
+                assertEquals(expires,transfer.expires());
+                assertEquals(orphanSince,transfer.orphanSince(),"active lease must return before orphan maintenance writes");
             }
             for(String id:expired){
-                Node loc=resources.location(id),transfer=resources.transfer((String)loc.getProperty("uploadId"));
-                assertEquals("expired",transfer.getProperty("state"));assertTrue(loc.hasProperty("orphanSince"),"expired upload must retain the previous orphan-maintenance behavior");
+                var transfer=resources.location(id);
+                assertEquals("expired",transfer.state());
+                assertNotNull(transfer.orphanSince(),"expired upload must retain its orphan age");
             }
             tx.rollback();
         }
     }
     private String createUpload(ResourceRepository resources,boolean active,long expires,long lease,long orphanSince){
         String id=UUID.randomUUID().toString(),upload=UUID.randomUUID().toString();
-        resources.record("DepositTransfer",upload,Json.map("resourceId",id,"state","uploading","expires",expires,"actorId",actor,"namespaceId",namespace));
-        var fields=new LinkedHashMap<String,Object>();fields.put("namespaceId",namespace);fields.put("uploadId",upload);fields.put("leaseUntil",lease);fields.put("everAttached",false);if(orphanSince!=0)fields.put("orphanSince",orphanSince);
-        resources.record("DepositResourceLocation",id,fields);return id;
+        server.storage.transfers.save(new ResourceTransferStore.Transfer(upload,id,namespace,actor,"test","test","test",
+            0,ResourceFiles.checksum(new byte[0]),0,"uploading",active?lease:expires,null,null,false,
+            orphanSince==0?null:orphanSince,null,false,false,null),"");
+        return id;
     }
-    private void expireOne(String id){try(var tx=database.beginTx()){var resources=repository(tx);resources.expire(resources.location(id));tx.commit();}}
+    private void expireOne(String id){try(var tx=database.beginTx()){repository(tx).expire(id);tx.commit();}}
     private ResourceRepository repository(org.neo4j.graphdb.Transaction tx){return new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC)));}
 }
