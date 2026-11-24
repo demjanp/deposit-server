@@ -14,7 +14,12 @@ final class SessionDiagnostics extends BaseService {
         return new OperationAttemptService(c).inspect(Json.map("operationId",id,"scope",scope),false);
     }
     Map<String,Object> session() {
-        Map<String,Long> observations;synchronized(c.session){observations=Map.copyOf(c.session.baselines);}
+        Map<String,Long> observations;
+        synchronized(c.session){
+            // When session inspection precedes registration, both use the same captured baseline.
+            SessionActionService.captureObservations(c);
+            observations=Map.copyOf(c.session.baselines);
+        }
         String ns=c.session.namespace;String role=ns==null?null:effectiveRole(ns);
         return Json.map("user",repo.data(authenticate()),"namespaceId",ns,"role",role,"administrativeMode",administrativeMode(),
             "expiresAt",java.time.Instant.ofEpochMilli(Math.min(c.session.created+28_800_000L,c.session.touched+1_800_000L)).toString(),

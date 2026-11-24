@@ -137,6 +137,33 @@ class OperationAttemptTest {
             "CALL deposit.get.operation($id,$scope,$token) YIELD data RETURN data",parameters).get("data"))));
     }
 
+    @Test void sessionPreflightAndRegistrationUseTheSameBaseline() {
+        Actor actor=actor();
+        Actor writer=renew(new Actor(actor.id,null,actor.namespace,addConnection(),addConnection()));
+        String id=operationId(clock.get()), procedure="deposit.create.class";
+        var args=List.<Object>of("Pinned class",Map.of());
+        var parameters=Json.map("token",actor.token,"scope",actor.namespace,"id",id,
+            "procedure",procedure,"arguments",args);
+        try(var tx=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,actor.execution.info())){
+            try(var rows=tx.execute("CYPHER 25 CALL deposit.get.session($token) YIELD data RETURN data",parameters)){
+                assertEquals(0L,ValueCodec.map(ValueCodec.map(rows.next().get("data")).get("observed")).get(actor.namespace));
+                assertFalse(rows.hasNext());
+            }
+            tracked(writer,actor.namespace,"deposit.create.class",List.of("Intervening class",Map.of()));
+            call(actor,actor.control,"deposit.utils.refresh",List.of("namespace"),null);
+            try(var rows=tx.execute("""
+                CYPHER 25 CALL deposit.action.begin($id,$scope,$procedure,$arguments,$token) YIELD data RETURN data
+                """,parameters)){
+                assertEquals("REGISTERED",state(ValueCodec.map(rows.next().get("data"))));
+                assertFalse(rows.hasNext());
+            }
+            tx.commit();
+        }
+        var conflict=assertThrows(RuntimeException.class,()->call(actor,actor.execution,procedure,args,id));
+        assertTrue(conflict.getMessage().contains("REVISION_CONFLICT"),conflict.toString());
+        assertEquals("FAILED_ROLLED_BACK",state(status(actor,id,actor.namespace)));
+    }
+
     @Test void checkedCompositionDetachesPagesAndRejectsAnInterveningCommit() throws Exception {
         Actor actor=actor();
         Map<String,Object> clazz=tracked(actor,actor.namespace,"deposit.create.class",
@@ -165,6 +192,20 @@ class OperationAttemptTest {
         assertEquals(classId,ValueCodec.map(item.get("schema")).get("id"));
         var declaration=ValueCodec.map(((List<?>)ValueCodec.map(item.get("schema")).get("descriptors")).getFirst());
         assertEquals("Integer",declaration.get("type"));
+
+        var objectClass=cypher(actor.control,"""
+            CALL deposit.get.revision($token) YIELD data AS start
+            CALL (start) {
+                WITH start
+                CALL deposit.get.objectClass($object,$token) YIELD node
+                CALL deposit.utils.toData(node,$token) YIELD data
+                RETURN collect(data) AS rows
+            }
+            CALL deposit.get.revision($token) YIELD data AS end
+            RETURN start,rows,end
+            """,Map.of("token",actor.token,"object",objectId));
+        assertEquals(List.of(clazz),objectClass.get("rows"));
+        assertEquals(objectClass.get("start"),objectClass.get("end"));
 
         parameters.put("expected",0L);
         assertEquals(List.of(),cypher(actor.control,snapshot,parameters).get("rows"));

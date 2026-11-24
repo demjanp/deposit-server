@@ -44,9 +44,8 @@ public final class SessionActionService extends BaseService {
             if(Set.of("deposit.set.user","deposit.set.password","deposit.set.namespaceRole","deposit.delete.namespace").contains(procedure))authorizationChange();
             authenticate();
         }
-        synchronized(c.session){
-            if(!c.state.observationsCaptured){c.state.observations.putAll(c.session.baselines);c.state.observationGeneration=c.session.observationGeneration;c.state.observationsCaptured=true;}
-            c.observationGeneration=c.state.observationGeneration;
+        if(!procedure.equals("deposit.get.session")) {
+            synchronized(c.session){captureObservations(c);}
         }
         if(Set.of("namespace","operational").contains(spec.scope())) {
             if(action&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")))scope("viewer");
@@ -76,6 +75,15 @@ public final class SessionActionService extends BaseService {
         if(Set.of("deposit.get.data","deposit.get.namespaceData","deposit.exchange.export","deposit.save.csv","deposit.save.xlsx","deposit.save.gpkg").contains(procedure))authorize(procedure,c.actionScope,scopeRules.exportRole(procedure,arguments));
         if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",scopeRules.baseline(scopeRules.active()));
         synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}
+    }
+    // Callers hold the session monitor while capturing the baseline and generation.
+    static void captureObservations(RequestContext c) {
+        if(!c.state.observationsCaptured) {
+            c.state.observations.putAll(c.session.baselines);
+            c.state.observationGeneration=c.session.observationGeneration;
+            c.state.observationsCaptured=true;
+        }
+        c.observationGeneration=c.state.observationGeneration;
     }
     String fingerprint(String procedure,List<Object> arguments){return CursorCodec.requestHash(c,Json.write(Json.map("procedure",procedure,"arguments",arguments)));}
     private void lease(){
