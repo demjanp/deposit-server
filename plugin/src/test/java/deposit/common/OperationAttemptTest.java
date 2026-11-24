@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import deposit.common.Results.DataRow;
 import deposit.repository.CoreRepository;
+import deposit.repository.GeometryRepository;
 import deposit.repository.HistoryRepository;
 import deposit.repository.OperationAttemptRepository;
 import deposit.repository.SchemaRepository;
@@ -21,7 +22,9 @@ import org.neo4j.dbms.api.*;
 import org.neo4j.internal.kernel.api.connectioninfo.ClientConnectionInfo;
 import org.neo4j.internal.kernel.api.security.LoginContext;
 import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.graphdb.ConstraintViolationException;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.schema.Schema;
 import org.neo4j.kernel.api.net.*;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
@@ -435,20 +438,37 @@ class OperationAttemptTest {
     }
 
     @Test void cancellationWhileWaitingForNamespaceLockExcludesDelayedExecution() throws Exception {
-        Actor a=actor();
+        Actor a=actor(), independent=actor();
         String id=operationId(clock.get()), procedure="deposit.create.class";
         var args=List.<Object>of("Waiting "+id,Map.of());
         begin(a,id,a.namespace,procedure,args);
         try(var workers=Executors.newVirtualThreadPerTaskExecutor();var blocker=database.beginTx()){
-            new CoreRepository(blocker,ZonedDateTime.now()).lockNamespace(a.namespace);
+            var core=new CoreRepository(blocker,ZonedDateTime.now());
+            core.lockNamespace(a.namespace);
+            core.lockNamespace(a.namespace);
             var run=workers.submit(()->call(a,a.execution,procedure,args,id));
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
             while(!"RUNNING".equals(status(a,id,a.namespace).get("state"))&&System.nanoTime()<deadline)Thread.sleep(20);
+            assertEquals("RUNNING",state(status(a,id,a.namespace)));
+            assertNotNull(workers.submit(()->tracked(independent,independent.namespace,procedure,args)).get(10,TimeUnit.SECONDS).get("id"));
             var cancelled=state(call(a,a.control,"deposit.action.cancel",List.of(id,a.namespace),null));
             assertTrue(Set.of("CANCEL_REQUESTED","CANCELLED_ROLLED_BACK").contains(cancelled));
-            blocker.commit();
             assertThrows(ExecutionException.class,()->run.get(10,TimeUnit.SECONDS));
+
+            var waiting=new CountDownLatch(1);
+            var next=workers.submit(()->{
+                try(var tx=database.beginTx()){
+                    waiting.countDown();
+                    new CoreRepository(tx,ZonedDateTime.now()).lockNamespace(a.namespace);
+                    tx.commit();
+                }
+            });
+            assertTrue(waiting.await(10,TimeUnit.SECONDS));
+            assertThrows(TimeoutException.class,()->next.get(100,TimeUnit.MILLISECONDS));
+            blocker.rollback();
+            next.get(10,TimeUnit.SECONDS);
         }
+        assertEquals(0,server.transactionCountForTesting());
         assertEquals("CANCELLED_ROLLED_BACK",state(status(a,id,a.namespace)));
         assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,procedure,args,id));
     }
@@ -472,14 +492,27 @@ class OperationAttemptTest {
         try(var workers=Executors.newVirtualThreadPerTaskExecutor()){
             var run=workers.submit(()->call(a,a.execution,procedure,args,id,()->{gate.countDown();waitFor(release);}));
             Future<Map<String,Object>> disabled;
+            Future<?> actorLock;
             try{
                 assertTrue(gate.await(10,TimeUnit.SECONDS));
+                var waiting=new CountDownLatch(1);
+                actorLock=workers.submit(()->{
+                    try(var tx=database.beginTx()){
+                        waiting.countDown();
+                        new CoreRepository(tx,ZonedDateTime.now()).lockActor(a.id);
+                        tx.commit();
+                    }
+                });
+                assertTrue(waiting.await(10,TimeUnit.SECONDS));
+                assertThrows(TimeoutException.class,()->actorLock.get(100,TimeUnit.MILLISECONDS));
                 disabled=workers.submit(()->call(administrator,administrator.execution,"deposit.set.user",disableArgs,disableId));
                 assertThrows(TimeoutException.class,()->disabled.get(100,TimeUnit.MILLISECONDS));
             }finally{release.countDown();}
             run.get(10,TimeUnit.SECONDS);
+            actorLock.get(10,TimeUnit.SECONDS);
             disabled.get(10,TimeUnit.SECONDS);
         }
+        assertEquals(0,server.transactionCountForTesting());
         assertThrows(ExceptionHandler.DepositException.class,()->status(a,id,a.namespace));
         try(var tx=database.beginTx()){
             assertEquals("COMMITTED",OperationAttemptRepository.state(new OperationAttemptRepository(tx).find(a.id,a.namespace,id)));
@@ -976,8 +1009,8 @@ class OperationAttemptTest {
         assertEquals("Renamed",finalState.get(HistoryCodec.key("Class",(String)clazz.get("id"))).get("name"));
     }
 
-    @Test void incrementalHistoryMatchesCaptureForOwnedGeometryAndCascadingEdges() {
-        Actor a=actor();
+    @Test void incrementalHistoryMatchesCaptureForOwnedGeometryAndCascadingEdges() throws Exception {
+        Actor a=actor(),other=actor();
         tracked(a,a.namespace,"deposit.set.versioningType",List.of("persistent"));
         var clazz=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Specimen",Map.of())).get("id"));
         var destination=selector(tracked(a,a.namespace,"deposit.create.class",List.of("Destination",Map.of())).get("id"));
@@ -989,9 +1022,34 @@ class OperationAttemptTest {
         assertHistoryParity(a,created,new ChangeSet(before),current);
 
         Object source=created.get("id");
-        var links=tracked(a,a.namespace,"deposit.apply.batch",List.of(List.of(
+        String batchId=operationId(clock.get()),procedure="deposit.apply.batch";
+        var args=List.<Object>of(List.of(
             batch("relate","deposit.create.relationship",List.of(source,target,"near",Map.of("weight",1.0))),
-            batch("move","deposit.set.descriptor",List.of(source,"Shape",Map.of("wkt","POINT (3 4)","axisOrder","xy","dimensions",2L))))));
+            batch("move","deposit.set.descriptor",List.of(source,"Shape",Map.of("wkt","POINT (3 4)","axisOrder","xy","dimensions",2L)))));
+        assertEquals("REGISTERED",state(begin(a,batchId,a.namespace,procedure,args)));
+        var gate=new CountDownLatch(1);
+        var release=new CountDownLatch(1);
+        Map<String,Object> links;
+        try(var workers=Executors.newVirtualThreadPerTaskExecutor()){
+            var run=workers.submit(()->call(a,a.execution,procedure,args,batchId,()->{gate.countDown();waitFor(release);}));
+            Future<?> rebuild;
+            try {
+                assertTrue(gate.await(10,TimeUnit.SECONDS));
+                var waiting=new CountDownLatch(1);
+                rebuild=workers.submit(()->{
+                    try(var tx=database.beginTx()){
+                        waiting.countDown();
+                        new GeometryRepository(tx,new CoreRepository(tx,ZonedDateTime.now())).rebuild(other.namespace);
+                        tx.commit();
+                    }
+                });
+                assertTrue(waiting.await(10,TimeUnit.SECONDS));
+                assertThrows(TimeoutException.class,()->rebuild.get(100,TimeUnit.MILLISECONDS));
+            } finally {release.countDown();}
+            links=run.get(10,TimeUnit.SECONDS);
+            rebuild.get(10,TimeUnit.SECONDS);
+        }
+        assertEquals(0,server.transactionCountForTesting());
         var linked=historyState(a);
         assertHistoryParity(a,links,new ChangeSet(current),linked);
 
@@ -999,6 +1057,14 @@ class OperationAttemptTest {
             batch("move","deposit.set.membership",List.of(source,destination)))));
         var beforeDelete=historyState(a);
         assertHistoryParity(a,moved,new ChangeSet(linked),beforeDelete);
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            var membership=core.membership(core.entity("Object",a.namespace,(String)source));
+            assertEquals(destination.get("id"),CoreRepository.id(membership.getEndNode()));
+            assertEquals(Json.write(List.of(a.namespace,source)),membership.getProperty("identityKey"));
+            assertTrue(linked.containsKey(HistoryCodec.key("Membership",CoreRepository.id(membership))));
+            assertFalse(core.data(membership).containsKey("identityKey"));
+        }
 
         var removed=tracked(a,a.namespace,"deposit.delete.object",List.of(source));
         var finalState=historyState(a);
@@ -1019,7 +1085,7 @@ class OperationAttemptTest {
         var create=List.of(from,to,"link",Map.of("weight",1.0));
         Object link=tracked(a,a.namespace,"deposit.create.relationship",create).get("id");
         Object reverse=tracked(a,a.namespace,"deposit.create.relationship",List.of(to,from,"link",Map.of("weight",1.0))).get("id");
-        Object differentLabel=tracked(a,a.namespace,"deposit.create.relationship",List.of(from,to,"other",Map.of("weight",1.0))).get("id");
+        Object differentLabel=tracked(a,a.namespace,"deposit.create.relationship",List.of(from,to,"other/\"label\\",Map.of("weight",1.0))).get("id");
         Object selfLink=tracked(a,a.namespace,"deposit.create.relationship",List.of(self,self,"link",Map.of("weight",1.0))).get("id");
         for(String label:List.of("side one","side two","side three"))
             tracked(a,a.namespace,"deposit.create.relationship",List.of(self,unrelated,label,Map.of("weight",1.0)));
@@ -1027,6 +1093,24 @@ class OperationAttemptTest {
             List.of(Map.of("sourceId",source.get("id"),"targetId",target.get("id"),"label","link")),null).get("id");
         Object selfClassLink=call(a,a.control,"deposit.get.classRelationship",
             List.of(Map.of("sourceId",other.get("id"),"targetId",other.get("id"),"label","link")),null).get("id");
+        assertDepositError("DUPLICATE",()->tracked(a,a.namespace,"deposit.create.relationship",create));
+        for(String type:List.of("RELATED_TO","MEMBER_OF")){
+            assertThrows(ConstraintViolationException.class,()->{
+                try(var tx=database.beginTx()){
+                    var core=new CoreRepository(tx,ZonedDateTime.now());
+                    var edge=type.equals("MEMBER_OF")?core.membership(core.entity("Object",a.namespace,(String)from)):
+                        core.readRelationship(a.namespace,"Relationship",(String)link);
+                    var original=core.readRelationship(a.namespace,"Relationship",(String)link);
+                    original.setProperty("weight",99.0);
+                    edge.getStartNode().createRelationshipTo(edge.getEndNode(),RelationshipType.withName(type))
+                        .setProperty("identityKey",edge.getProperty("identityKey"));
+                    tx.commit();
+                }
+            });
+        }
+        var projected=call(a,a.control,"deposit.get.relationship",List.of(selector(link)),null);
+        assertEquals(1.0,projected.get("weight"));
+        assertFalse(projected.containsKey("identityKey"));
         long revision;
         try(var tx=database.beginTx()){
             var index=tx.schema().getIndexByName("deposit_related_identity");

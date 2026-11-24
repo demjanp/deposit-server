@@ -5,9 +5,13 @@ import deposit.common.Results.Outcome;
 import java.time.*;
 import java.util.*;
 import org.neo4j.graphdb.*;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
 /** Graph storage only. Authorization and action boundaries belong to services. */
 public final class CoreRepository implements CoreProjectionRepository.Access, OperationReceiptRepository.Access {
+    static final String IDENTITY_KEY="identityKey";
+    private static final RelationshipType MEMBER_OF=RelationshipType.withName("MEMBER_OF");
+    private static final RelationshipType RELATED_TO=RelationshipType.withName("RELATED_TO");
     private final Transaction tx;
     private final RequestContext context;
     private final ZonedDateTime timestamp;
@@ -58,8 +62,14 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         return sequence(namespace);
     }
     public static long sequence(Node namespace) {return ((Number)namespace.getProperty("sequence")).longValue();}
-    public void lockNamespace(String id) {Node lock=find("DepositNamespaceLock","id",id);if(lock==null)throw new IllegalStateException("Namespace coordination missing");tx.acquireWriteLock(lock);}
-    public void lockActor(String id) {tx.acquireWriteLock(find("DepositActorLock","id",id));}
+    public void lockNamespace(String id) {
+        var internal=(InternalTransaction)tx;
+        ServerContext.forDatabase(internal.getDatabaseId()).lockNamespace(internal.kernelTransaction(),id);
+    }
+    public void lockActor(String id) {
+        var internal=(InternalTransaction)tx;
+        ServerContext.forDatabase(internal.getDatabaseId()).lockActor(internal.kernelTransaction(),id);
+    }
     public String role(String actor,String namespace) {
         return role(find("User","id",actor),namespace);
     }
@@ -102,12 +112,10 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public Node createRestored(String label,String namespace,String actor,Map<String,Object> properties,String restoredId) {
         Node n=namespace==null?tx.createNode(Label.label(label)):tx.createNode(Label.label(label),Label.label("DepositLive"));
         n.setProperty("id",restoredId);
-        if(label.equals("Namespace"))tx.createNode(Label.label("DepositNamespaceLock")).setProperty("id",id(n));
         if(namespace!=null) n.setProperty("namespaceId",namespace);
         var now=timestamp;n.setProperty("createdAt",now);n.setProperty("createdBy",actor==null?id(n):actor);
         n.setProperty("updatedAt",now);n.setProperty("updatedBy",actor==null?id(n):actor);
         properties.forEach((k,v)->{if(v!=null)n.setProperty(k,property(v));});
-        if(label.equals("User"))tx.createNode(Label.label("DepositActorLock")).setProperty("id",id(n));
         if(namespace!=null && Set.of("Class","Object","Pattern","UserTool").contains(label)) namespace(namespace).createRelationshipTo(n,RelationshipType.withName("CONTAINS"));
         var history=historyMutation();if(history!=null)history.created(n);
         var patterns=patternChanges();
@@ -156,23 +164,27 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         audit(namespace,actor);
         return next;
     }
-    public Relationship membership(Node object) {return object.getSingleRelationship(RelationshipType.withName("MEMBER_OF"),Direction.OUTGOING);}
+    public Relationship membership(Node object) {return object.getSingleRelationship(MEMBER_OF,Direction.OUTGOING);}
     public Node objectClass(Node object) {var membership=membership(object);if(membership==null) throw new IllegalStateException("Object has no Class");return membership.getEndNode();}
     public Relationship assign(Node object,Node clazz,String actor) {
         return assignRestored(object,clazz,actor,null);
     }
     public Relationship assignRestored(Node object,Node clazz,String actor,String restoredId) {
-        Relationship existing=membership(object);
+        edgeKind(MEMBER_OF,object,clazz);
+        String namespace=edgeNamespace(object,clazz);
+        String key=Json.write(List.of(namespace,id(object)));
+        Relationship existing=tx.findRelationship(MEMBER_OF,IDENTITY_KEY,key);
         if(existing!=null && existing.getEndNode().equals(clazz)) return existing;
         var history=historyMutation();if(history!=null)history.changing(object);
         String id=restoredId!=null?restoredId:existing==null?UUID.randomUUID().toString():id(existing);
-        var properties=existing==null?new HashMap<String,Object>():new HashMap<>(existing.getAllProperties());
+        var properties=existing==null?Map.<String,Object>of():existing.getProperties("createdAt","createdBy");
         if(existing!=null)existing.delete();
-        String key=object.getProperty("namespaceId")+"/Membership/"+id(object);
-        if(find("DepositEdgeIdentity","key",key)==null) {Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",key);registry.setProperty("id",id);}
-        Relationship rel=object.createRelationshipTo(clazz,RelationshipType.withName("MEMBER_OF"));properties.forEach((name,value)->{if(!name.equals("id"))rel.setProperty(name,value);});
-        rel.setProperty("id",id);rel.setProperty("namespaceId",object.getProperty("namespaceId"));
-        if(existing==null) {rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);}auditProperties(rel,actor);return rel;
+        Relationship rel=object.createRelationshipTo(clazz,MEMBER_OF);
+        rel.setProperty(IDENTITY_KEY,key);
+        rel.setProperty("id",id);rel.setProperty("namespaceId",namespace);
+        if(existing==null) {rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);}
+        else properties.forEach(rel::setProperty);
+        auditProperties(rel,actor);return rel;
     }
     public Node declaration(Node clazz,String name) {return find("ClassDescriptor",Map.of("namespaceId",clazz.getProperty("namespaceId"),"ownerId",id(clazz),"name",name));}
     public Node descriptor(Node object,String name) {return find("Descriptor",Map.of("namespaceId",object.getProperty("namespaceId"),"ownerId",id(object),"name",name));}
@@ -240,21 +252,25 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public Map<String,Object> data(Node node,boolean includeOwnedValues) {return projections.data(node,includeOwnedValues);}
     public TreeMap<String,Map<String,String>> namespaceSchema(String namespace) {return projections.namespaceSchema(namespace);}
     public static String kind(Relationship rel) {
-        String source=kind(rel.getStartNode()),target=kind(rel.getEndNode());
-        if(rel.isType(RelationshipType.withName("MEMBER_OF"))&&source.equals("Object")&&target.equals("Class"))return "Membership";
-        if(rel.isType(RelationshipType.withName("RELATED_TO"))&&source.equals(target)) {
+        return edgeKind(rel.getType(),rel.getStartNode(),rel.getEndNode());
+    }
+    private static String edgeKind(RelationshipType type,Node start,Node end) {
+        String source=kind(start),target=kind(end);
+        if(type.name().equals(MEMBER_OF.name())&&source.equals("Object")&&target.equals("Class"))return "Membership";
+        if(type.name().equals(RELATED_TO.name())&&source.equals(target)) {
             if(source.equals("Object"))return "Relationship";
             if(source.equals("Class"))return "ClassRelationship";
         }
         throw new IllegalStateException("Invalid domain edge endpoints");
     }
     public Map<String,Object> data(Relationship rel) {return projections.data(rel);}
-    private String edgeKey(Relationship rel) {
-        String kind=kind(rel),ns=(String)rel.getProperty("namespaceId");
-        return kind.equals("Membership")?ns+"/Membership/"+id(rel.getStartNode()):relationshipKey(ns,kind,id(rel.getStartNode()),id(rel.getEndNode()),(String)rel.getProperty("label"));
+    private static String edgeNamespace(Node source,Node target) {
+        String namespace=(String)source.getProperty("namespaceId");
+        if(!namespace.equals(target.getProperty("namespaceId",null)))throw new IllegalStateException("Invalid scoped edge");
+        return namespace;
     }
-    private String relationshipKey(String ns,String kind,String source,String target,String label) {
-        return ns+"/"+kind+"/"+Json.write(List.of(source,target,label));
+    private static String relationshipKey(String namespace,Node source,Node target,String label) {
+        return Json.write(List.of(namespace,edgeKind(RELATED_TO,source,target),id(source),id(target),label));
     }
     public List<Relationship> relationships(String namespace,String category) {
         return relationships(namespace,category,()->{});
@@ -324,33 +340,26 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         return false;
     }
     public Relationship relationship(Node source,Node target,String label) {
-        try(var edges=source.getRelationships(Direction.OUTGOING,RelationshipType.withName("RELATED_TO"))) {
-            for(var rel:edges)if(rel.getEndNode().equals(target)&&label.equals(rel.getProperty("label")))return rel;
-        }return null;
+        String key=relationshipKey(edgeNamespace(source,target),source,target,label);
+        return tx.findRelationship(RELATED_TO,IDENTITY_KEY,key);
     }
     public Relationship createRelationship(Node source,Node target,String label,Map<String,Object> properties,String actor) {
         return createRelationshipRestored(source,target,label,properties,actor,UUID.randomUUID().toString());
     }
     public Relationship createRelationshipRestored(Node source,Node target,String label,Map<String,Object> properties,String actor,String restoredId) {
-        Relationship rel=source.createRelationshipTo(target,RelationshipType.withName("RELATED_TO"));
-        rel.setProperty("id",restoredId);rel.setProperty("namespaceId",source.getProperty("namespaceId"));rel.setProperty("label",label);
+        String namespace=edgeNamespace(source,target),key=relationshipKey(namespace,source,target,label);
+        Relationship rel=source.createRelationshipTo(target,RELATED_TO);
+        try {rel.setProperty(IDENTITY_KEY,key);}
+        catch(ConstraintViolationException duplicate) {throw ExceptionHandler.fail("DUPLICATE","Relationship exists");}
         rel.setProperty("createdAt",timestamp);rel.setProperty("createdBy",actor);auditProperties(rel,actor);
-        properties.forEach((key,value)->{if(value!=null)rel.setProperty(key,value);});
-        Node registry=tx.createNode(Label.label("DepositEdgeIdentity"));registry.setProperty("key",edgeKey(rel));registry.setProperty("id",id(rel));
+        properties.forEach((name,value)->{if(value!=null&&!IDENTITY_KEY.equals(name))rel.setProperty(name,value);});
+        rel.setProperty("id",restoredId);rel.setProperty("namespaceId",namespace);rel.setProperty("label",label);
         var history=historyMutation();if(history!=null)history.created(rel);
         return rel;
     }
     public void remove(Relationship rel,List<String> deleted) {
         var history=historyMutation();if(history!=null)history.deleting(rel);
-        Node registry=find("DepositEdgeIdentity","key",edgeKey(rel));
-        if(registry==null||!id(rel).equals(registry.getProperty("id")))throw new IllegalStateException("Missing edge identity");
-        registry.delete();deleted.add(id(rel));rel.delete();
-    }
-    /** Restoration only: preserve the portable edge identity and its uniqueness registry together. */
-    public void restoreEdgeId(Relationship rel,String id) {
-        Node registry=find("DepositEdgeIdentity","key",edgeKey(rel));
-        if(registry==null)throw new IllegalStateException("Missing restored edge registry");
-        registry.setProperty("id",id);rel.setProperty("id",id);
+        deleted.add(id(rel));rel.delete();
     }
     public void remove(Node node,List<String> deleted) {
         var history=historyMutation();if(history!=null)history.deleting(node);
@@ -405,9 +414,6 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
                 try(var edges=node.getRelationships()) {for(Relationship edge:edges) {if(edge.hasProperty("id"))deleted.add(id(edge));edge.delete();}}
                 node.delete();
             }
-        }
-        try(var registry=tx.findNodes(Label.label("DepositEdgeIdentity"))) {
-            for(Node node:registry.stream().toList())if(((String)node.getProperty("key")).startsWith(namespace+"/"))node.delete();
         }
         Node ns=namespace(namespace);deleted.add(namespace);
         try(var edges=ns.getRelationships()) {for(Relationship edge:edges)edge.delete();}ns.delete();

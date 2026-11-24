@@ -77,7 +77,9 @@ final class CoreProjectionRepository {
         String kind = CoreRepository.kind(relationship);
         var result = new LinkedHashMap<String,Object>();
         result.put("kind", kind);
-        relationship.getAllProperties().forEach((key, value) -> result.put(key, value instanceof TemporalAccessor ? value.toString() : value));
+        relationship.getAllProperties().forEach((key, value) -> {
+            if (!CoreRepository.IDENTITY_KEY.equals(key)) result.put(key, value instanceof TemporalAccessor ? value.toString() : value);
+        });
         if (kind.equals("Membership")) {
             result.put("objectId", CoreRepository.id(relationship.getStartNode()));
             result.put("classId", CoreRepository.id(relationship.getEndNode()));

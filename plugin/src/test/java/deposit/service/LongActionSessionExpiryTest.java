@@ -57,7 +57,6 @@ class LongActionSessionExpiryTest {
         try(var tx=database.beginTx()) {
             Node user=tx.createNode(Label.label("User"));
             for (var entry:Json.map("id",actor,"enabled",true,"serverRole","user").entrySet()) user.setProperty(entry.getKey(),entry.getValue());
-            Node lock=tx.createNode(Label.label("DepositActorLock"));lock.setProperty("id",actor);
 
             var internal=(InternalTransaction)tx;
             var session=new ServerContext.Session(actor,internal.securityContext().subject().executingUser(),server.sessionTime());

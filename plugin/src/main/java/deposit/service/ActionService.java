@@ -23,7 +23,7 @@ public abstract class ActionService extends BaseService {
         if(serverScope) {authenticate();namespace=null;}else namespace=scope(role);
         mutation(procedure);
         // Serialize durable actor/operation scope reservation across Namespaces.
-        // Dedicated lock nodes avoid cycles with role edges. Always actor before scope.
+        // Take the actor lock before the server or Namespace lock.
         repo.lockActor(c.actorId);
         if(serverScope)c.server.lockServer(c.state);
         if(!serverScope)repo.lockNamespace(c.namespaceId);

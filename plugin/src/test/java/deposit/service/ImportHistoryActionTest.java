@@ -57,7 +57,7 @@ class ImportHistoryActionTest {
         try(var tx=database.beginTx()) {
             Node user=node(tx,"User",Json.map("id",actor,"enabled",true,"serverRole","user"));
             Node ns=node(tx,"Namespace",Json.map("id",UUID.randomUUID().toString(),"name","Import history","description","before","sequence",0L,"historyMode",historyMode));
-            namespace=CoreRepository.id(ns);node(tx,"DepositActorLock",Json.map("id",actor));node(tx,"DepositNamespaceLock",Json.map("id",namespace));
+            namespace=CoreRepository.id(ns);
             user.createRelationshipTo(ns,RelationshipType.withName("HAS_NAMESPACE_ROLE")).setProperty("role","editor");
             Node clazz=node(tx,"Class",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"name","Specimen","position",new double[]{0,0},"order",0L,"comment",""));
             node(tx,"ClassDescriptor",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"ownerId",CoreRepository.id(clazz),"name","Mass","type","Integer","order",0L,"comment",""));

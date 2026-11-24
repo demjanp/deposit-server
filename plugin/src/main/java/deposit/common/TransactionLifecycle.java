@@ -13,9 +13,15 @@ final class TransactionLifecycle {
     private final Object admissionGate;
     private final ConcurrentMap<Long,ServerContext.TxState> transactions = new ConcurrentHashMap<>();
     private final Semaphore serverLock = new Semaphore(1, true);
+    private final ConcurrentMap<String,CoordinationLock> coordinationLocks = new ConcurrentHashMap<>();
     private final AuthorizationGuard authorization = new AuthorizationGuard();
     private final Object drainMonitor = new Object();
     private volatile long revision;
+
+    private static final class CoordinationLock {
+        final Semaphore permit = new Semaphore(1, true);
+        int references; // Holders and waiters, updated only inside the map's compute for this key.
+    }
 
     TransactionLifecycle(ServerContext server, UUID databaseId, Object admissionGate) {
         this.server = server;
@@ -60,8 +66,6 @@ final class TransactionLifecycle {
             catch (Throwable failure) { cleanupFailure = recordCleanupFailure(cleanupFailure, failure); }
             try { server.completeRequests(state); }
             catch (Throwable failure) { cleanupFailure = recordCleanupFailure(cleanupFailure, failure); }
-            try { if (state.serverLocked) serverLock.release(); }
-            catch (Throwable failure) { cleanupFailure = recordCleanupFailure(cleanupFailure, failure); }
             try { authorization.release(state); }
             catch (Throwable failure) { cleanupFailure = recordCleanupFailure(cleanupFailure, failure); }
             if (cleanupFailure == null) transactions.remove(tx.getTransactionSequenceNumber(), state);
@@ -80,19 +84,49 @@ final class TransactionLifecycle {
 
     void lockServer(ServerContext.TxState state) {
         if (state.serverLocked) return;
-        acquire(state.kernel);
+        acquire(serverLock, state.kernel);
         state.serverLocked = true;
+        state.release.add(serverLock::release);
+    }
+
+    void lockCoordination(KernelTransaction tx, String key) {
+        tx.assertOpen();
+        var state = state(tx);
+        if (state.coordinationKeys.contains(key)) return;
+        var lock = coordinationLocks.compute(key, (id, current) -> {
+            var entry = current == null ? new CoordinationLock() : current;
+            entry.references++;
+            return entry;
+        });
+        boolean acquired = false;
+        try {
+            acquire(lock.permit, tx);
+            acquired = true;
+            state.coordinationKeys.add(key);
+            state.release.add(() -> {
+                lock.permit.release();
+                releaseCoordinationReference(key);
+            });
+        } finally {
+            if (!acquired) releaseCoordinationReference(key);
+        }
+    }
+
+    private void releaseCoordinationReference(String key) {
+        coordinationLocks.computeIfPresent(key, (id, lock) -> --lock.references == 0 ? null : lock);
     }
 
     long revision(ServerContext.TxState state) {
         if (state.serverLocked) return revision + (state.serverChanged ? 1 : 0);
-        acquire(state.kernel);
+        acquire(serverLock, state.kernel);
         try { return revision; } finally { serverLock.release(); }
     }
 
-    private void acquire(KernelTransaction tx) {
-        try { while (!serverLock.tryAcquire(100, TimeUnit.MILLISECONDS)) tx.assertOpen(); }
+    private void acquire(Semaphore permit, KernelTransaction tx) {
+        try { while (!permit.tryAcquire(100, TimeUnit.MILLISECONDS)) tx.assertOpen(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); throw ExceptionHandler.fail("CANCELLED", "Request interrupted"); }
+        try { tx.assertOpen(); }
+        catch (RuntimeException failure) { permit.release(); throw failure; }
     }
 
     boolean awaitTransactions(long timeout, TimeUnit unit) {

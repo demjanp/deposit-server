@@ -22,7 +22,11 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if(value==null) throw new IllegalStateException("Deposit database lifecycle unavailable");
         return value;
     }
-    public static ServerContext attach(UUID id) {var value=new ServerContext(id); DATABASES.put(id,value);return value;}
+    public static ServerContext attach(UUID id) {
+        var value=new ServerContext(id);
+        if(DATABASES.putIfAbsent(id,value)!=null)throw new IllegalStateException("Deposit database lifecycle already attached");
+        return value;
+    }
     public static void detach(UUID id) {DATABASES.remove(id);}
     private final UUID databaseId;
     private final TransactionLifecycle transactionLifecycle;
@@ -145,6 +149,9 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public void lockServer(TxState state) {
         transactionLifecycle.lockServer(state);
     }
+    public void lockNamespace(KernelTransaction tx,String id) { transactionLifecycle.lockCoordination(tx,"namespace:"+id); }
+    public void lockActor(KernelTransaction tx,String id) { transactionLifecycle.lockCoordination(tx,"actor:"+id); }
+    public void lockSpatial(KernelTransaction tx) { transactionLifecycle.lockCoordination(tx,"spatial"); }
     public long revision(TxState state) {
         return transactionLifecycle.revision(state);
     }
@@ -306,6 +313,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         volatile Throwable completionFailure;
         public final List<Runnable> afterCommit=new ArrayList<>();
         public final List<Runnable> release=new ArrayList<>();
+        final Set<String> coordinationKeys=new HashSet<>();
         public final Set<String> storageKeys=new HashSet<>();
         public final Map<String,org.neo4j.gis.spatial.EditableLayer> geometryLayers=new HashMap<>();
         public ImportWriteBudget importWriteBudget;

@@ -8,6 +8,7 @@ import org.neo4j.gis.spatial.*;
 import org.neo4j.gis.spatial.index.*;
 import org.neo4j.gis.spatial.rtree.NullListener;
 import org.neo4j.graphdb.*;
+import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
@@ -15,14 +16,15 @@ import org.neo4j.kernel.internal.GraphDatabaseAPI;
 public final class GeometryRepository {
     private final Transaction tx;private final CoreRepository core;private final SpatialDatabaseService spatial;
     private final Map<String,EditableLayer> layers;private final ServerContext server;
+    private final KernelTransaction kernel;
     public GeometryRepository(Transaction tx,CoreRepository core) {
         this.tx=tx;this.core=core;var internal=(InternalTransaction)tx;
         server=ServerContext.forDatabase(internal.getDatabaseId());
         spatial=new SpatialDatabaseService(new IndexManager(server.database(),internal.securityContext()));
-        layers=server.state(internal.kernelTransaction()).geometryLayers;
+        kernel=internal.kernelTransaction();layers=server.state(kernel).geometryLayers;
     }
     public static String layerName(String ns,Object srid) {return "deposit_geometry_"+ns+"_"+(srid==null?"unknown":"srid_"+srid);}
-    private void lock() {tx.acquireWriteLock(core.find("DepositStorageLock","id","spatial"));}
+    private void lock() {server.lockSpatial(kernel);}
     private EditableLayer layer(String name,Object srid,boolean create) {
         lock();if(layers.containsKey(name))return layers.get(name);
         var found=spatial.getLayer(tx,name,false);

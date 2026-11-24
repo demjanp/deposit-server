@@ -61,8 +61,6 @@ class TabularListenerAvailabilityTest {
             session.namespace=namespace;session.administrative=true;server.registerSession(Json.hash(token),session);
             node(tx,"User",Json.map("id",actor,"enabled",true,"serverRole","administrator"));
             node(tx,"Namespace",Json.map("id",namespace,"sequence",0L));
-            node(tx,"DepositActorLock",Json.map("id",actor));
-            node(tx,"DepositNamespaceLock",Json.map("id",namespace));
             node(tx,"DResource",Json.map("id",resource,"namespaceId",namespace,"filename","input.bin","state","ready"));
             node(tx,"DepositResourceLocation",Json.map("id",resource,"namespaceId",namespace,"storedFilename","input.bin","bytes",3L,"checksum",content.checksum(),"published",true));
             stagedTable(tx,table,true);stagedTable(tx,scalarTable,false);

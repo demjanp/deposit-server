@@ -373,7 +373,6 @@ final class StorageMaintenanceJobs {
             for (var found : content.get().discover()) if (!knownIds.contains(found.resourceId())) {
                 try (var tx = db.beginTx()) {
                     CoreRepository core = core(tx); ResourceRepository resources = new ResourceRepository(tx, core);
-                    if (core.find("DepositNamespaceLock", "id", unknown) == null) resources.record("DepositNamespaceLock", unknown, Map.of());
                     core.lockNamespace(unknown);
                     resources.record("DepositResourceLocation", found.resourceId(), Json.map("namespaceId", unknown, "storedFilename", found.storedFilename(), "bytes", found.bytes(), "checksum", found.checksum(), "published", true, "quarantined",true,"orphanSince", server.sessionTime(), "leaseUntil", 0L));
                     tx.commit();
@@ -385,7 +384,6 @@ final class StorageMaintenanceJobs {
                     if (knownStaging.contains(relative)) continue;
                     try (var tx = db.beginTx()) {
                         CoreRepository core = core(tx); ResourceRepository resources = new ResourceRepository(tx, core);
-                        if (core.find("DepositNamespaceLock", "id", unknown) == null) resources.record("DepositNamespaceLock", unknown, Map.of());
                         core.lockNamespace(unknown);
                         resources.record("DepositResourceLocation", UUID.randomUUID().toString(), Json.map("namespaceId", unknown, "stagingPath", relative, "bytes", Files.size(path), "checksum", ResourceFiles.checksum(path), "quarantined",true,"orphanSince", server.sessionTime(), "leaseUntil", 0L));
                         tx.commit();

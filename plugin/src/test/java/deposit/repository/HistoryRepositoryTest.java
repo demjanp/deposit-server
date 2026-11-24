@@ -121,7 +121,9 @@ class HistoryRepositoryTest {
         }
         ServerContext server=ServerContext.attach(database.databaseId().databaseId().uuid());
         try{var field=ServerContext.class.getDeclaredField("database");field.setAccessible(true);field.set(server,database);}catch(ReflectiveOperationException e){throw new AssertionError(e);}
-        HistoryLifecycle.recover(server);
+        var monitors=database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class);
+        monitors.addMonitorListener(server);
+        try {HistoryLifecycle.recover(server);} finally {monitors.removeMonitorListener(server);}
         try(var tx=database.beginTx()){for(String label:List.of("Revision","DepositSnapshot","RevisionTouch","RevisionDependency","DepositHistoryEpoch"))assertEquals(0,count(tx,label),label);}
     }
     @Test void namespaceHistoryDeletionIncludesTouchAndDependencyRows(){
