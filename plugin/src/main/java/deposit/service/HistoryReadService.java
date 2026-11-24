@@ -17,7 +17,13 @@ final class HistoryReadService extends BaseService {
     long generation(){return ((Number)root().getProperty("historyAvailability",0L)).longValue();}
     void stable(long sequence,long generation){c.state.kernel.assertOpen();if(System.currentTimeMillis()-c.state.kernel.startTime()>30000)c.fail("CANCELLED","Read timeout exceeded");authenticate();requireRole(c.namespaceId,"viewer");if(repo.sequence(c.namespaceId)!=sequence||generation()!=generation)c.fail("REVISION_CONFLICT","History changed during read");}
 
-    DataRow revision(Map<String,Object> request){fields(request);read("viewer");return new DataRow(Json.map("sequence",c.revision,"revisionId",root().getProperty("headRevisionId",null),"historyMode",root().getProperty("historyMode"),"historyEpochId",root().getProperty("historyEpochId",null)),c.meta());}
+    DataRow revision(Map<String,Object> request) {
+        fields(request);readContext();Node namespace=pinReadScope("viewer");
+        var data=Json.map("sequence",c.revision,"revisionId",namespace.getProperty("headRevisionId",null),
+            "historyMode",namespace.getProperty("historyMode"),"historyEpochId",namespace.getProperty("historyEpochId",null));
+        if(currentReadRevision("viewer")!=c.revision)c.fail("REVISION_CONFLICT","Revision changed during read");
+        return new DataRow(data,c.meta());
+    }
     ValueRow restored(Map<String,Object> request){fields(request);read("viewer");Object head=root().getProperty("headRevisionId",null);return new ValueRow(head!=null&&history.revision(c.namespaceId,(String)head).kind().equals("restore"),c.meta());}
     Stream<DataRow> records(Map<String,Object> request){fields(request);read("viewer");long sequence=c.revision,generation=generation();var values=history.revisions(c.namespaceId);stable(sequence,generation);return values.stream().map(r->{c.server.storagePoint("history-read-row");stable(sequence,generation);return new DataRow(r.data(),c.meta());}).onClose(()->stable(sequence,generation));}
     DataRow page(Map<String,Object> request){

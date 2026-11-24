@@ -31,6 +31,18 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public List<Node> nodes(String label,Map<String,Object> properties) {
         try(var nodes=properties.isEmpty()?tx.findNodes(Label.label(label)):tx.findNodes(Label.label(label),properties)) {return nodes.stream().sorted(Comparator.comparing(n->(String)n.getProperty("id",""))).toList();}
     }
+    public List<Node> nodePage(String kind,String namespace,String memberClass,long offset,long limit) {
+        String order=kind.equals("Class")||kind.equals("ClassDescriptor")?"coalesce(n.order,0), n.id":"n.id";
+        // The caller supplies one of the fixed scoped domain labels.
+        String match=memberClass==null?"(n:"+kind+" {namespaceId:$namespace})":
+            "(n:Object)-[:MEMBER_OF]->(:Class {namespaceId:$namespace,id:$memberClass})";
+        var parameters=Json.map("namespace",namespace,"memberClass",memberClass,"offset",offset,"limit",limit);
+        try(var result=tx.execute("MATCH "+match+" RETURN n ORDER BY "+order+" SKIP $offset LIMIT $limit",parameters)) {
+            var page=new ArrayList<Node>();
+            while(result.hasNext())page.add((Node)result.next().get("n"));
+            return page;
+        }
+    }
     public static String id(Entity n) {return (String)n.getProperty("id");}
     public static String kind(Node node) {
         for(String label:List.of("Namespace","User","Class","Object","ClassDescriptor","Descriptor","Pattern","UserTool","DGeometry","DResource")) if(node.hasLabel(Label.label(label))) return label;
@@ -67,11 +79,18 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         user.createRelationshipTo(ns,RelationshipType.withName("HAS_NAMESPACE_ROLE")).setProperty("role",role);return true;
     }
     public List<Map<String,Object>> roles(String namespace) {
-        var result=new ArrayList<Map<String,Object>>();
+        return roleEdges(namespace,()->{}).stream().map(CoreRepository::roleData).toList();
+    }
+    public List<Relationship> roleEdges(String namespace,Runnable check) {
+        var result=new ArrayList<Relationship>();
         try(var edges=namespace(namespace).getRelationships(Direction.INCOMING,RelationshipType.withName("HAS_NAMESPACE_ROLE"))) {
-            for(Relationship edge:edges) result.add(Json.map("userId",id(edge.getStartNode()),"role",edge.getProperty("role")));
+            for(Relationship edge:edges) {check.run();result.add(edge);}
         }
-        result.sort(Comparator.comparing(m->(String)m.get("userId")));return result;
+        result.sort(Comparator.comparing(edge->id(edge.getStartNode())));
+        return result;
+    }
+    public static Map<String,Object> roleData(Relationship edge) {
+        return Json.map("userId",id(edge.getStartNode()),"role",edge.getProperty("role"));
     }
     public Node create(String label,String namespace,String actor,Map<String,Object> properties) {
         return createRestored(label,namespace,actor,properties,UUID.randomUUID().toString());
@@ -175,7 +194,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public Object descriptorValue(Node descriptor) {
         return descriptorValue(descriptor,descriptorType(descriptor));
     }
-    Object descriptorValue(Node descriptor,String type) {
+    public Object descriptorValue(Node descriptor,String type) {
         if(type.equals("DGeometry")){var g=geometry();Node node=g.geometry(descriptor);return node==null?null:g.value(node);}
         if(type.equals("DResource")){Node node=resources().linked(descriptor);return node==null?null:Json.map("resourceId",id(node));}
         return ValueCodec.decode(type,descriptor.getProperty("value",null));
@@ -234,13 +253,45 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         return ns+"/"+kind+"/"+Json.write(List.of(source,target,label));
     }
     public List<Relationship> relationships(String namespace,String category) {
+        return relationships(namespace,category,()->{});
+    }
+    public List<Relationship> relationships(String namespace,String category,Runnable check) {
         var results=new ArrayList<Relationship>();String label=category.equals("ClassRelationship")?"Class":"Object";
         for(Node source:nodes(label,Map.of("namespaceId",namespace))) {
-            try(var edges=source.getRelationships(Direction.OUTGOING,RelationshipType.withName("RELATED_TO"))) {
-                for(var edge:edges) {if(!category.equals(kind(edge))||!namespace.equals(edge.getEndNode().getProperty("namespaceId",null)))throw new IllegalStateException("Invalid scoped edge");results.add(edge);}
-            }
+            check.run();
+            collectRelationships(source,Direction.OUTGOING,namespace,category,check,results);
         }
         results.sort(Comparator.comparing(CoreRepository::id));return results;
+    }
+    public List<Relationship> relationshipsAt(String namespace,String category,String endpoint,Direction direction,Runnable check) {
+        Node node=entity(category.equals("ClassRelationship")?"Class":"Object",namespace,endpoint);
+        if(node==null)return List.of();
+        var results=new ArrayList<Relationship>();
+        collectRelationships(node,direction,namespace,category,check,results);
+        results.sort(Comparator.comparing(CoreRepository::id));
+        return results;
+    }
+    private static void collectRelationships(Node node,Direction direction,String namespace,String category,
+            Runnable check,List<Relationship> results) {
+        try(var edges=node.getRelationships(direction,RelationshipType.withName("RELATED_TO"))) {
+            for(var edge:edges) {
+                check.run();
+                Node other=edge.getOtherNode(node);
+                if(!category.equals(kind(edge))||!namespace.equals(other.getProperty("namespaceId",null)))
+                    throw new IllegalStateException("Invalid scoped edge");
+                results.add(edge);
+            }
+        }
+    }
+    public Relationship readRelationship(String namespace,String category,String id) {
+        try(var edges=tx.findRelationships(RelationshipType.withName("RELATED_TO"),Map.of("namespaceId",namespace,"id",id))) {
+            while(edges.hasNext()) {
+                Relationship edge=edges.next();
+                if(category.equals(kind(edge))&&namespace.equals(edge.getStartNode().getProperty("namespaceId",null))
+                        &&namespace.equals(edge.getEndNode().getProperty("namespaceId",null)))return edge;
+            }
+            return null;
+        }
     }
     public Relationship relationship(String ns,String category,String id) {
         for(var rel:relationships(ns,category))if(id.equals(id(rel)))return rel;return null;

@@ -53,6 +53,7 @@ public final class ArgumentService extends BaseService {
         return result;
     }
     private String namespace(){
+        if(c.readNamespace!=null)return c.namespaceId;
         String ns=c.state.scoped?c.state.namespace:c.session.namespace;
         if(ns==null)c.fail("NO_ACTIVE_NAMESPACE","Select a Namespace first");
         requireRole(ns,"viewer");return ns;

@@ -21,7 +21,12 @@ public final class QueryContracts {
         }
     }
 
-    /** One graph row decoded by the repository and consumed by query execution. */
-    public record Binding(Map<String,Node> objects, Map<Field,Cell> fields,
-                          Map<String,Object> raw, List<String> ids) {}
+    /** One graph row whose fields are decoded on demand by query execution. */
+    public record Binding(Map<String,Node> objects, java.util.function.Function<Field,Cell> field,
+                          Map<String,Object> raw, List<String> ids) {
+        public Binding(Map<String,Node> objects,Map<Field,Cell> fields,Map<String,Object> raw,List<String> ids) {
+            this(objects,fields::get,raw,ids);
+        }
+        public Cell cell(Field key) {return field.apply(key);}
+    }
 }

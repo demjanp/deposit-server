@@ -13,7 +13,7 @@ public final class RequestContext {
     public String operationId;
     public String uploadContinuation;
     public Long expectedRevision;
-    public boolean publicCall, operational;
+    public boolean publicCall, operational, nativeResultsOnly;
     public String procedure, inputHash, actionScope;
     public Map<String,Object> request;
     public Map<String,Object> selectorBindings=Map.of();
@@ -35,6 +35,9 @@ public final class RequestContext {
     public void clearResolved() { resolved.clear(); }
     public String actorId, namespaceId;
     public long revision;
+    public Node readNamespace;
+    public long readAuthorizationGeneration;
+    public boolean serverReadPinned;
     public ChangeSet journal;
     public deposit.repository.PatternChanges patternChanges;
     public deposit.repository.HistoryMutation historyMutation;

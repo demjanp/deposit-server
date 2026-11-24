@@ -21,4 +21,17 @@ class QueryTest {
     @Test void presenceAndStructuralEquality(){assertNotEquals(QueryValues.key(new Cell("Float",null,false)),QueryValues.key(new Cell("Float",null,true)));assertTrue(QueryValues.equal("DDict",Json.map("a",1L,"b",2L),Json.map("b",2L,"a",1L)));}
     @Test void durationAndStructuredOrdering(){var month=Json.map("months",1L,"days",0L,"seconds",0L,"nanoseconds",0L);var days=Json.map("months",0L,"days",30L,"seconds",0L,"nanoseconds",0L);assertTrue(QueryValues.compare("Duration",month,days)>0);assertThrows(ExceptionHandler.DepositException.class,()->plan("SELECT A.Bag ORDER BY A.Bag",Map.of()));assertThrows(ExceptionHandler.DepositException.class,()->plan("SELECT MIN(A.Bag) AS x",Map.of()));}
     @Test void mixedSortDirectionsNullLastAndThreeValuedPredicates(){var rows=run("SELECT A.Mass AS mass ORDER BY mass DESC",Arrays.asList(10.0,null,20.0));assertEquals(20.0,rows.getFirst().cells().getFirst().value());assertNull(rows.getLast().cells().getFirst().value());assertEquals(2,run("SELECT A.Mass WHERE A.Mass=10 OR A.Mass=20",Arrays.asList(10.0,null,20.0)).size());assertEquals(1,run("SELECT A.Mass WHERE NOT A.Mass=10",Arrays.asList(10.0,null,20.0)).size());assertEquals(1,run("SELECT A.Mass WHERE A.Mass IN [10,NULL]",Arrays.asList(10.0,null,20.0)).size());}
+    @Test void simpleOffsetSkipsDecodingUnneededProjectionCells() {
+        var query=plan("SELECT A.Code WHERE A.N > 0",Map.of());
+        var reads=new ArrayList<String>();
+        var bindings=java.util.stream.IntStream.range(0,3).mapToObj(i->new Binding(Map.of(),field->{
+            reads.add(i+":"+field.name());
+            return new Cell(field.type(),field.name().equals("N")?1L:"value-"+i,true);
+        },Map.of(),List.of("id"+i)));
+        try(var rows=new QueryExecution(query,()->{}).execute(bindings,2)) {
+            assertEquals("value-2",rows.findFirst().orElseThrow().cells().getFirst().value());
+        }
+        assertEquals(List.of("0:N","1:N","2:N","2:Code"),reads);
+    }
+
 }

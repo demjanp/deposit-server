@@ -137,6 +137,142 @@ class OperationAttemptTest {
             "CALL deposit.get.operation($id,$scope,$token) YIELD data RETURN data",parameters).get("data"))));
     }
 
+    @Test void checkedCompositionDetachesPagesAndRejectsAnInterveningCommit() throws Exception {
+        Actor actor=actor();
+        Map<String,Object> clazz=tracked(actor,actor.namespace,"deposit.create.class",
+            List.of("ReadFixture",Json.map("descriptors",List.of(Json.map("name","Score","type","Integer")))));
+        String classId=(String)clazz.get("id");
+        Map<String,Object> object=tracked(actor,actor.namespace,"deposit.create.object",
+            List.of(Map.of("id",classId),Map.of("descriptors",Map.of("Score",7L))));
+        String objectId=(String)object.get("id");
+        String snapshot="""
+            CYPHER 25 CALL deposit.get.revision($token) YIELD data AS start
+            CALL (start) {
+                WITH start WHERE $expected IS NULL OR start.sequence = $expected
+                CALL deposit.get.objectPage($selection, {pageSize: 1}, $token) YIELD data AS page
+                WITH page.items[0] AS entity
+                CALL deposit.get.classPage({id: entity.classId}, {pageSize: 1}, $token) YIELD data AS classPage
+                RETURN collect({entity: entity, schema: classPage.items[0]}) AS rows
+            }
+            CALL deposit.get.revision($token) YIELD data AS end
+            RETURN start, rows, end
+            """;
+        var parameters=Json.map("token",actor.token,"expected",null,"selection",Map.of("id",objectId));
+        var checked=cypher(actor.control,snapshot,parameters);
+        assertEquals(checked.get("start"),checked.get("end"));
+        var item=ValueCodec.map(((List<?>)checked.get("rows")).getFirst());
+        assertEquals(Map.of("Score",7L),ValueCodec.map(item.get("entity")).get("descriptors"));
+        assertEquals(classId,ValueCodec.map(item.get("schema")).get("id"));
+        var declaration=ValueCodec.map(((List<?>)ValueCodec.map(item.get("schema")).get("descriptors")).getFirst());
+        assertEquals("Integer",declaration.get("type"));
+
+        parameters.put("expected",0L);
+        assertEquals(List.of(),cypher(actor.control,snapshot,parameters).get("rows"));
+        parameters.put("expected",null);
+        String emptyPage="""
+            CYPHER 25 CALL deposit.get.revision($token) YIELD data AS start
+            CALL (start) {
+                WITH start WHERE $expected IS NULL OR start.sequence = $expected
+                CALL deposit.get.objectPage({descriptors: {Score: 99}}, {pageSize: 1}, $token) YIELD data
+                RETURN collect(data) AS rows
+            }
+            CALL deposit.get.revision($token) YIELD data AS end
+            RETURN start, rows, end
+            """;
+        var empty=cypher(actor.control,emptyPage,parameters);
+        assertEquals(empty.get("start"),empty.get("end"));
+        assertEquals(List.of(),ValueCodec.map(((List<?>)empty.get("rows")).getFirst()).get("items"));
+
+        var grouped=cypher(actor.control,"""
+            CYPHER 25 CALL deposit.get.revision($token) YIELD data AS start
+            CALL (start) {
+                WITH start WHERE $expected IS NULL OR start.sequence = $expected
+                UNWIND $ids AS id
+                CALL deposit.get.classPage({id: id}, {pageSize: 1}, $token) YIELD data AS page
+                RETURN collect(page.items[0]) AS rows
+            }
+            CALL deposit.get.revision($token) YIELD data AS end
+            RETURN start, rows, end
+            """,Json.map("token",actor.token,"expected",ValueCodec.map(checked.get("start")).get("sequence"),"ids",List.of(classId)));
+        assertEquals(List.of(clazz),grouped.get("rows"));
+        assertEquals(grouped.get("start"),grouped.get("end"));
+
+        // Commit after the second page has detached its data but before the snapshot can return.
+        var pages=new java.util.concurrent.atomic.AtomicInteger();
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            server.storageObserverForTesting(point->{
+                if(!point.equals("read-page-materialized")||pages.incrementAndGet()!=2)return;
+                try {
+                    executor.submit(()->tracked(actor,actor.namespace,"deposit.set.descriptor",List.of(objectId,"Score",8L)))
+                        .get(10,TimeUnit.SECONDS);
+                } catch(Exception error) {throw new AssertionError("The ordinary write must commit during the checked read",error);}
+            });
+            var conflict=assertThrows(RuntimeException.class,()->cypher(actor.control,snapshot,parameters));
+            assertTrue(conflict.getMessage().contains("REVISION_CONFLICT"),conflict.toString());
+        } finally {server.storageObserverForTesting(ignored->{});}
+        assertEquals(2,pages.get());
+        var after=cypher(actor.control,snapshot,parameters);
+        assertEquals(after.get("start"),after.get("end"));
+        var updated=ValueCodec.map(((List<?>)after.get("rows")).getFirst());
+        assertEquals(Map.of("Score",8L),ValueCodec.map(updated.get("entity")).get("descriptors"));
+    }
+
+    @Test void typedQueryPagesBindTheCursorAndTerminateAtTheDeadline() throws Exception {
+        Actor actor=actor();
+        tracked(actor,actor.namespace,"deposit.create.class",
+            List.of("QueryFixture",Map.of("descriptors",List.of(Map.of("name","Score","type","Integer")))));
+        for(long score:List.of(7L,2L,9L))tracked(actor,actor.namespace,"deposit.create.object",
+            List.of("QueryFixture",Map.of("descriptors",Map.of("Score",score))));
+        String query="SELECT QueryFixture.Score AS score ORDER BY score DESC";
+        String page="CYPHER 25 CALL deposit.get.queryPage($query, {}, $options, $token) YIELD data RETURN data";
+        var params=Json.map("query",query,"options",Map.of("pageSize",2L),"token",actor.token);
+        var first=ValueCodec.map(cypher(actor.control,page,params).get("data"));
+        var scores=new ArrayList<Long>();
+        for(Object row:(List<?>)first.get("rows"))scores.add((Long)ValueCodec.map(ValueCodec.map(row).get("values")).get("score"));
+        assertEquals(List.of(9L,7L),scores);
+        params.put("options",Map.of("pageSize",2L,"cursor",first.get("nextCursor")));
+        var second=ValueCodec.map(cypher(actor.control,page,params).get("data"));
+        assertEquals(2L,ValueCodec.map(ValueCodec.map(((List<?>)second.get("rows")).getFirst()).get("values")).get("score"));
+        assertNull(second.get("nextCursor"));
+        params.put("query","SELECT QueryFixture.Score");
+        assertTrue(assertThrows(RuntimeException.class,()->cypher(actor.control,page,params))
+            .getMessage().contains("VALIDATION_FAILED"));
+
+        try(var tx=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,actor.control.info())) {
+            var c=new RequestContext(tx,Map.of("token",actor.token));
+            var timeout=assertThrows(ExceptionHandler.DepositException.class,()->{
+                try(var rows=new deposit.service.GetQueryService(c).getQuery(Map.of("query",query,"timeoutMs",1L))) {
+                    Thread.sleep(20);
+                    rows.findFirst();
+                }
+            });
+            assertTrue(timeout.getMessage().contains("LIMIT_EXCEEDED"),timeout.toString());
+        }
+    }
+
+    @Test void patternSearchReusesTypedProbesAndKeepsNativeBindings() {
+        Actor actor=actor();
+        tracked(actor,actor.namespace,"deposit.create.class",List.of("PatternFixture",
+            Map.of("descriptors",List.of(Map.of("name","Score","type","Integer")))));
+        var matching=tracked(actor,actor.namespace,"deposit.create.object",
+            List.of("PatternFixture",Map.of("descriptors",Map.of("Score",7L))));
+        var missing=tracked(actor,actor.namespace,"deposit.create.object",List.of("PatternFixture",Map.of()));
+        tracked(actor,actor.namespace,"deposit.create.pattern",List.of("ScorePattern",Json.map("objects",
+            Json.map("root",Json.map("root",true,"className","PatternFixture","descriptors",List.of(Map.of("name","Score"))))),Map.of()));
+        var parameters=Json.map("token",actor.token,"values",Map.of("root",Map.of("Score",7L)));
+        var page=ValueCodec.map(cypher(actor.control,"""
+            CALL deposit.get.objectsByPatternPage('ScorePattern',$values,{matchEmpty:true},{pageSize:1},$token)
+            YIELD data RETURN data
+            """,parameters).get("data"));
+        assertNull(page.get("nextCursor"));
+        assertEquals(List.of(Json.map("rootName","root","bindings",Map.of("root",matching.get("id")))),page.get("items"));
+        parameters.put("values",Map.of("root",Map.of()));
+        assertEquals(missing.get("id"),cypher(actor.control,"""
+            CALL deposit.get.objectsByPattern('ScorePattern',$values,{matchEmpty:true},$token)
+            YIELD data RETURN data.bindings.root.id AS id
+            """,parameters).get("id"));
+    }
+
     @Test void otherProceduresStillCannotShareATrackedTransaction() {
         Actor a=actor();
         String id=operationId(clock.get());

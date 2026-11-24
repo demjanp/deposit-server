@@ -84,6 +84,61 @@ class ReadServiceTest {
         }
     }
 
+    @Test void objectPagesProjectOnlyReturnedIdentitiesAndKeepCursorOrder() {
+        String namespace=namespaces.getFirst();
+        var ids=List.of("00000000-0000-0000-0000-000000001000","00000000-0000-0000-0000-000000001001",
+            "00000000-0000-0000-0000-000000001002");
+        String classId=UUID.randomUUID().toString(), relationshipId=UUID.randomUUID().toString();
+        try(var tx=database.beginTx()) {
+            var clazz=node(tx,"Class",Json.map("id",classId,"namespaceId",namespace,"name","Fixture","order",0L));
+            for(String id:ids.reversed()) {
+                var object=node(tx,"Object",Json.map("id",id,"namespaceId",namespace));
+                object.createRelationshipTo(clazz,RelationshipType.withName("MEMBER_OF"));
+            }
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            core.createRelationshipRestored(core.entity("Object",namespace,ids.getFirst()),
+                core.entity("Object",namespace,ids.getLast()),"test",Map.of(),actor,relationshipId);
+            // This lookahead has an identity but cannot produce a portable Object.
+            node(tx,"Object",Json.map("id","00000000-0000-0000-0000-000000001003","namespaceId",namespace));
+            tx.commit();
+        }
+        try(var tx=database.beginTx()) {
+            authenticate(tx,false);
+            var context=new RequestContext(tx,Map.of("token",token));
+            var service=new ReadService(context);
+            service.authenticate();
+            context.session.namespace=namespace;
+            var first=service.page("Object",Map.of("pageSize",2L));
+            assertEquals(ids.subList(0,2),pageIds(first));
+            assertEquals(List.of(ids.getLast()),pageIds(new ReadService(new RequestContext(tx,Map.of("token",token)))
+                .page("Object",Map.of("pageSize",1L,"cursor",first.meta.get("nextCursor")))));
+            assertEquals(ids,pageIds(new ReadService(new RequestContext(tx,Map.of("token",token)))
+                .page("ClassMembers",Map.of("classId",classId,"pageSize",3L))));
+            for(var selector:List.of(Map.of("id",relationshipId),Map.of("sourceId",ids.getFirst()),
+                    Map.of("targetId",ids.getLast()))) {
+                var selected=new ReadService(new RequestContext(tx,Map.of("token",token)))
+                    .page("Relationship",new LinkedHashMap<>(selector));
+                assertEquals(List.of(relationshipId),pageIds(selected));
+            }
+            var second=new ReadService(new RequestContext(tx,Map.of("token",token))).page("Object",
+                Map.of("pageSize",2L,"classId",classId,"descriptors",Map.of()));
+            assertEquals(ids.subList(0,2),pageIds(second));
+            String cursor=(String)second.meta.get("nextCursor");
+            assertNotNull(cursor);
+            var last=new ReadService(new RequestContext(tx,Map.of("token",token))).page("Object",
+                Map.of("pageSize",2L,"classId",classId,"descriptors",Map.of(),"cursor",cursor));
+            assertEquals(List.of(ids.getLast()),pageIds(last));
+            assertNull(last.meta.get("nextCursor"));
+            var invalid=assertThrows(ExceptionHandler.DepositException.class,()->new ReadService(
+                new RequestContext(tx,Map.of("token",token))).page("Object",Map.of("pageSize",2L,"cursor",cursor)));
+            assertTrue(invalid.getMessage().contains("VALIDATION_FAILED"));
+        }
+    }
+
+    private static List<Object> pageIds(Results.DataRow page) {
+        return ((List<?>)page.data.get("items")).stream().map(item->ValueCodec.map(item).get("id")).toList();
+    }
+
     private void assertFields(List<Results.EntityRow> rows) {assertFields(rows,namespaces);}
     private void assertFields(List<Results.EntityRow> rows,List<String> expectedIds) {
         assertEquals(expectedIds,rows.stream().map(row->(String)row.data.get("id")).toList());

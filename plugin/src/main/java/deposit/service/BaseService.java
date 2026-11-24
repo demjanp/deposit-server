@@ -57,11 +57,43 @@ public abstract class BaseService {
     protected void scoped(String minimum) {c.revision=CoreRepository.sequence(scope(minimum));}
     protected Node scope(String minimum) {
         authenticate();
+        return requireRole(activeScope(),minimum);
+    }
+    protected String activeScope() {
         if(c.state.selection) c.fail("VALIDATION_FAILED","Selection and scoped work need separate transactions");
         if(!c.state.scoped) {c.state.namespace=c.session.namespace;c.state.administrative=c.session.administrative;c.state.scoped=true;}
         c.namespaceId=c.state.namespace;
         if(c.namespaceId==null) c.fail("NO_ACTIVE_NAMESPACE","Select a Namespace first");
-        return requireRole(c.namespaceId,minimum);
+        return c.namespaceId;
+    }
+    protected Node pinReadScope(String minimum) {
+        return pinReadScope(minimum,null);
+    }
+    protected Node pinReadScope(String minimum,Long pinned) {
+        if(c.readNamespace==null) {
+            c.readNamespace=scope(minimum);
+            c.readAuthorizationGeneration=c.state.authorizationGeneration;
+            c.revision=pinned==null?CoreRepository.sequence(c.readNamespace):pinned;
+        }
+        return c.readNamespace;
+    }
+    protected void pinServerRead() {
+        if(!c.serverReadPinned) {
+            authenticate();
+            c.revision=c.server.revision(c.state);
+            c.serverReadPinned=true;
+        }
+    }
+    protected long currentReadRevision(String minimum) {
+        if(c.readNamespace==null) {
+            authenticate();
+            return c.server.revision(c.state);
+        }
+        if(c.readAuthorizationGeneration!=c.state.authorizationGeneration) {
+            c.readNamespace=scope(minimum);
+            c.readAuthorizationGeneration=c.state.authorizationGeneration;
+        } else bindBoltSession();
+        return CoreRepository.sequence(c.readNamespace);
     }
     protected Node requireRole(String namespace,String minimum) {
         Node ns=repo.namespace(namespace);

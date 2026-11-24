@@ -6,11 +6,13 @@ import deposit.repository.CoreRepository;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.*;
+import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
 public final class ReadService extends BaseService {
     public ReadService(RequestContext c) {super(c);}
+    private static final Set<String> SCOPED_NODE_PAGES=Set.of("Class","Object","Descriptor","ClassDescriptor","Pattern","UserTool");
     private Map<String,Object> discoveryRequest;
     private String discoveryFingerprint;
     private boolean discoveryMode;
@@ -20,24 +22,37 @@ public final class ReadService extends BaseService {
             Node node=repo.namespace(id);
             return node!=null&&effectiveRole(id)!=null?List.of(node):List.of();
         }
-        List<Node> nodes=repo.nodes("Namespace",Map.of()).stream().filter(n->effectiveRole(CoreRepository.id(n))!=null).toList();
-        if(request.containsKey("name")) {String name=name(request.get("name"));nodes=nodes.stream().filter(n->name.equals(n.getProperty("name"))).toList();}
-        return nodes;
+        if(request.containsKey("name")) {
+            Node node=repo.find("Namespace","name",name(request.get("name")));
+            return node!=null&&effectiveRole(CoreRepository.id(node))!=null?List.of(node):List.of();
+        }
+        return repo.nodes("Namespace",Map.of()).stream().filter(n->{
+            checkLive();
+            return effectiveRole(CoreRepository.id(n))!=null;
+        }).toList();
     }
     private Map<String,Object> namespaceData(Node n) {var data=repo.data(n);data.put("role",effectiveRole(CoreRepository.id(n)));return data;}
-    private String fingerprint(List<Map<String,Object>> data) {return Json.hash(Json.write(data));}
-    private record Item(Node node,Relationship rel,Map<String,Object> data) {
-        Item(Node node,Map<String,Object> data) {this(node,null,data);}
+    private String fingerprint(List<Node> nodes) {
+        // Discovery spans Namespaces, so the server revision alone cannot detect every change.
+        return Json.hash(Json.write(nodes.stream().map(n->{
+            checkLive();
+            String id=CoreRepository.id(n);
+            return List.of(id,CoreRepository.sequence(n),Objects.requireNonNullElse(effectiveRole(id),""));
+        }).toList()));
+    }
+    private record Item(Node node,Relationship rel) {}
+    private void startRead(String kind) {
+        readContext();
+        if(kind.equals("User")||kind.equals("Namespace"))pinServerRead();
+        else pinReadScope(kind.equals("NamespaceRoles")?"owner":"viewer");
+        checkLive();
     }
     private List<Item> select(String kind,Map<String,Object> request) {
-        readContext();
-        boolean server=Set.of("User","Namespace").contains(kind);
-        Node user;
-        if(server) {user=authenticate();c.revision=c.server.revision(c.state);} else {scoped(kind.equals("NamespaceRoles")?"owner":"viewer");user=null;}
         List<Node> nodes;
         switch(kind) {
             case "User" -> {
-                fields(request,"userId");boolean admin="administrator".equals(user.getProperty("serverRole"));
+                fields(request,"userId");Node user=c.state.protectedActor;
+                boolean admin="administrator".equals(user.getProperty("serverRole"));
                 if(request.containsKey("userId")) {
                     String id=RequestContext.uuid(request.get("userId"));
                     if(!admin&&!id.equals(c.actorId))c.fail("NOT_FOUND","User not found");
@@ -48,6 +63,9 @@ public final class ReadService extends BaseService {
                 fields(request,"id","name");exclusive(request,"id","name");
                 nodes=namespaces(request);
                 if(!request.isEmpty()&&nodes.isEmpty())c.fail("NOT_FOUND","Namespace not found");
+                discoveryRequest=Map.copyOf(request);
+                discoveryMode=administrativeMode();
+                discoveryFingerprint=fingerprint(nodes);
             }
             case "Class","Pattern","UserTool" -> {
                 fields(request,"id","name");exclusive(request,"id","name");
@@ -66,9 +84,14 @@ public final class ReadService extends BaseService {
                 fields(request,"id",ownerKey,"name");
                 if(request.containsKey("id")) {if(request.size()!=1)c.fail("VALIDATION_FAILED","ID selector is exclusive");nodes=List.of(required(kind,request.get("id")));}
                 else {
-                    if(request.containsKey(ownerKey))nodes=repo.children(required(kind.equals("Descriptor")?"Object":"Class",request.get(ownerKey)),kind);
-                    else {if(request.containsKey("name"))c.fail("VALIDATION_FAILED","Name filter requires owner");nodes=repo.nodes(kind,Map.of("namespaceId",c.namespaceId));}
-                    if(request.containsKey("name")) {String name=name(request.get("name"));nodes=nodes.stream().filter(n->name.equals(n.getProperty("name"))).toList();}
+                    if(request.containsKey(ownerKey)) {
+                        Node owner=required(kind.equals("Descriptor")?"Object":"Class",request.get(ownerKey));
+                        if(request.containsKey("name")) {
+                            String selected=name(request.get("name"));
+                            Node node=kind.equals("Descriptor")?repo.descriptor(owner,selected):repo.declaration(owner,selected);
+                            nodes=node==null?List.of():List.of(node);
+                        } else nodes=repo.children(owner,kind);
+                    } else {if(request.containsKey("name"))c.fail("VALIDATION_FAILED","Name filter requires owner");nodes=repo.nodes(kind,Map.of("namespaceId",c.namespaceId));}
                 }
             }
             case "ClassMembers" -> {fields(request,"classId");nodes=repo.members(required("Class",request.get("classId")));}
@@ -82,63 +105,90 @@ public final class ReadService extends BaseService {
                 String target=request.containsKey("targetId")?RequestContext.uuid(request.get("targetId")):null;
                 String label=request.containsKey("label")?name(request.get("label")):null;
                 var items=new ArrayList<Item>();
-                for(var rel:repo.relationships(c.namespaceId,kind)) {
-                    checkRevision();
-                    if(id!=null&&!id.equals(CoreRepository.id(rel)))continue;
+                if(id!=null) {
+                    var rel=repo.readRelationship(c.namespaceId,kind,id);
+                    if(rel==null)c.fail("NOT_FOUND","Relationship not found");
+                    return List.of(new Item(null,rel));
+                }
+                var edges=source!=null?repo.relationshipsAt(c.namespaceId,kind,source,Direction.OUTGOING,this::checkLive):
+                    target!=null?repo.relationshipsAt(c.namespaceId,kind,target,Direction.INCOMING,this::checkLive):
+                    repo.relationships(c.namespaceId,kind,this::checkLive);
+                for(var rel:edges) {
+                    checkLive();
                     if(source!=null&&!source.equals(CoreRepository.id(rel.getStartNode())))continue;
                     if(target!=null&&!target.equals(CoreRepository.id(rel.getEndNode())))continue;
                     if(label!=null&&!label.equals(rel.getProperty("label")))continue;
-                    items.add(new Item(null,rel,repo.data(rel)));
+                    items.add(new Item(null,rel));
                 }
-                if(id!=null&&items.isEmpty())c.fail("NOT_FOUND","Relationship not found");checkRevision();return items;
+                return items;
             }
-            case "NamespaceRoles" -> {fields(request);return repo.roles(c.namespaceId).stream().map(data->new Item(null,data)).toList();}
+            case "NamespaceRoles" -> {fields(request);return repo.roleEdges(c.namespaceId,this::checkLive).stream().map(edge->new Item(null,edge)).toList();}
             default -> throw new IllegalArgumentException();
         }
         var results=new ArrayList<Item>();
         if(kind.equals("Class")||kind.equals("ClassDescriptor"))nodes=nodes.stream().sorted(Comparator.<Node>comparingLong(n->((Number)n.getProperty("order",0L)).longValue()).thenComparing(CoreRepository::id)).toList();
-        for(Node n:nodes) {checkRevision();var data=kind.equals("Namespace")?namespaceData(n):repo.data(n);results.add(new Item(n,data));}
-        if(kind.equals("Namespace")) {discoveryRequest=Map.copyOf(request);discoveryMode=administrativeMode();discoveryFingerprint=fingerprint(results.stream().map(Item::data).toList());}
-        checkDiscoveryRevision();return results;
+        for(Node n:nodes) {checkLive();results.add(new Item(n,null));}
+        return results;
+    }
+    private Map<String,Object> project(String kind,Item item) {
+        if(kind.equals("NamespaceRoles"))return CoreRepository.roleData(item.rel());
+        if(item.rel()!=null)return repo.data(item.rel());
+        return kind.equals("Namespace")?namespaceData(item.node()):repo.data(item.node());
     }
     private boolean matches(Node object,Map<String,Object> filters) {
+        checkLive();
         boolean match=true;
+        if(filters.isEmpty())return true;
+        Node clazz=repo.objectClass(object);
         for(var entry:filters.entrySet()) {
-            String name=name(entry.getKey());Node declaration=repo.declaration(repo.objectClass(object),name);
+            checkLive();
+            String name=name(entry.getKey());Node declaration=repo.declaration(clazz,name);
             if(declaration==null) {match=false;continue;}
             String type=(String)declaration.getProperty("type");Object expected=ValueCodec.normalize(type,entry.getValue());Node d=repo.descriptor(object,name);
-            if(d==null||!Objects.equals(expected,repo.descriptorValue(d)))match=false;
+            if(d==null||!Objects.equals(expected,repo.descriptorValue(d,type)))match=false;
         }return match;
     }
     private static void exclusive(Map<String,Object> request,String a,String b) {if(request.containsKey(a)&&request.containsKey(b))throw ExceptionHandler.fail("VALIDATION_FAILED","Selectors are exclusive");}
-    @Override protected void checkRevision() {
+    private void checkLive() {
         c.state.kernel.assertOpen();
-        authenticate();
         if(System.currentTimeMillis()-c.state.kernel.startTime()>30_000)c.fail("CANCELLED","Read timeout exceeded");
-        long current=c.namespaceId==null?c.server.revision(c.state):repo.sequence(c.namespaceId);
+    }
+    private void checkRevision(String kind) {
+        checkLive();
+        long current=currentReadRevision(kind.equals("NamespaceRoles")?"owner":"viewer");
         if(current!=c.revision)throw ExceptionHandler.error("REVISION_CONFLICT","Revision changed during read",c,false,Map.of("currentRevision",current));
     }
-    private void checkDiscoveryRevision() {
-        checkRevision();
-        if(discoveryRequest!=null&&(discoveryMode!=administrativeMode()||!discoveryFingerprint.equals(fingerprint(namespaces(discoveryRequest).stream().map(this::namespaceData).toList()))))c.fail("REVISION_CONFLICT","Accessible Namespace results changed");
+    private void checkDiscoveryRevision(String kind) {
+        if(discoveryRequest!=null&&(discoveryMode!=administrativeMode()||!discoveryFingerprint.equals(fingerprint(namespaces(discoveryRequest)))))c.fail("REVISION_CONFLICT","Accessible Namespace results changed");
+        checkRevision(kind);
     }
-    private Stream<Item> stream(List<Item> items) {
+    private Stream<Item> stream(String kind,Map<String,Object> request) {
+        startRead(kind);
+        var items=select(kind,request);
+        checkDiscoveryRevision(kind);
         var iterator=items.iterator();
         var spliterator=new Spliterators.AbstractSpliterator<Item>(items.size(),Spliterator.ORDERED) {
             @Override public boolean tryAdvance(Consumer<? super Item> action) {
-                checkRevision();if(!iterator.hasNext()) {checkDiscoveryRevision();return false;}action.accept(iterator.next());checkRevision();return true;
+                if(!iterator.hasNext()) {checkDiscoveryRevision(kind);return false;}
+                checkRevision(kind);action.accept(iterator.next());checkRevision(kind);return true;
             }
         };
-        return StreamSupport.stream(spliterator,false).onClose(this::checkDiscoveryRevision);
+        return StreamSupport.stream(spliterator,false).onClose(()->checkDiscoveryRevision(kind));
     }
-    public Stream<EntityRow> entities(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new EntityRow(i.node(),i.data(),c.meta()));}
-    public Stream<RelRow> relationships(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new RelRow(i.rel(),i.data(),c.meta()));}
-    public Stream<DataRow> records(String kind,Map<String,Object> request) {return stream(select(kind,request)).map(i->new DataRow(i.data(),c.meta()));}
+    public Stream<EntityRow> entities(String kind,Map<String,Object> request) {
+        return stream(kind,request).map(i->new EntityRow(i.node(),c.nativeResultsOnly?null:project(kind,i),c.meta()));
+    }
+    public Stream<RelRow> relationships(String kind,Map<String,Object> request) {
+        return stream(kind,request).map(i->new RelRow(i.rel(),c.nativeResultsOnly?null:project(kind,i),c.meta()));
+    }
+    public Stream<DataRow> records(String kind,Map<String,Object> request) {
+        return stream(kind,request).map(i->new DataRow(project(kind,i),c.meta()));
+    }
     public DataRow page(String kind,Map<String,Object> request) {
         if(request==null)c.fail("VALIDATION_FAILED","request must be a map");
         var base=new LinkedHashMap<>(request);base.remove("pageSize");base.remove("cursor");
         long size=integer(request.getOrDefault("pageSize",200L));if(size<1||size>1000)c.fail("LIMIT_EXCEEDED","pageSize must be between 1 and 1000");
-        readContext();if(Set.of("User","Namespace").contains(kind)) {authenticate();c.revision=c.server.revision(c.state);}else scoped(kind.equals("NamespaceRoles")?"owner":"viewer");
+        startRead(kind);
         String scope=c.namespaceId==null?"server":c.namespaceId;
         String hash=Json.hash(Json.write(Json.map("kind",kind,"request",base)));
         long offset=0;
@@ -151,11 +201,31 @@ public final class ReadService extends BaseService {
             if(((Number)cursor.get("revision")).longValue()!=c.revision)c.fail("REVISION_CONFLICT","Cursor revision changed");
             offset=((Number)cursor.get("offset")).longValue();
         }
-        long pinned=c.revision;List<Item> items=select(kind,base);if(pinned!=c.revision)c.fail("REVISION_CONFLICT","Revision changed during page");
-        if(cursor!=null && kind.equals("Namespace") && (!Objects.equals(cursor.get("discovery"),discoveryFingerprint)||!Objects.equals(cursor.get("administrative"),discoveryMode)))c.fail("REVISION_CONFLICT","Accessible Namespace results or mode changed");
-        if(offset<0||offset>items.size())c.fail("VALIDATION_FAILED","Invalid cursor offset");
-        int end=(int)Math.min(items.size(),offset+size);var data=Json.map("items",items.subList((int)offset,end).stream().map(Item::data).toList());var meta=c.meta();
-        if(end<items.size())meta.put("nextCursor",CursorCodec.encode(c,Json.map("scope",scope,"actor",c.actorId,"hash",hash,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900_000L,"run",c.server.runId,"discovery",discoveryFingerprint,"administrative",administrativeMode())));
-        checkDiscoveryRevision();return new DataRow(data,meta);
+        if(offset<0)c.fail("VALIDATION_FAILED","Invalid cursor offset");
+        List<Item> window;
+        boolean members=Set.of("Object","ClassMembers").contains(kind)&&base.keySet().equals(Set.of("classId"));
+        if(members||base.isEmpty()&&SCOPED_NODE_PAGES.contains(kind)) {
+            // Starting one identity early distinguishes an exact-end cursor from an invalid offset.
+            int prefix=offset==0?0:1;
+            String memberClass=members?CoreRepository.id(required("Class",base.get("classId"))):null;
+            var nodes=repo.nodePage(kind,c.namespaceId,memberClass,offset-prefix,size+1+prefix);
+            if(nodes.size()<prefix)c.fail("VALIDATION_FAILED","Invalid cursor offset");
+            window=nodes.subList(prefix,nodes.size()).stream().map(n->new Item(n,null)).toList();
+        } else {
+            var items=select(kind,base);
+            if(cursor!=null&&kind.equals("Namespace")&&(!Objects.equals(cursor.get("discovery"),discoveryFingerprint)||!Objects.equals(cursor.get("administrative"),discoveryMode)))c.fail("REVISION_CONFLICT","Accessible Namespace results or mode changed");
+            if(offset>items.size())c.fail("VALIDATION_FAILED","Invalid cursor offset");
+            window=items.subList((int)offset,(int)Math.min(items.size(),offset+size+1));
+        }
+        var rows=new ArrayList<Map<String,Object>>();
+        for(int i=0;i<Math.min(window.size(),size);i++) {
+            checkLive();
+            rows.add(project(kind,window.get(i)));
+        }
+        var meta=c.meta();
+        if(window.size()>size)meta.put("nextCursor",CursorCodec.encode(c,Json.map("scope",scope,"actor",c.actorId,"hash",hash,"revision",c.revision,"offset",offset+rows.size(),"expires",System.currentTimeMillis()+900_000L,"run",c.server.runId,"discovery",discoveryFingerprint,"administrative",administrativeMode())));
+        c.server.storagePoint("read-page-materialized");
+        checkDiscoveryRevision(kind);
+        return new DataRow(Json.map("items",rows),meta);
     }
 }

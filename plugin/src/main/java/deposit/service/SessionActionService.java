@@ -50,8 +50,12 @@ public final class SessionActionService extends BaseService {
         }
         if(Set.of("namespace","operational").contains(spec.scope())) {
             if(action&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")))scope("viewer");
+            else if(!action&&spec.scope().equals("namespace"))
+                pinReadScope(procedure.startsWith("deposit.get.namespaceRoles")?"owner":"viewer");
             else scoped("viewer");
         }
+        if(Set.of("deposit.get.user","deposit.get.userPage","deposit.get.namespace","deposit.get.namespacePage").contains(procedure))
+            pinServerRead();
         if(Set.of("deposit.set.activeNamespace","deposit.set.administrativeMode").contains(procedure))lease();
 
         if(!action){

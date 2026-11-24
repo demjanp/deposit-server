@@ -27,19 +27,29 @@ final class SessionDiagnostics extends BaseService {
             String ns=kind.equals("Namespace")?CoreRepository.id(n):(String)n.getProperty("namespaceId",null);
             Node namespace=requireRole(ns,"viewer");
             if(!kind.equals("Namespace")) {
-                scope("viewer");
-                if(!ns.equals(c.namespaceId))c.fail("SCOPE_MISMATCH","Entity belongs to another Namespace");
+                if(!ns.equals(activeScope())) {
+                    requireRole(c.namespaceId,"viewer");
+                    c.fail("SCOPE_MISMATCH","Entity belongs to another Namespace");
+                }
             }
             c.namespaceId=ns;c.revision=CoreRepository.sequence(namespace);var data=repo.data(n);
-            if(kind.equals("Namespace"))data.put("role",effectiveRole(ns));return data;
+            if(kind.equals("Namespace"))data.put("role",effectiveRole(ns));
+            checkProjection(namespace);
+            return data;
         }
         if(entity instanceof Relationship rel) {
             Node namespace=scope("viewer");String kind=CoreRepository.kind(rel);
             if(!Set.of("Membership","Relationship","ClassRelationship").contains(kind))c.fail("VALIDATION_FAILED","Expected a public Deposit relationship");
             String ns=(String)rel.getStartNode().getProperty("namespaceId",null),active=c.state.scoped?c.state.namespace:c.session.namespace;
             if(!Objects.equals(ns,active))c.fail("SCOPE_MISMATCH","Relationship belongs to another Namespace");
-            c.revision=CoreRepository.sequence(namespace);return repo.data(rel);
+            c.revision=CoreRepository.sequence(namespace);var data=repo.data(rel);
+            checkProjection(namespace);
+            return data;
         }
         c.fail("VALIDATION_FAILED","Expected a native Deposit node or relationship");return null;
+    }
+    private void checkProjection(Node namespace) {
+        bindBoltSession();
+        if(CoreRepository.sequence(namespace)!=c.revision)c.fail("REVISION_CONFLICT","Revision changed during serialization");
     }
 }
