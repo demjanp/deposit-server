@@ -144,7 +144,7 @@ class ImportHistoryActionTest {
                 Json.map("kind","ClassDescriptor","id",UUID.randomUUID().toString(),"namespaceId",sourceNamespace,"classId",sourceClass,"name","Attachment","type","DResource","order",0L,"comment",""),
                 Json.map("kind","Descriptor","id",sourceDescriptor,"namespaceId",sourceNamespace,"objectId",sourceObject,"name","Attachment","value",Json.map("resourceId",sourceResource)));
         List<Map<String,Object>> changes=images.stream().map(image->Json.map("entityKind",image.get("kind"),"entityId",image.get("id"),"before",null,"after",image)).toList();
-        var revision=Json.map("revisionId",sourceRevision,"namespaceId",sourceNamespace,"sequence",0L,"historyEpochId",sourceEpoch,"historyMode","persistent","operationId",UUID.randomUUID().toString(),"actorId",actor,"committedAt","2026-01-01T00:00:00Z","kind","baseline","summary","Baseline","parentRevisionId",null,"changes",changes,"touches",Map.of(),"dependencies",List.of());
+        var revision=Json.map("revisionId",sourceRevision,"namespaceId",sourceNamespace,"sequence",0L,"historyEpochId",sourceEpoch,"historyMode","persistent","operationId",UUID.randomUUID().toString(),"actorId",actor,"committedAt","2026-01-01T00:00:00Z","kind","baseline","summary","Baseline","parentRevisionId",null,"tag","Source tag","changes",changes,"touches",Map.of(),"dependencies",List.of());
         var epoch=Json.map("id",sourceEpoch,"mode","persistent","closed",false,"startedSequence",0L,"endedSequence",null,"baselineRevisionId",sourceRevision,"headRevisionId",sourceRevision,"baseline",revision,"revisions",List.of(revision));
         var history=Json.map("namespaceId",sourceNamespace,"historyMode","persistent","activeEpochId",sourceEpoch,"headRevisionId",sourceRevision,"epochs",List.of(epoch),"complete",true);
         Path archive=temporary.resolve("clone-history-resource.zip");ExchangePackageCodec.write(archive,manifest,graph,history,Map.of(checksum,contentPath));
@@ -170,6 +170,37 @@ class ImportHistoryActionTest {
             Node resource=tx.findNode(Label.label("DResource"),"id",clonedResource);assertNotNull(resource);assertEquals(clonedNamespace,resource.getProperty("namespaceId"));assertTrue(server.storage.content.exists(clonedResource));
             Node snapshot=null;try(var snapshots=tx.findNodes(Label.label("DepositSnapshot"),"namespaceId",clonedNamespace)){while(snapshots.hasNext()){Node candidate=snapshots.next();if("Descriptor".equals(candidate.getProperty("entityKind"))){snapshot=candidate;break;}}}
             assertNotNull(snapshot);var retained=snapshot.getRelationships(Direction.OUTGOING,RelationshipType.withName("RETAINS_RESOURCE"));assertTrue(retained.iterator().hasNext());assertEquals(clonedResource,retained.iterator().next().getEndNode().getProperty("id"));
+
+            var core=new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC));
+            var repository=new HistoryRepository(tx,core);
+            String revisionId=(String)core.namespace(clonedNamespace).getProperty("headRevisionId");
+            Node cloned=core.entity("Revision",clonedNamespace,revisionId);
+            assertEquals("Source tag",cloned.getProperty("tag"));
+            Object committedAt=cloned.getProperty("committedAt"), originalActor=cloned.getProperty("actorId");
+            try(var records=new ExportRecords(temporary)){
+                var exported=repository.portableMetadata(cloned,records);
+                assertEquals("Source tag",exported.get("tag"));
+                assertFalse(exported.containsKey("tagUpdatedAt"));
+                assertFalse(exported.containsKey("tagUpdatedBy"));
+            }
+            var editTime=ZonedDateTime.parse("2026-02-01T00:00:00Z");
+            assertTrue(repository.tag(clonedNamespace,revisionId,"Updated tag",actor,editTime));
+            assertFalse(repository.tag(clonedNamespace,revisionId,"Updated tag",actor,editTime.plusDays(1)));
+            assertEquals(editTime,cloned.getProperty("tagUpdatedAt"));
+            assertEquals(actor,cloned.getProperty("tagUpdatedBy"));
+            assertEquals(committedAt,cloned.getProperty("committedAt"));
+            assertEquals(originalActor,cloned.getProperty("actorId"));
+            var selected=repository.read(cloned).data();
+            assertEquals("Updated tag",selected.get("tag"));
+            assertFalse(selected.containsKey("tagUpdatedAt"));
+            assertFalse(selected.containsKey("tagUpdatedBy"));
+            assertTrue(repository.tag(clonedNamespace,revisionId,"",actor,editTime));
+            assertFalse(cloned.hasProperty("tag"));
+            assertFalse(cloned.hasProperty("tagUpdatedAt"));
+            assertFalse(cloned.hasProperty("tagUpdatedBy"));
+            selected=repository.read(cloned).data();
+            assertTrue(selected.containsKey("tag"));
+            assertNull(selected.get("tag"));
             tx.commit();
         }
     }

@@ -10,7 +10,9 @@ import deposit.repository.OperationRepository;
 import deposit.repository.OperationRepository;
 import deposit.repository.ResourceRepository;
 import deposit.repository.SchemaRepository;
+import deposit.repository.StagedTableRepository.Table;
 import deposit.service.ProcedureService;
+import deposit.service.ResourceService;
 import deposit.service.SessionActionService;
 import java.net.SocketAddress;
 import java.nio.file.*;
@@ -623,10 +625,14 @@ class OperationAttemptTest {
         String upload=beginResource(a);writeResource(a,upload);
         String resource=(String)tracked(a,a.namespace,"deposit.resource.finishUpload",List.of(upload)).get("resourceId");
         try(var tx=database.beginTx()){
-            var resources=new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now()));
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            var resources=new ResourceRepository(tx,core);
             Node completed=resources.resource(a.namespace,resource);
             assertNotNull(completed);assertNull(resources.location(resource));
             assertTrue(resources.accessible(completed,a.id,"owner",false));
+            core.namespace(b.namespace).createRelationshipTo(completed,RelationshipType.withName("OWNS_RESOURCE"));
+            assertNull(resources.resource(a.namespace,resource));
+            assertFalse(resources.accessible(completed,a.id,"owner",false));
         }
         String id=operationId(clock.get()), procedure="deposit.delete.namespace";
         var args=List.<Object>of(a.id);
@@ -644,9 +650,14 @@ class OperationAttemptTest {
             assertNull(resources.resource(a.namespace,resource));
             Node detached=resources.state(resource).completed();assertNotNull(detached);
             assertEquals(a.namespace,detached.getProperty("namespaceId"));
-            assertEquals(true,detached.getProperty("detached"));
+            assertFalse(detached.hasProperty("detached"));
             assertFalse(detached.hasRelationship());
+            assertEquals(0L,detached.getProperty("leaseUntil"));
+            var wrongOwner=core.namespace(b.namespace).createRelationshipTo(detached,RelationshipType.withName("OWNS_RESOURCE"));
+            assertNull(resources.resource(a.namespace,resource));
+            assertNull(resources.resource(b.namespace,resource));
             assertFalse(resources.accessible(detached,a.id,"owner",false));
+            wrongOwner.delete();
             assertTrue(resources.collectionCandidates(a.namespace).isEmpty());
             assertTrue(resources.collectionCandidates(null).containsKey(resource));
             assertTrue(server.storage.content.exists(resource));
@@ -699,7 +710,7 @@ class OperationAttemptTest {
         assertEquals("COMMITTED",state(status(renew(a),id,a.namespace)));
     }
 
-    @Test void tableReadAcrossExpiryKeepsTheFilesAndPairedLeaseUntilClose() throws Exception {
+    @Test void tableReadAcrossExpiryKeepsFilesAndSourceProtectionUntilClose() throws Exception {
         Actor a=actor();
         String table=UUID.randomUUID().toString();
         Path rows=server.storage.files.path("staging/tables/"+table+".json");
@@ -710,13 +721,40 @@ class OperationAttemptTest {
         try(var offsets=new java.io.DataOutputStream(Files.newOutputStream(index))){offsets.writeLong(body.indexOf("{\"rowId\""));}
         long expires=clock.get()+1_000L;
         String source=UUID.randomUUID().toString();
-        server.storage.tables.create(new deposit.repository.StagedTableRepository.Table(table,a.namespace,a.id,source,
-            "staging/tables/"+table+".json","staging/tables/"+table+".idx",clock.get(),expires,"[]",1,true,"[]",false),
-            UUID.randomUUID().toString(),null);
+        var metadata=new Table(table,a.namespace,a.id,source,clock.get(),expires,"[]",1,true);
+        assertEquals(rows,server.storage.files.path(metadata.path()));
+        assertEquals(index,server.storage.files.path(metadata.rowIndexPath()));
+        assertThrows(ExceptionHandler.DepositException.class,()->Table.path("../other"));
+        server.storage.tables.create(metadata,null);
         server.storage.importPlans.save(new deposit.repository.ImportPlanRepository.Plan(table,a.namespace,a.id,table,null,
             table,null,null,0,"0".repeat(64),0,clock.get(),clock.get(),expires+60_000L,"ready","{}",
             UUID.randomUUID().toString(),false),"");
-        call(a,a.control,"deposit.get.tablePage",List.of(table,Map.of()),null);
+        server.storage.operational.read(db->{
+            try(var sql=db.createStatement()){
+                try(var schema=sql.executeQuery("""
+                        SELECT count(*) FROM sqlite_schema
+                        WHERE type='table' AND name NOT GLOB 'sqlite_*'
+                        """)){
+                    assertTrue(schema.next());
+                    assertEquals(14,schema.getInt(1));
+                }
+                try(var columns=sql.executeQuery("PRAGMA table_info(staged_tables)")){
+                    var names=new HashSet<String>();
+                    while(columns.next())names.add(columns.getString("name"));
+                    assertEquals(Set.of("id","namespace_id","creator_id","resource_id","created_at","expires_at",
+                        "columns_json","row_count","valid","unit_id"),names);
+                }
+                int version;
+                try(var before=sql.executeQuery("PRAGMA data_version")){assertTrue(before.next());version=before.getInt(1);}
+                var page=call(a,a.control,"deposit.get.tablePage",List.of(table,Map.of()),null);
+                assertEquals(1,((List<?>)page.get("rows")).size());
+                try(var after=sql.executeQuery("PRAGMA data_version")){
+                    assertTrue(after.next());
+                    assertEquals(version,after.getInt(1),"Table acquisition must not write to SQLite");
+                }
+            }
+            return null;
+        });
         var jobs=new StorageMaintenanceJobs(server,database,server.storage.files,()->server.storage.content,message->{});
         try(var reader=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,a.execution.info());
             var threads=Executors.newVirtualThreadPerTaskExecutor()){
@@ -730,6 +768,7 @@ class OperationAttemptTest {
                     assertEquals(1,stream.count());
                     assertTrue(Files.exists(rows));
                     assertTrue(Files.exists(index));
+                    assertTrue(server.storage.tables.protects(source));
                     assertThrows(TimeoutException.class,()->cleanup.get(100,TimeUnit.MILLISECONDS));
                 } finally { reader.commit(); }
                 cleanup.get(10,TimeUnit.SECONDS);
@@ -738,7 +777,7 @@ class OperationAttemptTest {
         assertFalse(Files.exists(rows));
         assertFalse(Files.exists(index));
         assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.control,"deposit.get.tablePage",List.of(table,Map.of()),null));
-        assertFalse(server.storage.tables.protects(source,clock.get()));
+        assertFalse(server.storage.tables.protects(source));
         assertNull(server.storage.importPlans.plan(table).tableId());
     }
 
@@ -1573,40 +1612,101 @@ class OperationAttemptTest {
         String finish="deposit.resource.finishUpload", finishId=operationId(clock.get());
         var finishArgs=List.<Object>of(upload);
         begin(a,finishId,a.namespace,finish,finishArgs);
-        String resource=(String)call(a,a.execution,finish,finishArgs,finishId).get("resourceId");
+        var ready=call(a,a.execution,finish,finishArgs,finishId);
+        String resource=(String)ready.get("resourceId");
+        clock.addAndGet(1_000);
+        // Public registration fences finished handles. Exercise the existing service path directly.
+        try(var tx=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,a.execution.info())){
+            var context=new RequestContext(tx,Json.map("token",a.token,"operationId",operationId(clock.get())));
+            context.procedure=finish;
+            assertEquals(ready,new ResourceService(context).transfer("finishUpload",Map.of("uploadId",upload)));
+            tx.commit();
+        }
+        var finished=server.storage.transfers.transfer(upload);
+        assertEquals("finished",finished.state());
+        assertNull(finished.bytes());
+        assertNull(finished.checksum());
+        assertNull(finished.nextOffset());
+        assertNull(finished.filename());
+        assertNull(finished.storedFilename());
+        assertNull(finished.mediaType());
+        assertEquals(clock.get()+ResourceFiles.LEASE,finished.expires());
         String load="deposit.load.csv", loadId=operationId(clock.get());
-        var loadArgs=List.<Object>of(resource,Map.of());
+        var loadArgs=List.<Object>of(resource,Map.of("columnTypes",Map.of("field","Integer")));
         begin(a,loadId,a.namespace,load,loadArgs);
-        String table=(String)call(a,a.execution,load,loadArgs,loadId).get("tableId");
+        var loaded=call(a,a.execution,load,loadArgs,loadId,()->{
+            assertTrue(server.storage.tables.protects(resource));
+            var files=server.storage.tables.stagingPaths();
+            assertEquals(2,files.size());
+            String pending=Path.of(files.getFirst()).getFileName().toString().replace(".json","");
+            assertNull(server.storage.tables.table(pending));
+        });
+        String table=(String)loaded.get("tableId");
+        assertFalse((boolean)loaded.get("valid"));
+        assertFalse((boolean)loaded.get("diagnosticsTruncated"));
+        var diagnostics=(List<?>)loaded.get("diagnostics");
+        assertEquals(1,diagnostics.size());
+        assertEquals("CELL_CONVERSION",ValueCodec.map(diagnostics.getFirst()).get("code"));
+        var outcome=status(a,loadId,a.namespace);
+        assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(outcome));
+        assertEquals(table,ValueCodec.map(outcome.get("result")).get("tableId"));
+        assertFalse(server.storage.tables.table(table).valid());
         long created=clock.get();
         clock.addAndGet(1000);
-        assertEquals(1,((List<?>)call(a,a.control,"deposit.get.tablePage",List.of(table,Map.of()),null).get("rows")).size());
+        var rows=(List<?>)call(a,a.control,"deposit.get.tablePage",List.of(table,Map.of()),null).get("rows");
+        assertEquals(1,rows.size());
+        assertEquals(Map.of("field","value"),ValueCodec.map(rows.getFirst()).get("values"));
         assertEquals(created+OperationRepository.RETENTION,server.storage.tables.table(table).expires());
-        assertTrue(server.storage.tables.protects(resource,clock.get()));
+        assertTrue(server.storage.tables.protects(resource));
         try(var tx=database.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now());
             core.find("User","id",a.id).setProperty("serverRole","administrator");
             tx.commit();
         }
-        clock.set(created+ResourceFiles.LEASE);
+        clock.set(created+ResourceFiles.LEASE-1);
+        try(var tx=database.beginTx()){
+            var resources=new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now()));
+            Node completed=resources.resource(a.namespace,resource);
+            assertTrue(resources.accessible(completed,a.id,null,false));
+            assertFalse(resources.accessible(completed,UUID.randomUUID().toString(),"viewer",false));
+            assertEquals(finished.expires(),completed.getProperty("leaseUntil"));
+            clock.incrementAndGet();
+            assertFalse(resources.accessible(completed,a.id,null,false));
+        }
         Actor admin=renew(a);
         var jobs=new StorageMaintenanceJobs(server,database,server.storage.files,()->server.storage.content,message->{});
         jobs.process(resource,false);
         var scope=Json.map("scope","namespace","minimumAgeHours",0L);
         assertFalse(((List<?>)call(admin,admin.control,"deposit.admin.pruneResources",List.of(scope),null).get("candidateIds")).contains(resource));
         jobs.expireTables();
-        assertFalse(server.storage.tables.protects(resource,clock.get()));
+        assertFalse(server.storage.tables.protects(resource));
         assertThrows(ExceptionHandler.DepositException.class,()->call(admin,admin.control,"deposit.get.tablePage",List.of(table,Map.of()),null));
         scope.put("dryRun",false);
         var prune=tracked(admin,admin.namespace,"deposit.admin.pruneResources",List.of(scope));
         assertEquals(List.of(resource),prune.get("candidateIds"));
         String job=(String)prune.get("pruneId");
-        jobs.collect(job+"/"+resource);
+        String item=job+"/"+resource;
+        jobs.collect(item);
         assertTrue(server.storage.content.exists(resource));
-        jobs.collect(job+"/"+resource);
+        var deleting=server.storage.pruning.item(item);
+        assertEquals("deleting",deleting.state());
+        long deletionBytes=deleting.deletionBytes();
+        assertTrue(deletionBytes>=bytes.length);
+        assertEquals(0L,deleting.reclaimed());
+        server.storageObserverForTesting(point->{
+            if("collection-after".equals(point))throw new IllegalStateException("Interrupted physical collection");
+        });
+        try{jobs.collect(item);}
+        finally{server.storageObserverForTesting(point->{});}
+        assertFalse(server.storage.content.exists(resource));
+        assertEquals(deletionBytes,server.storage.pruning.item(item).deletionBytes());
+        var failed=call(admin,admin.control,"deposit.admin.pruneResourcesStatus",List.of(job),null);
+        assertEquals("failed",failed.get("state"));
+        assertEquals(0L,failed.get("reclaimedBytes"));
+        jobs.collect(item);
         var collection=call(admin,admin.control,"deposit.admin.pruneResourcesStatus",List.of(job),null);
         assertEquals("completed",collection.get("state"));
-        assertTrue((long)collection.get("reclaimedBytes")>=bytes.length);
+        assertEquals(deletionBytes,collection.get("reclaimedBytes"));
         assertFalse(server.storage.content.exists(resource));
     }
 

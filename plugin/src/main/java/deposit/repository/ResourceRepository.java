@@ -29,10 +29,16 @@ public final class ResourceRepository {
     public Node completed(String id){return core.find("DResource","id",id);}
     public Node resource(String ns,String id){
         Node resource=core.entity("DResource",ns,id);
-        if(resource==null||Boolean.TRUE.equals(resource.getProperty("detached",false)))return null;
-        var ownership=resource.getSingleRelationship(RelationshipType.withName("OWNS_RESOURCE"),Direction.INCOMING);
-        return ownership!=null&&ownership.getStartNode().hasLabel(Label.label("Namespace"))
-            &&ns.equals(CoreRepository.id(ownership.getStartNode()))?resource:null;
+        return resource!=null&&ownedBy(resource,ns)?resource:null;
+    }
+
+    private static boolean ownedBy(Node resource,String namespace){
+        try(var ownership=resource.getRelationships(Direction.INCOMING,RelationshipType.withName("OWNS_RESOURCE"));
+            var edges=ownership.iterator()){
+            if(!edges.hasNext())return false;
+            Node owner=edges.next().getStartNode();
+            return !edges.hasNext()&&owner.hasLabel(Label.label("Namespace"))&&namespace.equals(owner.getProperty("id",null));
+        }
     }
 
     public record ResourceState(Node completed,Transfer transfer) {
@@ -53,11 +59,12 @@ public final class ResourceRepository {
         var candidates=new TreeMap<String,String>();
         for(var transfer:server.storage.transfers.scoped(namespace))
             if(!"finished".equals(transfer.state()))candidates.put(transfer.resource(),transfer.namespace());
-        String filter=namespace==null?"":" AND r.namespaceId=$namespaceId AND r.detached IS NULL";
+        String filter=namespace==null?"":" AND r.namespaceId=$namespaceId";
         try(var rows=tx.execute("MATCH (r:DResource) WHERE r.orphanSince IS NOT NULL"+filter+" RETURN r",scope)){
             while(rows.hasNext()){
                 Node resource=(Node)rows.next().get("r");
-                candidates.put(CoreRepository.id(resource),text(resource,"namespaceId"));
+                if(namespace==null||ownedBy(resource,namespace))
+                    candidates.put(CoreRepository.id(resource),text(resource,"namespaceId"));
             }
         }
         return candidates;
@@ -82,7 +89,6 @@ public final class ResourceRepository {
         lock(CoreRepository.id(resource));
         var ownership=resource.getSingleRelationship(RelationshipType.withName("OWNS_RESOURCE"),Direction.INCOMING);
         if(ownership!=null)ownership.delete();
-        resource.setProperty("detached",true);
         resource.setProperty("leaseUntil",0L);
         orphan(resource);
     }
@@ -106,12 +112,14 @@ public final class ResourceRepository {
             resource.provisional().expires()>now() || linkedProtection(resource.provisional().resource());
     }
     private boolean linkedProtection(String id) {
-        return live(id)||retained(id)||server.hasReaderPin(id)||server.storage.tables.protects(id,now())
+        return live(id)||retained(id)||server.hasReaderPin(id)||server.storage.tables.protects(id)
             ||server.storage.exportGrants.protects(id,now());
     }
     public void orphan(Node loc) {if(protectedContent(loc))loc.removeProperty("orphanSince");else if(!loc.hasProperty("orphanSince"))loc.setProperty("orphanSince",now());}
     public boolean accessible(Node resource,String actor,String role,boolean renew) {
-        String id=CoreRepository.id(resource);if(resource.hasProperty("deleting")||Boolean.TRUE.equals(resource.getProperty("detached",false)))return false;
+        String namespace=text(resource,"namespaceId");
+        if(resource.hasProperty("deleting")||!ownedBy(resource,namespace))return false;
+        String id=CoreRepository.id(resource);
         boolean namespaceReader=role!=null&&Set.of("viewer","editor","owner").contains(role);
         if(namespaceReader&&live(id))return true;
         if(namespaceReader&&retained(id))return true;
@@ -120,11 +128,11 @@ public final class ResourceRepository {
         if(actor.equals(resource.getProperty("createdBy"))&&number(resource,"leaseUntil",0)>now()) {
             var t=resourceTransfer(id);
             if(t!=null&&"finished".equals(t.state())&&actor.equals(t.actor())
-                &&text(resource,"namespaceId").equals(t.namespace())&&t.expires()>now()) {
+                &&namespace.equals(t.namespace())&&t.expires()>now()) {
                 return true;
             }
         }
-        return server.storage.exportGrants.permits(id,text(resource,"namespaceId"),actor,
+        return server.storage.exportGrants.permits(id,namespace,actor,
             Objects.equals(role,"owner"),now());
     }
     public boolean retained(String id) {

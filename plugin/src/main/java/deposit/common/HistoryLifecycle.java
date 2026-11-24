@@ -31,7 +31,7 @@ public final class HistoryLifecycle {
                     var core=core(tx);core.lockNamespace(ns);
                     Node epoch=null;try(var rows=tx.execute("MATCH (e:DepositHistoryEpoch {namespaceId:$ns,expired:true}) WHERE e.startedSequence IS NOT NULL RETURN e ORDER BY e.startedSequence LIMIT 1",Map.of("ns",ns))){if(rows.hasNext())epoch=(Node)rows.next().get("e");}
                     if(epoch!=null){String epochId=CoreRepository.id(epoch);
-                        for(String label:List.of("DepositSnapshot","RevisionTag","RevisionDependency","Revision")){
+                        for(String label:List.of("DepositSnapshot","RevisionDependency","Revision")){
                             if(removed>=128)break;
                             String query="MATCH (n:"+label+" {namespaceId:$ns,historyEpochId:$epoch}) RETURN n LIMIT "+(128-removed);
                             List<Node> batch=new ArrayList<>();try(var rows=tx.execute(query,Map.of("ns",ns,"epoch",epochId))){while(rows.hasNext())batch.add((Node)rows.next().get("n"));}

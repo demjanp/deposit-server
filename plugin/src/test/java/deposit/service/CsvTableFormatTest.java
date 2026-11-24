@@ -88,7 +88,7 @@ class CsvTableFormatTest {
     @Test void stagedCsvJsonHasExactIndependentBytesAndFieldOrder()throws Exception{
         Path source=temp.resolve("literal.csv"),staged=temp.resolve("literal.json");Files.writeString(source,"label,note\r\n\u00e9,\"a,\"\"b\"\"\nline\"\r\n");
         CsvTableFormat.read(source,staged,',',1,Map.of(),Map.of(),".",()->{});
-        assertEquals("{\"columns\":[{\"name\":\"label\",\"type\":\"String\"},{\"name\":\"note\",\"type\":\"String\"}],\"rows\":[{\"presence\":{\"label\":true,\"note\":true},\"rowId\":\"1\",\"values\":{\"label\":\"\u00e9\",\"note\":\"a,\\\"b\\\"\\nline\"}}],\"rowCount\":1,\"valid\":true,\"diagnostics\":[],\"diagnosticsTruncated\":false}",Files.readString(staged));
+        assertEquals("{\"columns\":[{\"name\":\"label\",\"type\":\"String\"},{\"name\":\"note\",\"type\":\"String\"}],\"rows\":[{\"presence\":{\"label\":true,\"note\":true},\"rowId\":\"1\",\"values\":{\"label\":\"\u00e9\",\"note\":\"a,\\\"b\\\"\\nline\"}}],\"rowCount\":1,\"valid\":true}",Files.readString(staged));
     }
 
     private static List<Map<String,Object>> rows(Path staged)throws Exception{try(Json.ArrayReader reader=new Json.ArrayReader(staged,"rows")){var result=new ArrayList<Map<String,Object>>();Map<String,Object> row;while((row=reader.next())!=null)result.add(row);return result;}}

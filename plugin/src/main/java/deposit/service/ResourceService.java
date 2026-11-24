@@ -60,8 +60,10 @@ public final class ResourceService extends BaseService {
         if(!dryRun&&bindingScope.equals("server"))c.server.lockServer(c.state);
         long hours=integer(request.getOrDefault("minimumAgeHours",48L));if(hours<0||hours>Long.MAX_VALUE/3_600_000)c.fail("VALIDATION_FAILED","Invalid minimum age");long age=hours*3_600_000;
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
-        var locations=resources.collectionCandidates(scope.equals("all")?null:c.namespaceId);
-        for(String ns:new TreeSet<>(locations.values()))repo.lockNamespace(ns);
+        boolean allScopes=scope.equals("all");
+        if(!allScopes)repo.lockNamespace(c.namespaceId);
+        var locations=resources.collectionCandidates(allScopes?null:c.namespaceId);
+        if(allScopes)for(String ns:new TreeSet<>(locations.values()))repo.lockNamespace(ns);
         var candidates=new ArrayList<String>();long bytes=0;
         for(String id:locations.keySet()) {
             resources.lock(id);

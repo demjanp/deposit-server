@@ -12,8 +12,8 @@ public final class ResourceTransferStore {
     private final OperationalStore store;
 
     public record Transfer(String id, String resource, String namespace, String actor, String filename,
-                           String storedFilename, String mediaType, long bytes, String checksum,
-                           long nextOffset, String state, long expires, String admissionId, String stagingPath,
+                           String storedFilename, String mediaType, Long bytes, String checksum,
+                           Long nextOffset, String state, long expires, String admissionId, String stagingPath,
                            boolean writerBound, Long orphanSince, String deleting, boolean collected,
                            boolean quarantined, String diagnostic) {
         public ResourceStorage.Content content() {
@@ -22,6 +22,10 @@ public final class ResourceTransferStore {
         public Transfer progress(long offset, String nextState, long expiry, String admission, Long orphan) {
             return new Transfer(id,resource,namespace,actor,filename,storedFilename,mediaType,bytes,checksum,
                 offset,nextState,expiry,admission,stagingPath,writerBound,orphan,deleting,collected,quarantined,diagnostic);
+        }
+        public Transfer finish(long expiry, String admission) {
+            return new Transfer(id,resource,namespace,actor,null,null,null,null,null,null,
+                "finished",expiry,admission,stagingPath,writerBound,null,deleting,collected,quarantined,diagnostic);
         }
         public Transfer cleanup(String path, String deletion, boolean done, boolean quarantine, String message) {
             return new Transfer(id,resource,namespace,actor,filename,storedFilename,mediaType,bytes,checksum,
@@ -38,11 +42,15 @@ public final class ResourceTransferStore {
         sql.execute("""
             CREATE TABLE resource_transfers (
                 id TEXT NOT NULL, resource_id TEXT NOT NULL, namespace_id TEXT NOT NULL, actor_id TEXT NOT NULL,
-                filename TEXT NOT NULL, stored_filename TEXT NOT NULL, media_type TEXT NOT NULL, bytes INTEGER NOT NULL,
-                checksum TEXT NOT NULL, next_offset INTEGER NOT NULL, state TEXT NOT NULL, expires_at INTEGER NOT NULL,
+                filename TEXT, stored_filename TEXT, media_type TEXT, bytes INTEGER,
+                checksum TEXT, next_offset INTEGER, state TEXT NOT NULL, expires_at INTEGER NOT NULL,
                 admission_id TEXT, staging_path TEXT, writer_bound INTEGER NOT NULL, orphan_since INTEGER,
                 deleting TEXT, collected INTEGER NOT NULL, quarantined INTEGER NOT NULL, diagnostic TEXT,
-                unit_id TEXT NOT NULL, PRIMARY KEY (id,unit_id), UNIQUE (resource_id,unit_id)
+                unit_id TEXT NOT NULL, PRIMARY KEY (id,unit_id), UNIQUE (resource_id,unit_id),
+                CHECK ((state='finished' AND filename IS NULL AND stored_filename IS NULL AND media_type IS NULL
+                        AND bytes IS NULL AND checksum IS NULL AND next_offset IS NULL)
+                    OR (state<>'finished' AND filename IS NOT NULL AND stored_filename IS NOT NULL AND media_type IS NOT NULL
+                        AND bytes IS NOT NULL AND checksum IS NOT NULL AND next_offset IS NOT NULL))
             ) STRICT
             """);
         sql.execute("CREATE INDEX resource_transfer_pending ON resource_transfers(unit_id) WHERE unit_id<>''");
@@ -110,14 +118,18 @@ public final class ResourceTransferStore {
     }
 
     private static Transfer read(ResultSet row) throws SQLException {
-        long since=row.getLong("orphan_since");
-        Long orphan=row.wasNull()?null:since;
+        Long orphan=nullableLong(row,"orphan_since");
         return new Transfer(row.getString("id"),row.getString("resource_id"),row.getString("namespace_id"),
             row.getString("actor_id"),row.getString("filename"),row.getString("stored_filename"),
-            row.getString("media_type"),row.getLong("bytes"),row.getString("checksum"),row.getLong("next_offset"),
+            row.getString("media_type"),nullableLong(row,"bytes"),row.getString("checksum"),nullableLong(row,"next_offset"),
             row.getString("state"),row.getLong("expires_at"),row.getString("admission_id"),row.getString("staging_path"),
             row.getBoolean("writer_bound"),orphan,row.getString("deleting"),row.getBoolean("collected"),
             row.getBoolean("quarantined"),row.getString("diagnostic"));
+    }
+
+    private static Long nullableLong(ResultSet row,String column) throws SQLException {
+        long value=row.getLong(column);
+        return row.wasNull()?null:value;
     }
 
     public void save(Transfer transfer, String unit) {
@@ -130,9 +142,9 @@ public final class ResourceTransferStore {
                 write.setString(5,transfer.filename());
                 write.setString(6,transfer.storedFilename());
                 write.setString(7,transfer.mediaType());
-                write.setLong(8,transfer.bytes());
+                write.setObject(8,transfer.bytes());
                 write.setString(9,transfer.checksum());
-                write.setLong(10,transfer.nextOffset());
+                write.setObject(10,transfer.nextOffset());
                 write.setString(11,transfer.state());
                 write.setLong(12,transfer.expires());
                 write.setString(13,transfer.admissionId());

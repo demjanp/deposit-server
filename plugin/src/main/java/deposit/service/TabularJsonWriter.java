@@ -20,8 +20,8 @@ final class TabularJsonWriter {
         if(!first)output.write(',');
         output.write(Json.write(Json.map("rowId",rowId,"values",values,"presence",presence)));
     }
-    static void footer(Writer output,long rowCount,boolean valid,List<?> diagnostics,boolean diagnosticsTruncated)throws IOException{
+    static void footer(Writer output,long rowCount,boolean valid)throws IOException{
         output.write("],\"rowCount\":");output.write(Long.toString(rowCount));output.write(",\"valid\":");output.write(Boolean.toString(valid));
-        output.write(",\"diagnostics\":");output.write(Json.write(diagnostics));output.write(",\"diagnosticsTruncated\":");output.write(Boolean.toString(diagnosticsTruncated));output.write('}');
+        output.write('}');
     }
 }

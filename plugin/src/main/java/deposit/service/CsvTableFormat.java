@@ -26,7 +26,7 @@ final class CsvTableFormat {
             while((record=readRecord(input,delimiter))!=null){check.run();if(record.size()==1&&record.getFirst().isEmpty())record=new ArrayList<>(Collections.nCopies(names.size(),""));if(record.size()!=names.size())throw ExceptionHandler.fail("VALIDATION_FAILED","CSV record field count differs from header");rowId++;Map<String,Object> values=new LinkedHashMap<>(),presence=new LinkedHashMap<>();for(int j=0;j<names.size();j++){String name=names.get(j),cell=record.get(j),type=(String)columns.get(j).get("type");presence.put(name,true);try{values.put(name,cell.isEmpty()?"":TabularValueCodec.parseCell(type,cell,decimal,formats.get(name)));}catch(RuntimeException ex){values.put(name,cell);valid=false;diagnostics.add("CELL_CONVERSION",Long.toString(rowId),name,"Cell cannot be parsed as "+type);}}
                 TabularJsonWriter.row(output,firstRow,Long.toString(rowId),values,presence);firstRow=false;
             }
-            TabularJsonWriter.footer(output,rowId,valid,diagnostics.items(),diagnostics.truncated());return Json.map("columns",columns,"rowCount",rowId,"valid",valid,"diagnostics",diagnostics.items(),"diagnosticsTruncated",diagnostics.truncated());
+            TabularJsonWriter.footer(output,rowId,valid);return Json.map("columns",columns,"rowCount",rowId,"valid",valid,"diagnostics",diagnostics.items(),"diagnosticsTruncated",diagnostics.truncated());
         }catch(CharacterCodingException ex){throw new IOException("Invalid UTF-8",ex);}
     }
 

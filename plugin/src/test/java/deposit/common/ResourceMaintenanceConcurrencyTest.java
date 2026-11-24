@@ -116,7 +116,7 @@ class ResourceMaintenanceConcurrencyTest {
         try{Files.createDirectories(server.storage.files.path(path).getParent());Files.write(server.storage.files.path(path),new byte[0]);}
         catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}
         server.storage.transfers.save(new ResourceTransferStore.Transfer(id,id,namespace,actor,filename,filename,
-            "application/zip",0,ResourceFiles.checksum(new byte[0]),0,"expired",0,null,path,false,null,null,false,false,null),"");
+            "application/zip",0L,ResourceFiles.checksum(new byte[0]),0L,"expired",0,null,path,false,null,null,false,false,null),"");
 
     }
     private ResourceRepository repository(org.neo4j.graphdb.Transaction tx){return new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC)));}

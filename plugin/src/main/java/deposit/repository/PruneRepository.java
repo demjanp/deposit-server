@@ -10,8 +10,10 @@ public final class PruneRepository {
     private final OperationalStore store;
 
     public record Job(String id,String scope,String actor,long minimumAge,long created,String incarnation) {}
-    public record Item(String id,String job,String resource,String state,Long deletionBytes,long reclaimed,
-                       String diagnostic,long updated) {}
+    public record Item(String id,String job,String resource,String state,Long deletionBytes,
+                       String diagnostic,long updated) {
+        public long reclaimed() { return "completed".equals(state)&&deletionBytes!=null?deletionBytes:0; }
+    }
 
     public PruneRepository(OperationalStore store) { this.store=store; }
 
@@ -28,7 +30,7 @@ public final class PruneRepository {
         sql.execute("""
             CREATE TABLE prune_items (
                 id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES prune_jobs(id) ON DELETE CASCADE,
-                resource_id TEXT NOT NULL, state TEXT NOT NULL, deletion_bytes INTEGER, reclaimed_bytes INTEGER NOT NULL,
+                resource_id TEXT NOT NULL, state TEXT NOT NULL, deletion_bytes INTEGER,
                 diagnostic TEXT, updated_at INTEGER NOT NULL, UNIQUE(job_id,resource_id)
             ) STRICT
             """);
@@ -51,7 +53,7 @@ public final class PruneRepository {
                 insert.setString(7,unit);
                 insert.executeUpdate();
             }
-            try(var insert=db.prepareStatement("INSERT INTO prune_items VALUES (?,?,?,'pending',NULL,0,NULL,?)")) {
+            try(var insert=db.prepareStatement("INSERT INTO prune_items VALUES (?,?,?,'pending',NULL,NULL,?)")) {
                 for(String resource:resources) {
                     insert.setString(1,job.id()+"/"+resource);
                     insert.setString(2,job.id());
@@ -97,7 +99,7 @@ public final class PruneRepository {
                         long bytes=row.getLong("deletion_bytes");
                         Long deletion=row.wasNull()?null:bytes;
                         items.add(new Item(row.getString("id"),row.getString("job_id"),row.getString("resource_id"),
-                            row.getString("state"),deletion,row.getLong("reclaimed_bytes"),row.getString("diagnostic"),
+                            row.getString("state"),deletion,row.getString("diagnostic"),
                             row.getLong("updated_at")));
                     }
                 }
@@ -106,18 +108,17 @@ public final class PruneRepository {
         });
     }
 
-    public void transition(Item item,String next,Long deletionBytes,long reclaimed,String diagnostic,long now) {
+    public void transition(Item item,String next,Long deletionBytes,String diagnostic,long now) {
         store.write(0,db -> {
             try(var update=db.prepareStatement("""
-                    UPDATE prune_items SET state=?,deletion_bytes=?,reclaimed_bytes=?,diagnostic=?,updated_at=?
+                    UPDATE prune_items SET state=?,deletion_bytes=?,diagnostic=?,updated_at=?
                     WHERE id=? AND state IN ('pending','deleting','failed')
                     """)) {
                 update.setString(1,next);
                 update.setObject(2,deletionBytes);
-                update.setLong(3,reclaimed);
-                update.setString(4,diagnostic);
-                update.setLong(5,now);
-                update.setString(6,item.id());
+                update.setString(3,diagnostic);
+                update.setLong(4,now);
+                update.setString(5,item.id());
                 update.executeUpdate();
             }
             return null;

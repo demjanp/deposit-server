@@ -5,7 +5,7 @@ import org.neo4j.graphdb.*;
 
 /** Bounded history-record deletion using the caller's existing transaction. */
 final class HistoryRecordDeletion {
-    private static final List<String> NAMESPACE_RECORDS = List.of("DepositSnapshot", "RevisionTag", "RevisionDependency", "Revision", "DepositHistoryEpoch");
+    private static final List<String> NAMESPACE_RECORDS = List.of("DepositSnapshot", "RevisionDependency", "Revision", "DepositHistoryEpoch");
     private final Transaction tx;
 
     HistoryRecordDeletion(Transaction tx) { this.tx = Objects.requireNonNull(tx); }

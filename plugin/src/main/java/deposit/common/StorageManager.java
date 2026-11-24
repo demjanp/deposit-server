@@ -8,6 +8,7 @@ import deposit.repository.ExchangeRepository;
 import deposit.repository.ExportGrantRepository;
 import deposit.repository.ImportResultStore;
 import deposit.repository.StagedTableRepository;
+import deposit.repository.StagedTableRepository.Table;
 import deposit.repository.ImportPlanRepository;
 import deposit.repository.ResourceTransferStore;
 import deposit.repository.PruneRepository;
@@ -262,7 +263,7 @@ public final class StorageManager implements AutoCloseable {
                 || !(intent.get("receiptScope") instanceof String scope) || reservation.operationId==null
                 || !reservation.ownerId.equals(RequestContext.uuid(reservation.ownerId)))
             return StorageAdmission.OwnerState.uncertain();
-        String base="staging/tables/"+reservation.ownerId;
+        String tablePath=Table.path(reservation.ownerId);
         try(var tx=db.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
             var attempt=operations.find(actor,scope,reservation.operationId);
@@ -271,16 +272,14 @@ public final class StorageManager implements AutoCloseable {
             if(OperationRepository.open(state))return StorageAdmission.OwnerState.uncertain();
             var table=tables.table(reservation.ownerId);
             if(state.equals("COMPLETED_NO_DOMAIN_WRITE")){
-                if(table==null||!actor.equals(table.actor())||!scope.equals(table.namespace())
-                        || !base.concat(".json").equals(table.path())
-                        || !base.concat(".idx").equals(table.rowIndexPath()))
+                if(table==null||!actor.equals(table.actor())||!scope.equals(table.namespace()))
                     return StorageAdmission.OwnerState.uncertain();
             }else if(Set.of("CANCELLED_ROLLED_BACK","FAILED_ROLLED_BACK").contains(state)&&table==null){
-                Files.deleteIfExists(files.path(base+".json"));
-                Files.deleteIfExists(files.path(base+".idx"));
+                Files.deleteIfExists(files.path(tablePath));
+                Files.deleteIfExists(files.path(Table.rowIndexPath(reservation.ownerId)));
             }else return StorageAdmission.OwnerState.uncertain();
-            Files.deleteIfExists(files.path(base+".source"));
-            String workspace=base+".json.work";
+            Files.deleteIfExists(files.path(Table.sourcePath(reservation.ownerId)));
+            String workspace=tablePath+".work";
             Files.deleteIfExists(files.path(workspace+"/shared-strings.dat"));
             Files.deleteIfExists(files.path(workspace+"/shared-strings.idx"));
             Files.deleteIfExists(files.path(workspace));

@@ -87,7 +87,7 @@ class ResourceMaintenanceExpiryTest {
     private String createUpload(ResourceRepository resources,boolean active,long expires,long lease,long orphanSince){
         String id=UUID.randomUUID().toString(),upload=UUID.randomUUID().toString();
         server.storage.transfers.save(new ResourceTransferStore.Transfer(upload,id,namespace,actor,"test","test","test",
-            0,ResourceFiles.checksum(new byte[0]),0,"uploading",active?lease:expires,null,null,false,
+            0L,ResourceFiles.checksum(new byte[0]),0L,"uploading",active?lease:expires,null,null,false,
             orphanSince==0?null:orphanSince,null,false,false,null),"");
         return id;
     }

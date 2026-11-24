@@ -12,8 +12,6 @@ public final class SchemaRepository {
             tx.execute("CREATE CONSTRAINT deposit_snapshot_entity IF NOT EXISTS FOR (n:DepositSnapshot) REQUIRE (n.namespaceId,n.revisionId,n.entityKind,n.entityId) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_revision_dependency IF NOT EXISTS FOR (n:RevisionDependency) REQUIRE (n.namespaceId,n.revisionId,n.entityKey) IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_revision_dependency_epoch IF NOT EXISTS FOR (n:RevisionDependency) ON (n.namespaceId,n.historyEpochId)").close();
-            tx.execute("CREATE CONSTRAINT deposit_revision_tag IF NOT EXISTS FOR (n:RevisionTag) REQUIRE (n.namespaceId,n.revisionId) IS UNIQUE").close();
-            tx.execute("CREATE INDEX deposit_revision_tag_epoch IF NOT EXISTS FOR (n:RevisionTag) ON (n.namespaceId,n.historyEpochId)").close();
             tx.execute("CREATE INDEX deposit_revision_sequence IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.sequence)").close();
             tx.execute("CREATE INDEX deposit_revision_epoch_sequence IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.historyEpochId,n.sequence)").close();
             tx.execute("CREATE INDEX deposit_revision_epoch IF NOT EXISTS FOR (n:Revision) ON (n.namespaceId,n.historyEpochId)").close();

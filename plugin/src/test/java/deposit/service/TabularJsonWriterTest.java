@@ -12,13 +12,13 @@ class TabularJsonWriterTest {
         TabularJsonWriter.header(output,columns);
         TabularJsonWriter.row(output,true,"1",Json.map("zeta","\u00e9","Alpha",7L),Json.map("zeta",true,"Alpha",false));
         TabularJsonWriter.row(output,false,"2",Json.map("zeta","a,\"b\"\nline","Alpha",null),Json.map("zeta",true,"Alpha",true));
-        TabularJsonWriter.footer(output,2,false,List.of(Json.map("severity","error","code","CELL_CONVERSION","rowId","2","column","Alpha","message","bad \u00e9")),false);
-        assertEquals("{\"columns\":[{\"name\":\"zeta\",\"type\":\"String\"},{\"name\":\"Alpha\",\"type\":\"Integer\"}],\"rows\":[{\"presence\":{\"Alpha\":false,\"zeta\":true},\"rowId\":\"1\",\"values\":{\"Alpha\":7,\"zeta\":\"\u00e9\"}},{\"presence\":{\"Alpha\":true,\"zeta\":true},\"rowId\":\"2\",\"values\":{\"Alpha\":null,\"zeta\":\"a,\\\"b\\\"\\nline\"}}],\"rowCount\":2,\"valid\":false,\"diagnostics\":[{\"code\":\"CELL_CONVERSION\",\"column\":\"Alpha\",\"message\":\"bad \u00e9\",\"rowId\":\"2\",\"severity\":\"error\"}],\"diagnosticsTruncated\":false}",output.toString());
+        TabularJsonWriter.footer(output,2,false);
+        assertEquals("{\"columns\":[{\"name\":\"zeta\",\"type\":\"String\"},{\"name\":\"Alpha\",\"type\":\"Integer\"}],\"rows\":[{\"presence\":{\"Alpha\":false,\"zeta\":true},\"rowId\":\"1\",\"values\":{\"Alpha\":7,\"zeta\":\"\u00e9\"}},{\"presence\":{\"Alpha\":true,\"zeta\":true},\"rowId\":\"2\",\"values\":{\"Alpha\":null,\"zeta\":\"a,\\\"b\\\"\\nline\"}}],\"rowCount\":2,\"valid\":false}",output.toString());
     }
 
     @Test void emptyStagedTableHasExactHeaderAndFooterBytes()throws Exception{
-        StringWriter output=new StringWriter();TabularJsonWriter.header(output,List.of(Json.map("name","code","type","String")));TabularJsonWriter.footer(output,0,true,List.of(),false);
-        assertEquals("{\"columns\":[{\"name\":\"code\",\"type\":\"String\"}],\"rows\":[],\"rowCount\":0,\"valid\":true,\"diagnostics\":[],\"diagnosticsTruncated\":false}",output.toString());
+        StringWriter output=new StringWriter();TabularJsonWriter.header(output,List.of(Json.map("name","code","type","String")));TabularJsonWriter.footer(output,0,true);
+        assertEquals("{\"columns\":[{\"name\":\"code\",\"type\":\"String\"}],\"rows\":[],\"rowCount\":0,\"valid\":true}",output.toString());
     }
 
     @Test void borrowedWriterIsNeverFlushedOrClosedAndWriteFailureIdentityIsPreserved(){

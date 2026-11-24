@@ -4,7 +4,7 @@ import deposit.common.*;
 import deposit.repository.StagedTableRepository.Table;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 
-/** Table admission shares the Namespace lock with table and source-lease cleanup. */
+/** Table admission shares the Namespace lock with table cleanup. */
 final class StagedTable extends BaseService {
     private static final long READER_GRACE = 900_000L;
 
@@ -22,7 +22,6 @@ final class StagedTable extends BaseService {
             c.fail("NOT_FOUND", "Table is unavailable");
         c.state.tableReadConnection=((InternalTransaction)c.tx).clientInfo().connectionId();
         c.state.tableReadDeadline = now + READER_GRACE;
-        c.server.storage.tables.touch(id,now);
         return table;
     }
 

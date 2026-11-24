@@ -34,7 +34,7 @@ public final class OperationRepository {
         AND NOT EXISTS (SELECT 1 FROM import_plans p WHERE p.id=json_extract(a.result_json,'$.planId'))
         AND NOT EXISTS (SELECT 1 FROM prune_jobs p WHERE p.id=json_extract(a.result_json,'$.pruneId'))
         AND NOT EXISTS (SELECT 1 FROM export_grants g WHERE g.resource_id=json_extract(a.result_json,'$.resourceId'))
-        AND NOT EXISTS (SELECT 1 FROM resource_leases l WHERE l.resource_id=json_extract(a.result_json,'$.resourceId'))
+        AND NOT EXISTS (SELECT 1 FROM staged_tables t WHERE t.resource_id=json_extract(a.result_json,'$.resourceId'))
         """;
 
     private static final String VISIBLE_RECEIPT = """

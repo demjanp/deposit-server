@@ -90,11 +90,28 @@ public final class HistoryRepository {
     public Node epoch(String ns,String id){return core.entity("DepositHistoryEpoch",ns,id);}
     public boolean available(Node revision){Node e=epoch((String)revision.getProperty("namespaceId"),(String)revision.getProperty("historyEpochId"));return e!=null&&!Boolean.TRUE.equals(e.getProperty("expired",false));}
     public List<Revision> revisions(String ns){var out=new ArrayList<Revision>();for(Node n:core.nodes("Revision",Map.of("namespaceId",ns)))if(available(n))out.add(read(n));out.sort(Comparator.comparingLong(Revision::sequence).thenComparing(Revision::id));return out;}
-    public Revision revision(String ns,String id){Node n=core.entity("Revision",ns,id);if(n==null||!available(n))throw ExceptionHandler.fail("NOT_FOUND","Revision not found");return read(n);}
+    public Revision revision(String ns,String id){return read(requireRevision(ns,id));}
+
+    private Node requireRevision(String ns,String id){
+        Node revision=core.entity("Revision",ns,id);
+        if(revision==null||!available(revision))throw ExceptionHandler.fail("NOT_FOUND","Revision not found");
+        return revision;
+    }
+
+    private static Map<String,Object> revisionProperties(Node revision,boolean portableHistory){
+        var data=new LinkedHashMap<String,Object>();
+        var tagFields=Set.of("tag","tagUpdatedAt","tagUpdatedBy");
+        revision.getAllProperties().forEach((key,value)->{
+            if(!tagFields.contains(key)&&!(portableHistory&&"bootId".equals(key)))
+                data.put(key,portable(value));
+        });
+        data.put("revisionId",CoreRepository.id(revision));
+        return data;
+    }
     /** One revision envelope without materializing its change images. */
     public Map<String,Object> portableMetadata(Node n,ExportRecords records)throws java.io.IOException{
-        var data=new LinkedHashMap<String,Object>();n.getAllProperties().forEach((key,value)->{if(!key.equals("bootId"))data.put(key,portable(value));});data.put("revisionId",CoreRepository.id(n));
-        Node tag=core.find("RevisionTag",Map.of("namespaceId",n.getProperty("namespaceId"),"revisionId",CoreRepository.id(n)));data.put("tag",tag==null?null:tag.getProperty("tag"));
+        var data=revisionProperties(n,true);
+        data.put("tag",n.getProperty("tag",null));
         Node epoch=epoch((String)n.getProperty("namespaceId"),(String)n.getProperty("historyEpochId"));if(epoch==null)HistoryCodec.invalid("Missing history epoch");
         data.put("epoch",Json.map("id",CoreRepository.id(epoch),"mode",epoch.getProperty("mode"),"closed",epoch.getProperty("closed",false),"baselineRevisionId",epoch.getProperty("baselineRevisionId")));
         Map<String,Object> touches=records.index();String dependencyCategory="history-journal-dependencies";int dependencyStart=records.list(dependencyCategory).size();
@@ -122,7 +139,7 @@ public final class HistoryRepository {
         data.put("touches",touches);data.put("dependencies",records.valuesSlice(dependencyCategory,dependencyStart,records.list(dependencyCategory).size()));return data;
     }
     public Revision read(Node n){
-        var data=new LinkedHashMap<String,Object>();n.getAllProperties().forEach((k,v)->data.put(k,portable(v)));data.put("revisionId",CoreRepository.id(n));
+        var data=revisionProperties(n,false);
         var before=new TreeMap<String,Map<String,Object>>();var after=new TreeMap<String,Map<String,Object>>();var snapshotChanges=new ArrayList<Map<String,Object>>();
         var touches=new TreeMap<String,Set<String>>();var dependencies=new TreeSet<String>();var seen=new HashSet<String>();
         try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_CHANGE"))){
@@ -142,7 +159,7 @@ public final class HistoryRepository {
         try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_DEPENDENCY"))){
             for(Relationship edge:edges)if(!dependencies.add(dependencyKey(n,edge.getEndNode())))HistoryCodec.invalid("Duplicate historical dependency");
         }
-        Node tag=core.find("RevisionTag",Map.of("namespaceId",n.getProperty("namespaceId"),"revisionId",CoreRepository.id(n)));data.put("tag",tag==null?null:tag.getProperty("tag"));
+        data.put("tag",n.getProperty("tag",null));
         Node epoch=epoch((String)n.getProperty("namespaceId"),(String)n.getProperty("historyEpochId"));data.put("epoch",Json.map("id",CoreRepository.id(epoch),"mode",epoch.getProperty("mode"),"closed",epoch.getProperty("closed",false),"baselineRevisionId",epoch.getProperty("baselineRevisionId")));
         snapshotChanges.sort(Comparator.comparing(m->(String)m.get("entityId")));data.put("changes",snapshotChanges);var portableTouches=new TreeMap<String,Object>();touches.forEach((id,fields)->portableTouches.put(id,new ArrayList<>(fields)));data.put("touches",portableTouches);
         return new Revision(CoreRepository.id(n),((Number)n.getProperty("sequence")).longValue(),data,before,after,touches,dependencies);
@@ -306,7 +323,20 @@ public final class HistoryRepository {
         if(old.equals("transient")&&mode.equals("persistent")&&epoch!=null){epoch.setProperty("mode","persistent");return;}
         if(epoch!=null){epoch.setProperty("closed",true);epoch.setProperty("endedSequence",sequence);}baseline(ns,actor,sequence,boot,timestamp);
     }
-    public boolean tag(String ns,String id,String tag,String actor,ZonedDateTime time){Revision selected=revision(ns,id);Node old=core.find("RevisionTag",Map.of("namespaceId",ns,"revisionId",id));if(tag.equals(old==null?"":old.getProperty("tag")))return false;if(old!=null)delete(old);if(!tag.isEmpty()){Node n=node("RevisionTag",Json.map("id",UUID.randomUUID().toString(),"namespaceId",ns,"revisionId",id,"historyEpochId",selected.data().get("historyEpochId"),"tag",tag,"updatedAt",time,"updatedBy",actor));core.entity("Revision",ns,id).createRelationshipTo(n,RelationshipType.withName("HAS_TAG"));}return true;}
+    public boolean tag(String ns,String id,String tag,String actor,ZonedDateTime time){
+        Node revision=requireRevision(ns,id);
+        if(tag.equals(revision.getProperty("tag","")))return false;
+        if(tag.isEmpty()){
+            revision.removeProperty("tag");
+            revision.removeProperty("tagUpdatedAt");
+            revision.removeProperty("tagUpdatedBy");
+        }else{
+            revision.setProperty("tag",tag);
+            revision.setProperty("tagUpdatedAt",time);
+            revision.setProperty("tagUpdatedBy",actor);
+        }
+        return true;
+    }
     public static void delete(Node n){HistoryRecordDeletion.delete(n);}
     public void deleteNamespace(String ns){new HistoryRecordDeletion(tx).deleteNamespace(ns);}
     public void apply(String ns,String actor,UndoPlan plan){

@@ -18,7 +18,7 @@ public final class ResourceTransferRepository {
         StorageAdmission.Reservation reservation=admission("upload",upload,"resource-upload",Map.of(resources.files.root.resolve(staging),bytes,transactionVolume(),64L*1024),Json.map("resourceId",id,"stagingPath",staging));
         resources.lock(id);
         var transfer=new Transfer(upload,id,c.namespaceId,c.actorId,filename,stored,mediaType,bytes,checksum,
-            0,"uploading",resources.now()+ResourceFiles.LEASE,reservation.id,staging,c.state.operationClaimed,
+            0L,"uploading",resources.now()+ResourceFiles.LEASE,reservation.id,staging,c.state.operationClaimed,
             null,null,false,false,null);
         UploadBinding.bindStaging(c,upload);
         save(transfer);
@@ -45,32 +45,33 @@ public final class ResourceTransferRepository {
 
     public Map<String,Object> finish(Map<String,Object> request,Transfer t)throws IOException {
         fields(request,"uploadId");String id=t.resource();
-        if(t.nextOffset()!=t.bytes())c.fail("RESOURCE_NOT_READY","Upload incomplete");
         if("finished".equals(t.state())){
             var resource=resources.resource(c.namespaceId,id);
-            resources.verifyCompleted(resource);
+            var content=resources.verifyCompleted(resource);
             long expires=resources.now()+ResourceFiles.LEASE;
             resource.setProperty("leaseUntil",expires);
             resource.removeProperty("orphanSince");
-            save(t.progress(t.nextOffset(),"finished",expires,t.admissionId(),null));
-            return readyResult(t);
+            save(t.finish(expires,t.admissionId()));
+            return readyResult(content);
         }
+        if(t.nextOffset().longValue()!=t.bytes())c.fail("RESOURCE_NOT_READY","Upload incomplete");
+        var content=t.content();
         StorageAdmission.Reservation reservation=admission(t,0);
         if(!resources.storage.exists(id)) {
-            if(t.bytes()==0)resources.files.append(t.stagingPath(),0,new byte[0]);
-            resources.files.verify(t.stagingPath(),t.bytes(),t.checksum(),c.state.kernel::assertOpen);
+            if(content.bytes()==0)resources.files.append(t.stagingPath(),0,new byte[0]);
+            resources.files.verify(t.stagingPath(),content.bytes(),content.checksum(),c.state.kernel::assertOpen);
         }
         c.server.storagePoint("publication-before");
-        if(!resources.storage.exists(id))resources.server.storage.admission.grow(reservation,Map.of(resources.files.root,t.bytes()));
-        resources.publish(t.content(),resources.files.path(t.stagingPath()),reservation);
+        if(!resources.storage.exists(id))resources.server.storage.admission.grow(reservation,Map.of(resources.files.root,content.bytes()));
+        resources.publish(content,resources.files.path(t.stagingPath()),reservation);
         c.server.storagePoint("publication-after");
-        resources.complete(c.namespaceId,t.filename(),t.mediaType(),t.content(),c.actorId,c.timestamp);
-        save(t.progress(t.nextOffset(),"finished",resources.now()+ResourceFiles.LEASE,reservation.id,null));
+        resources.complete(c.namespaceId,t.filename(),t.mediaType(),content,c.actorId,c.timestamp);
+        save(t.finish(resources.now()+ResourceFiles.LEASE,reservation.id));
         c.server.storagePoint("ready-before-commit");boolean[] committed={false};c.state.afterCommit.add(()->committed[0]=true);c.state.release.add(()->finishPublicationAdmission(reservation,committed[0]));
-        return readyResult(t);
+        return readyResult(content);
     }
-    private Map<String,Object> readyResult(Transfer t){
-        return Json.map("resourceId",t.resource(),"checksum",t.checksum(),"bytes",t.bytes(),"state","ready");
+    private Map<String,Object> readyResult(ResourceStorage.Content content){
+        return Json.map("resourceId",content.resourceId(),"checksum",content.checksum(),"bytes",content.bytes(),"state","ready");
     }
     public Map<String,Object> abort(Map<String,Object> request,Transfer t) {
         fields(request,"uploadId");

@@ -135,6 +135,11 @@ final class HistoryCloneService {
         var properties=new LinkedHashMap<String,Object>();properties.put("id",id);properties.put("namespaceId",namespace);properties.put("sequence",source.get("sequence"));properties.put("historyEpochId",epochId);properties.put("historyMode",source.get("historyMode"));properties.put("operationId",UUID.randomUUID().toString());properties.put("actorId",source.getOrDefault("actorId",actor));properties.put("committedAt",temporal(source.get("committedAt")));properties.put("kind",source.get("kind"));properties.put("summary",source.getOrDefault("summary","Imported history"));String parent=mapped("Revision",(String)source.get("parentRevisionId"));if(parent!=null)properties.put("parentRevisionId",parent);
         for(String link:List.of("reversesRevisionId","reappliesRevisionId","restoresRevisionId")){Object raw=source.get(link);if(raw instanceof String ref)properties.put(link,mapped("Revision",ref));}
         if("transient".equals(source.get("historyMode")))properties.put("bootId",runId);
+        if(source.get("tag") instanceof String tag&&!tag.isEmpty()){
+            properties.put("tag",tag);
+            properties.put("tagUpdatedAt",properties.get("committedAt"));
+            properties.put("tagUpdatedBy",actor);
+        }
         Node revision=node("Revision",properties,1);epoch.createRelationshipTo(revision,RelationshipType.withName("HAS_REVISION"));
         var history=new HistoryRepository(tx,core);
         for(Object dependency:dependencies)history.writeDependency(revision,remapKey((String)dependency),writeBudget::reserveHistoryRecord);
@@ -148,7 +153,6 @@ final class HistoryCloneService {
         }
         for(var entry:revisionTouches.entrySet())
             history.writeSnapshot(revision,remapKey(entry.getKey()),entry.getValue(),null,null,true,0,writeBudget::reserveHistoryRecord);
-        Object tag=source.get("tag");if(tag instanceof String text&&!text.isEmpty()){Node tagNode=node("RevisionTag",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"revisionId",id,"historyEpochId",epochId,"tag",text,"updatedAt",temporal(source.get("committedAt")),"updatedBy",actor),1);revision.createRelationshipTo(tagNode,RelationshipType.withName("HAS_TAG"));}
     }
     private void writeSnapshot(HistoryRepository history,Node revision,Map<String,Object> source,Collection<?> fields){
         String kind=(String)source.get("entityKind"),sourceEntityId=(String)source.get("entityId"),entityId=mapped(kind,sourceEntityId);Map<String,Object> before=source.get("before") instanceof Map<?,?>?remapImage(ValueCodec.map(source.get("before")),"Descriptor".equals(kind)?descriptorBeforeTypes.get(sourceEntityId):null):null,after=source.get("after") instanceof Map<?,?>?remapImage(ValueCodec.map(source.get("after")),"Descriptor".equals(kind)?descriptorType(ValueCodec.map(source.get("after"))):null):null;

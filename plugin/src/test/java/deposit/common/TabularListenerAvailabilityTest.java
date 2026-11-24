@@ -1,6 +1,7 @@
 package deposit.common;
 
 import static org.junit.jupiter.api.Assertions.*;
+import deposit.repository.StagedTableRepository.Table;
 import deposit.service.TabularService;
 import java.nio.file.*;
 import java.nio.file.Path;
@@ -73,11 +74,11 @@ class TabularListenerAvailabilityTest {
     void stagedTable(Transaction tx,String id,boolean links)throws Exception {
         var columns=List.of(Json.map("name","value","type",links?"DResource":"String"));
         Object value=links?Json.map("resourceId",resource):"scalar";
-        String relative="staging/"+id+".json";
-        Files.writeString(server.storage.files.path(relative),Json.write(Json.map("columns",columns,"rows",List.of(Json.map("rowId","1","values",Json.map("value",value),"presence",Json.map("value",true))))));
-        server.storage.tables.create(new deposit.repository.StagedTableRepository.Table(id,namespace,actor,
-            UUID.randomUUID().toString(),relative,relative+".idx",server.sessionTime(),server.sessionTime()+60_000,
-            Json.write(columns),1,true,"[]",false),UUID.randomUUID().toString(),null);
+        Path path=server.storage.files.path(Table.path(id));
+        Files.createDirectories(path.getParent());
+        Files.writeString(path,Json.write(Json.map("columns",columns,"rows",List.of(Json.map("rowId","1","values",Json.map("value",value),"presence",Json.map("value",true))))));
+        server.storage.tables.create(new Table(id,namespace,actor,UUID.randomUUID().toString(),
+            server.sessionTime(),server.sessionTime()+60_000,Json.write(columns),1,true),null);
     }
     @AfterEach void cleanup() {
         try {

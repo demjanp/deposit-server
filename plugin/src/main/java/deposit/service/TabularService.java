@@ -60,9 +60,10 @@ public final class TabularService extends BaseService {
         String decimal=String.valueOf(options.getOrDefault("decimalSeparator","."));if(!Set.of(".",",").contains(decimal))c.fail("VALIDATION_FAILED","decimalSeparator must be '.' or ','");
         Map<String,Object> types=options.containsKey("columnTypes")?ValueCodec.map(options.get("columnTypes")):Map.of();Map<String,Object> dateFormats=options.containsKey("dateFormats")?ValueCodec.map(options.get("dateFormats")):Map.of();
         Path input=null,table=null,rowIndex=null;boolean completed=false;String tableId=UUID.randomUUID().toString();
-        String base="staging/tables/"+tableId;
         try{
-            input=resources.files.path(base+".source");table=resources.files.path(base+".json");rowIndex=resources.files.path(base+".idx");
+            input=resources.files.path(Table.sourcePath(tableId));
+            table=resources.files.path(Table.path(tableId));
+            rowIndex=resources.files.path(Table.rowIndexPath(tableId));
             Files.createDirectories(input.getParent());
             var admission=c.server.storage.admission;
             var staging=admission.acquire("tabular-load",tableId,c.operationId,"table-staging",Map.of(input,content.bytes()),
@@ -90,14 +91,13 @@ public final class TabularService extends BaseService {
             long indexed=Json.indexArray(table,"rows",rowIndex);if(indexed!=((Number)parsed.get("rowCount")).longValue())throw new IOException("Staged row index count differs from parsed table");
             admission.materialized(staging,rowIndex,indexBytes);
             long now=resources.now();
-            var metadata=new Table(tableId,c.namespaceId,c.actorId,id,base+".json",base+".idx",
-                now,now+TABLE_TTL,Json.write(parsed.get("columns")),indexed,Boolean.TRUE.equals(parsed.get("valid")),
-                Json.write(parsed.get("diagnostics")),Boolean.TRUE.equals(parsed.get("diagnosticsTruncated")));
+            var metadata=new Table(tableId,c.namespaceId,c.actorId,id,
+                now,now+TABLE_TTL,Json.write(parsed.get("columns")),indexed,Boolean.TRUE.equals(parsed.get("valid")));
             String unit=c.server.prepareWorkflowCommit(c,c.namespaceId,repo.namespace(c.namespaceId));
-            c.server.storage.tables.create(metadata,UUID.randomUUID().toString(),unit);
+            c.server.storage.tables.create(metadata,unit);
             Map<String,Object> result=Json.map("tableId",tableId,"columns",parsed.get("columns"),"rowCount",parsed.get("rowCount"),"valid",parsed.get("valid"),"diagnostics",parsed.get("diagnostics"),"diagnosticsTruncated",parsed.get("diagnosticsTruncated"));
             repo.saveReceipt(c,c.namespaceId,hash,new Results.Outcome(null,null,result));
-            // Metadata, protective lease and receipt commit together. Also clean files
+            // Table metadata and receipt commit together. Also clean files
             // if the caller later rolls back an otherwise successful load transaction.
             Path completedTable=table,completedIndex=rowIndex;
             c.state.release.add(()->{if(!committed[0]){discard(completedTable);discard(completedIndex);}});
@@ -132,7 +132,6 @@ public final class TabularService extends BaseService {
     private long positive(Object value,String field){long n=integer(value);if(n<1||n>1_000_000)c.fail("LIMIT_EXCEEDED",field+" must be positive");return n;}
 
     private Table tableNode(Object raw){return new StagedTable(c).acquire(raw);}
-    private Map<String,Object> readData(Table table){try(InputStream in=Files.newInputStream(resources.files.path(table.path()))){return Json.read(in);}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");return Map.of();}}
     private Stream<Results.QueryRowResult> table(Map<String,Object> request){fields(request,"tableId");readContext();scoped("viewer");Table table=tableNode(request.get("tableId"));List<Map<String,Object>> columns=Json.readList(table.columns()).stream().map(ValueCodec::map).toList();final Json.ArrayReader reader;try{reader=new Json.ArrayReader(resources.files.path(table.path()),"rows");}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");return Stream.empty();}Iterator<Results.QueryRowResult> iterator=new Iterator<>(){Results.QueryRowResult next;boolean loaded,done;public boolean hasNext(){if(loaded)return true;if(done)return false;try{StagedTable.checkpoint(c);Map<String,Object> row=reader.next();if(row==null){done=true;return false;}next=new Results.QueryRowResult(Json.map("rowId",row.get("rowId"),"values",row.get("values")),columns,ValueCodec.map(row.get("presence")),c.meta());loaded=true;return true;}catch(IOException e){throw new UncheckedIOException(e);}}public Results.QueryRowResult next(){if(!hasNext())throw new NoSuchElementException();loaded=false;return next;}};return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterator,Spliterator.ORDERED),false).onClose(()->{try{reader.close();}catch(IOException e){throw new UncheckedIOException(e);}});}
     private DataRow page(Map<String,Object> request){fields(request,"tableId","pageSize","cursor");readContext();scoped("viewer");Table table=tableNode(request.get("tableId"));int size=(int)integer(request.getOrDefault("pageSize",200L));if(size<1||size>1000)c.fail("LIMIT_EXCEEDED","pageSize must be between 1 and 1000");long count=table.rows(),offset=0;String hash=Json.hash(table.id());if(request.containsKey("cursor")){Map<String,Object> cur=CursorCodec.decode(c,string(request.get("cursor")));if(!c.namespaceId.equals(cur.get("scope")))c.fail("SCOPE_MISMATCH","Cursor belongs to another Namespace");if(!c.server.runId.equals(cur.get("incarnation"))||!c.actorId.equals(cur.get("actor"))||!hash.equals(cur.get("hash")))c.fail("VALIDATION_FAILED","Cursor does not match table");if(((Number)cur.get("revision")).longValue()!=c.revision)c.fail("REVISION_CONFLICT","Namespace revision changed");offset=((Number)cur.get("offset")).longValue();if(offset<0||offset>count)c.fail("VALIDATION_FAILED","Invalid cursor offset");}var rows=new ArrayList<Map<String,Object>>(Math.min(size,200));try(RandomAccessFile index=new RandomAccessFile(resources.files.path(table.rowIndexPath()).toFile(),"r")){index.seek(offset*Long.BYTES);Path data=resources.files.path(table.path());for(int i=0;i<size&&offset+i<count;i++){StagedTable.checkpoint(c);long byteOffset=index.readLong();rows.add(Json.objectAt(data,byteOffset));}}catch(IOException e){c.fail("RESOURCE_CORRUPT","Staged table content unavailable");}long end=offset+rows.size();String next=null;if(end<count)next=CursorCodec.encode(c,Json.map("scope",c.namespaceId,"actor",c.actorId,"hash",hash,"incarnation",c.server.runId,"revision",c.revision,"offset",end,"expires",System.currentTimeMillis()+900000L));Map<String,Object> meta=c.meta();meta.put("nextCursor",next);return new DataRow(Json.map("columns",Json.readList(table.columns()),"rows",rows),meta);}
 
@@ -176,7 +175,7 @@ public final class TabularService extends BaseService {
     static void requireContentLimit(long bytes,String message){if(bytes<0)throw new IllegalArgumentException("Content size cannot be negative");}
     private long stageQuery(Map<String,Object> queryRequest,List<?> columns,Path destination,Long pinnedRevision)throws IOException{
         Stream<Results.QueryRowResult> query=queryStream(queryRequest,pinnedRevision);try(BufferedWriter out=Files.newBufferedWriter(destination,StandardCharsets.UTF_8,StandardOpenOption.CREATE_NEW);Stream<Results.QueryRowResult> rows=query){
-            TabularJsonWriter.header(out,(List<?>)columns);final long[] index={0};Iterator<Results.QueryRowResult> it=rows.iterator();while(it.hasNext()){c.state.kernel.assertOpen();Results.QueryRowResult row=it.next();TabularJsonWriter.row(out,index[0]==0,Long.toString(index[0]+1),row.data,row.presence);index[0]++;}TabularJsonWriter.footer(out,index[0],true,List.of(),false);return index[0];}
+            TabularJsonWriter.header(out,(List<?>)columns);final long[] index={0};Iterator<Results.QueryRowResult> it=rows.iterator();while(it.hasNext()){c.state.kernel.assertOpen();Results.QueryRowResult row=it.next();TabularJsonWriter.row(out,index[0]==0,Long.toString(index[0]+1),row.data,row.presence);index[0]++;}TabularJsonWriter.footer(out,index[0],true);return index[0];}
     }
     private Results.DataRow queryPage(Map<String,Object> queryRequest,Long pinnedRevision){String operation=c.operationId;Long expected=c.expectedRevision;c.operationId=null;c.expectedRevision=null;try{return new GetQueryService(c).getQueryPage(queryRequest,pinnedRevision);}finally{c.operationId=operation;c.expectedRevision=expected;}}
     private Stream<Results.QueryRowResult> queryStream(Map<String,Object> queryRequest,Long pinnedRevision){String operation=c.operationId;Long expected=c.expectedRevision;c.operationId=null;c.expectedRevision=null;try{return new GetQueryService(c).getQuery(queryRequest,pinnedRevision);}finally{c.operationId=operation;c.expectedRevision=expected;}}

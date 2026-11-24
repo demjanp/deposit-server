@@ -300,7 +300,7 @@ final class StorageMaintenanceJobs {
                 if(content.get().exists(id)||transfer!=null&&transfer.stagingPath()!=null
                         && Files.exists(files.path(transfer.stagingPath()),LinkOption.NOFOLLOW_LINKS))
                     throw new IOException("Missing collection owner with retained physical data");
-                pruning.transition(item,"completed",item.deletionBytes(),reclaimed(item),null,now);
+                pruning.transition(item,"completed",item.deletionBytes(),null,now);
                 resolved=true;
                 return;
             }
@@ -308,12 +308,12 @@ final class StorageMaintenanceJobs {
             String deleting=resource.deleting();
             if(!itemId.equals(deleting)) {
                 if(!server.runId.equals(job.incarnation()) || !resources.eligible(resource,job.minimumAge())) {
-                    pruning.transition(item,"skipped",null,0,null,now);
+                    pruning.transition(item,"skipped",null,null,now);
                     resolved=true;
                     return;
                 }
                 long bytes=physicalBytes(id,transfer==null?null:transfer.stagingPath());
-                pruning.transition(item,"deleting",bytes,0,null,now);
+                pruning.transition(item,"deleting",bytes,null,now);
                 if(resource.completed()!=null)resource.completed().setProperty("deleting",itemId);
                 else server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),itemId,false,false,null),"");
                 tx.commit();
@@ -326,7 +326,7 @@ final class StorageMaintenanceJobs {
                 if(resource.completed()!=null)resource.completed().removeProperty("deleting");
                 else server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),null,false,false,null),"");
                 tx.commit();
-                pruning.transition(item,"skipped",null,0,null,now);
+                pruning.transition(item,"skipped",null,null,now);
                 resolved=true;
                 return;
             }
@@ -348,14 +348,14 @@ final class StorageMaintenanceJobs {
                 resource.completed().delete();
             }
             tx.commit();
-            pruning.transition(item,"completed",item.deletionBytes(),reclaimed(item),null,now);
+            pruning.transition(item,"completed",item.deletionBytes(),null,now);
             resolved=true;
         }catch(Exception failure) {
             String message="Collection failed: "+failure.getClass().getSimpleName();
             diagnostic.accept(message);
             try {
                 var current=pruning.item(itemId);
-                if(actionable(current))pruning.transition(current,"failed",current.deletionBytes(),0,message,server.sessionTime());
+                if(actionable(current))pruning.transition(current,"failed",current.deletionBytes(),message,server.sessionTime());
             }catch(RuntimeException ignored){ }
         }finally{
             if(resolved)try{server.storage.admission.close(reservation);}
@@ -365,10 +365,6 @@ final class StorageMaintenanceJobs {
 
     private static boolean actionable(Item item) {
         return item!=null && Set.of("pending","deleting","failed").contains(item.state());
-    }
-
-    private static long reclaimed(Item item) {
-        return item.deletionBytes()==null?0:item.deletionBytes();
     }
 
     void expireTransfers() throws IOException {
