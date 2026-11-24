@@ -71,17 +71,25 @@ final class ExchangePackages extends BaseService {
     }
 
     Node writer(Object raw,String scope,boolean abort) {
+        return checkWriter(writerNode(raw,scope),abort);
+    }
+
+    private Node writerNode(Object raw,String scope) {
         String id=RequestContext.uuid(raw);
-        writerScope(id);
         Node stage=repo.find(LABEL,"id",id);
-        if(stage==null || !scope.equals(stage.getProperty("scope",null)))throw unavailable();
+        if(stage==null || !c.actorId.equals(stage.getProperty("actorId",null))
+                || !stage.hasProperty("inputKind") || !scope.equals(stage.getProperty("scope",null)))throw unavailable();
+        return stage;
+    }
+
+    private Node checkWriter(Node stage,boolean abort) {
         String state=(String)stage.getProperty("state");
         if(!state.equals("uploading") && !(abort && state.equals("aborted")))
             throw ExceptionHandler.fail("UPLOAD_FENCED","Exchange writer is unavailable");
         UploadBinding.require(c,stage);
         if(c.state.operationClaimed)c.checkSourceAuthorization=()->UploadBinding.require(c,stage);
         if(!abort) {
-            try(var attempts=repo.scanNodes("DepositOperationAttempt",Map.of("uploadId",id))) {
+            try(var attempts=repo.scanNodes("DepositOperationAttempt",Map.of("uploadId",CoreRepository.id(stage)))) {
                 while(attempts.hasNext()) {
                     var attempt=attempts.next();
                     if(!Objects.equals(c.operationId,attempt.getProperty("operationId"))
@@ -139,9 +147,9 @@ final class ExchangePackages extends BaseService {
     private Map<String,Object> chunk(Map<String,Object> request)throws IOException {
         String scope=c.actionScope;
         lockReceiving(scope);
-        Node stage=writer(request.get("uploadId"),scope,false);
+        Node stage=writerNode(request.get("uploadId"),scope);
         c.tx.acquireWriteLock(stage);
-        stage=writer(request.get("uploadId"),scope,false);
+        checkWriter(stage,false);
         String id=CoreRepository.id(stage);
         String name=memberName(stage,request.get("member"));
         long offset=integer(request.get("offset"));
@@ -244,14 +252,19 @@ final class ExchangePackages extends BaseService {
     private Map<String,Object> finish(Map<String,Object> request)throws IOException {
         String scope=c.actionScope;
         lockReceiving(scope);
-        Node stage=writer(request.get("uploadId"),scope,false);
+        Node stage=writerNode(request.get("uploadId"),scope);
         c.tx.acquireWriteLock(stage);
-        writer(request.get("uploadId"),scope,false);
+        checkWriter(stage,false);
         String id=CoreRepository.id(stage);
         Path archive=path(stage,"package.zip");
         var finished=new ExchangeBudget(c,"exchange-finish");
         try {
-            if("zip".equals(stage.getProperty("inputKind")))member(stage,"package",true).verify(this::checkpoint);
+            ExchangePackageCodec.ArchiveIdentity identity;
+            if("zip".equals(stage.getProperty("inputKind"))) {
+                var uploaded=member(stage,"package",true);
+                uploaded.verify(this::checkpoint);
+                identity=new ExchangePackageCodec.ArchiveIdentity(uploaded.bytes(),uploaded.sha256());
+            }
             else {
                 try(var records=repo.scanNodes(MEMBER,Map.of("uploadId",id))) {
                     Iterable<ExchangePackageCodec.StagedMember> resources=()->records.stream()
@@ -262,8 +275,9 @@ final class ExchangePackages extends BaseService {
                     ExchangePackageCodec.writeSnapshot(archive,member(stage,"manifest",true),member(stage,"graph",true),
                         member(stage,"history",false),resources,(boolean)stage.getProperty("includeHistory"),finished,this::checkpoint);
                 }
+                identity=ExchangePackageCodec.ArchiveIdentity.read(archive,this::checkpoint);
             }
-            var reference=publish(stage,RECEIVING,false,finished);
+            var reference=publish(stage,RECEIVING,false,finished,identity);
             stage.setProperty("inputCleanup",true);
             return reference;
         } catch(IOException|UncheckedIOException failure) {
@@ -289,11 +303,13 @@ final class ExchangePackages extends BaseService {
     Path archive(Node stage)throws IOException {return path(stage,"package.zip");}
     Path content(Node stage)throws IOException {return path(stage,"content");}
     Map<String,Object> publish(Node stage,String kind,boolean history,ExportRecords.StorageBudget budget)throws IOException {
+        return publish(stage,kind,history,budget,ExchangePackageCodec.ArchiveIdentity.read(archive(stage),this::checkpoint));
+    }
+    private Map<String,Object> publish(Node stage,String kind,boolean history,ExportRecords.StorageBudget budget,
+            ExchangePackageCodec.ArchiveIdentity identity)throws IOException {
         Path archive=archive(stage);
         var index=path(stage,"content");
         long count=ExchangePackageIndex.build(archive,index,budget,this::checkpoint);
-        String digest=ResourceFiles.checksum(archive,this::checkpoint);
-        long bytes=Files.size(archive);
         try(var channel=FileChannel.open(archive,StandardOpenOption.WRITE)){channel.force(true);}
         long expires=now()+RETENTION;
         String grant=UUID.randomUUID().toString();
@@ -301,12 +317,12 @@ final class ExchangePackages extends BaseService {
         stage.setProperty("grantKind",kind);
         stage.setProperty("history",history);
         stage.setProperty("state","ready");
-        stage.setProperty("bytes",bytes);
-        stage.setProperty("sha256",digest);
+        stage.setProperty("bytes",identity.bytes());
+        stage.setProperty("sha256",identity.sha256());
         stage.setProperty("expiresAt",expires);
         stage.setProperty("cleanupAfter",Math.addExact(expires,READER));
         stage.setProperty("removeAfter",Math.addExact(expires,READER));
-        return Json.map("packageId",CoreRepository.id(stage),"grant",grant,"bytes",bytes,"sha256",digest,"expiresAt",expires,"memberCount",count);
+        return Json.map("packageId",CoreRepository.id(stage),"grant",grant,"bytes",identity.bytes(),"sha256",identity.sha256(),"expiresAt",expires,"memberCount",count);
     }
 
     static Map<String,Object> source(Object raw) {
@@ -317,13 +333,15 @@ final class ExchangePackages extends BaseService {
     }
 
     Node input(String id,String grant,String receivingScope,boolean acquiring,boolean pin) {
-        Node stage=access(id,grant);
+        Node stage=c.resolved(LABEL,null,id);
+        if(stage==null)stage=access(id,grant);
         if(pin)c.tx.acquireReadLock(stage);
         authorize(stage,grant,"editor");
         if(!"ready".equals(stage.getProperty("state",null)) || acquiring && (long)stage.getProperty("expiresAt",0L)<=now())
             throw unavailable();
         String scope=(String)stage.getProperty("scope");
         if(RECEIVING.equals(stage.getProperty("grantKind")) && !scope.equals(receivingScope))throw unavailable();
+        if(pin)c.remember(LABEL,null,id,stage);
         return stage;
     }
 

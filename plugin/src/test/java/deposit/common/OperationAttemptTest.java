@@ -1138,7 +1138,14 @@ class OperationAttemptTest {
         var row=Map.of("id","sample","values",Map.of("code","X"));
         var targets=Map.of("code",Map.of("object","item","className","Specimen","descriptor","Code","type","String"));
         var valid=List.<Object>of(Map.of("rows",List.of(row)),targets,List.of(),Map.of());
-        assertNotNull(tracked(a,a.namespace,"deposit.import.rows",valid).get("planId"));
+        var plan=tracked(a,a.namespace,"deposit.import.rows",valid);
+        var applied=tracked(a,a.namespace,"deposit.import.apply",List.of(plan.get("planId")));
+        assertEquals("APPLIED",applied.get("state"));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertEquals(1L,core.sequence(a.namespace));
+            assertNotNull(core.find("Class",Map.of("namespaceId",a.namespace,"name","Specimen")));
+        }
         for(var invalid:List.of(
                 List.<Object>of(Map.of("rows",List.of(row,row)),targets,List.of(),Map.of()),
                 List.<Object>of(Map.of("rows",List.of(Map.of("id","bad/id","values",row.get("values")))),targets,List.of(),Map.of()),
@@ -1148,6 +1155,22 @@ class OperationAttemptTest {
             begin(a,id,a.namespace,"deposit.import.rows",invalid);
             var failure=assertThrows(ExceptionHandler.DepositException.class,()->call(a,a.execution,"deposit.import.rows",invalid,id));
             assertTrue(failure.getMessage().contains("VALIDATION_FAILED"),failure.getMessage());
+        }
+    }
+
+    @Test void patternFormAppliesItsVerifiedPlan() {
+        Actor a=actor();
+        tracked(a,a.namespace,"deposit.create.class",List.of("Form sample",Map.of(
+            "descriptors",List.of(Map.of("name","Code","type","String")))));
+        tracked(a,a.namespace,"deposit.create.pattern",List.of("Form",pattern("Form sample","Code",null),Map.of()));
+        var plan=tracked(a,a.namespace,"deposit.import.dataByPattern",List.of("Form",Map.of("root",Map.of("Code","ABC")),Map.of()));
+        var result=tracked(a,a.namespace,"deposit.import.apply",List.of(plan.get("planId")));
+        assertEquals("APPLIED",result.get("state"));
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            var objects=core.nodes("Object",Map.of("namespaceId",a.namespace));
+            assertEquals(1,objects.size());
+            assertEquals("ABC",core.descriptorValue(core.descriptor(objects.getFirst(),"Code")));
         }
     }
 
@@ -1566,6 +1589,46 @@ class OperationAttemptTest {
         }
     }
 
+    @Test void verifiedImportRejectsChangedArchiveAndStaleTarget() throws Exception {
+        Actor source=actor(),receiver=receivingNamespace(source);
+        tracked(source,source.namespace,"deposit.create.class",List.of("Verified specimen",Map.of()));
+        var reference=tracked(source,source.namespace,"deposit.exchange.export",Arrays.asList(null,Map.of()));
+        var sourceArchive=server.storage.files.path("staging/exchange/"+reference.get("packageId")+"/package.zip");
+        byte[] original=Files.readAllBytes(sourceArchive),changed=original.clone();
+        changed[changed.length/2]^=1;
+        var analyze=List.<Object>of(packageSource(reference),Map.of());
+        Files.write(sourceArchive,changed);
+        var rejected=assertThrows(ExceptionHandler.DepositException.class,
+            ()->tracked(receiver,receiver.namespace,"deposit.import.analyze",analyze));
+        assertTrue(rejected.getMessage().contains("RESOURCE_CORRUPT"),rejected.getMessage());
+        Files.write(sourceArchive,original);
+        var analysis=tracked(receiver,receiver.namespace,"deposit.import.analyze",analyze);
+        var apply=List.of(analysis.get("planId"));
+        Path staged;
+        try(var tx=database.beginTx()){
+            var plan=new CoreRepository(tx,ZonedDateTime.now()).find("DepositImportPlan","id",analysis.get("planId"));
+            staged=server.storage.files.path((String)plan.getProperty("stagingPath"));
+        }
+        assertArrayEquals(original,Files.readAllBytes(staged));
+        Files.write(staged,changed);
+        String operation=operationId(clock.get());
+        begin(receiver,operation,receiver.namespace,"deposit.import.apply",apply);
+        rejected=assertThrows(ExceptionHandler.DepositException.class,
+            ()->call(receiver,receiver.execution,"deposit.import.apply",apply,operation));
+        assertTrue(rejected.getMessage().contains("RESOURCE_CORRUPT"),rejected.getMessage());
+        assertEquals("FAILED_ROLLED_BACK",state(status(receiver,operation,receiver.namespace)));
+        Files.write(staged,original);
+        tracked(receiver,receiver.namespace,"deposit.create.class",List.of("Intervening edit",Map.of()));
+        rejected=assertThrows(ExceptionHandler.DepositException.class,
+            ()->tracked(receiver,receiver.namespace,"deposit.import.apply",apply));
+        assertTrue(rejected.getMessage().contains("PLAN_STALE"),rejected.getMessage());
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertEquals(1L,core.sequence(receiver.namespace));
+            assertNull(core.find("Class",Map.of("namespaceId",receiver.namespace,"name","Verified specimen")));
+        }
+    }
+
     @Test void exchangeOversizedSelectorIsRejectedBeforeRegistration() {
         Actor actor=actor();
         String id=operationId(clock.get());
@@ -1683,7 +1746,7 @@ class OperationAttemptTest {
         Actor receiver=actor();
         String ns=UUID.randomUUID().toString(), clazz=UUID.randomUUID().toString(), object=UUID.randomUUID().toString();
         String first=UUID.randomUUID().toString(), second=UUID.randomUUID().toString();
-        byte[] content={0,1,2,3,4,5,6,7,8,9,10};
+        byte[] content="Deposit alpha fixture\0\377".repeat(4096).getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
         String digest=ResourceFiles.checksum(content), entry="resources/"+digest;
         var graph=emptyExchangeGraph();
         graph.put("classes",List.of(record("Class",clazz,ns,"name","Resource sample","descriptors",List.of(
@@ -1706,14 +1769,44 @@ class OperationAttemptTest {
         assertArrayEquals(content,exchangeBytes(receiver,reference,inspection,entry));
         assertThrows(ExceptionHandler.DepositException.class,()->begin(receiver,operationId(clock.get()),"server",
             "deposit.import.cloneNamespace",List.of(packageSource(reference))));
-        var plan=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(reference),Map.of()));
-        tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(plan.get("planId")));
+        byte[] zip=exchangeBytes(receiver,reference,inspection,"package");
+        String upload=beginExchange(receiver,receiver.namespace,"zip",Map.of());
+        exchangeChunk(receiver,receiver.namespace,upload,"package",0,zip);
+        Path validationLog=directory.resolve("verified-import-validation.log");
+        String timing="deposit.stage7.validation.timing.enabled",progress="deposit.stage7.timing.progress";
+        String previousTiming=System.setProperty(timing,"true"),previousProgress=System.setProperty(progress,validationLog.toString());
+        try {
+            var received=tracked(receiver,receiver.namespace,"deposit.exchange.finishUpload",List.of(upload));
+            assertEquals(reference.get("sha256"),received.get("sha256"));
+            assertEquals(1,Files.readAllLines(validationLog).stream().filter(line->line.contains("phase=semantic-validation")).count());
+            var plan=tracked(receiver,receiver.namespace,"deposit.import.analyze",List.of(packageSource(received),Map.of()));
+            try(var tx=database.beginTx()){
+                var core=new CoreRepository(tx,ZonedDateTime.now());
+                assertEquals(0L,core.sequence(receiver.namespace));
+                assertTrue(core.nodes("DResource",Map.of("namespaceId",receiver.namespace)).isEmpty());
+            }
+            var result=tracked(receiver,receiver.namespace,"deposit.import.apply",List.of(plan.get("planId")));
+            assertEquals("APPLIED",result.get("state"));
+            assertEquals("COMMITTED",state(status(receiver,(String)result.get("operationId"),receiver.namespace)));
+            assertEquals(1,Files.readAllLines(validationLog).stream().filter(line->line.contains("phase=semantic-validation")).count());
+        } finally {
+            if(previousTiming==null)System.clearProperty(timing);else System.setProperty(timing,previousTiming);
+            if(previousProgress==null)System.clearProperty(progress);else System.setProperty(progress,previousProgress);
+        }
         try(var tx=database.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertEquals(1L,core.sequence(receiver.namespace));
             var resources=core.nodes("DResource",Map.of("namespaceId",receiver.namespace));
             assertEquals(2,resources.size());
             assertNotEquals(CoreRepository.id(resources.get(0)),CoreRepository.id(resources.get(1)));
-            for(Node resource:resources)assertEquals(digest,resource.getProperty("checksum"));
+            for(Node resource:resources){
+                assertEquals(digest,resource.getProperty("checksum"));
+                var location=core.find("DepositResourceLocation","id",CoreRepository.id(resource));
+                var stored=new ResourceStorage.Content(CoreRepository.id(resource),(String)location.getProperty("storedFilename"),content.length,digest);
+                try(var input=server.storage.content.open(stored,0,content.length)){
+                    assertArrayEquals(content,input.readAllBytes());
+                }
+            }
         }
     }
 

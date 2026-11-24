@@ -8,7 +8,7 @@ import java.util.List;
 /** Completed immutable content only. Deposit owns identity, authority and retention. */
 public interface ResourceStorage extends AutoCloseable {
     record Content(String resourceId, String storedFilename, long bytes, String checksum) {}
-    /** A guarded staging input is copied; publication never consumes the only recovery source. */
+    /** Copy guarded input and verify the published content before returning. Keep the recovery source. */
     void publish(Content content, Path stagedFile) throws IOException;
     /** Assert that the private publication workspace no longer owns payload copies. */
     void assertWorkClean() throws IOException;

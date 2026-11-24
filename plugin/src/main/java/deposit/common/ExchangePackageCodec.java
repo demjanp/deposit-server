@@ -11,6 +11,11 @@ public final class ExchangePackageCodec {
     public static ValidationSummary validateSummary(Path archive)throws IOException{return validateSummary(archive,()->{});}
     public static ValidationSummary validateSummary(Path archive,Runnable checkpoint)throws IOException{return validate(archive,true,checkpoint,pkg->{var counts=new TreeMap<String,Long>();pkg.graph().forEach((key,value)->{if(value instanceof List<?> rows)counts.put(key,(long)rows.size());});return new ValidationSummary((String)pkg.manifest().get("packageId"),(String)pkg.manifest().get("sourceNamespaceId"),(String)pkg.manifest().get("scope"),((Number)pkg.manifest().get("exportedRevision")).longValue(),pkg.history()!=null,Collections.unmodifiableMap(counts));});}
     public record PackageData(Map<String,Object> manifest, Map<String,Object> graph, Map<String,Object> history) {}
+    public record ArchiveIdentity(long bytes,String sha256) {
+        public static ArchiveIdentity read(Path archive,Runnable checkpoint)throws IOException {
+            return new ArchiveIdentity(Files.size(archive),ResourceFiles.checksum(archive,checkpoint));
+        }
+    }
     private ExchangePackageCodec() {}
 
     public static void write(Path destination,Map<String,Object> manifest,Map<String,Object> graph,
@@ -81,22 +86,27 @@ public final class ExchangePackageCodec {
         return validate(archive,true,checkpoint==null?()->{}:checkpoint,action);
     }
     private static <T> T validate(Path archive,boolean streaming,Runnable checkpoint,java.util.function.Function<PackageData,T> finish)throws IOException {
-        return validate(archive,streaming,checkpoint,null,null,null,false,finish);
+        return readPackage(archive,streaming,checkpoint,null,null,null,false,null,true,finish);
     }
 
     static <T> T index(Path archive,Path resources,ExportRecords.StorageBudget budget,Runnable checkpoint,
             java.util.function.Function<PackageData,T> action)throws IOException {
-        return validate(archive,true,checkpoint,archive.getParent(),resources,budget,true,action);
+        return readPackage(archive,true,checkpoint,archive.getParent(),resources,budget,true,null,true,action);
     }
 
-    public static <T> T withValidatedPackage(Path archive,Path temporary,ExportRecords.StorageBudget budget,
-            Runnable checkpoint,java.util.function.Function<PackageData,T> action)throws IOException {
-        return validate(archive,true,checkpoint,temporary,null,budget,false,action);
+    /** Borrow the package payload after checking exact archive identity under the caller's storage pin.
+     * The identity must come from a completed full validation of the owned archive.
+     */
+    public static <T> T withVerifiedPackage(Path archive,ArchiveIdentity identity,boolean includeHistory,Path temporary,
+            ExportRecords.StorageBudget budget,Runnable checkpoint,java.util.function.Function<PackageData,T> action)throws IOException {
+        Objects.requireNonNull(identity,"identity");
+        return readPackage(archive,true,checkpoint,temporary,null,budget,false,identity,includeHistory,action);
     }
 
-    private static <T> T validate(Path archive,boolean streaming,Runnable checkpoint,Path temporary,Path resources,
-            ExportRecords.StorageBudget budget,boolean preserveText,java.util.function.Function<PackageData,T> finish)throws IOException {
-        boolean stage7Timing=stage7ValidationTimingEnabled();
+    private static <T> T readPackage(Path archive,boolean streaming,Runnable checkpoint,Path temporary,Path resources,
+            ExportRecords.StorageBudget budget,boolean preserveText,ArchiveIdentity verified,boolean includeHistory,
+            java.util.function.Function<PackageData,T> finish)throws IOException {
+        boolean stage7Timing=verified==null&&stage7ValidationTimingEnabled();
         long validationCall=stage7Timing?STAGE7_VALIDATION_SEQUENCE.incrementAndGet():0L;
         String validationLabel=stage7Timing?System.getProperty("deposit.stage7.validation.timing.label","unlabeled"):null;
         long validationStarted=stage7Timing?System.nanoTime():0L;
@@ -104,21 +114,24 @@ public final class ExchangePackageCodec {
             PackageData payload;
             try {
                 long phaseStarted=stage7Timing?System.nanoTime():0L;
-                var files=PackageArchiveIO.read(archive,context,resources);
+                var files=verified==null?PackageArchiveIO.read(archive,context,resources):null;
+                var jsonFiles=files==null?PackageArchiveIO.readVerifiedJson(archive,context,verified,includeHistory):files.jsonFiles();
                 if(stage7Timing)recordStage7ValidationTiming(validationLabel,validationCall,"archive-reading",phaseStarted);
                 var workspace=context.workspace;
                 phaseStarted=stage7Timing?System.nanoTime():0L;
-                Map<String,Object> manifest=context.parse(files.jsonFiles().get("manifest.json"));
-                Map<String,Object> graph=context.parse(files.jsonFiles().get("graph.json"));
-                Map<String,Object> history=files.jsonFiles().containsKey("history.json")?context.parse(files.jsonFiles().get("history.json")):null;
+                Map<String,Object> manifest=context.parse(jsonFiles.get("manifest.json"));
+                Map<String,Object> graph=context.parse(jsonFiles.get("graph.json"));
+                Map<String,Object> history=jsonFiles.containsKey("history.json")?context.parse(jsonFiles.get("history.json")):null;
                 var original=new PackageData(manifest,graph,history);
                 if(workspace==null){manifest=PackageIdentity.view(manifest);graph=PackageIdentity.view(graph);if(history!=null)history=PackageIdentity.view(history);}
                 if(stage7Timing)recordStage7ValidationTiming(validationLabel,validationCall,"json-parsing",phaseStarted);
                 phaseStarted=stage7Timing?System.nanoTime():0L;
-                PackageArchiveIO.validateManifest(manifest,files.hashes(),files.sizes());
-                PackageGraphValidator.validate(graph,files.paths(),manifest,context);
-                if((history!=null)!=Boolean.TRUE.equals(manifest.get("includeHistory"))&&manifest.containsKey("includeHistory"))throw new IOException("History manifest mismatch");
-                if(history!=null){if(!Objects.equals(history.get("namespaceId"),manifest.get("sourceNamespaceId")))throw new IOException("History provenance Namespace differs");PackageHistoryValidator.validate(history,graph,"namespace".equals(manifest.get("scope")),context);}
+                if(files!=null) {
+                    PackageArchiveIO.validateManifest(manifest,files.hashes(),files.sizes());
+                    PackageGraphValidator.validate(graph,files.paths(),manifest,context);
+                    if((history!=null)!=Boolean.TRUE.equals(manifest.get("includeHistory"))&&manifest.containsKey("includeHistory"))throw new IOException("History manifest mismatch");
+                    if(history!=null){if(!Objects.equals(history.get("namespaceId"),manifest.get("sourceNamespaceId")))throw new IOException("History provenance Namespace differs");PackageHistoryValidator.validate(history,graph,"namespace".equals(manifest.get("scope")),context);}
+                }
                 payload=workspace==null?original:preserveText?new PackageData(manifest,graph,history):new PackageData(workspace.payload(manifest),workspace.payload(graph),history==null?null:workspace.payload(history));
                 if(stage7Timing){recordStage7ValidationTiming(validationLabel,validationCall,"semantic-validation",phaseStarted);recordStage7ValidationTiming(validationLabel,validationCall,"validation-total",validationStarted);}
             } catch(IOException|RuntimeException failure) {

@@ -48,7 +48,8 @@ public final class SessionActionService extends BaseService {
             synchronized(c.session){captureObservations(c);}
         }
         if(Set.of("namespace","operational").contains(spec.scope())) {
-            if(action&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")))scope("viewer");
+            if(action&&(DomainService.COMMANDS.contains(procedure)||procedure.equals("deposit.apply.batch")
+                    ||Set.of("deposit.import.analyze","deposit.import.apply","deposit.import.rows","deposit.import.dataByPattern").contains(procedure)))scope("viewer");
             else if(!action&&spec.scope().equals("namespace"))
                 pinReadScope(procedure.startsWith("deposit.get.namespaceRoles")?"owner":"viewer");
             else scoped("viewer");

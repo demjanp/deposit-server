@@ -97,9 +97,9 @@ public final class ResourceRepository {
         }
         private Node resolve(ResourceRepository repository,Node descriptor,String id,String writer) {
             scope(repository,(String)descriptor.getProperty("namespaceId"),writer);
-            if(reservation==null||!reservation.operationId.equals(repository.location(id)==null?null:repository.location(id).getProperty("importOperationId",null)))throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
             repository.lock(id);Node resource=repository.resource(namespace,id),location=repository.location(id);
-            if(resource==null||location==null||!namespace.equals(location.getProperty("namespaceId",null))||location.hasProperty("deleting")||!"ready".equals(resource.getProperty("state",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource is unavailable");
+            if(reservation==null||location==null||!reservation.operationId.equals(location.getProperty("importOperationId",null)))throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
+            if(resource==null||!namespace.equals(location.getProperty("namespaceId",null))||location.hasProperty("deleting")||!"ready".equals(resource.getProperty("state",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource is unavailable");
             for(String field:List.of("storedFilename","checksum","bytes"))if(!Objects.equals(resource.getProperty(field,null),location.getProperty(field,null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource metadata changed");
             if(!actor.equals(resource.getProperty("createdBy",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource identity changed");
             repository.verify(location);return resource;
@@ -157,7 +157,7 @@ public final class ResourceRepository {
             state.release.add(()->{if(committed[0])try{server.storage.admission.closeIfPresent(intent.id);}
                 catch(IOException|RuntimeException failure){server.storage.diagnostic="Committed OCFL intent cleanup pending";}});
         }
-        storage.publish(content,staged);storage.verify(content);
+        storage.publish(content,staged);
         storage.assertWorkClean();
         server.storage.admission.materialized(reservation,files.root,content.bytes());
         server.storage.admission.release(reservation,Map.of(files.root,content.bytes()));

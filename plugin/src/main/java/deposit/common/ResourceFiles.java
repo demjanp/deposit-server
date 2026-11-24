@@ -61,7 +61,10 @@ public final class ResourceFiles {
         return checksum(path,()->{});
     }
     public static String checksum(Path path,Runnable checkpoint)throws IOException {
-        try {var digest=MessageDigest.getInstance("SHA-256");try(var in=Files.newInputStream(path)){byte[] buffer=new byte[64*1024];int n;while((n=in.read(buffer))!=-1){checkpoint.run();digest.update(buffer,0,n);}}return HexFormat.of().formatHex(digest.digest());}
+        try(var in=Files.newInputStream(path)){return checksum(in,checkpoint);}
+    }
+    static String checksum(InputStream input,Runnable checkpoint)throws IOException {
+        try {var digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[64*1024];int n;while((n=input.read(buffer))!=-1){checkpoint.run();digest.update(buffer,0,n);}return HexFormat.of().formatHex(digest.digest());}
         catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
     }
     public static String hash(Object input) {

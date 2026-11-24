@@ -68,6 +68,33 @@ final class PackageArchiveIO {
     }
 
     record Contents(Set<String> paths,Map<String,String> hashes,Map<String,Long> sizes,Map<String,Path> jsonFiles) {}
+    static Map<String,Path> readVerifiedJson(Path archive,PackageValidationContext context,
+            ExchangePackageCodec.ArchiveIdentity identity,boolean includeHistory)throws IOException {
+        var jsonFiles=new HashMap<String,Path>();
+        var members=includeHistory?Set.of("manifest.json","graph.json","history.json"):Set.of("manifest.json","graph.json");
+        context.checkpoint();
+        if(!Files.isRegularFile(archive,LinkOption.NOFOLLOW_LINKS))throw new IOException("Verified archive is unavailable");
+        try(var file=new RandomAccessFile(archive.toFile(),"r")) {
+            Runnable checkpoint=()->{
+                try{context.checkpoint();}catch(InterruptedIOException failure){throw new UncheckedIOException(failure);}
+            };
+            // Check the same opened archive that supplies the payload. Its owner holds the storage pin.
+            if(file.length()!=identity.bytes()||!ResourceFiles.checksum(java.nio.channels.Channels.newInputStream(file.getChannel()),checkpoint).equals(identity.sha256())
+                    ||file.length()!=identity.bytes())throw new IOException("Verified archive content changed");
+            byte[] buffer=new byte[64*1024];
+            PackageZip.readVerified(file,members::contains,checkpoint,(name,stream,length)->{
+                Path target=context.directory.resolve(name);
+                try(var output=context.output(target)) {
+                    for(int count;(count=stream.read(buffer))!=-1;)output.write(buffer,0,count);
+                }
+                jsonFiles.put(name,target);
+            });
+        }
+        if(!jsonFiles.containsKey("manifest.json")||!jsonFiles.containsKey("graph.json"))
+            throw new IOException("Package requires manifest.json and graph.json");
+        return jsonFiles;
+    }
+
     static Contents read(Path archive,PackageValidationContext context,Path resources)throws IOException {
         Set<String> seen=context.workspace==null?new HashSet<>():context.workspace.set();
         Map<String,String> hashes=context.workspace==null?new HashMap<>():context.workspace.map();

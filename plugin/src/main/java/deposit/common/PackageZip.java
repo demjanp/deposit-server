@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.zip.*;
 
 /** Single-disk ZIP/ZIP64 with a bounded, streamed central directory. */
@@ -117,6 +118,17 @@ final class PackageZip {
 
     static void read(Path archive, Map<String,Long> spans, Runnable checkpoint, Member member) throws IOException {
         try (var file = new RandomAccessFile(archive.toFile(),"r")) {
+            read(file,spans,null,checkpoint,member);
+        }
+    }
+
+    static void readVerified(RandomAccessFile file, Predicate<String> selected, Runnable checkpoint, Member member) throws IOException {
+        read(file,null,selected,checkpoint,member);
+    }
+
+    private static void read(RandomAccessFile file,Map<String,Long> spans,Predicate<String> selected,
+            Runnable checkpoint,Member member)throws IOException {
+        try {
             var end = end(file);
             long nextCentral = end.start();
             for (long index=0; index<end.count(); index++) {
@@ -140,10 +152,12 @@ final class PackageZip {
                 nextCentral=Math.addExact(file.getFilePointer(),comment);
                 if (nextCentral>end.end() || offset>=end.start()) throw invalid("ZIP coordinates cross the central directory");
                 String name = new String(nameBytes,StandardCharsets.US_ASCII);
+                if(selected!=null&&!selected.test(name))continue;
                 long localEnd = readLocal(file,offset,nameBytes,name,flags,method,crc,compressed,size,wide,end.start(),checkpoint,member);
-                if (spans.put(Long.toString(offset),localEnd)!=null) throw invalid("Overlapping ZIP local members");
+                if (spans!=null&&spans.put(Long.toString(offset),localEnd)!=null) throw invalid("Overlapping ZIP local members");
             }
             if(nextCentral!=end.end()) throw invalid("ZIP central directory length differs");
+            if(spans==null)return; // The exact archive already passed the full span check.
             long offset=0;
             for (long index=0; index<end.count(); index++) {
                 checkpoint.run();
