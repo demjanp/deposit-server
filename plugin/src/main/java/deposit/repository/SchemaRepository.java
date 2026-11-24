@@ -55,14 +55,9 @@ public final class SchemaRepository {
             tx.execute("CREATE INDEX deposit_transfer_state IF NOT EXISTS FOR (n:DepositTransfer) ON (n.state)").close();
             tx.execute("CREATE CONSTRAINT deposit_membership_identity IF NOT EXISTS FOR ()-[r:MEMBER_OF]-() REQUIRE r.identityKey IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_relationship_identity IF NOT EXISTS FOR ()-[r:RELATED_TO]-() REQUIRE r.identityKey IS UNIQUE").close();
-            tx.execute("CREATE CONSTRAINT deposit_init IF NOT EXISTS FOR (n:DepositInitialization) REQUIRE n.id IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_related_identity IF NOT EXISTS FOR ()-[r:RELATED_TO]-() ON (r.namespaceId,r.id)").close();
             tx.execute("CREATE INDEX deposit_objects IF NOT EXISTS FOR (n:Object) ON (n.namespaceId)").close();
             for(String label:List.of("DepositTransfer","DepositExchangeStage","DepositResourceLocation","DepositResourceLease","DepositExportGrant","DepositPruneJob","DepositPruneItem","DepositImportPlan"))tx.execute("CREATE CONSTRAINT "+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
-            tx.commit();
-        }
-        try(var tx=db.beginTx()) {
-            OperationAttemptRepository.initialize(tx,null);
             tx.commit();
         }
     }

@@ -7,6 +7,7 @@ import deposit.repository.CoreRepository;
 import deposit.repository.GeometryRepository;
 import deposit.repository.HistoryRepository;
 import deposit.repository.OperationAttemptRepository;
+import deposit.repository.OperationalCommitRepository;
 import deposit.repository.ResourceRepository;
 import deposit.repository.SchemaRepository;
 import deposit.service.ProcedureService;
@@ -372,8 +373,11 @@ class OperationAttemptTest {
             assertThrows(ExecutionException.class,()->run.get(10,TimeUnit.SECONDS));
         } finally { server.storageObserverForTesting(point->{}); }
         assertEquals("CANCELLED_ROLLED_BACK",state(status(a,id,a.namespace)));
+        assertNull(server.storage.operationalCommits.completion(a.id, a.namespace, id));
         try (var tx=database.beginTx()) {
-            assertNull(new CoreRepository(tx,ZonedDateTime.now()).find("Class",Map.of("namespaceId",a.namespace,"name",args.getFirst())));
+            var core = new CoreRepository(tx, ZonedDateTime.now());
+            assertNull(core.find("Class",Map.of("namespaceId",a.namespace,"name",args.getFirst())));
+            assertFalse(core.namespace(a.namespace).hasProperty(OperationalCommitRepository.MARKER));
         }
     }
 
@@ -704,12 +708,14 @@ class OperationAttemptTest {
         new OperationMaintenance(server,database).tick();
         clock.set(original+10);
         Actor fresh=renew(a);
-        assertThrows(ExceptionHandler.DepositException.class,()->begin(fresh,id,fresh.namespace,procedure,args));
+        var backward = assertThrows(ExceptionHandler.DepositException.class, () -> begin(fresh,id,fresh.namespace,procedure,args));
+        assertTrue(backward.getMessage().contains("OUTCOME_UNKNOWN"));
         clock.set(original+2*OperationAttemptRepository.RETENTION+100);
         String missing=operationId(clock.get()+OperationAttemptRepository.FUTURE_SKEW-1);
-        try(var tx=database.beginTx()){OperationAttemptRepository.initialize(tx,clock.get());tx.commit();}
+        server.storage.operationalState.advanceAdmission(clock.get()+OperationAttemptRepository.FUTURE_SKEW,-1);
         Actor restored=renew(a);
-        assertThrows(ExceptionHandler.DepositException.class,()->begin(restored,missing,restored.namespace,procedure,args));
+        var restore = assertThrows(ExceptionHandler.DepositException.class, () -> begin(restored,missing,restored.namespace,procedure,args));
+        assertTrue(restore.getMessage().contains("OPERATION_ID_EXPIRED"));
         assertEquals("OUTCOME_UNKNOWN",state(status(restored,missing,restored.namespace)));
         clock.addAndGet(OperationAttemptRepository.FUTURE_SKEW+1);
     }
@@ -830,11 +836,54 @@ class OperationAttemptTest {
         Path staged=server.storage.files.path("staging/"+a.namespace+"/"+upload+".part");
         assertTrue(Files.isRegularFile(staged));
 
+        Actor b = actor();
+        String noOp = operationId(clock.get()), rolledBack = operationId(clock.get());
+        var unchanged = List.<Object>of(Map.of("id", committed), Map.of());
+        var rolledBackArgs = List.<Object>of("Never committed", Map.of());
+        begin(a, noOp, a.namespace, "deposit.set.class", unchanged);
+        begin(b, rolledBack, b.namespace, procedure, rolledBackArgs);
+        var faults = new AtomicLong();
+        server.storageObserverForTesting(point -> {
+            if (point.equals("operational-before-settlement")) {
+                faults.incrementAndGet();
+                throw new IllegalStateException("Injected settlement failure");
+            }
+        });
+        try {
+            assertEquals(false, call(a, a.execution, "deposit.set.class", unchanged, noOp, () -> {
+                assertEquals(new OperationalCommitRepository.Completion(null, null, false),
+                    server.storage.operationalCommits.completion(a.id, a.namespace, noOp));
+            }).get("changed"));
+            assertThrows(IllegalStateException.class, () -> call(b, b.execution, procedure, rolledBackArgs, rolledBack,
+                () -> { throw new IllegalStateException("Test requests outer rollback"); }));
+        } finally {
+            server.storageObserverForTesting(point -> {});
+        }
+        assertEquals(2, faults.get());
+        assertEquals("OUTCOME_UNKNOWN", state(status(a, noOp, a.namespace)));
+        assertNull(status(a, noOp, a.namespace).get("result"));
+        assertEquals("OUTCOME_UNKNOWN", state(status(b, rolledBack, b.namespace)));
+        var pendingUnits = server.storage.operationalCommits.pending();
+        assertEquals(2, pendingUnits.size());
+        Actor independent = actor();
+        try (var tx = database.beginTx()) {
+            var core = new CoreRepository(tx, ZonedDateTime.now());
+            assertEquals(pendingUnits.stream().filter(unit -> unit.ownerId().equals(a.namespace)).findFirst().orElseThrow().id(),
+                core.namespace(a.namespace).getProperty(OperationalCommitRepository.MARKER));
+            assertFalse(core.namespace(b.namespace).hasProperty(OperationalCommitRepository.MARKER));
+            assertFalse(core.data(core.namespace(a.namespace)).containsKey(OperationalCommitRepository.MARKER));
+            assertNull(core.find("Class", Map.of("namespaceId", b.namespace, "name", rolledBackArgs.getFirst())));
+            var fenced = assertThrows(ExceptionHandler.DepositException.class, () -> core.lockNamespace(a.namespace));
+            assertTrue(fenced.getMessage().contains("OUTCOME_UNKNOWN"));
+            core.lockNamespace(independent.namespace);
+        }
+
         var monitors=database.getDependencyResolver().resolveDependency(Monitors.class);
         management.unregisterTransactionEventListener("neo4j",server);
         monitors.removeMonitorListener(server);
         server.shutdown();
         UUID databaseId=database.databaseId().databaseId().uuid();
+        ServerContext.detach(databaseId);
         server=ServerContext.attach(databaseId);
         server.sessionClockForTesting(clock::get);
         var field=ServerContext.class.getDeclaredField("database");
@@ -852,6 +901,12 @@ class OperationAttemptTest {
         assertEquals(committed,ValueCodec.map(status.get("result")).get("id"));
         assertEquals("CANCELLED_ROLLED_BACK",state(status(renewed,pending,a.namespace)));
         assertEquals("FAILED_ROLLED_BACK",state(status(renewed,running,a.namespace)));
+        assertEquals("COMMITTED", state(status(renewed, noOp, a.namespace)));
+        assertEquals(false, ValueCodec.map(status(renewed, noOp, a.namespace).get("result")).get("changed"));
+        assertEquals("FAILED_ROLLED_BACK", state(status(renew(b), rolledBack, b.namespace)));
+        assertNull(server.storage.operationalCommits.completion(b.id, b.namespace, rolledBack));
+        server.storage.recoverCommitBoundary();
+        assertTrue(server.storage.operationalCommits.pending().isEmpty());
         assertThrows(ExceptionHandler.DepositException.class,()->call(renewed,renewed.execution,procedure,incomplete,pending));
         assertFalse(Files.exists(staged));
         try(var tx=database.beginTx()){

@@ -12,6 +12,7 @@ import org.neo4j.kernel.impl.query.TransactionExecutionMonitor;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import deposit.repository.SchemaRepository;
 import deposit.repository.OperationAttemptRepository;
+import deposit.repository.OperationalCommitRepository;
 import org.neo4j.kernel.api.net.NetworkConnectionTracker;
 
 /** Per-database state. No transaction or native entity is retained in a session. */
@@ -148,23 +149,56 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     @Override public void afterRollback(org.neo4j.graphdb.event.TransactionData data,Void state,GraphDatabaseService db) {}
     public void lockServer(TxState state) {
         transactionLifecycle.lockServer(state);
+        requireOperationalScope(state.kernel, "User", null);
     }
-    public void lockNamespace(KernelTransaction tx,String id) { transactionLifecycle.lockCoordination(tx,"namespace:"+id); }
-    public void lockActor(KernelTransaction tx,String id) { transactionLifecycle.lockCoordination(tx,"actor:"+id); }
+    public void lockNamespace(KernelTransaction tx,String id) {
+        transactionLifecycle.lockCoordination(tx,"namespace:"+id);
+        requireOperationalScope(tx, "Namespace", id);
+    }
+    public void lockActor(KernelTransaction tx,String id) {
+        transactionLifecycle.lockCoordination(tx,"actor:"+id);
+        requireOperationalScope(tx, "User", id);
+    }
+    public void lockOperationAdmission(KernelTransaction tx) {
+        transactionLifecycle.lockCoordination(tx, "operation-admission");
+    }
+    public void requireOperationalScope(KernelTransaction tx, String kind, String id) {
+        if (storage == null) return;
+        var state = transactionLifecycle.find(tx.getTransactionSequenceNumber());
+        var unit = state == null ? null : state.pendingCommit;
+        storage.operationalCommits.requireSettled(kind, id, unit == null ? null : unit.id());
+    }
+    public void beginBootstrap(TxState state, String user) {
+        state.bootstrapUser = user;
+        storage.operationalState.beginBootstrap(user);
+    }
+    public void beginOperationalCommit(TxState state, String actor, String scope, String operation, String inputHash) {
+        boolean serverScope = scope.equals("server");
+        var unit = new OperationalCommitRepository.Unit(UUID.randomUUID().toString(), actor, scope, operation, inputHash,
+            serverScope ? "User" : "Namespace", serverScope ? actor : scope);
+        state.pendingCommit = unit;
+        storage.operationalCommits.begin(unit);
+    }
+    public void prepareOperationalCommit(TxState state, Node owner, String outcome, String result) {
+        var unit = state.pendingCommit;
+        storage.operationalCommits.prepare(unit, (String)owner.getProperty(OperationalCommitRepository.MARKER, null),
+            outcome, result);
+    }
+    public void writeOperationalMarker(TxState state, Node owner) {
+        owner.setProperty(OperationalCommitRepository.MARKER, state.pendingCommit.id());
+    }
     public void lockSpatial(KernelTransaction tx) { transactionLifecycle.lockCoordination(tx,"spatial"); }
     public long revision(TxState state) {
         return transactionLifecycle.revision(state);
     }
     public void initialize(GraphDatabaseAPI db) {
         synchronized(lifecycleLock){if(initialized)return;if(stopping)throw new IllegalStateException("Deposit is shutting down");database=db;}
-        SchemaRepository.initialize(db);
         try {
             Path configPath=Path.of(System.getProperty("deposit.config")).toAbsolutePath();
             Properties configuration=new Properties();try(var input=Files.newInputStream(configPath)){configuration.load(input);}
             String restoreTime=configuration.getProperty("operationRestoreTime");
             Long restoredAt=restoreTime==null?null:java.time.Instant.parse(restoreTime).toEpochMilli();
             if(restoredAt!=null && restoredAt>sessionTime())throw new IllegalStateException("Operation restore time is ahead of the server clock");
-            try(var tx=db.beginTx()){OperationAttemptRepository.initialize(tx,restoredAt);tx.commit();}
             String configuredSecretRoot=configuration.getProperty("secretRoot");
             if(configuredSecretRoot==null||configuredSecretRoot.isBlank())throw new IllegalStateException("Deposit secretRoot is required");
             secretDirectory=Path.of(configuredSecretRoot).toAbsolutePath().normalize();
@@ -172,7 +206,14 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             Path cursorPath=secretDirectory.resolve("deposit-"+db.databaseId().databaseId().uuid()+"-cursor.key");
             byte[] persisted=Base64.getUrlDecoder().decode(secret(cursorPath));
             System.arraycopy(persisted,0,cursorKey,0,cursorKey.length);
-            storage=new StorageManager(this,db);HistoryLifecycle.recover(this);storage.recover();
+            storage = new StorageManager(this, db);
+            SchemaRepository.initialize(db);
+            if (restoredAt != null)
+                storage.operationalState.advanceAdmission(Math.addExact(restoredAt, OperationAttemptRepository.FUTURE_SKEW), -1);
+            storage.recoverCommitBoundary();
+            storage.verifyBootstrap();
+            HistoryLifecycle.recover(this);
+            storage.recoverResources();
             synchronized(lifecycleLock){
                 if(stopping)throw new IllegalStateException("Deposit stopped during initialization");
                 storage.start();downloads=new ResourceDownloadServer(this,db);downloads.start();downloadPublicBaseUrl=downloads.publicBaseUrl();
@@ -311,6 +352,8 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public boolean writerContinuation;
         final java.util.concurrent.atomic.AtomicBoolean completing=new java.util.concurrent.atomic.AtomicBoolean();
         volatile Throwable completionFailure;
+        String bootstrapUser;
+        OperationalCommitRepository.Unit pendingCommit;
         public final List<Runnable> afterCommit=new ArrayList<>();
         public final List<Runnable> release=new ArrayList<>();
         final Set<String> coordinationKeys=new HashSet<>();

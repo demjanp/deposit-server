@@ -50,11 +50,12 @@ final class TransactionLifecycle {
         if (!databaseId.equals(tx.getDatabaseId())) return;
         ServerContext.TxState state = transactions.get(tx.getTransactionSequenceNumber());
         if (state == null || !state.completing.compareAndSet(false, true)) return;
-        if (state.operationClaimed) {
-            if (!committed && state.operationCancelled()) server.rememberCancelled(state);
-            state.operationSettled=true;
-        }
         try {
+            settleOperationalState(state, committed);
+            if (state.operationClaimed) {
+                if (!committed && state.operationCancelled()) server.rememberCancelled(state);
+                state.operationSettled=true;
+            }
             if (committed) {
                 if (state.serverChanged) revision++;
                 for (Runnable callback : state.afterCommit) try { callback.run(); }
@@ -74,6 +75,19 @@ final class TransactionLifecycle {
                 LOG.log(System.Logger.Level.ERROR, "Transaction cleanup failed; keeping storage drain blocked", cleanupFailure);
             }
             synchronized (drainMonitor) { drainMonitor.notifyAll(); }
+        }
+    }
+
+    private void settleOperationalState(ServerContext.TxState state, boolean committed) {
+        if (state.bootstrapUser == null && state.pendingCommit == null) return;
+        try {
+            server.storagePoint("operational-before-settlement");
+            if (state.bootstrapUser != null) server.storage.operationalState.settleBootstrap(state.bootstrapUser, committed);
+            else server.storage.operationalCommits.settle(state.pendingCommit.id(), committed, server.sessionTime());
+        } catch (RuntimeException failure) {
+            // The pending row remains the fence after the in-memory locks are released.
+            server.storage.diagnostic = "Operational commit settlement pending";
+            LOG.log(System.Logger.Level.ERROR, "Deposit operational commit requires reconciliation", failure);
         }
     }
 

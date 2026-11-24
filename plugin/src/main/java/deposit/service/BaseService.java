@@ -101,6 +101,7 @@ public abstract class BaseService {
         String role=effectiveRole(namespace);
         if(role==null)c.fail("NOT_FOUND","Namespace not found");
         if(rank(role)<rank(minimum)) c.fail("FORBIDDEN","Insufficient Namespace role");
+        c.server.requireOperationalScope(c.state.kernel, "Namespace", namespace);
         return ns;
     }
     protected Node required(String kind,Object value) {

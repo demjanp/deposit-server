@@ -384,7 +384,9 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
     public Node receipt(String actor,String scope,String operation) {return receipts.receipt(actor,scope,operation);}
     public Node receipt(RequestContext context,String scope) {return receipt(context.actorId,scope,context.operationId);}
     public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {receipts.saveReceipt(c,scope,hash,outcome);}
-    public boolean bootstrapped() {return find("DepositInitialization","id","bootstrap")!=null || nodes("User",Map.of("serverRole","administrator")).size()>0;}
+    public boolean hasUsers() {
+        try (var users = tx.findNodes(Label.label("User"))) { return users.hasNext(); }
+    }
     public void validateOwnerDeactivation(String actor) {
         for(Node ns:nodes("Namespace",Map.of())) {
             String namespace=id(ns);
@@ -420,5 +422,4 @@ public final class CoreRepository implements CoreProjectionRepository.Access, Op
         try(var edges=ns.getRelationships()) {for(Relationship edge:edges)edge.delete();}ns.delete();
         return List.copyOf(deleted);
     }
-    public void markBootstrap() {tx.createNode(Label.label("DepositInitialization")).setProperty("id","bootstrap");}
 }

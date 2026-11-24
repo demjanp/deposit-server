@@ -3,6 +3,7 @@ package deposit.common;
 import deposit.repository.OperationAttemptRepository;
 import java.util.*;
 import org.neo4j.graphdb.Node;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
 /** Settles attempts only after no worker can commit, and collects expired fences. */
@@ -95,8 +96,13 @@ final class OperationMaintenance {
         if (state.equals("REGISTERED"))
             return !connected || now >= (long)attempt.get("claimDeadline") ? "CANCELLED_ROLLED_BACK" : null;
         var worker = incarnation ? server.activeTransaction((long)attempt.get("transactionSequence")) : null;
-        if (worker == null || worker.operationSettled) return state.equals("CANCEL_REQUESTED")
-            || incarnation && server.settledCancelled((long)attempt.get("transactionSequence")) ? "CANCELLED_ROLLED_BACK" : "FAILED_ROLLED_BACK";
+        if (worker == null || worker.operationSettled) {
+            var completion = server.storage.operationalCommits.completion((String)attempt.get("actorId"),
+                (String)attempt.get("scope"), (String)attempt.get("operationId"));
+            if (completion != null && !completion.settled()) return null;
+            return state.equals("CANCEL_REQUESTED")
+                || incarnation && server.settledCancelled((long)attempt.get("transactionSequence")) ? "CANCELLED_ROLLED_BACK" : "FAILED_ROLLED_BACK";
+        }
         if (!connected) worker.signalOperationCancellation();
         return null;
     }
@@ -104,8 +110,9 @@ final class OperationMaintenance {
     private void collect() {
         long now = server.sessionTime();
         try (var tx = database.beginTx()) {
-            var admission = new OperationAttemptRepository(tx).lockAdmission();
-            if (now < ((Number)admission.getProperty("observedTime", -1L)).longValue()) return;
+            server.lockOperationAdmission(((InternalTransaction)tx).kernelTransaction());
+            var admission = server.storage.operationalState.admission();
+            if (now < admission.observedTime()) return;
             var ids = new ArrayList<String>(BATCH);
             try (var rows = tx.execute("""
                     MATCH (n:DepositOperationAttempt)
@@ -117,14 +124,18 @@ final class OperationMaintenance {
                 while (rows.hasNext()) ids.add((String)rows.next().get("id"));
             }
             if (ids.isEmpty()) return;
-            long floor = ((Number)admission.getProperty("rejectedThrough", -1L)).longValue();
+            long floor = admission.rejectedThrough();
             for (String id : ids) {
                 Node node = tx.getNodeByElementId(id);
-                floor = Math.max(floor, OperationAttemptRepository.idTime((String)node.getProperty("operationId")));
+                String operation = (String)node.getProperty("operationId");
+                var completion = server.storage.operationalCommits.completion((String)node.getProperty("actorId"),
+                    (String)node.getProperty("scope"), operation);
+                if (completion != null && !completion.settled()) continue;
+                floor = Math.max(floor, OperationAttemptRepository.idTime(operation));
                 node.delete();
             }
-            admission.setProperty("rejectedThrough", floor);
-            admission.setProperty("observedTime", now);
+            // Stage 4 moves the records being deleted into the same SQLite transaction as this fence.
+            server.storage.operationalState.advanceAdmission(floor, now);
             tx.commit();
         }
     }

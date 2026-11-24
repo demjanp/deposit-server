@@ -9,7 +9,6 @@ public final class OperationAttemptRepository {
     public static final long RETENTION = 86_400_000L;
     public static final long FUTURE_SKEW = 300_000L;
     private static final Label ATTEMPT = Label.label("DepositOperationAttempt");
-    private static final Label ADMISSION = Label.label("DepositOperationAdmission");
     private final Transaction tx;
 
     public OperationAttemptRepository(Transaction tx) { this.tx = tx; }
@@ -42,28 +41,6 @@ public final class OperationAttemptRepository {
         return id;
     }
 
-    public Node lockAdmission() {
-        Node node = tx.findNode(ADMISSION, "id", "operations");
-        if (node == null) throw new IllegalStateException("Operation admission unavailable");
-        tx.acquireWriteLock(node);
-        return node;
-    }
-
-    public void admit(Node admission, String id, long now) {
-        if (!admissible(admission,id,now))
-            throw ExceptionHandler.fail("OPERATION_ID_EXPIRED", "Operation ID is outside its admission window");
-        admission.setProperty("observedTime", now);
-    }
-
-    public boolean admissible(Node admission,String id,long now) {
-        long time = idTime(id);
-        long floor = ((Number)admission.getProperty("rejectedThrough", -1L)).longValue();
-        long clock = ((Number)admission.getProperty("observedTime", -1L)).longValue();
-        if (now < clock)
-            throw ExceptionHandler.fail("OUTCOME_UNKNOWN", "Operation admission is suspended until the server clock settles");
-        return time > Math.max(floor, now - RETENTION) && time <= now + FUTURE_SKEW;
-    }
-
     public static String state(Node node) { return (String)node.getProperty("state"); }
 
     public static void transition(Node node, String state, long now) {
@@ -83,15 +60,4 @@ public final class OperationAttemptRepository {
             node.removeProperty(key);
     }
 
-    public static void initialize(Transaction tx, Long restoredAt) {
-        Node node = tx.findNode(ADMISSION, "id", "operations");
-        if (node == null) {
-            node = tx.createNode(ADMISSION);
-            node.setProperty("id", "operations");
-        }
-        if (restoredAt != null) {
-            long floor = ((Number)node.getProperty("rejectedThrough", -1L)).longValue();
-            node.setProperty("rejectedThrough", Math.max(floor, Math.addExact(restoredAt, FUTURE_SKEW)));
-        }
-    }
 }

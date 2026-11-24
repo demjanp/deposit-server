@@ -3,6 +3,8 @@ package deposit.common;
 import deposit.repository.CoreRepository;
 import deposit.repository.ResourceRepository;
 import deposit.repository.OperationAttemptRepository;
+import deposit.repository.OperationalCommitRepository;
+import deposit.repository.OperationalStateRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
@@ -22,6 +24,9 @@ public final class StorageManager implements AutoCloseable {
     public final ResourceFiles files = new ResourceFiles();
     public final ResourceStorage content;
     public final StorageAdmission admission;
+    final OperationalStore operational;
+    public final OperationalStateRepository operationalState;
+    public final OperationalCommitRepository operationalCommits;
     private final ServerContext server;
     private final GraphDatabaseAPI db;
     private final OperationMaintenance operations;
@@ -44,6 +49,14 @@ public final class StorageManager implements AutoCloseable {
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot initialize physical resource storage", e); }
         try { admission = new StorageAdmission(files.root,server.runId); }
         catch (java.io.IOException e) { content.close();throw new IllegalStateException("Cannot initialize storage admission", e); }
+        try { operational = new OperationalStore(files.root, db, admission); }
+        catch (java.io.IOException | RuntimeException e) {
+            admission.close();
+            content.close();
+            throw new IllegalStateException("Cannot initialize operational storage", e);
+        }
+        operationalState = new OperationalStateRepository(operational);
+        operationalCommits = new OperationalCommitRepository(operational);
         jobs = new StorageMaintenanceJobs(server, db, files, () -> content, value -> diagnostic = value);
     }
 
@@ -59,7 +72,8 @@ public final class StorageManager implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); throw new IllegalStateException("Resource shutdown interrupted", e);
         }
-        admission.close();content.close();
+        try { operational.close(); }
+        finally { admission.close();content.close(); }
     }
 
     private List<String> ids(String label) {
@@ -76,6 +90,64 @@ public final class StorageManager implements AutoCloseable {
 
     /** Startup reconciliation order is persisted purges, staging expiry, locations, orphans, then backend work. */
     public void recover() {
+        recoverCommitBoundary();
+        recoverResources();
+    }
+
+    void recoverCommitBoundary() {
+        var bootstrap = operationalState.bootstrap();
+        if (bootstrap.pendingUser() != null) {
+            boolean committed;
+            try (var tx = db.beginTx()) {
+                var repo = new CoreRepository(tx, ZonedDateTime.now(java.time.ZoneOffset.UTC));
+                var user = repo.find("User", "id", bootstrap.pendingUser());
+                committed = user != null;
+                try (var users = tx.findNodes(org.neo4j.graphdb.Label.label("User"))) {
+                    if (committed ? !enabledAdministrator(user) || !users.hasNext()
+                            || !users.next().equals(user) || users.hasNext() : users.hasNext())
+                        throw new IllegalStateException("Inconsistent bootstrap commit evidence");
+                }
+            }
+            operationalState.settleBootstrap(bootstrap.pendingUser(), committed);
+        }
+
+        for (var unit : operationalCommits.pending()) {
+            boolean committed = false;
+            if (unit.prepared()) {
+                try (var tx = db.beginTx()) {
+                    Node owner = tx.findNode(org.neo4j.graphdb.Label.label(unit.ownerKind()), "id", unit.ownerId());
+                    if (owner == null) throw new IllegalStateException("Operational commit marker owner unavailable");
+                    Object marker = owner.getProperty(OperationalCommitRepository.MARKER, null);
+                    committed = unit.id().equals(marker);
+                    if (!committed && !Objects.equals(unit.previousMarker(), marker))
+                        throw new IllegalStateException("Operational commit marker has unexpected identity");
+                }
+            }
+            operationalCommits.settle(unit.id(), committed, server.sessionTime());
+        }
+    }
+
+    void verifyBootstrap() {
+        boolean initialized = operationalState.bootstrap().initialized();
+        try (var tx = db.beginTx();
+             var users = tx.findNodes(org.neo4j.graphdb.Label.label("User"), "serverRole", "administrator")) {
+            if (initialized) {
+                while (users.hasNext()) if (enabledAdministrator(users.next())) return;
+            } else {
+                try (var all = tx.findNodes(org.neo4j.graphdb.Label.label("User"))) {
+                    if (!all.hasNext()) return;
+                }
+            }
+            throw new IllegalStateException("Deposit Users do not match persisted bootstrap state");
+        }
+    }
+
+    private static boolean enabledAdministrator(Node user) {
+        return Boolean.TRUE.equals(user.getProperty("enabled", false))
+            && "administrator".equals(user.getProperty("serverRole", null));
+    }
+
+    void recoverResources() {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(50);
         try{deposit.repository.HistoryWorkspace.recover(files.path("staging/imports"));}
         catch(java.io.IOException failure){throw new IllegalStateException("Cannot reclaim private history indexes",failure);}

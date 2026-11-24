@@ -61,6 +61,23 @@ public final class StorageAdmission implements AutoCloseable {
     }
     public String volumeId(Path path)throws IOException{return volumes.resolve(path).deviceId();}
 
+    @FunctionalInterface interface OperationalWrite<T> { T run() throws IOException, java.sql.SQLException; }
+
+    <T> T operationalWrite(Path database, long growth, OperationalWrite<T> write) throws IOException, java.sql.SQLException {
+        lockForAdmission();
+        try {
+            var volume = volumes.resolve(root);
+            Path wal = database.resolveSibling(database.getFileName() + "-wal");
+            long checkpointGrowth = Files.exists(wal) ? Files.size(wal) : 0;
+            // Keep the same future-space commitments in force while SQLite writes or checkpoints.
+            String device = volume.deviceId();
+            checkCapacity(Map.of(device, VolumeRef.from(volume)), Map.of(device, addExact(growth, checkpointGrowth)), null);
+            return write.run();
+        } finally {
+            stateLock.unlock();
+        }
+    }
+
     boolean hasOutputIntent(String actor,String scope,String operationId){
         stateLock.lock();
         try{

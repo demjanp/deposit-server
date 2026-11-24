@@ -3,6 +3,7 @@ package deposit.service;
 import deposit.common.*;
 import deposit.common.Results.*;
 import deposit.repository.OperationAttemptRepository;
+import deposit.repository.OperationalCommitRepository;
 import java.util.*;
 import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
@@ -65,7 +66,7 @@ final class OperationAttemptService extends BaseService {
                 ? "owner" : "editor";
         authorize(procedure, namespace, role, false);
         String hash = fingerprint(procedure, arguments);
-        Node admission = attempts.lockAdmission();
+        c.server.lockOperationAdmission(c.state.kernel);
         Node node = attempts.find(c.actorId, scope, id);
         if (node != null) {
             c.tx.acquireReadLock(node);
@@ -76,7 +77,8 @@ final class OperationAttemptService extends BaseService {
             return status(node, id, scope, false);
         }
         long now = c.server.sessionTime();
-        attempts.admit(admission, id, now);
+        if (!c.server.storage.operationalState.admit(id, now))
+            c.fail("OPERATION_ID_EXPIRED", "Operation ID is outside its admission window");
         String connection = connection();
         if (!c.server.connectionLive(connection)) c.fail("AUTH_FAILED", "A live Bolt execution connection is required");
         String uploadId = writer(procedure, arguments, scope);
@@ -147,6 +149,7 @@ final class OperationAttemptService extends BaseService {
             node.setProperty("requestId", c.requestId);
             node.setProperty("transactionSequence", c.state.kernel.getTransactionSequenceNumber());
             OperationAttemptRepository.transition(node, "RUNNING", now);
+            c.server.beginOperationalCommit(c.state, c.actorId, operationScope, id, c.inputHash);
             registration.commit();
         }
         c.expectedRevision = (Long)saved.get("expectedRevision");
@@ -156,23 +159,30 @@ final class OperationAttemptService extends BaseService {
 
     void finish(Object row) {
         c.server.storagePoint("operation-before-final-fence");
+        boolean serverScope = c.actionScope.equals("server");
+        repo.lockActor(c.actorId);
+        if (!serverScope) repo.lockNamespace(c.actionScope);
+        Node owner = serverScope ? repo.find("User", "id", c.actorId) : repo.namespace(c.actionScope);
+        if (owner == null) c.fail("OUTCOME_UNKNOWN", "Operation commit marker owner is unavailable");
         Node node = attempts.find(c.actorId, c.actionScope, c.operationId);
         if (node == null) c.fail("OUTCOME_UNKNOWN", "Operation claim is unavailable");
         c.tx.acquireWriteLock(node);
         if (!"RUNNING".equals(OperationAttemptRepository.state(node))
                 || !c.requestId.equals(node.getProperty("requestId", null))
-                || !c.server.connectionLive(c.state.operationConnection)
-                || !c.state.enterOperationFinal())
+                || !c.server.connectionLive(c.state.operationConnection))
             c.fail("CANCELLED", "Operation cancelled before the commit boundary");
         String procedure = c.procedure;
+        String outcome = domainWrite(procedure) ? "COMMITTED" : "COMPLETED_NO_DOMAIN_WRITE";
+        c.server.prepareOperationalCommit(c.state, owner, outcome, Json.write(summary(row)));
+        if (!c.state.enterOperationFinal()) c.fail("CANCELLED", "Operation cancelled before the commit boundary");
         // A deletion checks the target owner under the authorization and Namespace
         // locks before removing it. Account self-changes have the same pre-write check.
         if (!procedure.equals("deposit.delete.namespace") && !c.state.selfAccountChange)
             authorize(procedure,(String)node.getProperty("authorizationScope"),(String)node.getProperty("role"),true);
         c.checkSourceAuthorization.run();
         checkSource(node.getAllProperties(),false);
-        OperationAttemptRepository.transition(node, domainWrite(procedure) ? "COMMITTED" : "COMPLETED_NO_DOMAIN_WRITE", c.server.sessionTime());
-        node.setProperty("result", Json.write(summary(row)));
+        c.server.writeOperationalMarker(c.state, owner);
+        OperationAttemptRepository.transition(node, outcome, c.server.sessionTime());
         node.removeProperty("uploadId");
         OperationAttemptRepository.clearClaim(node);
     }
@@ -183,13 +193,12 @@ final class OperationAttemptService extends BaseService {
         Node node = attempts.find(c.actorId, scope, id);
         if (node == null && cancel) {
             separate();
-            Node admission = attempts.lockAdmission();
+            c.server.lockOperationAdmission(c.state.kernel);
             node = attempts.find(c.actorId, scope, id);
             if (node == null) {
                 authorize(null, scope, "viewer", false);
                 long now = c.server.sessionTime();
-                if (!attempts.admissible(admission,id,now)) return status(null,id,scope,false);
-                attempts.admit(admission, id, now);
+                if (!c.server.storage.operationalState.admit(id, now)) return status(null,id,scope,false);
                 node = attempts.create(c.actorId, scope, id);
                 node.setProperty("claimDeadline", OperationAttemptRepository.idTime(id) + OperationAttemptRepository.RETENTION);
                 OperationAttemptRepository.transition(node, "CANCELLED_ROLLED_BACK", now);
@@ -211,6 +220,8 @@ final class OperationAttemptService extends BaseService {
             if (OperationAttemptRepository.open(current)) {
                 var values = node.getAllProperties();
                 boolean live = !current.equals("REGISTERED") && worker(values) != null;
+                var completion = completion(scope, id);
+                if (!live && completion != null && !completion.settled()) return status(node, id, scope, sanitized);
                 long sequence = (long)values.getOrDefault("transactionSequence",-1L);
                 boolean aborted = current.equals("REGISTERED") || current.equals("CANCEL_REQUESTED")
                     || c.server.runId.equals(values.get("incarnation")) && c.server.settledCancelled(sequence);
@@ -235,7 +246,9 @@ final class OperationAttemptService extends BaseService {
                 && "COMMITTED".equals(OperationAttemptRepository.state(node))) {
             checkAccount(false);
             if (!cancel || procedure.equals("deposit.delete.namespace")) return true;
-            var result=Json.read((String)node.getProperty("result"));
+            var completion = completion(scope, (String)node.getProperty("operationId"));
+            if (completion == null || !completion.settled()) return true;
+            var result=Json.read(completion.result());
             if (!(result.get("namespaceId") instanceof String namespace)) throw unavailable();
             authorize(procedure,namespace,"viewer",false);
         }
@@ -257,8 +270,12 @@ final class OperationAttemptService extends BaseService {
         var values = node == null ? Map.<String,Object>of() : node.getAllProperties();
         String state = (String)values.getOrDefault("state", "OUTCOME_UNKNOWN");
         long now = c.server.sessionTime();
+        var completion = completion(scope, id);
+        boolean successful = state.equals("COMMITTED") || state.equals("COMPLETED_NO_DOMAIN_WRITE");
+        if (successful && (completion == null || !completion.settled() || !state.equals(completion.state()))
+                || completion != null && !completion.settled() && worker(values) == null) state = "OUTCOME_UNKNOWN";
         String code = state.equals("OUTCOME_UNKNOWN") ? "OUTCOME_UNKNOWN" : null;
-        Map<String,Object> result = sanitized || !values.containsKey("result") ? null : Json.read((String)values.get("result"));
+        Map<String,Object> result = sanitized || !successful || code != null ? null : Json.read(completion.result());
         if (state.equals("REGISTERED") && !registrationLive(values, Long.MIN_VALUE)) state = "CANCELLED_ROLLED_BACK";
         if (state.equals("RUNNING") || state.equals("CANCEL_REQUESTED")) {
             var worker = worker(values);
@@ -297,6 +314,10 @@ final class OperationAttemptService extends BaseService {
         return Json.map("operationId", id, "scope", scope, "procedure", values.get("procedure"), "state", state,
             "cleanupState", values.getOrDefault("cleanupState", "none"), "updatedAt", values.getOrDefault("updatedAt", now),
             "code", code, "result", result);
+    }
+
+    private OperationalCommitRepository.Completion completion(String scope, String operation) {
+        return c.server.storage.operationalCommits.completion(c.actorId, scope, operation);
     }
 
     private boolean registrationLive(Map<String,Object> values, long now) {
