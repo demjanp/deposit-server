@@ -1,44 +1,27 @@
-# Deposit Server
+# deposit-server
 
-Deposit Server is the Neo4j plugin implementation for Deposit. The public procedure contract for this build is maintained in [runtime/public-api.json](runtime/public-api.json).
+**deposit-server** is the server component of **Deposit**, implemented as a plugin to the Neo4j graph database. It manages scientific records, their relationships, attached files, and revision history for connected applications.
 
+## Features
 
-## Project documentation
+- **Flexible, validated data model.** *Namespaces* organize separate collections. *Classes* define record types and permitted, typed fields; *Objects* are individual records, with *Descriptors* holding their values. Declared relationships connect records, and the server validates their structure.
+- **Queries and reusable patterns.** Deposit Query Language searches, filters, and summarizes records and their relationships. Saved *Patterns* describe structures for matching records and mapping imported data.
+- **Import and exchange.** Load and save CSV, Excel (.xlsx), and GeoPackage data, with import mapping and analysis before applying changes. Exchange selected records or whole Namespaces through portable packages, or clone a Namespace.
+- **Files and spatial data.** Store file attachments using OCFL (Oxford Common File Layout) and manage spatial geometries as part of the data model.
+- **Revision history.** Optional history lets users inspect changes, undo or redo operations, and restore earlier states of a Namespace.
+- **Multi-user access.** Multiple local or remote applications can share one server. Deposit accounts have per-Namespace viewer, editor, and owner roles. The server enforces permissions, detects edit conflicts, and tracks operation outcomes.
+- **Application API.** Applications use `deposit.*` procedures over Neo4j's Bolt protocol. The [API manifest](runtime/public-api.json) lists the procedures; runtime discovery reports the version and supported features. A separate authenticated HTTP endpoint serves file downloads only.
 
-- [Deposit Server user guide](doc/README.md)
-- [Server specification and Windows operations](https://github.com/demjanp/deposit-hub/blob/main/deposit-server.md)
-- [Readable procedure API](https://github.com/demjanp/deposit-hub/blob/main/deposit-server-api.md)
-- [Windows local launcher](scripts/Run_Server.ps1)
+## Platform
 
+The current distribution supports Windows process and service operation. Applications can use the API directly or through the [deposit-python wrapper](https://github.com/demjanp/deposit-python).
 
-## Windows local installation
+## Getting started
 
-The local launcher uses the sibling `..\test_harness` directory for pinned tools, caches, the packaged plugin, and the installation's database, resource roots and logs. It verifies downloaded runtime artifacts and prompts for the Neo4j administrator password at first setup.
+Start with [Installation](doc/installation.md) and [Quickstart](doc/quickstart.md). For further guidance and reference, see the [User guide](doc/README.md), [Query language](doc/query-language.md), [Procedure reference](doc/procedures.md), and [Technical specification](https://github.com/demjanp/deposit-hub/blob/main/deposit-server.md).
 
-### Requirements
+## Copyright and license
 
-- Windows x64 with Windows PowerShell 5.1, .NET Framework and an NTFS volume.
-- Access to the pinned artifact sources and Maven repositories when required files are absent from the cache.
-- An available loopback Bolt port. The first setup defaults to 7687.
+Copyright © 2026 Peter Demján.
 
-### Setup and run
-
-From the repository root:
-
-```powershell
-.\scripts\Run_Server.ps1 -SetupOnly
-```
-
-Start the configured installation, inspect its status, or stop it gracefully with:
-
-```powershell
-.\scripts\Run_Server.ps1
-.\scripts\Run_Server.ps1 -Action Status
-.\scripts\Run_Server.ps1 -Action Stop
-```
-
-Subsequent launches use the configured plugin and data under `test_harness/runs/local-server`. Preserve an existing installation and its paired resource roots before provisioning a fresh one.
-
-The packaged launcher, public procedure contract and distribution configuration
-are under `runtime/`. The Server version comes from its own Git history and
-appears in the plugin artifact and runtime discovery.
+Distributed under the MIT License.
