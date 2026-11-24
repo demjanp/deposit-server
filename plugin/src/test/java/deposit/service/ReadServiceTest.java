@@ -33,8 +33,8 @@ class ReadServiceTest {
         System.setProperty("deposit.config",config.toString());
         management=new DatabaseManagementServiceBuilderImplementation(temporary.resolve("database"),type->type!=DepositExtension.class).build();
         database=(GraphDatabaseAPI)management.database("neo4j");databaseId=database.databaseId().databaseId().uuid();
-        SchemaRepository.initialize(database);
-        server=ServerContext.attach(databaseId);server.storage=new StorageManager(server,database);var ready=ServerContext.class.getDeclaredMethod("markReadyForTesting");ready.setAccessible(true);ready.invoke(server);
+        server=ServerContext.attach(databaseId);server.storage=new StorageManager(server,database);
+        SchemaRepository.initialize(database);var ready=ServerContext.class.getDeclaredMethod("markReadyForTesting");ready.setAccessible(true);ready.invoke(server);
         var databaseField=ServerContext.class.getDeclaredField("database");databaseField.setAccessible(true);databaseField.set(server,database);
         database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class).addMonitorListener(server);
         management.registerTransactionEventListener("neo4j",server);

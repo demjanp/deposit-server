@@ -36,7 +36,8 @@ public final class OperationalStore implements AutoCloseable {
         boolean create = Files.notExists(directory, LinkOption.NOFOLLOW_LINKS);
         if (create) {
             try (var tx = database.beginTx(); var nodes = tx.getAllNodes().iterator()) {
-                if (nodes.hasNext()) throw new IOException("Operational storage is missing for an existing Deposit database");
+                if (nodes.hasNext() || tx.schema().getConstraints().iterator().hasNext())
+                    throw new IOException("Operational storage is missing for an existing Deposit database");
             }
             createPrivateDirectory(directory);
         }

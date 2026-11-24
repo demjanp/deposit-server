@@ -29,6 +29,8 @@ public final class StorageAdmission implements AutoCloseable {
     private final StorageVolumeIdentity volumes;
     private final Map<String,Reservation> reservations=new ConcurrentHashMap<>();
     private final ReentrantLock stateLock=new ReentrantLock(true);
+    private final ReentrantLock operationalWriter=new ReentrantLock(true);
+    private Map<String,Long> operationalCommitments=Map.of();
     private final Map<String,ReentrantLock> volumeLocks=new ConcurrentHashMap<>();
 
     public StorageAdmission(Path privateResourceRoot,String serverRunId)throws IOException {this(privateResourceRoot,serverRunId,new StorageVolumeIdentity());}
@@ -64,17 +66,35 @@ public final class StorageAdmission implements AutoCloseable {
     @FunctionalInterface interface OperationalWrite<T> { T run() throws IOException, java.sql.SQLException; }
 
     <T> T operationalWrite(Path database, long growth, OperationalWrite<T> write) throws IOException, java.sql.SQLException {
-        lockForAdmission();
+        try {
+            operationalWriter.lockInterruptibly();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new StoragePressureException("Storage admission was interrupted");
+        }
         try {
             var volume = volumes.resolve(root);
             Path wal = database.resolveSibling(database.getFileName() + "-wal");
             long checkpointGrowth = Files.exists(wal) ? Files.size(wal) : 0;
-            // Keep the same future-space commitments in force while SQLite writes or checkpoints.
             String device = volume.deviceId();
-            checkCapacity(Map.of(device, VolumeRef.from(volume)), Map.of(device, addExact(growth, checkpointGrowth)), null);
-            return write.run();
+            var commitment = Map.of(device, addExact(growth, checkpointGrowth));
+            stateLock.lock();
+            try {
+                checkCapacity(Map.of(device, VolumeRef.from(volume)), commitment, null);
+                operationalCommitments = commitment;
+            } finally {
+                stateLock.unlock();
+            }
+            // Keep growth reserved while SQLite writes or checkpoints without blocking ordinary admission.
+            try {
+                return write.run();
+            } finally {
+                stateLock.lock();
+                try { operationalCommitments = Map.of(); }
+                finally { stateLock.unlock(); }
+            }
         } finally {
-            stateLock.unlock();
+            operationalWriter.unlock();
         }
     }
 
@@ -244,7 +264,7 @@ public final class StorageAdmission implements AutoCloseable {
 
     private void checkCapacity(Map<String,VolumeRef> refs,Map<String,Long> additions,Reservation current)throws IOException {
         for(var addition:additions.entrySet()){
-            long requested=addition.getValue(),held=0;
+            long requested=addition.getValue(),held=operationalCommitments.getOrDefault(addition.getKey(),0L);
             for(Reservation reservation:reservations.values())if(reservation!=current)held=addExact(held,reservation.commitments.getOrDefault(addition.getKey(),0L));
             long required=addExact(held,requested);if(current!=null)required=addExact(required,current.commitments.getOrDefault(addition.getKey(),0L));VolumeRef ref=refs.get(addition.getKey());volumes.reResolve(ref.deviceId,ref.volumeGuid,Path.of(ref.ownerRoot));long free=Files.getFileStore(Path.of(ref.ownerRoot)).getUsableSpace();
             if(required>free)throw new StoragePressureException("Insufficient available storage for the requested operation");

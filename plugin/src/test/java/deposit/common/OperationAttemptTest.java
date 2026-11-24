@@ -63,8 +63,8 @@ class OperationAttemptTest {
         var field=ServerContext.class.getDeclaredField("database");
         field.setAccessible(true);
         field.set(server,database);
-        SchemaRepository.initialize(database);
         server.storage=new StorageManager(server,database);
+        SchemaRepository.initialize(database);
         server.markReadyForTesting();
         database.getDependencyResolver().resolveDependency(Monitors.class).addMonitorListener(server);
         management.registerTransactionEventListener("neo4j",server);
@@ -112,6 +112,52 @@ class OperationAttemptTest {
             assertNotNull(receipt);
 
         }
+    }
+
+    @Test void repeatedSettledOperationsReuseSqlitePagesAfterCollection() {
+        Actor initial = actor();
+        var created = tracked(initial, initial.namespace, "deposit.create.class", List.of("Retention probe", Map.of()));
+        var arguments = List.<Object>of(Map.of("id", created.get("id")), Map.of());
+        var maintenance = new OperationMaintenance(server, database);
+        List<Long> firstCleanup = null;
+        for (int cycle = 0; cycle < 2; cycle++) {
+            Actor actor = renew(initial);
+            call(actor, actor.control, "deposit.utils.refresh", List.of("namespace"), null);
+            for (int i = 0; i < 24; i++) {
+                var result = tracked(actor, actor.namespace, "deposit.set.class", arguments);
+                assertEquals(created.get("id"), result.get("id"));
+            }
+            var filled = retentionSample(actor.id);
+            long expected = cycle == 0 ? 25 : 24;
+            assertEquals(List.of(expected, expected), filled.subList(0, 2));
+            if (firstCleanup != null)
+                assertTrue(filled.get(3) < firstCleanup.get(3), "New operations should consume free pages");
+            clock.addAndGet(OperationAttemptRepository.RETENTION + 1);
+            for (int pass = 0; pass < 16 && retentionSample(actor.id).getFirst() > 0; pass++) maintenance.tick();
+            var collected = retentionSample(actor.id);
+            assertEquals(List.of(0L, 0L), collected.subList(0, 2));
+            assertTrue(collected.get(3) > filled.get(3), "Collection should free SQLite pages");
+            if (firstCleanup == null) firstCleanup = collected;
+            System.out.printf("Retention cycle %d, attempts/receipts/pages/free = %s -> %s%n", cycle + 1, filled, collected);
+        }
+    }
+
+    private List<Long> retentionSample(String actor) {
+        return server.storage.operational.read(connection -> {
+            try (var query = connection.prepareStatement("""
+                SELECT (SELECT count(*) FROM operation_attempts WHERE actor_id=?),
+                       (SELECT count(*) FROM operation_receipts WHERE actor_id=?),
+                       (SELECT page_count FROM pragma_page_count),
+                       (SELECT freelist_count FROM pragma_freelist_count)
+                """)) {
+                query.setString(1, actor);
+                query.setString(2, actor);
+                try (var rows = query.executeQuery()) {
+                    assertTrue(rows.next());
+                    return List.of(rows.getLong(1), rows.getLong(2), rows.getLong(3), rows.getLong(4));
+                }
+            }
+        });
     }
 
     @Test void identicalBeginDoesNotMoveTheExecutionBinding() {
@@ -1966,18 +2012,11 @@ class OperationAttemptTest {
                 "CALL deposit.import.apply($plan,$operation,$token) YIELD data RETURN data",
                 Map.of("plan",waitingPlan,"operation",waitingOperation,"token",receiver.token)));
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
-            boolean blocked=false;
-            do {
-                var status=cypher(receiver.control,"""
-                    SHOW TRANSACTIONS YIELD connectionId, currentQuery, status
-                    WHERE connectionId=$connection AND currentQuery CONTAINS 'deposit.import.apply'
-                          AND status STARTS WITH 'Blocked by'
-                    RETURN count(*) AS blocked
-                    """,Map.of("connection",receiver.execution.id));
-                blocked=Long.valueOf(1L).equals(status.get("blocked"));
-            } while(!blocked&&!waiting.isDone()&&System.nanoTime()<deadline);
-            assertTrue(blocked,"Import apply did not wait for the Namespace lock");
+            while(!"RUNNING".equals(status(receiver,waitingOperation,receiver.namespace).get("state"))
+                    &&!waiting.isDone()&&System.nanoTime()<deadline)Thread.sleep(20);
             assertEquals("RUNNING",state(status(receiver,waitingOperation,receiver.namespace)));
+            assertThrows(TimeoutException.class,()->waiting.get(100,TimeUnit.MILLISECONDS),
+                "Import apply completed while the Namespace lock was held");
             assertFalse(points.contains("namespace-sequence-read"),points.toString());
             Node namespace=core.namespace(receiver.namespace);
             namespace.setProperty("description","Edit committed while apply was waiting");

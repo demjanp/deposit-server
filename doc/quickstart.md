@@ -4,9 +4,10 @@ This quickstart uses Cypher Shell, the bundled Bolt command-line client. It crea
 
 ## 1. Connect over Bolt
 
-Run this on the server machine, replacing the path and port as needed. Neo4j prompts for its password:
+Run this on the server machine, replacing the Java and Neo4j paths and the Bolt port as needed. Put the release-pinned Java first on `PATH` for Cypher Shell. Neo4j prompts for its password.
 
 ```powershell
+$env:Path = 'C:\Java\jdk-21\bin;' + $env:Path
 & 'C:\Neo4j\bin\cypher-shell.bat' -a bolt://127.0.0.1:7687 -u neo4j -d neo4j --history disable
 ```
 

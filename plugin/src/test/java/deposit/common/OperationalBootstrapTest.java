@@ -44,6 +44,19 @@ class OperationalBootstrapTest {
         try {
             server.storage = new StorageManager(server, database);
             SchemaRepository.initialize(database);
+            var emptyRoot = Files.createDirectory(directory.resolve("missing-operational-root"));
+            var missing = assertThrows(java.io.IOException.class, () -> new OperationalStore(emptyRoot, database, null));
+            assertTrue(missing.getMessage().contains("Operational storage is missing"));
+            assertFalse(Files.exists(emptyRoot.resolve("operational")));
+            var otherManagement = new DatabaseManagementServiceBuilderImplementation(directory.resolve("other-database"),
+                type -> type != DepositExtension.class).build();
+            try {
+                var otherDatabase = (GraphDatabaseAPI)otherManagement.database("neo4j");
+                var mismatch = assertThrows(java.io.IOException.class, () -> new OperationalStore(root, otherDatabase, null));
+                assertTrue(mismatch.getMessage().contains("belongs to a different Neo4j store"));
+            } finally {
+                otherManagement.shutdown();
+            }
             monitors.addMonitorListener(server);
             management.registerTransactionEventListener("neo4j", server);
             server.markReadyForTesting();

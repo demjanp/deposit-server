@@ -72,7 +72,11 @@ public class StorageProbe {
     @Procedure(name="testprobe.storage.grant",mode=Mode.WRITE)
     public Stream<Row> grant(@Name("namespace")String namespace,@Name("resource")String id,@Name("actor")String actor,@Name("history")boolean history) {
         var core=new CoreRepository(tx,ZonedDateTime.now());core.lockNamespace(namespace);var r=new ResourceRepository(tx,core);r.lock(id);
-        r.record("DepositExportGrant",UUID.randomUUID().toString(),Json.map("resourceId",id,"namespaceId",namespace,"actorId",actor,"history",history,"expires",r.now()+ResourceFiles.LEASE));return Stream.of(new Row(Map.of("granted",true)));
+        var request=new RequestContext(tx,Map.of());
+        request.actorId=actor;
+        String unit=server().prepareWorkflowCommit(request,namespace,core.namespace(namespace));
+        server().storage.exportGrants.create(UUID.randomUUID().toString(),id,namespace,actor,history,r.now()+ResourceFiles.LEASE,unit);
+        return Stream.of(new Row(Map.of("granted",true)));
     }
     private static void importRefuses(Runnable action,String code) {
         try{action.run();throw new AssertionError("Imported resource misuse was accepted");}
@@ -86,7 +90,9 @@ public class StorageProbe {
         var descriptor=core.attach("Descriptor",object,actor,Json.map("name","InternalImportProbe"));
         var other=core.create("Descriptor",otherNamespace,actor,Json.map("name","WrongNamespace"));
         var staged=resources.files.path("staging/imports/capability-"+UUID.randomUUID());Files.createDirectories(staged.getParent());Files.writeString(staged,"import authority bytes");
-        try(var imported=resources.beginImport(namespace,actor)){
+        var admission=server().storage.admission;
+        var reservation=admission.acquire(UUID.randomUUID().toString(),"probe-import-publication",Map.of(resources.files.root,64L*1024));
+        try(var imported=resources.beginImport(namespace,actor,reservation,new HashSet<>())){
             String id=imported.create(staged,"authority.txt","text/plain",Files.size(staged),ResourceFiles.checksum(staged),ZonedDateTime.now());var value=Json.map("resourceId",id);
             importRefuses(()->core.writeValue(descriptor,"DResource",value,actor),"FORBIDDEN");
             importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,UUID.randomUUID().toString(),imported),"FORBIDDEN");
@@ -95,14 +101,14 @@ public class StorageProbe {
                 var separateCore=new CoreRepository(separate,ZonedDateTime.now());var separateDescriptor=separateCore.create("Descriptor",namespace,actor,Json.map("name","WrongTransaction"));
                 importRefuses(()->separateCore.writeImportedValue(separateDescriptor,"DResource",value,actor,imported),"FORBIDDEN");
             }
-            try(var different=resources.beginImport(namespace,actor)){
+            try(var different=resources.beginImport(namespace,actor,reservation,new HashSet<>())){
                 importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,different),"FORBIDDEN");
             }
             importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,null),"FORBIDDEN");
             var resource=resources.resource(namespace,id);resource.setProperty("bytes",Files.size(staged)+1);
             importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,imported),"RESOURCE_CORRUPT");resource.setProperty("bytes",Files.size(staged));
-            var location=resources.location(id);location.setProperty("deleting",true);
-            importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,imported),"RESOURCE_CORRUPT");location.removeProperty("deleting");
+            resource.setProperty("deleting","probe");
+            importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,imported),"RESOURCE_CORRUPT");resource.removeProperty("deleting");
             String role=core.role(actor,namespace);core.setRole(actor,namespace,"viewer");
             importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,imported),"FORBIDDEN");core.setRole(actor,namespace,role);
             if(!core.writeImportedValue(descriptor,"DResource",value,actor,imported))throw new AssertionError("Fresh imported resource was not attached");
@@ -110,6 +116,6 @@ public class StorageProbe {
             if(!core.writeImportedValue(second,"DResource",value,actor,imported))throw new AssertionError("Shared resource was not attached");
             imported.close();importRefuses(()->core.writeImportedValue(descriptor,"DResource",value,actor,imported),"FORBIDDEN");
             return Stream.of(new Row(Json.map("refusals",10L,"sharedAttached",true,"resourceId",id)));
-        }finally{Files.deleteIfExists(staged);}
+        }finally{try{Files.deleteIfExists(staged);}finally{admission.close(reservation);}}
     }
 }

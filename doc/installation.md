@@ -51,7 +51,7 @@ Neo4j settings belong in `conf/neo4j.conf`. Deposit settings belong in `conf/dep
 
 | Setting | Purpose |
 | --- | --- |
-| `resourceRoot` | Writable Deposit resource container. The server creates staging, OCFL and OCFL work directories below it. |
+| `resourceRoot` | Writable Deposit resource container. The server creates staging, OCFL and work directories below it. The private operational database is `operational/operational.sqlite`, in an owner-only directory. |
 | `exportRoot` | Separate writable directory for temporary export files. |
 | `secretRoot` | Protected directory for persistent cursor and shutdown-control keys. |
 | `download.listenAddress`, `download.port` | Address and port for authenticated resource downloads. The local launcher binds to loopback and allocates a dedicated port. |
@@ -64,4 +64,10 @@ For remote access, configure a private Bolt interface and certificate-validating
 
 ## Startup and backup notes
 
-Use `status`, `diagnose` and the server logs to inspect operation. `diagnose` includes local paths; review it before sharing. Back up the stopped Neo4j database, transaction state, Deposit resources, configuration and required secrets together. A graph-only or resource-only copy is incomplete. Never copy a running Community database as an ordinary filesystem backup.
+Use `status`, `diagnose` and the server logs to inspect operation. `diagnose` includes local paths. Review it before sharing.
+
+Stop Deposit gracefully before taking a filesystem backup. A clean stop drains transactions and maintenance, then checkpoints and closes SQLite. Back up the complete Neo4j store and transaction logs, the entire resource root (including the operational directory, OCFL, staging and storage-admission state), configuration and required secrets as one set. Preserve the service account's ownership and private permissions when copying the files.
+
+Restore the matching set while the server is stopped, using the original Neo4j store files so the persistent store identity is preserved. Set `operationRestoreTime` in `conf/deposit.properties` to the trusted UTC time of the restore before first startup. This advances the operation admission fence so pre-restore operation IDs cannot be replayed. Deposit rejects an incompatible or missing operational database and one bound to a different Neo4j store. Initialize a fresh installation for this alpha format.
+
+The Neo4j store retains scientific history. `DepositSnapshot` stores journal touches with the corresponding entity images or as a touch-only record. A `RevisionDependency` belongs to a `Revision` through `HAS_DEPENDENCY` and stores its `id`, `namespaceId`, `revisionId`, `historyEpochId` and typed historical `entityKey`.

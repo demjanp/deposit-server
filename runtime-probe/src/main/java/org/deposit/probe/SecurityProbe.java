@@ -1,10 +1,12 @@
 package org.deposit.probe;
 
 import deposit.common.ServerContext;
+import deposit.repository.OperationalCommitRepository;
 import java.util.*;
 import java.util.stream.Stream;
 import org.neo4j.graphdb.*;
 import org.neo4j.graphdb.event.*;
+import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.procedure.*;
 
@@ -23,11 +25,13 @@ public class SecurityProbe {
     @Procedure(name="testprobe.security.failCommit",mode=Mode.READ)
     public Stream<Value> failCommit(@Name("operationId") String operation) {
         UUID.fromString(operation);
+        var server=ServerContext.forDatabase(db.databaseId().databaseId().uuid());
         var management=db.getDependencyResolver().resolveDependency(org.neo4j.dbms.api.DatabaseManagementService.class);
         var listener=new TransactionEventListener<Void>() {
             private volatile boolean armed=true;
             public Void beforeCommit(TransactionData data,Transaction tx,GraphDatabaseService database) {
-                if(armed)for(Node node:data.createdNodes())if(node.hasLabel(Label.label("DepositReceipt"))&&operation.equals(node.getProperty("operationId",null))) {
+                if(armed)for(var property:data.assignedNodeProperties())if(OperationalCommitRepository.MARKER.equals(property.key())
+                    &&operation.equals(server.state(((InternalTransaction)tx).kernelTransaction()).operationId)) {
                     armed=false;throw new IllegalStateException("AUTH_FAILURE_INJECTED_COMMIT");
                 }
                 return null;

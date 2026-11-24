@@ -13,9 +13,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.neo4j.dbms.api.*;
 import org.neo4j.graphdb.*;
-import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.monitoring.Monitors;
 
 /** In-process service/storage coverage; no deployed procedure or configuration seam. */
 class TabularListenerAvailabilityTest {
@@ -47,6 +47,7 @@ class TabularListenerAvailabilityTest {
         // This fixture owns its service context, avoiding launcher/readiness APIs.
         server=ServerContext.attach(databaseId);
         server.storage=new StorageManager(server,database);
+        database.getDependencyResolver().resolveDependency(Monitors.class).addMonitorListener(server);
         server.markReadyForTesting();
         downloads=new ResourceDownloadServer(server,database);
         downloads.start();
@@ -79,18 +80,19 @@ class TabularListenerAvailabilityTest {
             Json.write(columns),1,true,"[]",false),UUID.randomUUID().toString(),null);
     }
     @AfterEach void cleanup() {
-        try { if(downloads!=null)downloads.close();if(server!=null&&server.storage!=null)server.storage.close(); }
+        try {
+            if(database!=null&&server!=null)database.getDependencyResolver().resolveDependency(Monitors.class).removeMonitorListener(server);
+            if(downloads!=null)downloads.close();if(server!=null&&server.storage!=null)server.storage.close();
+        }
         finally {try{if(management!=null)management.shutdown();}finally{if(databaseId!=null)ServerContext.detach(databaseId);if(previousConfig==null)System.clearProperty("deposit.config");else System.setProperty("deposit.config",previousConfig);}}
     }
     @SuppressWarnings("unchecked") Map<String,Object> save(String format,boolean links,String operation) {
         try(var tx=database.beginTx()) {
-            KernelTransaction kernel=((InternalTransaction)tx).kernelTransaction();boolean committed=false;
-            try {
-                var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));
-                var request=Json.map("source",Json.map("tableId",links?table:scalarTable),"parameters",Map.of(),"formatOptions",Json.map("filename","export."+format));
-                var result=(Map<String,Object>)new TabularService(context).execute("deposit.save."+format,request);
-                tx.commit();committed=true;return result;
-            } finally { if(committed)server.commit(kernel);else{tx.rollback();server.rollback(kernel,null);} }
+            var context=new RequestContext(tx,Json.map("token",token,"operationId",operation));
+            var request=Json.map("source",Json.map("tableId",links?table:scalarTable),"parameters",Map.of(),"formatOptions",Json.map("filename","export."+format));
+            var result=(Map<String,Object>)new TabularService(context).execute("deposit.save."+format,request);
+            tx.commit();
+            return result;
         }
     }
     List<Long> counts(){

@@ -14,6 +14,38 @@ import org.junit.jupiter.api.io.TempDir;
 class StorageAdmissionTest {
     @TempDir Path root;
 
+    @Test void operationalGrowthStaysReservedWithoutHoldingTheAdmissionLock() throws Exception {
+        var writing = new CountDownLatch(1);
+        var finish = new CountDownLatch(1);
+        long usable = java.nio.file.Files.getFileStore(root).getUsableSpace();
+        var simultaneous = Map.of(root, usable / 4 * 3);
+        try (var admission = new StorageAdmission(root,"run-1"); var workers = Executors.newSingleThreadExecutor()) {
+            var write = workers.submit(() -> admission.operationalWrite(root.resolve("operational.sqlite"), usable / 2, () -> {
+                writing.countDown();
+                try {
+                    assertTrue(finish.await(30, TimeUnit.SECONDS));
+                } catch (InterruptedException failure) {
+                    Thread.currentThread().interrupt();
+                    throw new java.io.IOException(failure);
+                }
+                throw new java.io.IOException("Injected write failure");
+            }));
+            try {
+                assertTrue(writing.await(10, TimeUnit.SECONDS));
+                var small = admission.acquire("small", "resource-upload", Map.of(root, 1L));
+                admission.close(small);
+                var denied = assertThrows(StorageAdmission.StoragePressureException.class,
+                    () -> admission.acquire("large", "resource-upload", simultaneous));
+                assertTrue(denied.getMessage().contains("Insufficient available storage"));
+            } finally {
+                finish.countDown();
+            }
+            var failure = assertThrows(java.util.concurrent.ExecutionException.class, () -> write.get(10, TimeUnit.SECONDS));
+            assertEquals("Injected write failure", failure.getCause().getMessage());
+            admission.close(admission.acquire("large", "resource-upload", simultaneous));
+        }
+    }
+
     @Test void concurrentCapacityChecksFailFastInsteadOfWaitingUnderDomainLocks()throws Exception {
         var insideCapacityCheck=new CountDownLatch(1);
         var releaseCapacityCheck=new CountDownLatch(1);
