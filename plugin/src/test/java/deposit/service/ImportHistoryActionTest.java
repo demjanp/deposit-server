@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -88,8 +89,15 @@ class ImportHistoryActionTest {
     private static final class ProbeAction extends ActionService {
         ProbeAction(RequestContext context){super(context);}
         Outcome run(String procedure,Map<String,Object> request,boolean changed,java.util.function.Consumer<RequestContext> mutation) {
-            if(procedure.equals("deposit.import.apply"))c.historyKind="import";
-            return action(procedure,request,false,"editor",()->{mutation.accept(c);return new Change(new Outcome(null,null,Json.map("ok",true)),changed);});
+            Supplier<Change> work=()->{
+                mutation.accept(c);
+                return new Change(new Outcome(null,null,Json.map("ok",true)),changed);
+            };
+            if(procedure.equals("deposit.import.apply")) {
+                c.historyKind="import";
+                return planBoundImportAction(request,()->work);
+            }
+            return action(procedure,request,false,"editor",work);
         }
     }
 
