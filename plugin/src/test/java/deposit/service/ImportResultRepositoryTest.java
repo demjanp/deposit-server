@@ -164,6 +164,7 @@ class ImportResultRepositoryTest {
             var envelope=repository.save(diagnosticOperation,"analysis",null,7L,Json.map("conflicts",conflicts,"_tabularBlanks",rowMetadata));diagnosticResult=(String)envelope.get("resultId");assertEquals("IMPORT_CONFLICT",envelope.get("state"));
             context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.receipt(namespace,diagnosticOperation).getProperty("importResultId"));assertNull(tx.findNode(Label.label("DepositImportPlan"),"resultId",diagnosticResult));tx.commit();
         }catch(Exception failure){throw new AssertionError(failure);}
+        refreshIndexStatistics();
         try(var tx=database.beginTx()){
             var repository=new ImportResultRepository(context(tx,actor));Object lease=repository.envelope(diagnosticResult).get("leaseId");var first=repository.page(Json.map("resultId",diagnosticResult,"leaseId",lease,"collection","conflicts","cursor",null,"limit",1L));
             var conflictDescriptor=ValueCodec.map(((List<?>)first.get("entries")).getFirst());
@@ -177,7 +178,7 @@ class ImportResultRepositoryTest {
             assertEquals(600,count);assertEquals("source-0",first);assertEquals("source-599",last);
             assertTrue(view.containsKey("source-599"),"the final hash-key bucket must remain readable without full collection scans");
             String explain="EXPLAIN MATCH (row:DepositImportResultEntry {resultId:$resultId,collectionId:$collectionId}) WHERE row.position >= $position RETURN row ORDER BY row.position LIMIT $limit";
-            var query=tx.execute(explain,Map.of("resultId",diagnosticResult,"collectionId","fixture","position",0L,"limit",128L));String detail=query.getExecutionPlanDescription().toString();query.close();assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("NodeByLabelScan"),detail);tx.rollback();
+            var query=tx.execute(explain,Map.of("resultId",diagnosticResult,"collectionId",collectionId(tx,diagnosticResult,"_tabularBlanks"),"position",0L,"limit",128L));String detail=query.getExecutionPlanDescription().toString();query.close();assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("NodeByLabelScan"),detail);tx.rollback();
         }
         try(var tx=database.beginTx()){
             String operationId=UUID.randomUUID().toString();var context=new RequestContext(tx,Map.of("token","test-token","operationId",operationId));context.actorId=actor;context.namespaceId=namespace;var repo=new ImportResultRepository(context);
@@ -191,10 +192,11 @@ class ImportResultRepositoryTest {
 
     @Test void mappedIncomingObjectLookupUsesCompositeResultIndex()throws java.security.NoSuchAlgorithmException{
         String incoming="source-object-299";
+        refreshIndexStatistics();
         try(var tx=database.beginTx()){
             var context=context(tx,actor);
             var explanation=tx.execute("EXPLAIN MATCH (row:DepositImportResultEntry {resultId:$resultId,collectionId:$collectionId,mapKeyHash:$mapKeyHash,mapKey:$mapKey}) RETURN row",
-                    Map.of("resultId",resultId,"collectionId",incoming,"mapKeyHash",keyHash(incoming),"mapKey",incoming));
+                    Map.of("resultId",resultId,"collectionId",collectionId(tx,resultId,"objectMappings"),"mapKeyHash",keyHash(incoming),"mapKey",incoming));
             String detail=explanation.getExecutionPlanDescription().toString();explanation.close();
             assertTrue(detail.contains("NodeIndexSeek"),detail);assertFalse(detail.contains("PropertyFilteringIterator"),detail);
             Map<String,Object> mappings=new ImportResultRepository(context).mappingView(resultId,"objectMappings");String target=(String)mappings.get(incoming);
@@ -202,6 +204,20 @@ class ImportResultRepositoryTest {
             tx.rollback();
         }
     }
+
+    private void refreshIndexStatistics(){
+        try(var tx=database.beginTx();var result=tx.execute("CALL db.prepareForReplanning(30)")){
+            while(result.hasNext())result.next();
+            tx.commit();
+        }
+    }
+
+    private static String collectionId(Transaction tx,String resultId,String name){
+        try(var rows=tx.findNodes(Label.label("DepositImportResultCollection"),Map.of("resultId",resultId,"name",name))){
+            return (String)rows.next().getProperty("id");
+        }
+    }
+
     private static String keyHash(String key)throws java.security.NoSuchAlgorithmException{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
 
     private void createNamespace(Transaction tx,String id) {
