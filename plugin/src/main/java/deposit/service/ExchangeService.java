@@ -103,7 +103,7 @@ public final class ExchangeService extends BaseService {
         for(Object row:(List<?>)graph.get("resources"))ids.add((String)ValueCodec.map(row).get("id"));
         
         for(String id:ids){Node node=resources.resource(c.namespaceId,id);if(node==null)c.fail("RESOURCE_CORRUPT","Required historical resource is missing");
-            resources.lock(id);ResourceStorage.Content verified=resources.verify(resources.location(id));
+            resources.lock(id);ResourceStorage.Content verified=resources.verifyCompleted(node);
             stage("final-resources",PortableImportRecords.resource(id,(String)node.getProperty("filename"),verified.bytes(),(String)node.getProperty("mediaType"),verified.checksum()));}
         graph.put("resources",records.list("final-resources"));
     }
@@ -123,7 +123,7 @@ public final class ExchangeService extends BaseService {
             var hashes=records.<Boolean>index();
             Path blobDirectory=Files.createTempDirectory(exportWorkspace,"resource-content-");
             for(Object raw:(List<?>)graphs.get("resources")){
-                c.state.kernel.assertOpen();String resourceId=(String)ValueCodec.map(raw).get("id");Node loc=resources.location(resourceId);ResourceStorage.Content verified=resources.verify(loc);
+                c.state.kernel.assertOpen();String resourceId=(String)ValueCodec.map(raw).get("id");Node resource=resources.resource(c.namespaceId,resourceId);ResourceStorage.Content verified=resources.verifyCompleted(resource);
                 if(hashes.put(verified.checksum(),true)!=null)continue;
                 Path blob=blobDirectory.resolve(verified.checksum());c.server.storage.admission.grow(admission,Map.of(resources.files.root,verified.bytes()));try(InputStream in=resources.storage.open(verified,0,verified.bytes());OutputStream out=Files.newOutputStream(blob,StandardOpenOption.CREATE_NEW)){byte[] buffer=new byte[65536];int n;while((n=in.read(buffer))!=-1){c.state.kernel.assertOpen();out.write(buffer,0,n);}}c.server.storage.admission.materialized(admission,resources.files.root,verified.bytes());
                 if(Files.size(blob)!=verified.bytes()||!verified.checksum().equals(ResourceFiles.checksum(blob)))c.fail("RESOURCE_CORRUPT","Source resource changed during export");

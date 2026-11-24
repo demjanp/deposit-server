@@ -302,12 +302,15 @@ class ImportHistoryActionTest {
             var descriptorImage=Json.map("kind","Descriptor","id",sourceDescriptor,"namespaceId",sourceNamespace,"objectId",historicalObject,"name","Historical attachment","value",Json.map("resourceId",sourceResource));
             var resourceChange=Json.map("entityKind","Descriptor","entityId",sourceDescriptor,"before",null,"after",descriptorImage);
             var touchKey=HistoryCodec.key("Object",historicalObject);
-            var revision=Json.map("revisionId",changeRevision,"namespaceId",sourceNamespace,"sequence",1L,"historyEpochId",sourceEpoch,"historyMode","persistent","operationId",UUID.randomUUID().toString(),"actorId",actor,"committedAt","2026-11-11T00:00:01Z","kind","edit","summary","Historical object and attachment","parentRevisionId",baselineRevision,"changes",List.of(objectChange,membershipChange,declarationChange,resourceChange),"touches",Map.of(touchKey,List.of("position")),"dependencies",List.of(touchKey));
+            String absent=UUID.randomUUID().toString(),absentKey=HistoryCodec.key("Object",absent);
+            var revision=Json.map("revisionId",changeRevision,"namespaceId",sourceNamespace,"sequence",1L,"historyEpochId",sourceEpoch,"historyMode","persistent","operationId",UUID.randomUUID().toString(),"actorId",actor,"committedAt","2026-11-11T00:00:01Z","kind","edit","summary","Historical object and attachment","parentRevisionId",baselineRevision,"changes",List.of(objectChange,membershipChange,declarationChange,resourceChange),"touches",Map.of(touchKey,List.of("position"),absentKey,List.of("position","*","position")),"dependencies",List.of(touchKey,absentKey));
             var epoch=Json.map("id",sourceEpoch,"mode","persistent","closed",false,"startedSequence",0L,"endedSequence",null,"baselineRevisionId",baselineRevision,"headRevisionId",changeRevision,"revisions",List.of(baseline,revision));
             var bundle=Json.map("namespaceId",sourceNamespace,"historyMode","persistent","activeEpochId",sourceEpoch,"headRevisionId",changeRevision,"epochs",List.of(epoch));
             try(var tx=database.beginTx()) {
                 var context=new RequestContext(tx,Json.map("token",token,"operationId",UUID.randomUUID().toString()));context.actorId=actor;context.namespaceId=null;
-                node(tx,"DResource",Json.map("id",targetResource,"namespaceId",namespace,"filename","history-only.bin","mediaType","application/octet-stream","bytes",1L,"sha256","a".repeat(64)));
+                var core=new CoreRepository(tx,context.timestamp);
+                new ResourceRepository(tx,core).complete(namespace,"history-only.bin","application/octet-stream",
+                    new ResourceStorage.Content(targetResource,"history-only.bin",1L,"a".repeat(64)),actor,context.timestamp);
                 new HistoryCloneService(context,namespace,identityMappings,resourceMapping).importHistory(bundle);
                 @SuppressWarnings("unchecked") Map<String,String> returnedClasses=(Map<String,String>)identityMappings.get("Class");
                 @SuppressWarnings("unchecked") Map<String,String> returnedObjects=(Map<String,String>)identityMappings.get("Object");
@@ -315,14 +318,26 @@ class ImportHistoryActionTest {
                 @SuppressWarnings("unchecked") Map<String,String> returnedRevisions=(Map<String,String>)identityMappings.get("Revision");
                 assertEquals(targetClass,returnedClasses.get(sourceClass));
                 assertNotEquals(historicalObject,returnedObjects.get(historicalObject));
-                assertEquals(10_001,returnedObjects.size());assertEquals(largeMappedId,returnedObjects.get("large-source-00000"));
+                assertEquals(10_002,returnedObjects.size());assertEquals(largeMappedId,returnedObjects.get("large-source-00000"));
                 assertEquals(0,fullObjectMapTraversals.get(),"The 10,000-entry disk-backed current mapping must not be copied into a heap Map");
                 assertNotNull(returnedEpochs.get(sourceEpoch));
                 assertEquals(returnedRevisions.get(changeRevision),tx.findNode(Label.label("Revision"),"id",returnedRevisions.get(changeRevision)).getProperty("id"));
                 Node clonedRevision=tx.findNode(Label.label("Revision"),"id",returnedRevisions.get(changeRevision));
-                var touches=clonedRevision.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_TOUCH"));
-                assertTrue(touches.iterator().hasNext());
-                assertEquals(returnedObjects.get(historicalObject),touches.iterator().next().getEndNode().getProperty("entityId"));
+                Revision cloned=new HistoryRepository(tx,core).read(clonedRevision);
+                String targetKey=HistoryCodec.key("Object",returnedObjects.get(historicalObject));
+                String targetAbsent=returnedObjects.get(absent),targetAbsentKey=HistoryCodec.key("Object",targetAbsent);
+                assertNotEquals(absent,targetAbsent);
+                assertEquals(Set.of("position"),cloned.touches().get(targetKey));
+                assertEquals(Set.of("*","position"),cloned.touches().get(targetAbsentKey));
+                assertEquals(Set.of(targetKey,targetAbsentKey),cloned.dependencies());
+                assertEquals(4,((List<?>)cloned.data().get("changes")).size());
+                try(var snapshots=clonedRevision.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_CHANGE"))){
+                    var rows=snapshots.stream().map(Relationship::getEndNode).toList();
+                    assertEquals(5,rows.size());
+                    var touchOnly=rows.stream().filter(n->targetAbsent.equals(n.getProperty("entityId"))).findFirst().orElseThrow();
+                    assertEquals(true,touchOnly.getProperty("touchOnly"));
+                    assertArrayEquals(new String[]{"*","position"},(String[])touchOnly.getProperty("touchedFields"));
+                }
                 String returnedDescriptor=((Map<String,String>)identityMappings.get("Descriptor")).get(sourceDescriptor);
                 Node snapshot=tx.findNode(Label.label("DepositSnapshot"),"entityId",returnedDescriptor);
                 assertNotNull(snapshot);

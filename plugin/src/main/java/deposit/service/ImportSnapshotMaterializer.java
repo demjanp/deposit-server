@@ -70,7 +70,7 @@ private Map<String,Object> materialize(ExchangePackageCodec.PackageData pkg,Path
     ImportWriteBudget writeBudget=ImportWriteBudget.forRequest(c,receiptScope,namespace);
     writeBudget.retainOnUncommittedPublication(uncommittedPublication);
     writeBudget.reserveGraph(graph,currentResourceIds);
-    var imported=resources.beginImport(namespace,c.actorId,admission);importedOwner[0]=imported;
+    var imported=resources.beginImport(namespace,c.actorId,admission,Collections.newSetFromMap(mappings.<Boolean>orderedMap()));importedOwner[0]=imported;
     try(imported){
     Map<String,String> classes=mappings.orderedMap(),classDescriptors=mappings.orderedMap(),objects=mappings.orderedMap(),resourcesMap=mappings.orderedMap(),geometriesMap=mappings.orderedMap(),descriptors=mappings.orderedMap(),memberships=mappings.orderedMap(),relationships=mappings.orderedMap(),classRelationships=mappings.orderedMap(),patterns=mappings.orderedMap(),userTools=mappings.orderedMap(),mapping=mappings.orderedMap();long createdObjects=0;
     for(Object raw:(List<?>)graph.get("classes")){var source=ValueCodec.map(raw);String sourceId=(String)source.get("id"),targetName=BaseService.name(classMap.getOrDefault(source.get("name"),(String)source.get("name")));Node target=repo.find("Class",Map.of("namespaceId",namespace,"name",targetName));

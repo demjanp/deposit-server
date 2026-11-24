@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
@@ -65,8 +66,9 @@ final class StorageMaintenanceJobs {
             for (Node plan : core.nodes("DepositImportPlan", Map.of("tableId", id))) plan.removeProperty("tableId");
             for (Node lease : core.nodes("DepositResourceLease", Map.of("tableId", id))) lease.delete();
             table.delete();
-            Node loc = core.find("DepositResourceLocation", "id", source);
-            if (loc != null) new ResourceRepository(tx, core).orphan(loc);
+            var resources=new ResourceRepository(tx,core);
+            Node resource=resources.completed(source);
+            if(resource!=null)resources.orphan(resource);
             tx.commit();
         }
     }
@@ -222,28 +224,30 @@ final class StorageMaintenanceJobs {
         try (var tx = db.beginTx()) {
             CoreRepository core = core(tx);
             ResourceRepository resources = new ResourceRepository(tx, core);
-            Node loc = resources.location(id);
-            if (loc == null) return;
-            core.lockNamespace(text(loc, "namespaceId"));
+            Node loc=resources.state(id).lifecycle();
+            if(loc==null)return;
+            core.lockNamespace(text(loc,"namespaceId"));
             resources.lock(id);
-            if (Boolean.TRUE.equals(loc.getProperty("collected",false)) || Boolean.TRUE.equals(loc.getProperty("quarantined",false))
-                    || loc.hasProperty("deleting")) return;
-            Node upload = loc.hasProperty("uploadId") ? resources.transfer(text(loc, "uploadId")) : null;
-            if (upload != null && upload.hasProperty("writerIncarnation")
-                    && ("aborted".equals(upload.getProperty("state")) || "uploading".equals(upload.getProperty("state")) && UploadBinding.abandoned(server,core,upload))) {
+            var resource=resources.state(id);
+            loc=resource.lifecycle();
+            if(loc==null||Boolean.TRUE.equals(loc.getProperty("collected",false))||Boolean.TRUE.equals(loc.getProperty("quarantined",false))
+                    ||loc.hasProperty("deleting"))return;
+            Node upload=resources.upload(loc);
+            if(resource.provisional()!=null&&upload!=null&&upload.hasProperty("writerIncarnation")
+                    &&("aborted".equals(upload.getProperty("state"))||"uploading".equals(upload.getProperty("state"))&&UploadBinding.abandoned(server,core,upload))){
                 cleanAbandonedResourceUpload(core,resources,loc,upload);
                 tx.commit();
                 return;
             }
             resources.expire(loc);
-            if (Boolean.TRUE.equals(loc.getProperty("published", false))) {
-                if (recovery) content.get().verify(resources.content(loc));
-                if (loc.hasProperty("stagingPath")) {
+            if(resource.completed()!=null){
+                if(recovery)content.get().verify(resources.content(loc));
+                if(upload!=null&&upload.hasProperty("stagingPath")){
                     content.get().verify(resources.content(loc));
                     server.storagePoint("staging-cleanup-before");
-                    Files.deleteIfExists(files.path(text(loc, "stagingPath")));
+                    Files.deleteIfExists(files.path(text(upload,"stagingPath")));
                     server.storagePoint("staging-cleanup-after");
-                    loc.removeProperty("stagingPath");
+                    upload.removeProperty("stagingPath");
                 }
             }
             loc.removeProperty("diagnostic");
@@ -261,7 +265,7 @@ final class StorageMaintenanceJobs {
         upload.setProperty("expires",0L);
         loc.setProperty("leaseUntil",0L);
         if(!id.equals(upload.getProperty("resourceId")) || !namespace.equals(upload.getProperty("namespaceId"))
-                || resources.resource(namespace,id)!=null || resources.protectedContent(loc)) {
+                || resources.completed(id)!=null || resources.protectedContent(loc)) {
             loc.setProperty("quarantined",true);
             String message="Abandoned upload ownership or reachability requires verification";
             loc.setProperty("diagnostic",message);
@@ -289,10 +293,12 @@ final class StorageMaintenanceJobs {
         diagnostic.accept(message);
         try (var tx = db.beginTx()) {
             CoreRepository core = core(tx);
-            Node loc = core.find("DepositResourceLocation", "id", id);
-            if (loc != null) {
-                core.lockNamespace(text(loc, "namespaceId"));
-                loc.setProperty("diagnostic", message);
+            var resources=new ResourceRepository(tx,core);
+            Node loc=resources.state(id).lifecycle();
+            if(loc!=null){
+                core.lockNamespace(text(loc,"namespaceId"));resources.lock(id);
+                loc=resources.state(id).lifecycle();
+                if(loc!=null)loc.setProperty("diagnostic",message);
             }
             tx.commit();
         } catch (Exception ignored) { }
@@ -309,13 +315,16 @@ final class StorageMaintenanceJobs {
             Node item = core.find("DepositPruneItem", "id", itemId);
             if (item == null || !Set.of("pending", "deleting", "failed").contains(text(item, "state"))) {resolved[0]=true;return;}
             String resource = text(item, "resourceId");
-            Node loc = resources.location(resource);
-            Node job = core.find("DepositPruneJob", "id", item.getProperty("jobId"));
-            if (loc == null || Boolean.TRUE.equals(loc.getProperty("collected", false))) {
-                item.setProperty("state", "completed"); tx.commit();resolved[0]=true;return;
-            }
-            core.lockNamespace(text(loc, "namespaceId"));
+            Node loc=resources.state(resource).lifecycle();
+            Node job=core.find("DepositPruneJob","id",item.getProperty("jobId"));
+            if(loc!=null)core.lockNamespace(text(loc,"namespaceId"));
             resources.lock(resource);
+            var resourceState=resources.state(resource);
+            loc=resourceState.lifecycle();
+            if(loc==null||Boolean.TRUE.equals(loc.getProperty("collected",false))){
+                item.setProperty("state","completed");tx.commit();resolved[0]=true;return;
+            }
+            Node staging=resourceState.completed()==null?loc:resources.upload(loc);
             long age = number(job, "minimumAge", 0);
             if ("failed".equals(item.getProperty("state")))
                 item.setProperty("state", itemId.equals(loc.getProperty("deleting", null)) ? "deleting" : "pending");
@@ -326,7 +335,7 @@ final class StorageMaintenanceJobs {
                 if (!resources.eligible(loc, age)) { item.setProperty("state", "skipped"); tx.commit();resolved[0]=true;return; }
                 loc.setProperty("deleting", itemId);
                 item.setProperty("state", "deleting");
-                item.setProperty("deletionBytes", physicalBytes(loc));
+                item.setProperty("deletionBytes", physicalBytes(resource,staging));
                 tx.commit();resolved[0]=true;return;
             }
             if (!itemId.equals(loc.getProperty("deleting", null))) throw new IllegalStateException("Collection intent mismatch");
@@ -335,12 +344,16 @@ final class StorageMaintenanceJobs {
             }
             server.storagePoint("collection-before");
             content.get().purge(resource);
-            if (loc.hasProperty("stagingPath")) Files.deleteIfExists(files.path(text(loc, "stagingPath")));
+            if(staging!=null&&staging.hasProperty("stagingPath"))Files.deleteIfExists(files.path(text(staging,"stagingPath")));
             server.storagePoint("collection-after");
             if (content.get().exists(resource)) throw new IOException("Resource purge incomplete");
-            loc.setProperty("collected", true); loc.removeProperty("deleting"); loc.removeProperty("stagingPath"); loc.setProperty("leaseUntil", 0L);
-            Node publicResource = resources.resource(text(loc, "namespaceId"), resource);
-            if (publicResource != null) publicResource.setProperty("state", "collected");
+            if(staging!=null)staging.removeProperty("stagingPath");
+            if(resourceState.completed()!=null){
+                try(var edges=loc.getRelationships()){for(Relationship edge:edges)edge.delete();}
+                loc.delete();
+            }else{
+                loc.setProperty("collected",true);loc.removeProperty("deleting");loc.setProperty("leaseUntil",0L);
+            }
             item.setProperty("reclaimedBytes", number(item, "deletionBytes", 0)); item.setProperty("state", "completed"); item.removeProperty("diagnostic"); tx.commit();resolved[0]=true;
         } catch (Exception e) {
             String message = "Collection failed: " + e.getClass().getSimpleName();
@@ -360,6 +373,9 @@ final class StorageMaintenanceJobs {
                 knownIds.add(CoreRepository.id(loc));
                 if (loc.hasProperty("stagingPath")) knownStaging.add(text(loc, "stagingPath").replace('\\', '/'));
             }
+            for(Node resource:core(tx).nodes("DResource",Map.of()))knownIds.add(CoreRepository.id(resource));
+            for(Node transfer:core(tx).nodes("DepositTransfer",Map.of()))
+                if(transfer.hasProperty("stagingPath"))knownStaging.add(text(transfer,"stagingPath").replace('\\','/'));
             for (Node plan : core(tx).nodes("DepositImportPlan", Map.of()))
                 if (number(plan, "expiresAt", 0) > server.sessionTime() && plan.hasProperty("stagingPath")) knownStaging.add(text(plan, "stagingPath").replace('\\', '/'));
             for (Node table : core(tx).nodes("DepositTabularTable", Map.of())) if (number(table, "expiresAt", 0) > server.sessionTime()) {
@@ -393,9 +409,9 @@ final class StorageMaintenanceJobs {
         } catch (Exception e) { throw new IllegalStateException("Cannot reconcile resource orphans", e); }
     }
 
-    private long physicalBytes(Node loc) throws IOException {
-        long bytes = content.get().physicalBytes(CoreRepository.id(loc));
-        if (loc.hasProperty("stagingPath")) { Path path = files.path(text(loc, "stagingPath")); if (Files.exists(path)) try { bytes = Math.addExact(bytes, Files.size(path)); } catch (ArithmeticException overflow) { throw new IOException("Resource physical size is not representable", overflow); } }
+    private long physicalBytes(String resource,Node staging) throws IOException {
+        long bytes = content.get().physicalBytes(resource);
+        if (staging!=null&&staging.hasProperty("stagingPath")) { Path path = files.path(text(staging, "stagingPath")); if (Files.exists(path)) try { bytes = Math.addExact(bytes, Files.size(path)); } catch (ArithmeticException overflow) { throw new IOException("Resource physical size is not representable", overflow); } }
         return bytes;
     }
 }

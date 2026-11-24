@@ -24,6 +24,7 @@ final class HistoryCloneService {
     private ImportScratch scratch;
     private ImportWriteBudget writeBudget;
     private Map<String,String> historyMemberships,historyDeclarations,descriptorBeforeTypes;
+    private Map<String,Collection<?>> revisionTouches;
 
     @SuppressWarnings("unchecked")
     HistoryCloneService(RequestContext context,String namespace,Map<String,Object> identityMappings,Map<String,String> resourceMap){
@@ -42,7 +43,7 @@ final class HistoryCloneService {
             scratch=new ImportScratch(resources.files.path("staging/imports"),()->context.state.kernel.assertOpen(),scratchBudget::reserve,scratchBudget::close);
         } catch(IOException failure) { throw ExceptionHandler.fail("RESOURCE_CORRUPT","Unable to create private history identity index"); }
         context.state.release.add(()->{try{scratch.close();}catch(IOException failure){context.server.storage.diagnostic="Clone history identity cleanup pending";}});
-        historyMemberships=scratch.orderedMap();historyDeclarations=scratch.orderedMap();descriptorBeforeTypes=scratch.orderedMap();
+        historyMemberships=scratch.orderedMap();historyDeclarations=scratch.orderedMap();descriptorBeforeTypes=scratch.orderedMap();revisionTouches=scratch.orderedMap();
 
         allocate("Namespace",(String)bundle.get("namespaceId"),namespace);
         List<?> epochs=(List<?>)bundle.get("epochs");
@@ -134,17 +135,26 @@ final class HistoryCloneService {
         var properties=new LinkedHashMap<String,Object>();properties.put("id",id);properties.put("namespaceId",namespace);properties.put("sequence",source.get("sequence"));properties.put("historyEpochId",epochId);properties.put("historyMode",source.get("historyMode"));properties.put("operationId",UUID.randomUUID().toString());properties.put("actorId",source.getOrDefault("actorId",actor));properties.put("committedAt",temporal(source.get("committedAt")));properties.put("kind",source.get("kind"));properties.put("summary",source.getOrDefault("summary","Imported history"));String parent=mapped("Revision",(String)source.get("parentRevisionId"));if(parent!=null)properties.put("parentRevisionId",parent);
         for(String link:List.of("reversesRevisionId","reappliesRevisionId","restoresRevisionId")){Object raw=source.get(link);if(raw instanceof String ref)properties.put(link,mapped("Revision",ref));}
         if("transient".equals(source.get("historyMode")))properties.put("bootId",runId);
-        int relationCount=Math.addExact(1,Math.addExact(touches.size(),Math.addExact(dependencies.size(),changes.size())));if(source.get("tag") instanceof String text&&!text.isEmpty())relationCount=Math.addExact(relationCount,1);
-        Node revision=node("Revision",properties,relationCount);epoch.createRelationshipTo(revision,RelationshipType.withName("HAS_REVISION"));
-        for(var entry:touches.entrySet()){String key=remapKey((String)entry.getKey());int split=key.indexOf('\u0000');String entityKind=key.substring(0,split),entityId=key.substring(split+1);var fields=(Collection<?>)entry.getValue();Node touch=node("RevisionTouch",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"revisionId",id,"historyEpochId",epochId,"entityKey",key,"entityKind",entityKind,"entityId",entityId,"fields",fields.toArray(String[]::new)),1);revision.createRelationshipTo(touch,RelationshipType.withName("HAS_TOUCH"));}
-        for(Object rawDependency:dependencies){String key=remapKey((String)rawDependency);Node dependency=node("RevisionDependency",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"revisionId",id,"historyEpochId",epochId,"entityKey",key),1);revision.createRelationshipTo(dependency,RelationshipType.withName("HAS_DEPENDENCY"));}
-        for(Object raw:changes)writeSnapshot(revision,ValueCodec.map(raw),id,epochId);
+        Node revision=node("Revision",properties,1);epoch.createRelationshipTo(revision,RelationshipType.withName("HAS_REVISION"));
+        var history=new HistoryRepository(tx,core);
+        for(Object dependency:dependencies)history.writeDependency(revision,remapKey((String)dependency),writeBudget::reserveHistoryRecord);
+        revisionTouches.clear();
+        for(var entry:touches.entrySet())
+            if(revisionTouches.put(entry.getKey(),(Collection<?>)entry.getValue())!=null)HistoryCodec.invalid("Duplicate history touch identity");
+        for(Object raw:changes){
+            var change=ValueCodec.map(raw);
+            String key=HistoryCodec.key((String)change.get("entityKind"),(String)change.get("entityId"));
+            writeSnapshot(history,revision,change,revisionTouches.remove(key));
+        }
+        for(var entry:revisionTouches.entrySet())
+            history.writeSnapshot(revision,remapKey(entry.getKey()),entry.getValue(),null,null,true,0,writeBudget::reserveHistoryRecord);
         Object tag=source.get("tag");if(tag instanceof String text&&!text.isEmpty()){Node tagNode=node("RevisionTag",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"revisionId",id,"historyEpochId",epochId,"tag",text,"updatedAt",temporal(source.get("committedAt")),"updatedBy",actor),1);revision.createRelationshipTo(tagNode,RelationshipType.withName("HAS_TAG"));}
     }
-    private void writeSnapshot(Node revision,Map<String,Object> source,String revisionId,String epochId){
+    private void writeSnapshot(HistoryRepository history,Node revision,Map<String,Object> source,Collection<?> fields){
         String kind=(String)source.get("entityKind"),sourceEntityId=(String)source.get("entityId"),entityId=mapped(kind,sourceEntityId);Map<String,Object> before=source.get("before") instanceof Map<?,?>?remapImage(ValueCodec.map(source.get("before")),"Descriptor".equals(kind)?descriptorBeforeTypes.get(sourceEntityId):null):null,after=source.get("after") instanceof Map<?,?>?remapImage(ValueCodec.map(source.get("after")),"Descriptor".equals(kind)?descriptorType(ValueCodec.map(source.get("after"))):null):null;
-        int retains=(retainedResource(before)?1:0)+(retainedResource(after)?1:0);Node snapshot=node("DepositSnapshot",Json.map("id",UUID.randomUUID().toString(),"namespaceId",namespace,"revisionId",revisionId,"historyEpochId",epochId,"entityId",entityId,"entityKind",kind,"beforeExists",before!=null,"afterExists",after!=null,"beforeJson",before==null?null:Json.write(before),"afterJson",after==null?null:Json.write(after)),1+retains);
-        revision.createRelationshipTo(snapshot,RelationshipType.withName("HAS_CHANGE"));retain(snapshot,before);retain(snapshot,after);
+        int retains=(retainedResource(before)?1:0)+(retainedResource(after)?1:0);
+        Node snapshot=history.writeSnapshot(revision,HistoryCodec.key(kind,entityId),fields,before,after,false,retains,writeBudget::reserveHistoryRecord);
+        retain(snapshot,before);retain(snapshot,after);
     }
     private Map<String,Object> remapImage(Map<String,Object> source,String descriptorType){
         var out=new LinkedHashMap<String,Object>(source);String kind=(String)out.get("kind");if(out.get("id") instanceof String id)out.put("id",mapped(kind,id));if(out.containsKey("namespaceId"))out.put("namespaceId",namespace);

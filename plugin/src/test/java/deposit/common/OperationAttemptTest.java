@@ -7,6 +7,7 @@ import deposit.repository.CoreRepository;
 import deposit.repository.GeometryRepository;
 import deposit.repository.HistoryRepository;
 import deposit.repository.OperationAttemptRepository;
+import deposit.repository.ResourceRepository;
 import deposit.repository.SchemaRepository;
 import deposit.service.ProcedureService;
 import deposit.service.SessionActionService;
@@ -558,8 +559,16 @@ class OperationAttemptTest {
         assertEquals("COMMITTED",state(status(a,id,a.namespace)));
     }
 
-    @Test void deletedNamespaceLeavesAnActorOnlySanitizedServerReceipt() {
+    @Test void deletedNamespaceLeavesAnActorOnlySanitizedServerReceipt() throws Exception {
         Actor a=actor(), b=actor();
+        String upload=beginResource(a);writeResource(a,upload);
+        String resource=(String)tracked(a,a.namespace,"deposit.resource.finishUpload",List.of(upload)).get("resourceId");
+        try(var tx=database.beginTx()){
+            var resources=new ResourceRepository(tx,new CoreRepository(tx,ZonedDateTime.now()));
+            Node completed=resources.resource(a.namespace,resource);
+            assertNotNull(completed);assertNull(resources.location(resource));
+            assertTrue(resources.accessible(completed,a.id,"owner",false));
+        }
         String id=operationId(clock.get()), procedure="deposit.delete.namespace";
         var args=List.<Object>of(a.id);
         begin(a,id,"server",procedure,args);
@@ -569,6 +578,31 @@ class OperationAttemptTest {
         assertNull(proof.get("result"));
         assertNull(proof.get("code"));
         assertEquals("OUTCOME_UNKNOWN",state(status(b,id,"server")));
+        String job=UUID.randomUUID().toString(),item=job+"/"+resource;
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            var resources=new ResourceRepository(tx,core);
+            assertNull(resources.resource(a.namespace,resource));
+            Node detached=resources.state(resource).completed();assertNotNull(detached);
+            assertEquals(a.namespace,detached.getProperty("namespaceId"));
+            assertEquals(true,detached.getProperty("detached"));
+            assertFalse(detached.hasRelationship());
+            assertFalse(resources.accessible(detached,a.id,"owner",false));
+            assertTrue(resources.collectionCandidates(a.namespace).isEmpty());
+            assertTrue(resources.collectionCandidates(null).contains(detached));
+            assertTrue(server.storage.content.exists(resource));
+            resources.record("DepositPruneJob",job,Map.of("minimumAge",0L));
+            resources.record("DepositPruneItem",item,Map.of("jobId",job,"resourceId",resource,"state","pending"));
+            tx.commit();
+        }
+        var jobs=new StorageMaintenanceJobs(server,database,server.storage.files,()->server.storage.content,msg->{});
+        jobs.collect(item);jobs.collect(item);
+        try(var tx=database.beginTx()){
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            assertNull(core.find("DResource","id",resource));
+            assertEquals("completed",core.find("DepositPruneItem","id",item).getProperty("state"));
+            assertFalse(server.storage.content.exists(resource));
+        }
     }
 
     @Test void aRevokedSourceGrantBlocksClaimStatusAndIdenticalRegistration() {
@@ -1467,7 +1501,7 @@ class OperationAttemptTest {
         begin(a,finish,a.namespace,procedure,finalArgs);
         String resource=(String)call(a,a.execution,procedure,finalArgs,finish).get("resourceId");
         try(var tx=database.beginTx()){
-            var loc=new CoreRepository(tx,ZonedDateTime.now()).find("DepositResourceLocation","id",resource);
+            var loc=new CoreRepository(tx,ZonedDateTime.now()).find("DResource","id",resource);
             var stored=new ResourceStorage.Content(resource,(String)loc.getProperty("storedFilename"),bytes.length,digest);
             try(var input=server.storage.content.open(stored,0,bytes.length)){
                 byte[] buffer=new byte[64*1024];
@@ -1963,7 +1997,7 @@ class OperationAttemptTest {
             assertEquals(1,ids.size());
             String clonedResource=CoreRepository.id(ids.getFirst());
             assertNotEquals(resource,clonedResource);
-            var location=core.find("DepositResourceLocation","id",clonedResource);
+            var location=ids.getFirst();
             var content=new ResourceStorage.Content(clonedResource,(String)location.getProperty("storedFilename"),payload.length,digest);
             try(var reader=server.storage.content.open(content,0,payload.length)){
                 assertArrayEquals(payload,reader.readAllBytes());
@@ -2077,8 +2111,7 @@ class OperationAttemptTest {
             assertNotEquals(CoreRepository.id(resources.get(0)),CoreRepository.id(resources.get(1)));
             for(Node resource:resources){
                 assertEquals(digest,resource.getProperty("checksum"));
-                var location=core.find("DepositResourceLocation","id",CoreRepository.id(resource));
-                var stored=new ResourceStorage.Content(CoreRepository.id(resource),(String)location.getProperty("storedFilename"),content.length,digest);
+                var stored=new ResourceStorage.Content(CoreRepository.id(resource),(String)resource.getProperty("storedFilename"),content.length,digest);
                 try(var input=server.storage.content.open(stored,0,content.length)){
                     assertArrayEquals(content,input.readAllBytes());
                 }

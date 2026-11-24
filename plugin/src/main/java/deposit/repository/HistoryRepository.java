@@ -98,17 +98,50 @@ public final class HistoryRepository {
         Node epoch=epoch((String)n.getProperty("namespaceId"),(String)n.getProperty("historyEpochId"));if(epoch==null)HistoryCodec.invalid("Missing history epoch");
         data.put("epoch",Json.map("id",CoreRepository.id(epoch),"mode",epoch.getProperty("mode"),"closed",epoch.getProperty("closed",false),"baselineRevisionId",epoch.getProperty("baselineRevisionId")));
         Map<String,Object> touches=records.index();String dependencyCategory="history-journal-dependencies";int dependencyStart=records.list(dependencyCategory).size();
-        try(var rows=tx.execute("MATCH (t:RevisionTouch {namespaceId:$ns,revisionId:$id}) WHERE t.entityKey IS NOT NULL RETURN t.entityKey AS entityKey,t.fields AS fields ORDER BY t.entityKey",Map.of("ns",n.getProperty("namespaceId"),"id",CoreRepository.id(n)))){while(rows.hasNext()){var row=rows.next();var fields=new TreeSet<String>();for(Object value:(String[])row.get("fields"))fields.add((String)value);touches.put((String)row.get("entityKey"),List.copyOf(fields));}}
-        try(var rows=tx.execute("MATCH (d:RevisionDependency {namespaceId:$ns,revisionId:$id}) WHERE d.entityKey IS NOT NULL RETURN d.entityKey AS entityKey ORDER BY d.entityKey",Map.of("ns",n.getProperty("namespaceId"),"id",CoreRepository.id(n)))){while(rows.hasNext())records.addValue(dependencyCategory,rows.next().get("entityKey"));}
+        Map<String,Object> scope=Map.of("ns",n.getProperty("namespaceId"),"id",CoreRepository.id(n));
+        try(var rows=tx.execute("""
+            MATCH (s:DepositSnapshot {namespaceId:$ns,revisionId:$id})
+            WHERE s.entityKind IS NOT NULL AND s.entityId IS NOT NULL
+            RETURN s ORDER BY s.entityKind,s.entityId
+            """,scope)){
+            while(rows.hasNext()){
+                Node snapshot=(Node)rows.next().get("s");
+                validateLink(n,snapshot,"HAS_CHANGE");
+                String key=snapshotKey(n,snapshot);
+                String[] fields=touchedFields(snapshot);
+                if(fields!=null&&touches.put(key,List.of(fields))!=null)HistoryCodec.invalid("Duplicate snapshot identity");
+            }
+        }
+        try(var rows=tx.execute("MATCH (d:RevisionDependency {namespaceId:$ns,revisionId:$id}) WHERE d.entityKey IS NOT NULL RETURN d ORDER BY d.entityKey",scope)){
+            while(rows.hasNext()){
+                Node dependency=(Node)rows.next().get("d");
+                validateLink(n,dependency,"HAS_DEPENDENCY");
+                records.addValue(dependencyCategory,dependencyKey(n,dependency));
+            }
+        }
         data.put("touches",touches);data.put("dependencies",records.valuesSlice(dependencyCategory,dependencyStart,records.list(dependencyCategory).size()));return data;
     }
     public Revision read(Node n){
         var data=new LinkedHashMap<String,Object>();n.getAllProperties().forEach((k,v)->data.put(k,portable(v)));data.put("revisionId",CoreRepository.id(n));
         var before=new TreeMap<String,Map<String,Object>>();var after=new TreeMap<String,Map<String,Object>>();var snapshotChanges=new ArrayList<Map<String,Object>>();
-        try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_CHANGE"))){for(var e:edges){Node s=e.getEndNode();String id=(String)s.getProperty("entityId"),kind=(String)s.getProperty("entityKind");if(!HistoryCodec.KINDS.contains(kind))HistoryCodec.invalid("Invalid snapshot category");String key=HistoryCodec.key(kind,id);for(String side:List.of("before","after"))if(Boolean.TRUE.equals(s.getProperty(side+"Exists"))){Map<String,Object> m;try{m=Json.read((String)s.getProperty(side+"Json"));}catch(RuntimeException failure){HistoryCodec.invalid("Invalid snapshot JSON");throw failure;}if(!kind.equals(m.get("kind"))||!id.equals(m.get("id")))HistoryCodec.invalid("Inconsistent snapshot identity");(side.equals("before")?before:after).put(key,m);}snapshotChanges.add(Json.map("entityId",id,"entityKind",kind,"before",before.get(key),"after",after.get(key)));}}
-        var touches=new TreeMap<String,Set<String>>();var dependencies=new TreeSet<String>();
-        try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_TOUCH"))){for(Relationship edge:edges){Node record=edge.getEndNode();var fields=new TreeSet<String>();for(Object field:(String[])record.getProperty("fields"))fields.add((String)field);touches.put((String)record.getProperty("entityKey"),fields);}}
-        try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_DEPENDENCY"))){for(Relationship edge:edges)dependencies.add((String)edge.getEndNode().getProperty("entityKey"));}
+        var touches=new TreeMap<String,Set<String>>();var dependencies=new TreeSet<String>();var seen=new HashSet<String>();
+        try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_CHANGE"))){
+            for(Relationship edge:edges){
+                Node snapshot=edge.getEndNode();
+                String key=snapshotKey(n,snapshot);
+                if(!seen.add(key))HistoryCodec.invalid("Duplicate snapshot identity");
+                String[] fields=touchedFields(snapshot);
+                if(fields!=null)touches.put(key,new TreeSet<>(List.of(fields)));
+                if(Boolean.TRUE.equals(snapshot.getProperty("touchOnly",false)))continue;
+                var prior=snapshotImage(snapshot,key,"before");var next=snapshotImage(snapshot,key,"after");
+                if(prior!=null)before.put(key,prior);
+                if(next!=null)after.put(key,next);
+                snapshotChanges.add(Json.map("entityId",HistoryCodec.idFromKey(key),"entityKind",HistoryCodec.kindFromKey(key),"before",prior,"after",next));
+            }
+        }
+        try(var edges=n.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_DEPENDENCY"))){
+            for(Relationship edge:edges)if(!dependencies.add(dependencyKey(n,edge.getEndNode())))HistoryCodec.invalid("Duplicate historical dependency");
+        }
         Node tag=core.find("RevisionTag",Map.of("namespaceId",n.getProperty("namespaceId"),"revisionId",CoreRepository.id(n)));data.put("tag",tag==null?null:tag.getProperty("tag"));
         Node epoch=epoch((String)n.getProperty("namespaceId"),(String)n.getProperty("historyEpochId"));data.put("epoch",Json.map("id",CoreRepository.id(epoch),"mode",epoch.getProperty("mode"),"closed",epoch.getProperty("closed",false),"baselineRevisionId",epoch.getProperty("baselineRevisionId")));
         snapshotChanges.sort(Comparator.comparing(m->(String)m.get("entityId")));data.put("changes",snapshotChanges);var portableTouches=new TreeMap<String,Object>();touches.forEach((id,fields)->portableTouches.put(id,new ArrayList<>(fields)));data.put("touches",portableTouches);
@@ -125,33 +158,139 @@ public final class HistoryRepository {
         if(budget!=null)budget.reserveHistoryRecord(properties,1);Node revision=node("Revision",properties);
         if("transient".equals(root.getProperty("historyMode")))revision.setProperty("bootId",epoch(ns,epoch).getProperty("bootId"));
         if(link!=null)revision.setProperty(link,target);root.createRelationshipTo(revision,RelationshipType.withName("HAS_REVISION"));
+        for(String dependency:changes.dependencies)writeDependency(revision,dependency,budget);
         for(var entry:changes.touches.entrySet()){
-            String key=entry.getKey(),entityKind=changes.kinds.getOrDefault(key,HistoryCodec.kindFromKey(key)),entityId=HistoryCodec.idFromKey(key);
-            Map<String,Object> touchProperties=Json.map("id",UUID.randomUUID().toString(),"namespaceId",ns,"revisionId",id,"historyEpochId",epoch,"entityKey",key,"entityKind",entityKind,"entityId",entityId,"fields",entry.getValue().toArray(String[]::new));
-            if(budget!=null)budget.reserveHistoryRecord(touchProperties,1);Node touch=node("RevisionTouch",touchProperties);
-            revision.createRelationshipTo(touch,RelationshipType.withName("HAS_TOUCH"));
-        }
-        for(String dependency:changes.dependencies){Map<String,Object> dependencyProperties=Json.map("id",UUID.randomUUID().toString(),"namespaceId",ns,"revisionId",id,"historyEpochId",epoch,"entityKey",dependency);if(budget!=null)budget.reserveHistoryRecord(dependencyProperties,1);Node record=node("RevisionDependency",dependencyProperties);revision.createRelationshipTo(record,RelationshipType.withName("HAS_DEPENDENCY"));}
-        for(String entity:changes.touches.keySet()){
-            var before=changes.before.get(entity);var after=changes.after.get(entity);if(!changes.touches.containsKey(entity)&&HistoryCodec.equal(HistoryCodec.scientific(before),HistoryCodec.scientific(after)))continue;
-            String entityKind=before==null&&after==null?changes.kinds.get(entity):(String)(after==null?before:after).get("kind");
-            if(entityKind==null)continue; // An empty-net reversal carries original touches without recreating entities.
-            String entityId=after!=null||before!=null?(String)((after==null?before:after).get("id")):HistoryCodec.idFromKey(entity);
-            if(entityKind==null)entityKind=HistoryCodec.kindFromKey(entity);
-            Map<String,Object> snapshotProperties=Json.map("id",UUID.randomUUID().toString(),"namespaceId",ns,"revisionId",id,"historyEpochId",epoch,"entityId",entityId,"entityKind",entityKind,"beforeExists",before!=null,"afterExists",after!=null,"beforeJson",before==null?null:Json.write(before),"afterJson",after==null?null:Json.write(after));
-            if(budget!=null)budget.reserveHistoryRecord(snapshotProperties,3);Node snapshot=node("DepositSnapshot",snapshotProperties);
-            revision.createRelationshipTo(snapshot,RelationshipType.withName("HAS_CHANGE"));retain(ns,snapshot,changes.retainedResource(before,true));retain(ns,snapshot,changes.retainedResource(after,false));
+            String key=entry.getKey();
+            var before=changes.before.get(key);var after=changes.after.get(key);
+            // Preserve equal images when present. A journal entry without images has no entity effect.
+            boolean touchOnly=before==null&&after==null;
+            String priorResource=changes.retainedResource(before,true),nextResource=changes.retainedResource(after,false);
+            int retains=(priorResource==null?0:1)+(nextResource==null||nextResource.equals(priorResource)?0:1);
+            Node snapshot=writeSnapshot(revision,key,entry.getValue(),before,after,touchOnly,retains,budget);
+            retain(ns,snapshot,priorResource);retain(ns,snapshot,nextResource);
         }
         root.setProperty("headRevisionId",id);
         return id;
     }
+    private static Map<String,Object> ownedRecord(Node revision){
+        return Json.map("id",UUID.randomUUID().toString(),"namespaceId",revision.getProperty("namespaceId"),
+            "revisionId",CoreRepository.id(revision),"historyEpochId",revision.getProperty("historyEpochId"));
+    }
+
+    /** Package clone and local actions write the same snapshot and journal representation. */
+    public Node writeSnapshot(Node revision,String key,Collection<?> fields,Map<String,Object> before,
+                              Map<String,Object> after,boolean touchOnly,int retains,HistoryWriteBudget budget){
+        validateKey(key);
+        var properties=ownedRecord(revision);
+        properties.put("entityKind",HistoryCodec.kindFromKey(key));properties.put("entityId",HistoryCodec.idFromKey(key));
+        if(fields!=null){
+            var sorted=new TreeSet<String>();
+            for(Object field:fields){
+                if(!(field instanceof String)||((String)field).isEmpty())HistoryCodec.invalid("Invalid historical touch field");
+                sorted.add((String)field);
+            }
+            properties.put("touchedFields",sorted.toArray(String[]::new));
+        }
+        if(touchOnly){
+            if(fields==null||before!=null||after!=null||retains!=0)HistoryCodec.invalid("Invalid touch-only snapshot");
+            properties.put("touchOnly",true);
+        }
+        for(var side:List.of("before","after")){
+            var image=side.equals("before")?before:after;
+            properties.put(side+"Exists",image!=null);
+            if(image!=null){
+                validateImage(key,image);
+                properties.put(side+"Json",Json.write(image));
+            }
+        }
+        if(budget!=null)budget.reserveHistoryRecord(properties,1+retains);
+        Node snapshot=node("DepositSnapshot",properties);
+        revision.createRelationshipTo(snapshot,RelationshipType.withName("HAS_CHANGE"));
+        return snapshot;
+    }
+
+    /**
+     * Immutable revision and epoch metadata. The record has id, namespaceId, revisionId,
+     * historyEpochId, and an entityKey encoding the logical kind and UUID.
+     */
+    public void writeDependency(Node revision,String key,HistoryWriteBudget budget){
+        validateKey(key);
+        var properties=ownedRecord(revision);
+        properties.put("entityKey",key);
+        if(budget!=null)budget.reserveHistoryRecord(properties,1);
+        revision.createRelationshipTo(node("RevisionDependency",properties),RelationshipType.withName("HAS_DEPENDENCY"));
+    }
+
+    private static void validateKey(String key){
+        if(!HistoryCodec.KINDS.contains(HistoryCodec.kindFromKey(key)))HistoryCodec.invalid("Invalid history identity category");
+        String id=HistoryCodec.idFromKey(key);
+        try{if(!id.equals(UUID.fromString(id).toString()))HistoryCodec.invalid("Invalid history identity");}
+        catch(IllegalArgumentException invalid){HistoryCodec.invalid("Invalid history identity");}
+    }
+    private static void validateLink(Node revision,Node record,String type){
+        var link=record.getSingleRelationship(RelationshipType.withName(type),Direction.INCOMING);
+        if(link==null||!revision.equals(link.getStartNode()))HistoryCodec.invalid("Missing history record owner");
+    }
+    private static void validateOwner(Node revision,Node record){
+        if(!CoreRepository.id(revision).equals(record.getProperty("revisionId",null))
+            ||!revision.getProperty("namespaceId").equals(record.getProperty("namespaceId",null))
+            ||!revision.getProperty("historyEpochId").equals(record.getProperty("historyEpochId",null)))
+            HistoryCodec.invalid("Inconsistent history record ownership");
+    }
+    private static void validateImage(String key,Map<String,Object> image){
+        if(!HistoryCodec.kindFromKey(key).equals(image.get("kind"))||!HistoryCodec.idFromKey(key).equals(image.get("id")))
+            HistoryCodec.invalid("Inconsistent snapshot image identity");
+    }
+    private static String dependencyKey(Node revision,Node dependency){
+        validateOwner(revision,dependency);
+        String key=(String)dependency.getProperty("entityKey");validateKey(key);return key;
+    }
+    public static String snapshotKey(Node revision,Node snapshot){
+        validateOwner(revision,snapshot);
+        String key=HistoryCodec.key((String)snapshot.getProperty("entityKind"),(String)snapshot.getProperty("entityId"));
+        validateKey(key);
+        Object touchOnly=snapshot.getProperty("touchOnly",false);
+        if(!(touchOnly instanceof Boolean))HistoryCodec.invalid("Invalid touch-only marker");
+        for(String side:List.of("before","after")){
+            Object exists=snapshot.getProperty(side+"Exists",null);
+            if(!(exists instanceof Boolean)||Boolean.TRUE.equals(exists)!=snapshot.hasProperty(side+"Json")
+                ||Boolean.TRUE.equals(touchOnly)&&Boolean.TRUE.equals(exists))HistoryCodec.invalid("Invalid snapshot image flags");
+        }
+        if(Boolean.TRUE.equals(touchOnly)&&(!snapshot.hasProperty("touchedFields")||snapshot.hasRelationship(Direction.OUTGOING,RelationshipType.withName("RETAINS_RESOURCE"))))
+            HistoryCodec.invalid("Invalid touch-only snapshot");
+        return key;
+    }
+    private static String[] touchedFields(Node snapshot){
+        Object fields=snapshot.getProperty("touchedFields",null);
+        if(fields==null)return null;
+        if(!(fields instanceof String[]))HistoryCodec.invalid("Invalid snapshot touch fields");
+        String[] array=(String[])fields;
+        String previous=null;
+        for(String field:array){
+            if(field.isEmpty()||previous!=null&&previous.compareTo(field)>=0)HistoryCodec.invalid("Noncanonical snapshot touch fields");
+            previous=field;
+        }
+        return array;
+    }
+    private static Map<String,Object> snapshotImage(Node snapshot,String key,String side){
+        if(!Boolean.TRUE.equals(snapshot.getProperty(side+"Exists")))return null;
+        Map<String,Object> image;
+        try{image=Json.read((String)snapshot.getProperty(side+"Json"));}
+        catch(RuntimeException failure){throw ExceptionHandler.fail("REVISION_CONFLICT","Invalid snapshot JSON");}
+        validateImage(key,image);return image;
+    }
+
     private void retain(String ns,Node snapshot,String id){
         if(id==null)return;
         Node resource=validateResource(ns,id);
         try(var links=snapshot.getRelationships(Direction.OUTGOING,RelationshipType.withName("RETAINS_RESOURCE"))){for(var link:links)if(link.getEndNode().equals(resource))return;}
-        snapshot.createRelationshipTo(resource,RelationshipType.withName("RETAINS_RESOURCE"));new ResourceRepository(tx,core).orphan(new ResourceRepository(tx,core).location(id));
+        snapshot.createRelationshipTo(resource,RelationshipType.withName("RETAINS_RESOURCE"));new ResourceRepository(tx,core).changed(resource);
     }
-    public Node validateResource(String ns,String id){var resources=new ResourceRepository(tx,core);resources.lock(id);Node r=resources.resource(ns,id),loc=resources.location(id);if(r==null||loc==null||loc.hasProperty("deleting")||!"ready".equals(r.getProperty("state",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Historical resource unavailable");for(String field:List.of("bytes","checksum"))if(!r.hasProperty(field)||!loc.hasProperty(field)||!Objects.equals(r.getProperty(field,null),loc.getProperty(field,null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Historical resource metadata differs");if(!(r.getProperty("bytes") instanceof Number bytes)||bytes.longValue()<0||!(r.getProperty("checksum") instanceof String checksum)||!checksum.matches("[0-9a-f]{64}")||!loc.hasProperty("storedFilename")||!ns.equals(loc.getProperty("namespaceId",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Invalid historical resource metadata");for(String field:List.of("filename","storedFilename","mediaType"))if(!(r.getProperty(field,null) instanceof String))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Missing historical resource metadata");resources.verify(loc);return r;}
+    public Node validateResource(String ns,String id){
+        var resources=new ResourceRepository(tx,core);
+        resources.lock(id);Node resource=resources.resource(ns,id);
+        resources.verifyCompleted(resource);return resource;
+    }
     public void validateResources(String ns,Map<String,Map<String,Object>> state){for(var m:state.values())if("Descriptor".equals(m.get("kind"))&&m.get("value")!=null&&"DResource".equals(HistoryCodec.descriptorType(state,m)))validateResource(ns,(String)ValueCodec.map(m.get("value")).get("resourceId"));var namespace=HistoryCodec.find(state,ns,"Namespace");Node other=core.find("Namespace","name",namespace.get("name"));if(other!=null&&!CoreRepository.id(other).equals(ns))HistoryCodec.invalid("Namespace name is now occupied");}
     public void baseline(String ns,String actor,long sequence,String boot,ZonedDateTime timestamp){
         baseline(ns,actor,sequence,boot,timestamp,null,null);

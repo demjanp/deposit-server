@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +68,12 @@ public final class StorageManager implements AutoCloseable {
         }
     }
 
+    private List<String> resourceIds(){
+        var resources=new TreeSet<>(ids("DResource"));
+        resources.addAll(ids("DepositResourceLocation"));
+        return List.copyOf(resources);
+    }
+
     /** Startup reconciliation order is persisted purges, staging expiry, locations, orphans, then backend work. */
     public void recover() {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(50);
@@ -80,7 +87,7 @@ public final class StorageManager implements AutoCloseable {
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot expire staged operational data", e); }
         try { content.recoverWork(); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot reconcile resource work", e); }
-        for (String id : ids("DepositResourceLocation")) {
+        for (String id : resourceIds()) {
             if (System.nanoTime() > deadline) throw new IllegalStateException("Resource recovery exceeded startup bound");
             jobs.process(id, true);
         }
@@ -200,20 +207,25 @@ public final class StorageManager implements AutoCloseable {
             Node attempt=new OperationAttemptRepository(tx).find(actor,scope,reservation.operationId);
             if(attempt==null)return StorageAdmission.OwnerState.uncertain();
             String status=OperationAttemptRepository.state(attempt);
-            Node location=core.find("DepositResourceLocation","id",resource);
+            var resourceState=new ResourceRepository(tx,core).state(resource);
+            Node completed=resourceState.completed();
             if(Set.of("COMMITTED","COMPLETED_NO_DOMAIN_WRITE").contains(status)){
-                if(location==null || !filename.equals(location.getProperty("storedFilename",null))
-                        || !checksum.equals(location.getProperty("checksum",null))
-                        || size.longValue()!=ResourceRepository.number(location,"bytes",-1))
+                if(completed==null){
+                    boolean collected=core.nodes("DepositPruneItem",Map.of("resourceId",resource,"state","completed"))
+                        .stream().anyMatch(item->item.hasProperty("deletionBytes"));
+                    return collected&&!content.exists(resource)?StorageAdmission.OwnerState.absent():StorageAdmission.OwnerState.uncertain();
+                }
+                if(!filename.equals(completed.getProperty("storedFilename",null))
+                        || !checksum.equals(completed.getProperty("checksum",null))
+                        || size.longValue()!=ResourceRepository.number(completed,"bytes",-1))
                     return StorageAdmission.OwnerState.uncertain();
                 return StorageAdmission.OwnerState.absent();
             }
             if(!Set.of("FAILED_ROLLED_BACK","CANCELLED_ROLLED_BACK").contains(status))return StorageAdmission.OwnerState.uncertain();
-            if(core.find("DResource","id",resource)!=null)return StorageAdmission.OwnerState.uncertain();
+            if(completed!=null)return StorageAdmission.OwnerState.uncertain();
             if(!content.exists(resource))return StorageAdmission.OwnerState.absent();
-            // Pre-existing upload locations are reclaimed under the corresponding writer
-            // and resource locks. Only an artifact with no graph identity is purged here.
-            if(location!=null)return StorageAdmission.OwnerState.uncertain();
+            // The upload reconciler owns provisional objects with a recorded location.
+            if(resourceState.provisional()!=null)return StorageAdmission.OwnerState.uncertain();
             var expected=new ResourceStorage.Content(resource,filename,size.longValue(),checksum);
             try{content.verify(expected);}
             catch(java.io.IOException corruption){
@@ -284,18 +296,21 @@ public final class StorageManager implements AutoCloseable {
             if (!(intent.get("stagingPath") instanceof String staging) || !(intent.get("resourceId") instanceof String resourceId))
                 return StorageAdmission.OwnerState.uncertain();
             CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
-            Node transfer=core.find("DepositTransfer","id",reservation.ownerId);
-            Node location=core.find("DepositResourceLocation","id",resourceId);
+            var resources=new ResourceRepository(tx,core);
+            Node transfer=resources.transfer(reservation.ownerId);
+            var resource=resources.state(resourceId);
+            Node location=resource.lifecycle();
             if (transfer==null && location==null && !Files.exists(files.path(staging),java.nio.file.LinkOption.NOFOLLOW_LINKS)
                     && !content.exists(resourceId))return StorageAdmission.OwnerState.absent();
-            if (transfer==null || location==null || !resourceId.equals(transfer.getProperty("resourceId",null))
-                    || !reservation.ownerId.equals(location.getProperty("uploadId",null))
-                    || !Objects.equals(transfer.getProperty("namespaceId",null),location.getProperty("namespaceId",null))
-                    || Boolean.TRUE.equals(location.getProperty("quarantined",false)))
-                return StorageAdmission.OwnerState.uncertain();
+            if (transfer==null || !resourceId.equals(transfer.getProperty("resourceId",null)))return StorageAdmission.OwnerState.uncertain();
             String state=(String)transfer.getProperty("state","");
-            if ("finished".equals(state) && Boolean.TRUE.equals(location.getProperty("published",false))
-                    || "expired".equals(state) && Boolean.TRUE.equals(location.getProperty("collected",false)))
+            if(location==null&&"finished".equals(state)&&!Files.exists(files.path(staging),java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                    &&!content.exists(resourceId))return StorageAdmission.OwnerState.absent();
+            if(location==null||!Objects.equals(transfer.getProperty("namespaceId",null),location.getProperty("namespaceId",null))
+                    ||Boolean.TRUE.equals(location.getProperty("quarantined",false)))return StorageAdmission.OwnerState.uncertain();
+            if(resource.completed()!=null&&"finished".equals(state))return StorageAdmission.OwnerState.absent();
+            if(resource.provisional()!=null&&reservation.ownerId.equals(location.getProperty("uploadId",null))
+                    &&"expired".equals(state)&&Boolean.TRUE.equals(location.getProperty("collected",false)))
                 return StorageAdmission.OwnerState.absent();
             return StorageAdmission.OwnerState.uncertain();
         }
@@ -366,7 +381,7 @@ public final class StorageManager implements AutoCloseable {
             operations.tick();
             jobs.expireImportPlans(); jobs.expireImportResults(); jobs.expireTables();
             jobs.expireExchange();
-            for (String id : ids("DepositResourceLocation")) {
+            for (String id : resourceIds()) {
                 if (Thread.currentThread().isInterrupted()) return;
                 jobs.process(id, false);
             }

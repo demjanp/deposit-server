@@ -197,7 +197,6 @@ public final class ImportWriteBudget {
     private static int plannedNodes(String category,Object raw) {
         Map<?,?> row=raw instanceof Map<?,?> map?map:Map.of();
         return switch(category) {
-            case "resources" -> 2; // DResource and DepositResourceLocation
             case "classes" -> 1+listSize(row.get("descriptors"));
             case "descriptors" -> row.get("geometryId") instanceof String?3:1;
             default -> 1;
@@ -208,7 +207,7 @@ public final class ImportWriteBudget {
         return switch(category) {
             case "classes" -> 1+listSize(row.get("descriptors"));
             case "objects","memberships","descriptors","relationships","classRelationships","patterns","userTools" -> 1;
-            case "resources" -> 0;
+            case "resources" -> 1; // OWNS_RESOURCE
             default -> 0;
         };
     }

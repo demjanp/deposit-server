@@ -74,11 +74,10 @@ public final class BrowserDownloadService {
                 String role=AuthorizationAdapter.role(c,core,ns);
                 if(resource==null||role==null||!resources.accessible(resource,c.actorId,role,false))throw failure(404,"NOT_FOUND");
                 if(!"ready".equals(resource.getProperty("state")))throw failure(409,"RESOURCE_NOT_READY");
-                Node location=resources.location(id);if(location==null||location.hasProperty("deleting")||Boolean.TRUE.equals(location.getProperty("collected",false)))throw failure(404,"NOT_FOUND");
                 long size=ResourceRepository.number(resource,"bytes",0);Range range=parseRange(rangeHeader,size);
-                pin=server.pinResource(id);location.removeProperty("orphanSince");
+                pin=server.pinResource(id);resource.removeProperty("orphanSince");
                 resources.accessible(resource,c.actorId,role,true);
-                ResourceStorage.Content content=resources.content(location);String filename=content.storedFilename();String media=(String)resource.getProperty("mediaType","application/octet-stream");String checksum=(String)resource.getProperty("checksum");
+                ResourceStorage.Content content=resources.content(resource);String filename=content.storedFilename();String media=(String)resource.getProperty("mediaType","application/octet-stream");String checksum=(String)resource.getProperty("checksum");
                 tx.commit();if(!server.touchBrowserSession(token,c.session))throw failure(401,"AUTH_FAILED");
                 InputStream stream=server.storage.content.open(content,range.offset,range.length);
                 ResourceRead result=new ResourceRead(stream,pin,filename,media,checksum,size,range);pin=null;return result;

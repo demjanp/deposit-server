@@ -38,13 +38,13 @@ public final class ResourceService extends BaseService {
         String id=RequestContext.uuid(request.get("resourceId"));repo.lockNamespace(c.namespaceId);resources.lock(id);Node r=resources.resource(c.namespaceId,id);
         if(r==null||!resources.accessible(r,c.actorId,effectiveRole(c.namespaceId),false))c.fail("NOT_FOUND","Resource not found");
         if(!"ready".equals(r.getProperty("state")))c.fail("RESOURCE_NOT_READY","Resource is not ready");
-        Node loc=resources.location(id);Map<String,Object> result;
-        if(!download){resources.verify(loc);result=resources.info(r);}
+        Map<String,Object> result;
+        if(!download){resources.verifyCompleted(r);result=resources.info(r);}
         else {
             long offset=integer(request.get("offset")),length=integer(request.get("length")),size=number(r,"bytes",0);
             if(offset<0||offset>size||length<1||length>ResourceFiles.MAX_CHUNK)c.fail("VALIDATION_FAILED","Invalid download range");
             int actual=(int)Math.min(length,size-offset);
-            try {byte[] data=resources.storage.readChunk(resources.content(loc),offset,actual);result=Json.map("bytesBase64",Base64.getEncoder().encodeToString(data),"offset",offset,"nextOffset",offset+actual,"eof",offset+actual==size,"chunkSha256",ResourceFiles.checksum(data));}
+            try {byte[] data=resources.storage.readChunk(resources.content(r),offset,actual);result=Json.map("bytesBase64",Base64.getEncoder().encodeToString(data),"offset",offset,"nextOffset",offset+actual,"eof",offset+actual==size,"chunkSha256",ResourceFiles.checksum(data));}
             catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Resource content unavailable");}
         }
         resources.accessible(r,c.actorId,effectiveRole(c.namespaceId),true);return result;
@@ -58,9 +58,9 @@ public final class ResourceService extends BaseService {
         String bindingScope=scope.equals("all")?"server":c.namespaceId;
         long hours=integer(request.getOrDefault("minimumAgeHours",48L));if(hours<0||hours>Long.MAX_VALUE/3_600_000)c.fail("VALIDATION_FAILED","Invalid minimum age");long age=hours*3_600_000;
         String hash=c.state.operationClaimed?c.inputHash:CursorCodec.requestHash(c,Json.write(Json.map("procedure","deposit.admin.pruneResources","request",request)));
-        List<Node> locations=repo.nodes("DepositResourceLocation",scope.equals("all")?Map.of():Map.of("namespaceId",c.namespaceId));
+        List<Node> locations=resources.collectionCandidates(scope.equals("all")?null:c.namespaceId);
         for(String ns:locations.stream().map(n->text(n,"namespaceId")).distinct().sorted().toList())repo.lockNamespace(ns);
-        var candidates=new ArrayList<String>();long bytes=0;for(Node loc:locations){resources.lock(CoreRepository.id(loc));if(resources.eligible(loc,age)){candidates.add(CoreRepository.id(loc));try{bytes=Math.addExact(bytes,number(loc,"bytes",0));}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}}}
+        var candidates=new ArrayList<String>();long bytes=0;for(Node candidate:locations){String id=CoreRepository.id(candidate);resources.lock(id);Node loc=resources.state(id).lifecycle();if(loc!=null&&resources.eligible(loc,age)){candidates.add(id);try{bytes=Math.addExact(bytes,number(loc,"bytes",0));}catch(ArithmeticException overflow){c.fail("LIMIT_EXCEEDED","Eligible resource size is not representable");}}}
         if(dryRun)return Json.map("candidateIds",candidates,"counts",(long)candidates.size(),"eligibleBytes",bytes);
         String job=UUID.randomUUID().toString();resources.record("DepositPruneJob",job,Json.map("scope",bindingScope,"actorId",c.actorId,"minimumAge",age,"createdAt",resources.now(),"incarnation",c.server.runId));
         for(String id:candidates)resources.record("DepositPruneItem",job+"/"+id,Json.map("jobId",job,"resourceId",id,"state","pending","reclaimedBytes",0L));

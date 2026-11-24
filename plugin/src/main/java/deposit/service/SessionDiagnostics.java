@@ -2,6 +2,7 @@ package deposit.service;
 
 import deposit.common.*;
 import deposit.repository.CoreRepository;
+import deposit.repository.ResourceRepository;
 import java.util.*;
 import org.neo4j.graphdb.*;
 
@@ -37,6 +38,8 @@ final class SessionDiagnostics extends BaseService {
                     c.fail("SCOPE_MISMATCH","Entity belongs to another Namespace");
                 }
             }
+            if(kind.equals("DResource")&&new ResourceRepository(c.tx,repo).resource(ns,CoreRepository.id(n))==null)
+                c.fail("NOT_FOUND","Resource not found");
             c.namespaceId=ns;c.revision=CoreRepository.sequence(namespace);var data=repo.data(n);
             if(kind.equals("Namespace"))data.put("role",effectiveRole(ns));
             checkProjection(namespace);

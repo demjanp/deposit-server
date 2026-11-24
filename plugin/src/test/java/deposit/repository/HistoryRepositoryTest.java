@@ -35,7 +35,11 @@ class HistoryRepositoryTest {
             var core=core(tx);var history=new HistoryRepository(tx,core);var before=history.capture(namespace,workspace.newState());var journal=workspace.journal(before);
             core.writeValue(core.entity("Descriptor",namespace,descriptor),"Integer",30L,actor);journal.checkpoint(history.capture(namespace,workspace.newState()));
             revision=history.appendId(namespace,actor,UUID.randomUUID().toString(),1,"import","Import",journal,null,null,ZonedDateTime.now(ZoneOffset.UTC),null);
-            Node node=core.entity("Revision",namespace,revision);assertFalse(node.hasProperty("journal"));assertTrue(count(tx,"RevisionTouch")>0);assertTrue(count(tx,"RevisionDependency")>0);
+            Node node=core.entity("Revision",namespace,revision);assertFalse(node.hasProperty("journal"));assertTrue(count(tx,"RevisionDependency")>0);
+            try(var snapshots=node.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_CHANGE"))){
+                var rows=snapshots.stream().toList();assertEquals(1,rows.size());
+                assertArrayEquals(new String[]{"value"},(String[])rows.getFirst().getEndNode().getProperty("touchedFields"));
+            }
             Revision loaded=history.read(node);assertEquals(20L,loaded.before().get(HistoryCodec.key("Descriptor",descriptor)).get("value"));assertEquals(30L,loaded.after().get(HistoryCodec.key("Descriptor",descriptor)).get("value"));assertEquals(journal.touches,loaded.touches());assertEquals(journal.dependencies,loaded.dependencies());
             try(var records=new ExportRecords(temporary.resolve("exports"))){var portable=history.portableMetadata(node,records);assertEquals(Json.write(journal.touches),Json.write(portable.get("touches")));assertEquals(Json.write(journal.dependencies),Json.write(portable.get("dependencies")));}
             tx.commit();
@@ -45,6 +49,55 @@ class HistoryRepositoryTest {
             try(var rows=tx.execute("EXPLAIN MATCH (d:RevisionDependency {namespaceId:$ns,revisionId:$id}) WHERE d.entityKey IS NOT NULL RETURN d.entityKey ORDER BY d.entityKey",Map.of("ns",namespace,"id",revision))){String plan=rows.getExecutionPlanDescription().toString();assertTrue(plan.contains("Index"),plan);}
         }
     }
+    @Test void touchOnlyReversalsPersistJournalAndKeepUndoRedoConflicts()throws Exception{
+        String absent=HistoryCodec.key("Object",UUID.randomUUID().toString());
+        String edit,empty,undo,later;
+        try(var tx=database.beginTx()){
+            var core=core(tx);var history=new HistoryRepository(tx,core);var timestamp=ZonedDateTime.now(ZoneOffset.UTC);
+            var change=new ChangeSet(history.capture(namespace));
+            core.writeValue(core.entity("Descriptor",namespace,descriptor),"Integer",30L,actor);
+            change.checkpoint(history.capture(namespace));change.dependencies.add(absent);
+            edit=history.appendId(namespace,actor,null,1,"edit","Descriptor edit",change,null,null,timestamp,null);
+            var journal=new ChangeSet(history.capture(namespace));
+            journal.touches.put(absent,new LinkedHashSet<>(List.of("position","*")));journal.dependencies.add(absent);
+            journal.kinds.put(absent,"Object");
+            empty=history.appendId(namespace,actor,null,2,"edit","Empty net effect",journal,null,null,timestamp,null);
+            journal.kinds.clear();
+            undo=history.appendId(namespace,actor,null,3,"undo","Reverse empty effect",journal,"reversesRevisionId",empty,timestamp,null);
+            later=history.appendId(namespace,actor,null,4,"edit","Later empty effect",journal,null,null,timestamp,null);
+            tx.commit();
+        }
+        try(var tx=database.beginTx();var records=new ExportRecords(temporary.resolve("touch-only"))){
+            var core=core(tx);var history=new HistoryRepository(tx,core);var revisions=history.revisions(namespace);
+            var current=history.capture(namespace);var target=history.revision(namespace,edit);
+            var reversed=history.revision(namespace,undo);
+            assertTrue(reversed.before().isEmpty());assertTrue(reversed.after().isEmpty());
+            assertEquals(List.of(),history.revision(namespace,empty).data().get("changes"));
+            assertEquals(List.of(),reversed.data().get("changes"));assertEquals(Set.of(absent),reversed.dependencies());
+            var node=core.entity("Revision",namespace,undo);
+            try(var snapshots=node.getRelationships(Direction.OUTGOING,RelationshipType.withName("HAS_CHANGE"))){
+                var rows=snapshots.stream().toList();assertEquals(1,rows.size());
+                Node row=rows.getFirst().getEndNode();
+                assertEquals(true,row.getProperty("touchOnly"));assertEquals(false,row.getProperty("beforeExists"));assertEquals(false,row.getProperty("afterExists"));
+                assertFalse(row.hasProperty("beforeJson"));assertFalse(row.hasProperty("afterJson"));
+                assertArrayEquals(new String[]{"*","position"},(String[])row.getProperty("touchedFields"));
+            }
+            var portable=history.portableMetadata(node,records);
+            assertEquals(List.of("*","position"),ValueCodec.map(portable.get("touches")).get(absent));
+            assertEquals(List.of(absent),portable.get("dependencies"));
+            var beforeUndo=revisions.stream().filter(r->r.sequence()<=2).toList();
+            assertTrue(HistoryPlanner.inverse(2,current,target,beforeUndo).conflicts().stream()
+                .anyMatch(c->empty.equals(c.get("revisionId"))&&"historical-schema-dependency".equals(c.get("reason"))));
+            var afterUndo=revisions.stream().filter(r->r.sequence()<=3).toList();
+            assertTrue(HistoryPlanner.inverse(3,current,target,afterUndo).conflicts().isEmpty());
+            assertTrue(HistoryPlanner.eligible(reversed,afterUndo,true));
+            assertTrue(HistoryPlanner.inverse(3,current,reversed,afterUndo).changes().touches.isEmpty());
+            assertTrue(HistoryPlanner.inverse(4,current,reversed,revisions).conflicts().stream()
+                .anyMatch(c->later.equals(c.get("revisionId"))&&"intervening-touch".equals(c.get("reason"))));
+            assertEquals(current,HistoryPlanner.reconstruct(revisions,later));
+        }
+    }
+
     @Test void restoredClassEdgeSurvivesDiskCaptureAndHistoryRestore()throws Exception{
         String edgeId=UUID.randomUUID().toString(),secondEdge=UUID.randomUUID().toString();
         String restoredClass;try(var tx=database.beginTx()){try{restoredClass=CoreRepository.id(core(tx).find("Class",Map.of("namespaceId",namespace,"name","Specimen")));}finally{tx.rollback();}}
@@ -105,11 +158,11 @@ class HistoryRepositoryTest {
     }
     @Test void rollbackLeavesNoRevisionOrChildRecordsAndScratchCloses()throws Exception{
         long revisions,touches,dependencies;
-        try(var tx=database.beginTx()){revisions=count(tx,"Revision");touches=count(tx,"RevisionTouch");dependencies=count(tx,"RevisionDependency");}
+        try(var tx=database.beginTx()){revisions=count(tx,"Revision");touches=count(tx,"DepositSnapshot");dependencies=count(tx,"RevisionDependency");}
         try(var workspace=new HistoryWorkspace(temporary.resolve("scratch"),()->{},ignored->{},()->{});var tx=database.beginTx()){
             var core=core(tx);var history=new HistoryRepository(tx,core);var journal=workspace.journal(history.capture(namespace,workspace.newState()));core.writeValue(core.entity("Descriptor",namespace,descriptor),"Integer",77L,actor);journal.checkpoint(history.capture(namespace,workspace.newState()));history.appendId(namespace,actor,UUID.randomUUID().toString(),1,"import","Import",journal,null,null,ZonedDateTime.now(ZoneOffset.UTC),null);tx.rollback();
         }
-        try(var tx=database.beginTx()){assertEquals(revisions,count(tx,"Revision"));assertEquals(touches,count(tx,"RevisionTouch"));assertEquals(dependencies,count(tx,"RevisionDependency"));assertEquals(20L,core(tx).descriptorValue(core(tx).entity("Descriptor",namespace,descriptor)));}
+        try(var tx=database.beginTx()){assertEquals(revisions,count(tx,"Revision"));assertEquals(touches,count(tx,"DepositSnapshot"));assertEquals(dependencies,count(tx,"RevisionDependency"));assertEquals(20L,core(tx).descriptorValue(core(tx).entity("Descriptor",namespace,descriptor)));}
         try(var files=Files.list(temporary.resolve("scratch"))){assertEquals(0,files.count());}
     }
     @Test void transientRestartCleansEveryNewRecordAcrossMultipleExpiredEpochs(){
@@ -124,9 +177,9 @@ class HistoryRepositoryTest {
         var monitors=database.getDependencyResolver().resolveDependency(org.neo4j.monitoring.Monitors.class);
         monitors.addMonitorListener(server);
         try {HistoryLifecycle.recover(server);} finally {monitors.removeMonitorListener(server);}
-        try(var tx=database.beginTx()){for(String label:List.of("Revision","DepositSnapshot","RevisionTouch","RevisionDependency","DepositHistoryEpoch"))assertEquals(0,count(tx,label),label);}
+        try(var tx=database.beginTx()){for(String label:List.of("Revision","DepositSnapshot","RevisionDependency","DepositHistoryEpoch"))assertEquals(0,count(tx,label),label);}
     }
     @Test void namespaceHistoryDeletionIncludesTouchAndDependencyRows(){
-        try(var tx=database.beginTx()){new HistoryRepository(tx,core(tx)).deleteNamespace(namespace);for(String label:List.of("Revision","DepositSnapshot","RevisionTouch","RevisionDependency","DepositHistoryEpoch"))assertEquals(0,count(tx,label),label);assertNotNull(core(tx).namespace(namespace));tx.commit();}
+        try(var tx=database.beginTx()){new HistoryRepository(tx,core(tx)).deleteNamespace(namespace);for(String label:List.of("Revision","DepositSnapshot","RevisionDependency","DepositHistoryEpoch"))assertEquals(0,count(tx,label),label);assertNotNull(core(tx).namespace(namespace));tx.commit();}
     }
 }

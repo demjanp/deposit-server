@@ -21,7 +21,7 @@ public final class ResourceTransferRepository {
         resources.lock(id);
         Node t=resources.record("DepositTransfer",upload,Json.map("namespaceId",c.namespaceId,"actorId",c.actorId,"resourceId",id,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"nextOffset",0L,"state","uploading","expires",resources.now()+ResourceFiles.LEASE,"admissionId",reservation.id));
         UploadBinding.bind(c,t);
-        resources.record("DepositResourceLocation",id,Json.map("namespaceId",c.namespaceId,"uploadId",upload,"storedFilename",stored,"stagingPath",staging,"bytes",bytes,"checksum",checksum,"leaseUntil",resources.now()+ResourceFiles.LEASE,"everAttached",false,"admissionId",reservation.id));return beginResult(t);
+        resources.record("DepositResourceLocation",id,Json.map("namespaceId",c.namespaceId,"uploadId",upload,"storedFilename",stored,"stagingPath",staging,"bytes",bytes,"checksum",checksum,"leaseUntil",resources.now()+ResourceFiles.LEASE,"admissionId",reservation.id));return beginResult(t);
     }
     public Map<String,Object> chunk(Map<String,Object> request,Node t)throws IOException {
         fields(request,"uploadId","offset","bytesBase64");
@@ -44,6 +44,12 @@ public final class ResourceTransferRepository {
     public Map<String,Object> finish(Map<String,Object> request,Node t)throws IOException {
         fields(request,"uploadId");String id=text(t,"resourceId");
         if(number(t,"nextOffset",0)!=number(t,"bytes",0))c.fail("RESOURCE_NOT_READY","Upload incomplete");
+        if("finished".equals(t.getProperty("state"))){
+            Node resource=resources.resource(c.namespaceId,id);
+            resources.verifyCompleted(resource);
+            resources.renew(t);
+            return readyResult(t);
+        }
         Node loc=resources.location(id);StorageAdmission.Reservation reservation=admission(t,loc,0);
         t.setProperty("admissionId",reservation.id);loc.setProperty("admissionId",reservation.id);
         if(!resources.storage.exists(id)) {
@@ -52,10 +58,16 @@ public final class ResourceTransferRepository {
         }
         c.server.storagePoint("publication-before");boolean alreadyPublished=resources.storage.exists(id);if(!alreadyPublished)resources.server.storage.admission.grow(reservation,Map.of(resources.files.root,number(t,"bytes",0)));
         resources.publish(resources.content(loc),loc.hasProperty("stagingPath")?resources.files.path(text(loc,"stagingPath")):null,reservation);c.server.storagePoint("publication-after");
-        if(resources.resource(c.namespaceId,id)==null)resources.record("DResource",id,Json.map("namespaceId",c.namespaceId,"filename",t.getProperty("filename"),"storedFilename",t.getProperty("storedFilename"),"mediaType",t.getProperty("mediaType"),"bytes",t.getProperty("bytes"),"checksum",t.getProperty("checksum"),"state","ready","createdBy",c.actorId,"updatedBy",c.actorId,"createdAt",c.timestamp,"updatedAt",c.timestamp));
-        t.setProperty("state","finished");loc.setProperty("published",true);resources.renew(t);
+        resources.complete(c.namespaceId,text(t,"filename"),text(t,"mediaType"),resources.content(loc),c.actorId,c.timestamp);
+        t.setProperty("state","finished");
+        if(loc.hasProperty("stagingPath"))t.setProperty("stagingPath",loc.getProperty("stagingPath"));
+        loc.delete();
+        resources.renew(t);
         c.server.storagePoint("ready-before-commit");boolean[] committed={false};c.state.afterCommit.add(()->committed[0]=true);c.state.release.add(()->finishPublicationAdmission(reservation,committed[0]));
-        return Json.map("resourceId",id,"checksum",t.getProperty("checksum"),"bytes",t.getProperty("bytes"),"state","ready");
+        return readyResult(t);
+    }
+    private Map<String,Object> readyResult(Node t){
+        return Json.map("resourceId",t.getProperty("resourceId"),"checksum",t.getProperty("checksum"),"bytes",t.getProperty("bytes"),"state","ready");
     }
     public Map<String,Object> abort(Map<String,Object> request,Node t) {
         fields(request,"uploadId");

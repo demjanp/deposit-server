@@ -100,7 +100,9 @@ class ImportSnapshotMaterializerTest {
 
     private Path archive(String name,String checksum,byte[] content)throws IOException {Path path=temporary.resolve(name);try(OutputStream file=Files.newOutputStream(path);ZipOutputStream zip=new ZipOutputStream(file)){zip.putNextEntry(new ZipEntry("resources/"+checksum));zip.write(content);zip.closeEntry();}return path;}
     private Path archive(String name,Map<String,byte[]> entries)throws IOException {Path path=temporary.resolve(name);try(OutputStream file=Files.newOutputStream(path);ZipOutputStream zip=new ZipOutputStream(file)){for(var entry:entries.entrySet()){zip.putNextEntry(new ZipEntry("resources/"+entry.getKey()));zip.write(entry.getValue());zip.closeEntry();}}return path;}
-    private static void seedResource(ResourceRepository repo,String namespace,String actor,String id,String checksum,long bytes){repo.record("DResource",id,Json.map("namespaceId",namespace,"filename","data.bin","storedFilename",ResourceFiles.filename("data.bin",checksum),"mediaType","application/octet-stream","bytes",bytes,"checksum",checksum,"state","ready","createdBy",actor));}
+    private static void seedResource(ResourceRepository repo,String namespace,String actor,String id,String checksum,long bytes){
+        repo.complete(namespace,"data.bin","application/octet-stream",new ResourceStorage.Content(id,ResourceFiles.filename("data.bin",checksum),bytes,checksum),actor,ZonedDateTime.now(java.time.ZoneOffset.UTC));
+    }
     private static Map<String,Object> resourceRecord(String id,String checksum,long bytes){return Json.map("id",id,"sha256",checksum,"bytes",bytes,"filename","data.bin","mediaType","application/octet-stream");}
     private static Map<String,Object> graph(List<Object> classes,List<Object> objects,List<Object> descriptors,List<Object> resources){return Json.map("classes",classes,"objects",objects,"descriptors",descriptors,"resources",resources,"memberships",List.of(),"relationships",List.of(),"classRelationships",List.of(),"patterns",List.of(),"userTools",List.of());}
 

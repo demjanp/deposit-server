@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -379,7 +380,7 @@ class Stage7CapacityTest {
         try(var tx=database.beginTx()){
             var repo=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));repo.createRestored("User",null,actor,Json.map("enabled",true,"serverRole","user"),actor);Node ns=repo.create("Namespace",null,actor,Json.map("name","Stage7 receiver","description","","sequence",0L,"historyMode","disabled"));namespace=CoreRepository.id(ns);repo.setRole(actor,namespace,"owner");
             Node clazz=repo.create("Class",namespace,actor,Json.map("name","Specimen","position",0L));repo.attach("ClassDescriptor",clazz,actor,Json.map("name","Code","type","String","order",0L));repo.attach("ClassDescriptor",clazz,actor,Json.map("name","File","type","DResource","order",1L));Node object=repo.create("Object",namespace,actor,Json.map("position",List.of(0.0,0.0)));repo.assign(object,clazz,actor);Node descriptor=repo.attach("Descriptor",object,actor,Json.map("name","File"));
-            var resources=new ResourceRepository(tx,repo);resources.record("DepositResourceLocation",resourceId,Json.map("namespaceId",namespace,"storedFilename",ResourceFiles.filename("old.bin",checksum),"bytes",(long)original.length,"checksum",checksum,"leaseUntil",resources.now()+ResourceFiles.LEASE,"everAttached",true,"published",true));Node resource=resources.record("DResource",resourceId,Json.map("namespaceId",namespace,"filename","old.bin","mediaType","application/octet-stream","bytes",(long)original.length,"checksum",checksum,"state","ready","createdBy",actor));descriptor.createRelationshipTo(resource,RelationshipType.withName("HAS_RESOURCE"));
+            var resources=new ResourceRepository(tx,repo);Node resource=resources.complete(namespace,"old.bin","application/octet-stream",new ResourceStorage.Content(resourceId,ResourceFiles.filename("old.bin",checksum),original.length,checksum),actor,ZonedDateTime.now(ZoneOffset.UTC));descriptor.createRelationshipTo(resource,RelationshipType.withName("HAS_RESOURCE"));
             var session=new ServerContext.Session(actor,((InternalTransaction)tx).securityContext().subject().executingUser(),server.sessionTime());session.namespace=namespace;session.baselines.put(namespace,0L);server.registerSession(Json.hash(token),session);tx.commit();
         }
     }

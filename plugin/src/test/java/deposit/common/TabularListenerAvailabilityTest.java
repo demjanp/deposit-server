@@ -61,8 +61,9 @@ class TabularListenerAvailabilityTest {
             session.namespace=namespace;session.administrative=true;server.registerSession(Json.hash(token),session);
             node(tx,"User",Json.map("id",actor,"enabled",true,"serverRole","administrator"));
             node(tx,"Namespace",Json.map("id",namespace,"sequence",0L));
-            node(tx,"DResource",Json.map("id",resource,"namespaceId",namespace,"filename","input.bin","state","ready"));
-            node(tx,"DepositResourceLocation",Json.map("id",resource,"namespaceId",namespace,"storedFilename","input.bin","bytes",3L,"checksum",content.checksum(),"published",true));
+            var timestamp=java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC);
+            var core=new deposit.repository.CoreRepository(tx,timestamp);
+            new deposit.repository.ResourceRepository(tx,core).complete(namespace,"input.bin","application/octet-stream",content,actor,timestamp);
             stagedTable(tx,table,true);stagedTable(tx,scalarTable,false);
             tx.commit();
         }

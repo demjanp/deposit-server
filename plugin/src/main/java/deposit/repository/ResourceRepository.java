@@ -19,11 +19,67 @@ public final class ResourceRepository {
     public void lock(String id){var internal=(InternalTransaction)tx;server.holdStorage(server.state(internal.kernelTransaction()),id);}
     public Node record(String label,String id,Map<String,Object> fields){Node n=tx.createNode(Label.label(label));n.setProperty("id",id);fields.forEach((k,v)->{if(v!=null)n.setProperty(k,v);});return n;}
     public Node location(String id){return core.find("DepositResourceLocation","id",id);}
-    public Node resource(String ns,String id){return core.entity("DResource",ns,id);}
+    public Node completed(String id){return core.find("DResource","id",id);}
+    public Node resource(String ns,String id){
+        Node resource=core.entity("DResource",ns,id);
+        if(resource==null||Boolean.TRUE.equals(resource.getProperty("detached",false)))return null;
+        var ownership=resource.getSingleRelationship(RelationshipType.withName("OWNS_RESOURCE"),Direction.INCOMING);
+        return ownership!=null&&ownership.getStartNode().hasLabel(Label.label("Namespace"))
+            &&ns.equals(CoreRepository.id(ownership.getStartNode()))?resource:null;
+    }
+
+    public record ResourceState(Node completed,Node provisional) {
+        public Node lifecycle(){return completed==null?provisional:completed;}
+    }
+    public ResourceState state(String id){
+        Node completed=completed(id);
+        return new ResourceState(completed,completed==null?location(id):null);
+    }
+
+    public List<Node> collectionCandidates(String namespace){
+        var scope=namespace==null?Map.<String,Object>of():Map.<String,Object>of("namespaceId",namespace);
+        var records=new ArrayList<>(core.nodes("DepositResourceLocation",scope));
+        String filter=namespace==null?"":" AND r.namespaceId=$namespaceId AND r.detached IS NULL";
+        try(var rows=tx.execute("MATCH (r:DResource) WHERE r.orphanSince IS NOT NULL"+filter+" RETURN r",scope)){
+            while(rows.hasNext())records.add((Node)rows.next().get("r"));
+        }
+        records.sort(Comparator.comparing(CoreRepository::id));
+        return records;
+    }
+
+    /** Publish the completed graph identity after the caller has verified publication. */
+    public Node complete(String ns,String filename,String mediaType,ResourceStorage.Content content,String actor,ZonedDateTime timestamp){
+        Node owner=core.namespace(ns);
+        if(owner==null)throw ExceptionHandler.fail("NOT_FOUND","Resource Namespace not found");
+        Node resource=record("DResource",content.resourceId(),Json.map("namespaceId",ns,"filename",filename,
+            "storedFilename",content.storedFilename(),"bytes",content.bytes(),"checksum",content.checksum(),
+            "mediaType",mediaType,"state","ready","createdBy",actor,"updatedBy",actor,
+            "createdAt",timestamp,"updatedAt",timestamp,"leaseUntil",now()+ResourceFiles.LEASE));
+        owner.createRelationshipTo(resource,RelationshipType.withName("OWNS_RESOURCE"));
+        return resource;
+    }
+
+    public void detach(Node resource){
+        lock(CoreRepository.id(resource));
+        var ownership=resource.getSingleRelationship(RelationshipType.withName("OWNS_RESOURCE"),Direction.INCOMING);
+        if(ownership!=null)ownership.delete();
+        resource.setProperty("detached",true);
+        resource.setProperty("leaseUntil",0L);
+        orphan(resource);
+    }
+
     public static long number(Node n,String key,long fallback){return ((Number)n.getProperty(key,fallback)).longValue();}
     public static String text(Node n,String key){return (String)n.getProperty(key);}
     public Node transfer(String id){return core.find("DepositTransfer","id",id);}
-    public boolean live(String id){Node loc=location(id);if(loc==null)return false;Node r=resource(text(loc,"namespaceId"),id);return r!=null&&r.hasRelationship(Direction.INCOMING,RelationshipType.withName("HAS_RESOURCE"));}
+    public Node resourceTransfer(String id){return core.find("DepositTransfer","resourceId",id);}
+    public Node upload(Node record){
+        if(record.hasLabel(Label.label("DResource")))return resourceTransfer(CoreRepository.id(record));
+        return record.hasProperty("uploadId")?transfer(text(record,"uploadId")):null;
+    }
+    public boolean live(String id){
+        Node resource=completed(id);
+        return resource!=null&&resource.hasRelationship(Direction.INCOMING,RelationshipType.withName("HAS_RESOURCE"));
+    }
     public boolean protectedContent(Node loc) {
         if(live(CoreRepository.id(loc)))return true;
         if(retained(CoreRepository.id(loc)))return true;
@@ -35,18 +91,19 @@ public final class ResourceRepository {
     }
     public void orphan(Node loc) {if(protectedContent(loc))loc.removeProperty("orphanSince");else if(!loc.hasProperty("orphanSince"))loc.setProperty("orphanSince",now());}
     public void renew(Node transfer) {
-        long until=now()+ResourceFiles.LEASE;transfer.setProperty("expires",until);Node loc=location(text(transfer,"resourceId"));loc.setProperty("leaseUntil",until);loc.removeProperty("orphanSince");
+        long until=now()+ResourceFiles.LEASE;transfer.setProperty("expires",until);Node record=state(text(transfer,"resourceId")).lifecycle();record.setProperty("leaseUntil",until);record.removeProperty("orphanSince");
     }
     public boolean accessible(Node resource,String actor,String role,boolean renew) {
-        String id=CoreRepository.id(resource);Node loc=location(id);if(loc==null||loc.hasProperty("deleting"))return false;
+        String id=CoreRepository.id(resource);if(resource.hasProperty("deleting")||Boolean.TRUE.equals(resource.getProperty("detached",false)))return false;
         boolean namespaceReader=role!=null&&Set.of("viewer","editor","owner").contains(role);
         if(namespaceReader&&live(id))return true;
         if(namespaceReader&&retained(id))return true;
         // The creator lease is an upload recovery path only. Generated exports are
         // authorized exclusively by their actor-bound DepositExportGrant.
-        if(loc.hasProperty("uploadId")&&actor.equals(resource.getProperty("createdBy"))&&number(loc,"leaseUntil",0)>now()) {
-            Node t=transfer(text(loc,"uploadId"));
-            if(t!=null&&actor.equals(t.getProperty("actorId",null))&&number(t,"expires",0)>now()) {
+        if(actor.equals(resource.getProperty("createdBy"))&&number(resource,"leaseUntil",0)>now()) {
+            Node t=resourceTransfer(id);
+            if(t!=null&&"finished".equals(t.getProperty("state",null))&&actor.equals(t.getProperty("actorId",null))
+                &&resource.getProperty("namespaceId").equals(t.getProperty("namespaceId",null))&&number(t,"expires",0)>now()) {
                 return true;
             }
         }
@@ -57,17 +114,17 @@ public final class ResourceRepository {
         }return false;
     }
     public boolean retained(String id) {
-        Node loc=location(id);if(loc==null)return false;Node resource=resource(text(loc,"namespaceId"),id);if(resource==null)return false;
-        try(var edges=resource.getRelationships(Direction.INCOMING,RelationshipType.withName("RETAINS_RESOURCE"))){for(var edge:edges){Node snapshot=edge.getStartNode();Node epoch=core.entity("DepositHistoryEpoch",text(loc,"namespaceId"),(String)snapshot.getProperty("historyEpochId"));if(epoch!=null&&!Boolean.TRUE.equals(epoch.getProperty("expired",false)))return true;}}
+        Node resource=completed(id);if(resource==null)return false;
+        try(var edges=resource.getRelationships(Direction.INCOMING,RelationshipType.withName("RETAINS_RESOURCE"))){for(var edge:edges){Node snapshot=edge.getStartNode();Node epoch=core.entity("DepositHistoryEpoch",text(resource,"namespaceId"),(String)snapshot.getProperty("historyEpochId"));if(epoch!=null&&!Boolean.TRUE.equals(epoch.getProperty("expired",false)))return true;}}
         return false;
     }
     public Node linked(Node descriptor) {var e=descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING);return e==null?null:e.getEndNode();}
-    public void changed(Node r){Node loc=location(CoreRepository.id(r));orphan(loc);}
+    public void changed(Node resource){orphan(resource);}
     /** Internal authority for resources created by one materialization, never a public access grant. */
-    public ImportedResources beginImport(String namespace,String actor) {
-        requireImportWriter(namespace,actor);return new ImportedResources(this,namespace,actor,null);
+    public ImportedResources beginImport(String namespace,String actor,StorageAdmission.Reservation reservation,Set<String> createdIds){
+        requireImportWriter(namespace,actor);
+        return new ImportedResources(this,namespace,actor,reservation,createdIds);
     }
-    public ImportedResources beginImport(String namespace,String actor,StorageAdmission.Reservation reservation){requireImportWriter(namespace,actor);return new ImportedResources(this,namespace,actor,reservation);}
     private void requireImportWriter(String namespace,String actor) {
         ((InternalTransaction)tx).kernelTransaction().assertOpen();
         String role=core.resourceWriteRole(actor,namespace);
@@ -77,8 +134,9 @@ public final class ResourceRepository {
         private final ResourceRepository owner;
         private final String namespace,actor;
         private final StorageAdmission.Reservation reservation;
+        private final Set<String> createdIds;
         private boolean closed,publicationStarted,publicationFailed;
-        private ImportedResources(ResourceRepository owner,String namespace,String actor,StorageAdmission.Reservation reservation){this.owner=owner;this.namespace=namespace;this.actor=actor;this.reservation=reservation;}
+        private ImportedResources(ResourceRepository owner,String namespace,String actor,StorageAdmission.Reservation reservation,Set<String> createdIds){this.owner=owner;this.namespace=namespace;this.actor=actor;this.reservation=reservation;this.createdIds=createdIds;}
         private void scope(ResourceRepository repository,String destination,String writer) {
             if(closed||repository.tx!=owner.tx||!namespace.equals(destination)||!actor.equals(writer))throw ExceptionHandler.fail("FORBIDDEN","Imported resource authority is outside its scope");
             repository.requireImportWriter(destination,writer);
@@ -89,20 +147,18 @@ public final class ResourceRepository {
             if(Files.size(staged)!=bytes||!checksum.equals(ResourceFiles.checksum(staged)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Package resource content changed");
             String id=UUID.randomUUID().toString(),stored=ResourceFiles.filename(filename,checksum);
             owner.lock(id);
-            if(owner.location(id)!=null||owner.resource(namespace,id)!=null)throw new IllegalStateException("Fresh resource identity already exists");
+            if(owner.location(id)!=null||owner.completed(id)!=null)throw new IllegalStateException("Fresh resource identity already exists");
             var content=new ResourceStorage.Content(id,stored,bytes,checksum);if(reservation==null)throw new IOException("Import publication has no storage admission");publicationStarted=true;try{owner.publish(content,staged,reservation);}catch(IOException|RuntimeException failure){publicationFailed=true;throw failure;}
-            owner.record("DepositResourceLocation",id,Json.map("namespaceId",namespace,"storedFilename",stored,"bytes",bytes,"checksum",checksum,"leaseUntil",owner.now()+ResourceFiles.LEASE,"everAttached",false,"published",true,"importOperationId",reservation.operationId));
-            owner.record("DResource",id,Json.map("namespaceId",namespace,"filename",filename,"storedFilename",stored,"mediaType",mediaType,"bytes",bytes,"checksum",checksum,"state","ready","createdBy",actor,"updatedBy",actor,"createdAt",timestamp,"updatedAt",timestamp));
+            owner.complete(namespace,filename,mediaType,content,actor,timestamp);
+            createdIds.add(id);
             return id;
         }
         private Node resolve(ResourceRepository repository,Node descriptor,String id,String writer) {
             scope(repository,(String)descriptor.getProperty("namespaceId"),writer);
-            repository.lock(id);Node resource=repository.resource(namespace,id),location=repository.location(id);
-            if(reservation==null||location==null||!reservation.operationId.equals(location.getProperty("importOperationId",null)))throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
-            if(resource==null||!namespace.equals(location.getProperty("namespaceId",null))||location.hasProperty("deleting")||!"ready".equals(resource.getProperty("state",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource is unavailable");
-            for(String field:List.of("storedFilename","checksum","bytes"))if(!Objects.equals(resource.getProperty(field,null),location.getProperty(field,null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource metadata changed");
-            if(!actor.equals(resource.getProperty("createdBy",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource identity changed");
-            repository.verify(location);return resource;
+            if(!createdIds.contains(id))throw ExceptionHandler.fail("FORBIDDEN","Resource was not created by this import");
+            repository.lock(id);Node resource=repository.resource(namespace,id);
+            if(resource==null||!actor.equals(resource.getProperty("createdBy",null)))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Imported resource identity changed");
+            repository.verifyCompleted(resource);return resource;
         }
         @Override public void close(){closed=true;}
         public boolean publicationFailed(){return publicationFailed;}
@@ -119,17 +175,26 @@ public final class ResourceRepository {
             String id=(String)ValueCodec.map(payload).get("resourceId");lock(id);next=resource((String)descriptor.getProperty("namespaceId"),id);
             if(next==null)throw ExceptionHandler.fail("NOT_FOUND","Resource not found");
             if(!"ready".equals(next.getProperty("state")))throw ExceptionHandler.fail("RESOURCE_NOT_READY","Resource is not ready");
-            if(!accessible(next,actor,role,false))throw ExceptionHandler.fail("FORBIDDEN","Resource access required");verify(location(id));
+            if(!accessible(next,actor,role,false))throw ExceptionHandler.fail("FORBIDDEN","Resource access required");verifyCompleted(next);
         }
         return attach(descriptor,old,next);
     }
     private boolean attach(Node descriptor,Node old,Node next) {
         if(Objects.equals(old,next))return false;
         if(old!=null){lock(CoreRepository.id(old));descriptor.getSingleRelationship(RelationshipType.withName("HAS_RESOURCE"),Direction.OUTGOING).delete();changed(old);}
-        if(next!=null){descriptor.createRelationshipTo(next,RelationshipType.withName("HAS_RESOURCE"));Node loc=location(CoreRepository.id(next));loc.setProperty("everAttached",true);changed(next);}return true;
+        if(next!=null){descriptor.createRelationshipTo(next,RelationshipType.withName("HAS_RESOURCE"));changed(next);}return true;
     }
     public ResourceStorage.Content content(Node loc){return new ResourceStorage.Content(CoreRepository.id(loc),text(loc,"storedFilename"),number(loc,"bytes",0),text(loc,"checksum"));}
     public ResourceStorage.Content verify(Node loc){try{var value=content(loc);storage.verify(value);return value;}catch(IOException e){throw ExceptionHandler.fail("RESOURCE_CORRUPT","Resource content unavailable");}}
+    public ResourceStorage.Content verifyCompleted(Node resource){
+        if(resource==null||!"ready".equals(resource.getProperty("state",null))||resource.hasProperty("deleting")
+            ||!(resource.getProperty("bytes",null) instanceof Number bytes)||bytes.longValue()<0
+            ||!(resource.getProperty("checksum",null) instanceof String checksum)||!checksum.matches("[0-9a-f]{64}"))
+            throw ExceptionHandler.fail("RESOURCE_CORRUPT","Completed resource unavailable");
+        for(String property:List.of("filename","storedFilename","mediaType"))
+            if(!(resource.getProperty(property,null) instanceof String))throw ExceptionHandler.fail("RESOURCE_CORRUPT","Missing completed resource metadata");
+        return verify(resource);
+    }
     public void growPublication(StorageAdmission.Reservation reservation,long bytes)throws IOException{
         // This reservation can also carry credit for later staged resources. Publication
         // needs an additive peak allowance; treating the total commitment as publication
@@ -165,7 +230,7 @@ public final class ResourceRepository {
     public Map<String,Object> info(Node r){String url=server.downloadPublicBaseUrl==null?null:ResourceLinkEncoder.url(server.downloadPublicBaseUrl,(String)r.getProperty("namespaceId"),CoreRepository.id(r));return Json.map("resourceId",CoreRepository.id(r),"filename",r.getProperty("filename"),"storedFilename",r.getProperty("storedFilename"),"downloadUrl",url,"bytes",r.getProperty("bytes"),"checksum",r.getProperty("checksum"),"mediaType",r.getProperty("mediaType"),"state",r.getProperty("state"));}
     public void expire(Node loc) {
         String id=CoreRepository.id(loc);lock(id);if(loc.hasProperty("deleting")||Boolean.TRUE.equals(loc.getProperty("collected",false)))return;
-        Node t=loc.hasProperty("uploadId")?transfer(text(loc,"uploadId")):null;
+        Node t=upload(loc);
         if(t!=null&&"uploading".equals(t.getProperty("state"))&&!t.hasProperty("writerIncarnation")&&number(t,"expires",0)<=now())t.setProperty("state","expired");
         else if(t!=null&&"uploading".equals(t.getProperty("state")))return; // Active lease is already retained; no need to rescan grant/history/pending relations.
         orphan(loc);

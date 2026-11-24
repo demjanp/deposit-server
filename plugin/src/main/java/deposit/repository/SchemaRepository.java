@@ -9,9 +9,8 @@ public final class SchemaRepository {
     public static void initialize(GraphDatabaseService db) {
         try(var tx=db.beginTx()) {
             for(String label:List.of("Revision","DepositSnapshot","DepositHistoryEpoch"))tx.execute("CREATE CONSTRAINT deposit_"+label+"_identity IF NOT EXISTS FOR (n:"+label+") REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
-            tx.execute("CREATE CONSTRAINT deposit_revision_touch IF NOT EXISTS FOR (n:RevisionTouch) REQUIRE (n.namespaceId,n.revisionId,n.entityKey) IS UNIQUE").close();
+            tx.execute("CREATE CONSTRAINT deposit_snapshot_entity IF NOT EXISTS FOR (n:DepositSnapshot) REQUIRE (n.namespaceId,n.revisionId,n.entityKind,n.entityId) IS UNIQUE").close();
             tx.execute("CREATE CONSTRAINT deposit_revision_dependency IF NOT EXISTS FOR (n:RevisionDependency) REQUIRE (n.namespaceId,n.revisionId,n.entityKey) IS UNIQUE").close();
-            tx.execute("CREATE INDEX deposit_revision_touch_epoch IF NOT EXISTS FOR (n:RevisionTouch) ON (n.namespaceId,n.historyEpochId)").close();
             tx.execute("CREATE INDEX deposit_revision_dependency_epoch IF NOT EXISTS FOR (n:RevisionDependency) ON (n.namespaceId,n.historyEpochId)").close();
             tx.execute("CREATE CONSTRAINT deposit_revision_tag IF NOT EXISTS FOR (n:RevisionTag) REQUIRE (n.namespaceId,n.revisionId) IS UNIQUE").close();
             tx.execute("CREATE INDEX deposit_revision_tag_epoch IF NOT EXISTS FOR (n:RevisionTag) ON (n.namespaceId,n.historyEpochId)").close();
@@ -23,6 +22,9 @@ public final class SchemaRepository {
             for(String label:List.of("Class","Object","Descriptor","ClassDescriptor","Pattern","UserTool","DGeometry","DResource")) {
                 tx.execute("CREATE CONSTRAINT deposit_"+label+"_id IF NOT EXISTS FOR (n:`"+label+"`) REQUIRE (n.namespaceId,n.id) IS UNIQUE").close();
             }
+            tx.execute("CREATE CONSTRAINT deposit_resource_identity IF NOT EXISTS FOR (n:DResource) REQUIRE n.id IS UNIQUE").close();
+            tx.execute("CREATE INDEX deposit_resource_orphan_age IF NOT EXISTS FOR (n:DResource) ON (n.orphanSince)").close();
+            tx.execute("CREATE INDEX deposit_transfer_resource IF NOT EXISTS FOR (n:DepositTransfer) ON (n.resourceId)").close();
             for(String label:List.of("Namespace","User")) {
                 tx.execute("CREATE CONSTRAINT deposit_"+label+"_id IF NOT EXISTS FOR (n:"+label+") REQUIRE n.id IS UNIQUE").close();
             }
