@@ -3,8 +3,10 @@ package deposit.common;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.channels.FileChannel;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -75,7 +77,7 @@ public final class StorageAdmission implements AutoCloseable {
         try {
             var volume = volumes.resolve(root);
             Path wal = database.resolveSibling(database.getFileName() + "-wal");
-            long checkpointGrowth = Files.exists(wal) ? Files.size(wal) : 0;
+            long checkpointGrowth = checkpointGrowth(wal);
             String device = volume.deviceId();
             var commitment = Map.of(device, addExact(growth, checkpointGrowth));
             stateLock.lock();
@@ -95,6 +97,25 @@ public final class StorageAdmission implements AutoCloseable {
             }
         } finally {
             operationalWriter.unlock();
+        }
+    }
+
+    private static long checkpointGrowth(Path wal) throws IOException {
+        for (int retry = 0; ; retry++) {
+            try {
+                return Files.size(wal);
+            } catch (NoSuchFileException absent) {
+                return 0;
+            } catch (AccessDeniedException denied) {
+                // Windows can briefly deny a WAL attribute read. Retry before any SQLite write.
+                if (retry == 10) throw denied;
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new StoragePressureException("Storage admission was interrupted");
+                }
+            }
         }
     }
 
