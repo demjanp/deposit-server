@@ -1,7 +1,7 @@
 package org.deposit.probe;
 
 import deposit.common.ServerContext;
-import deposit.repository.OperationalCommitRepository;
+import deposit.repository.OperationRepository;
 import java.util.*;
 import java.util.stream.Stream;
 import org.neo4j.graphdb.*;
@@ -30,8 +30,9 @@ public class SecurityProbe {
         var listener=new TransactionEventListener<Void>() {
             private volatile boolean armed=true;
             public Void beforeCommit(TransactionData data,Transaction tx,GraphDatabaseService database) {
-                if(armed)for(var property:data.assignedNodeProperties())if(OperationalCommitRepository.MARKER.equals(property.key())
-                    &&operation.equals(server.state(((InternalTransaction)tx).kernelTransaction()).operationId)) {
+                if(armed)for(var property:data.assignedNodeProperties())if(OperationRepository.MARKER.equals(property.key())) {
+                    var state=server.state(((InternalTransaction)tx).kernelTransaction());
+                    if(!state.operationClaimed||!operation.equals(state.operationKey().id()))continue;
                     armed=false;throw new IllegalStateException("AUTH_FAILURE_INJECTED_COMMIT");
                 }
                 return null;

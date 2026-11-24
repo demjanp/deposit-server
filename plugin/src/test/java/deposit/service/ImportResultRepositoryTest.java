@@ -53,7 +53,11 @@ class ImportResultRepositoryTest {
 
     @Test void storesPagedNestedAndChunkedValuesAndSupportsExactLargeKeyLookup(){
         try(var tx=database.beginTx()){
-            var context=context(tx,actor);var repo=new ImportResultRepository(context);Map<String,Object> envelope=repo.envelope(resultId);Object lease=envelope.get("leaseId");assertEquals(ImportResultContract.FORMAT,envelope.get("format"));assertFalse(envelope.containsKey("objectMappings"));var receipt=new CoreRepository(tx,context.timestamp).receipt(namespace,operation);assertEquals(resultId,receipt.importResultId());
+            var context=context(tx,actor);var repo=new ImportResultRepository(context);Map<String,Object> envelope=repo.envelope(resultId);Object lease=envelope.get("leaseId");assertEquals(ImportResultContract.FORMAT,envelope.get("format"));assertFalse(envelope.containsKey("objectMappings"));var receipt=new CoreRepository(tx,context.timestamp).receipt(actor,namespace,operation);assertEquals(resultId,receipt.importResultId());
+            assertEquals("request-hash",receipt.requestHash());
+            assertNull(storage.operations.find(actor,namespace,operation));
+            assertNull(storage.operations.findReceipt(UUID.randomUUID().toString(),namespace,operation,null));
+            assertTrue(storage.operations.hasReceipt(namespace,operation,null));
             Map<String,Object> page=repo.page(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","cursor",null,"limit",10L));List<?> entries=(List<?>)page.get("entries");Map<String,Object> first=ValueCodec.map(entries.get(0));Map<String,Object> keyDescriptor=ValueCodec.map(first.get("key"));assertEquals("text",keyDescriptor.get("type"));assertTrue(((String)keyDescriptor.get("collection")).length()>10);
             assertThrows(ExceptionHandler.DepositException.class,()->repo.entry(Json.map("resultId",resultId,"leaseId",lease,"collection","nested","key",largeKey)));
             Map<String,Object> nestedText=null;for(Object raw:entries){Map<String,Object> entry=ValueCodec.map(raw);if("text".equals(ValueCodec.map(entry.get("key")).get("value")))nestedText=ValueCodec.map(entry.get("value"));}
@@ -70,11 +74,14 @@ class ImportResultRepositoryTest {
             rolledBackResult=(String)envelope.get("resultId");
             new CoreRepository(context).saveReceipt(context,namespace,"rollback",new Outcome(null,null,envelope));
             assertNull(storage.importResults.root(rolledBackResult,null));
-            assertNull(storage.receipts.find(actor,namespace,rolledBackOperation,null));
+            assertNull(storage.operations.findReceipt(actor,namespace,rolledBackOperation,null));
+            assertFalse(storage.operations.hasReceipt(namespace,rolledBackOperation,null));
+            assertEquals(rolledBackResult,new CoreRepository(context).receipt(actor,namespace,rolledBackOperation).importResultId());
             tx.rollback();
         }
         assertNull(storage.importResults.root(rolledBackResult,null));
-        assertNull(storage.receipts.find(actor,namespace,rolledBackOperation,null));
+        assertNull(storage.operations.findReceipt(actor,namespace,rolledBackOperation,null));
+        assertTrue(storage.operations.pending().isEmpty());
     }
 
     @Test void completedApplyResultWithPlanIdIsPersistedAndReplayedAsApplied(){
@@ -93,7 +100,7 @@ class ImportResultRepositoryTest {
         try(var tx=database.beginTx()){
             var context=context(tx,actor);
             var core=new CoreRepository(tx,context.timestamp);
-            var receipt=core.receipt(namespace,applyOperation);
+            var receipt=core.receipt(actor,namespace,applyOperation);
             assertEquals(envelope.get("resultId"),receipt.importResultId());
 
             assertEquals(withoutLease(envelope), withoutLease(new ImportResultRepository(context).envelope((String)envelope.get("resultId"))));
@@ -183,7 +190,7 @@ class ImportResultRepositoryTest {
             var rowMetadata=new LinkedHashMap<String,Object>();for(int i=0;i<600;i++)rowMetadata.put("source-"+i,Json.map("blank",i%2==0));
             var context=context(tx,actor);context.operationId=diagnosticOperation;var repository=new ImportResultRepository(context);
             var envelope=repository.save(diagnosticOperation,"analysis",null,7L,Json.map("conflicts",conflicts,"_tabularBlanks",rowMetadata));diagnosticResult=(String)envelope.get("resultId");assertEquals("IMPORT_CONFLICT",envelope.get("state"));
-            context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.receipt(namespace,diagnosticOperation).importResultId());assertNull(server.storage.importResults.root(diagnosticResult,server.operationalUnit(context.state.kernel)).plan());tx.commit();
+            context.revision=7L;var core=new CoreRepository(tx,context.timestamp);core.saveReceipt(context,namespace,"diagnostic-request",new Outcome(null,null,envelope));assertEquals(diagnosticResult,core.receipt(actor,namespace,diagnosticOperation).importResultId());assertNull(server.storage.importResults.root(diagnosticResult,server.operationalUnit(context.state.kernel)).plan());tx.commit();
         }catch(Exception failure){throw new AssertionError(failure);}
         try(var tx=database.beginTx()){
             var repository=new ImportResultRepository(context(tx,actor));Object lease=repository.envelope(diagnosticResult).get("leaseId");var first=repository.page(Json.map("resultId",diagnosticResult,"leaseId",lease,"collection","conflicts","cursor",null,"limit",1L));

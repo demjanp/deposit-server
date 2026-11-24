@@ -1,6 +1,6 @@
 package deposit.common;
 
-import deposit.repository.OperationAttemptRepository.Attempt;
+import deposit.repository.OperationRepository.Attempt;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
@@ -53,7 +53,7 @@ public final class UploadBinding {
 
     static boolean abandonedUpload(ServerContext server,String id,boolean bound) {
         if(stagingAbandoned(server,id,bound))return true;
-        return server.storage.attempts.uploadAttempts(id).stream().anyMatch(attempt->failedStep(server,attempt));
+        return server.storage.operations.uploadAttempts(id).stream().anyMatch(attempt->failedStep(server,attempt));
     }
 
     static boolean validContinuation(RequestContext c,String hash,String actor) {

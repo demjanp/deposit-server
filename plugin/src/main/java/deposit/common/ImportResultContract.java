@@ -1,7 +1,7 @@
 package deposit.common;
 
 import deposit.repository.ImportResultStore;
-import deposit.repository.OperationReceiptRepository;
+import deposit.repository.OperationRepository;
 
 /** Shared semantic discriminator for receipt-owned immutable import results. */
 public final class ImportResultContract {
@@ -12,7 +12,7 @@ public final class ImportResultContract {
     private ImportResultContract() {}
 
     /** Validates staging ownership before releasing a reservation. Collection leaves an atomic proof. */
-    static boolean verifiesResult(ImportResultStore store,OperationReceiptRepository.Receipt receipt,String namespace) {
+    static boolean verifiesResult(ImportResultStore store,OperationRepository.Receipt receipt,String namespace) {
         if(!namespace.equals(receipt.resultNamespace()) || receipt.importResultId()==null)return false;
         String scope="server".equals(receipt.scope())?"server":"namespace";
         String kind=receipt.resultKind();

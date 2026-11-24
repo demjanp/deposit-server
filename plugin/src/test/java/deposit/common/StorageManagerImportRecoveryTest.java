@@ -148,7 +148,7 @@ class StorageManagerImportRecoveryTest {
             server.sessionTime()+ImportResultContract.RETENTION,null,"{}"),null);
         storage.operational.write(0,db->{
             try(var insert=db.prepareStatement("""
-                    INSERT INTO operation_receipts(actor_id,scope,operation_id,request_hash,revision,administrative_mode,
+                    INSERT INTO operation_attempts(actor_id,scope,operation_id,input_hash,receipt_revision,administrative_mode,
                         import_result_id,result_kind,result_namespace_id,settled_at,id_time) VALUES (?,?,?,'hash',0,0,?,?,?,?, -1)
                     """)) {
                 insert.setString(1,actor);

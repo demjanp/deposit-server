@@ -131,7 +131,7 @@ class LongActionSessionExpiryTest {
         }
         assertNull(server.session(Json.hash(token)).mutationOwner);
         try(var tx=database.beginTx()) {
-            assertNull(new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC)).receipt("server",operation));
+            assertFalse(new CoreRepository(tx,ZonedDateTime.now(ZoneOffset.UTC)).hasReceipt("server",operation));
             assertNull(tx.findNode(Label.label("Namespace"),"name",name));
         }
         assertTrue(assertThrows(ExceptionHandler.DepositException.class,

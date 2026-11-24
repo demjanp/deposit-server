@@ -227,9 +227,10 @@ public final class ResourceRepository {
         var state=server.state(((InternalTransaction)tx).kernelTransaction());
         if(state.operationClaimed){
             state.kernel.assertOpen();
-            var intent=server.storage.admission.acquire("ocfl-publication",content.resourceId(),state.operationId,
-                "immutable-object-write",Map.of(files.root,0L),Json.map("phase","publish","actorId",state.operationActor,
-                    "receiptScope",state.operationScope,"resourceId",content.resourceId(),"storedFilename",content.storedFilename(),
+            var operation=state.operationKey();
+            var intent=server.storage.admission.acquire("ocfl-publication",content.resourceId(),operation.id(),
+                "immutable-object-write",Map.of(files.root,0L),Json.map("phase","publish","actorId",operation.actor(),
+                    "receiptScope",operation.scope(),"resourceId",content.resourceId(),"storedFilename",content.storedFilename(),
                     "bytes",content.bytes(),"checksum",content.checksum()));
             boolean[] committed={false};
             state.afterCommit.add(()->committed[0]=true);

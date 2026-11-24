@@ -82,8 +82,9 @@ final class TransactionLifecycle {
         if (state.bootstrapUser == null && state.pendingCommit == null && state.pendingRegistration == null) return;
         try {
             if(state.pendingRegistration!=null) {
-                server.storage.attempts.settleRegistration(state.pendingRegistration,committed,server.sessionTime());
-                if(committed==state.registrationCancellation)server.forgetOperationBinding(state.pendingRegistration);
+                server.storage.operations.settleRegistration(state.pendingRegistration,committed,server.sessionTime());
+                if(committed==state.registrationCancellation)
+                    server.forgetOperationBinding(state.pendingRegistration,state.pendingRegistrationBinding);
                 return;
             }
             server.storagePoint("operational-before-settlement");
@@ -91,7 +92,7 @@ final class TransactionLifecycle {
             else {
                 var unit=state.pendingCommit;
                 boolean outputIntent=!committed&&server.storage.admission.hasOutputIntent(unit.actor(),unit.scope(),unit.operation());
-                server.storage.operationalCommits.settle(unit.id(),committed,server.sessionTime(),state.operationCancelled(),outputIntent);
+                server.storage.operations.settle(unit.id(),committed,server.sessionTime(),state.operationCancelled(),outputIntent);
             }
         } catch (RuntimeException failure) {
             // The pending row remains the fence after the in-memory locks are released.

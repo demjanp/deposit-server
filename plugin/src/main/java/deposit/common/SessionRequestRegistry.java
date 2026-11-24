@@ -8,10 +8,8 @@ import org.neo4j.kernel.api.KernelTransaction;
 
 /** Sole owner of per-database sessions, active requests, session time and login throttling. */
 final class SessionRequestRegistry {
-    private record ActiveRequest(String actor, ServerContext.TxState state) {}
-
     private final ConcurrentMap<String, ServerContext.Session> sessions = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, ActiveRequest> requests = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ServerContext.TxState> requests = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Failures> failures = new ConcurrentHashMap<>();
     private volatile java.util.function.LongSupplier clock = System::currentTimeMillis;
 
@@ -25,16 +23,9 @@ final class SessionRequestRegistry {
     }
     boolean removeSession(String tokenHash,ServerContext.Session expected) {
         if(!sessions.remove(tokenHash,expected))return false;
-        requests.values().stream().map(ActiveRequest::state).filter(state->state.operationClaimed&&tokenHash.equals(state.tokenHash))
+        requests.values().stream().filter(state->state.operationClaimed&&tokenHash.equals(state.tokenHash))
             .forEach(ServerContext.TxState::signalOperationCancellation);
         return true;
-    }
-
-    void track(RequestContext context) {
-        ActiveRequest request = new ActiveRequest(context.actorId, context.state);
-        ActiveRequest old = requests.putIfAbsent(context.requestId, request);
-        if (old != null && !old.equals(request)) context.fail("VALIDATION_FAILED", "requestId is already active");
-        context.state.requestIds.add(context.requestId);
     }
 
     ServerContext.Session authenticateBolt(RequestContext context, String principal) {
@@ -80,7 +71,10 @@ final class SessionRequestRegistry {
         context.state.tokenHash = hash;
         context.session = session;
         context.actorId = session.actor;
-        track(context);
+        context.state.requestActor = session.actor;
+        var old = requests.putIfAbsent(context.requestId, context.state);
+        if (old != null && old != context.state) context.fail("VALIDATION_FAILED", "requestId is already active");
+        context.state.requestIds.add(context.requestId);
     }
 
     boolean touchBrowserSession(String token, ServerContext.Session expected) {
@@ -98,22 +92,22 @@ final class SessionRequestRegistry {
     }
 
     boolean cancel(String requestId, String actor, boolean administrator) {
-        ActiveRequest request = requests.get(requestId);
-        if (request == null) return false;
-        if (!administrator && !request.actor().equals(actor)) throw ExceptionHandler.fail("FORBIDDEN", "Cannot cancel another actor's request");
-        signal(request.state());
+        var state = requests.get(requestId);
+        if (state == null) return false;
+        if (!administrator && !state.requestActor.equals(actor)) throw ExceptionHandler.fail("FORBIDDEN", "Cannot cancel another actor's request");
+        signal(state);
         return true;
     }
 
     List<Map<String,Object>> activeRequests(String actor, boolean administrator, ServerContext.TxState caller) {
-        return requests.entrySet().stream().filter(e -> e.getValue().state() != caller && (administrator || e.getValue().actor().equals(actor)))
-            .map(e -> Json.map("requestId", e.getKey(), "actorId", e.getValue().actor(), "namespaceId", e.getValue().state().namespace)).toList();
+        return requests.entrySet().stream().filter(e -> e.getValue() != caller && (administrator || e.getValue().requestActor.equals(actor)))
+            .map(e -> Json.map("requestId", e.getKey(), "actorId", e.getValue().requestActor, "namespaceId", e.getValue().namespace)).toList();
     }
 
     boolean cancelSession(String tokenHash, ServerContext.TxState caller) {
         boolean cancelled = false;
-        for (ActiveRequest request : requests.values()) if (request.state() != caller && Objects.equals(tokenHash, request.state().tokenHash)) {
-            signal(request.state());
+        for (var state : requests.values()) if (state != caller && Objects.equals(tokenHash, state.tokenHash)) {
+            signal(state);
             cancelled = true;
         }
         return cancelled;
@@ -125,7 +119,7 @@ final class SessionRequestRegistry {
     }
 
     void completeRequests(ServerContext.TxState state) {
-        for (String requestId : state.requestIds) requests.computeIfPresent(requestId, (key, value) -> value.state() == state ? null : value);
+        for (String requestId : state.requestIds) requests.remove(requestId,state);
     }
 
     void revokeUser(String actor) { sessions.forEach((hash,session)->{if(session.actor.equals(actor))removeSession(hash,session);}); }

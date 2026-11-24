@@ -11,10 +11,9 @@ import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.impl.query.TransactionExecutionMonitor;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import deposit.repository.SchemaRepository;
-import deposit.repository.OperationAttemptRepository;
-import deposit.repository.OperationalCommitRepository;
-import deposit.repository.OperationAttemptRepository.Attempt;
-import deposit.repository.OperationAttemptRepository.Key;
+import deposit.repository.OperationRepository;
+import deposit.repository.OperationRepository.Attempt;
+import deposit.repository.OperationRepository.Key;
 import org.neo4j.kernel.api.net.NetworkConnectionTracker;
 
 /** Per-database state. No transaction or native entity is retained in a session. */
@@ -35,15 +34,18 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     private final TransactionLifecycle transactionLifecycle;
     private ServerContext(UUID databaseId) {this.databaseId=databaseId;this.transactionLifecycle=new TransactionLifecycle(this,databaseId,lifecycleLock);}
     private final SessionRequestRegistry sessionsAndRequests=new SessionRequestRegistry();
-    public record OperationBinding(String session,String connection,Map<String,Object> selectors) {}
-    private final Map<Key,OperationBinding> operationBindings=new ConcurrentHashMap<>();
-    private final Map<Key,TxState> operationWorkers=new ConcurrentHashMap<>();
+    public record OperationBinding(String session,String connection,Map<String,Object> selectors) {
+        public OperationBinding {
+            selectors=Collections.unmodifiableMap(new LinkedHashMap<>(selectors));
+        }
+    }
+    private record ActiveOperation(OperationBinding binding,TxState worker) {}
+    private final ConcurrentMap<Key,ActiveOperation> activeOperations=new ConcurrentHashMap<>();
     final Map<String, UploadBinding.Writer> stagingWriters = new ConcurrentHashMap<>();
     public void registerSession(String tokenHash, Session session) { sessionsAndRequests.register(tokenHash,session); }
     public Session session(String tokenHash) { return sessionsAndRequests.session(tokenHash); }
     public boolean removeSession(String tokenHash) { return sessionsAndRequests.removeSession(tokenHash); }
     public boolean removeSession(String tokenHash, Session expected) { return sessionsAndRequests.removeSession(tokenHash,expected); }
-    public void track(RequestContext c) { sessionsAndRequests.track(c); }
     void completeRequests(TxState state) { sessionsAndRequests.completeRequests(state); }
     public boolean cancel(String requestId,String actor,boolean administrator) { return sessionsAndRequests.cancel(requestId,actor,administrator); }
     public List<Map<String,Object>> activeRequests(String actor,boolean administrator,TxState caller) { return sessionsAndRequests.activeRequests(actor,administrator,caller); }
@@ -68,23 +70,33 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public GraphDatabaseAPI database() {return database;}
     public TxState activeTransaction(long sequence) { return transactionLifecycle.find(sequence); }
     public void registerOperation(TxState state,Attempt attempt,OperationBinding binding) {
-        storage.attempts.register(attempt);
+        storage.operations.register(attempt);
         state.pendingRegistration=attempt.key();
-        if(binding!=null)operationBindings.put(attempt.key(),binding);
+        state.pendingRegistrationBinding=binding;
+        if(binding!=null)activeOperations.put(attempt.key(),new ActiveOperation(binding,null));
     }
-    public OperationBinding operationBinding(Key key) { return operationBindings.get(key); }
+    public OperationBinding operationBinding(Key key) {
+        var entry=activeOperations.get(key);
+        return entry==null?null:entry.binding();
+    }
     public boolean cancelRegistration(TxState state,Key key) {
-        if(!storage.attempts.stageRegistrationCancellation(key))return false;
+        var binding=operationBinding(key);
+        if(!storage.operations.stageRegistrationCancellation(key))return false;
         state.pendingRegistration=key;
+        state.pendingRegistrationBinding=binding;
         state.registrationCancellation=true;
         return true;
     }
-    public TxState operationWorker(Key key) { return operationWorkers.get(key); }
-    public void forgetOperationBinding(Key key) { operationBindings.remove(key); }
+    public TxState operationWorker(Key key) {
+        var entry=activeOperations.get(key);
+        return entry==null?null:entry.worker();
+    }
+    void forgetOperationBinding(Key key,OperationBinding binding) {
+        activeOperations.computeIfPresent(key,(ignored,entry)->
+            entry.binding()==binding&&entry.worker()==null?null:entry);
+    }
     void completeOperation(TxState state) {
-        var key=new Key(state.operationActor,state.operationScope,state.operationId);
-        operationWorkers.remove(key,state);
-        forgetOperationBinding(key);
+        activeOperations.computeIfPresent(state.operationKey(),(key,entry)->entry.worker()==state?null:entry);
     }
     public void lockAttempt(KernelTransaction tx,Key key) {
         transactionLifecycle.lockCoordination(tx,"operation:"+key.actor()+"/"+key.scope()+"/"+key.id());
@@ -98,7 +110,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         long now = sessionTime();
         for (TxState state : transactionLifecycle.activeTransactions()) {
             if(state.completing.get())continue;
-            if (state.operationClaimed && (!sessionLive(state.tokenHash) || !connectionLive(state.operationConnection)))
+            if (state.operationClaimed && (!sessionLive(state.tokenHash) || !connectionLive(state.operationConnection())))
                 state.signalOperationCancellation();
             if (now >= state.tableReadDeadline) {
                 state.kernel.markForTermination(org.neo4j.kernel.api.exceptions.Status.Transaction.Terminated);
@@ -155,7 +167,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         TxState state=transactionLifecycle.find(internal.kernelTransaction().getTransactionSequenceNumber());
         if(state==null||state.tokenHash==null)return null;
         if(state.operationClaimed && (!state.operationFinal()
-                || !connectionLive(state.operationConnection) || stopping))
+                || !connectionLive(state.operationConnection()) || stopping))
             throw ExceptionHandler.fail("CANCELLED","Operation execution is no longer live before commit");
         Session session=sessionsAndRequests.session(state.tokenHash);
         if(session==null)throw ExceptionHandler.fail("AUTH_FAILED","Session revoked before commit");
@@ -190,36 +202,34 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if (storage == null) return;
         var state = transactionLifecycle.find(tx.getTransactionSequenceNumber());
         var unit = state == null ? null : state.pendingCommit;
-        storage.operationalCommits.requireSettled(kind, id, unit == null ? null : unit.id());
+        storage.operations.requireSettled(kind, id, unit == null ? null : unit.id());
     }
     public void beginBootstrap(TxState state, String user) {
         state.bootstrapUser = user;
         storage.operationalState.beginBootstrap(user);
     }
-    public void beginOperationalCommit(TxState state, String actor, String scope, String operation, String inputHash) {
-        boolean serverScope = scope.equals("server");
-        var unit = new OperationalCommitRepository.Unit(UUID.randomUUID().toString(), actor, scope, operation, inputHash,
-            serverScope ? "User" : "Namespace", serverScope ? actor : scope);
-        var key=new Key(actor,scope,operation);
-        if(operationWorkers.putIfAbsent(key,state)!=null)
-            throw ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Operation already has a worker");
-        try {
-            if(!storage.operationalCommits.begin(unit,sessionTime()))
+    public void beginOperationalCommit(TxState state,Key key,String inputHash,OperationBinding binding) {
+        boolean serverScope=key.scope().equals("server");
+        var unit=new OperationRepository.Unit(UUID.randomUUID().toString(),key.actor(),key.scope(),key.id(),inputHash,
+            serverScope?"User":"Namespace",serverScope?key.actor():key.scope());
+        activeOperations.compute(key,(ignored,entry)->{
+            if(entry!=null&&entry.worker()!=null)
+                throw ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Operation already has a worker");
+            if(entry==null||entry.binding()!=binding||!storage.operations.begin(unit,sessionTime()))
                 throw ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Registration expired or changed. Inspect the operation");
             state.pendingCommit=unit;
+            state.operationBinding=binding;
             state.operationClaimed=true;
-        } catch(RuntimeException failure) {
-            operationWorkers.remove(key,state);
-            throw failure;
-        }
+            return new ActiveOperation(binding,state);
+        });
     }
     public void prepareOperationalCommit(TxState state, Node owner, String outcome, String result) {
         var unit = state.pendingCommit;
-        storage.operationalCommits.prepare(unit, (String)owner.getProperty(OperationalCommitRepository.MARKER, null),
+        storage.operations.prepare(unit, (String)owner.getProperty(OperationRepository.MARKER, null),
             outcome, result);
     }
     public void writeOperationalMarker(TxState state, Node owner) {
-        owner.setProperty(OperationalCommitRepository.MARKER, state.pendingCommit.id());
+        owner.setProperty(OperationRepository.MARKER, state.pendingCommit.id());
     }
     public void lockSpatial(KernelTransaction tx) { transactionLifecycle.lockCoordination(tx,"spatial"); }
     public void lockExchange(KernelTransaction tx, String id) {
@@ -239,9 +249,9 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         if(owner==null)throw ExceptionHandler.fail("OUTCOME_UNKNOWN","Operation commit marker owner is unavailable");
         String id = UUID.randomUUID().toString();
         String kind = scope.equals("server") ? "User" : "Namespace";
-        var unit = new OperationalCommitRepository.Unit(id, request.actorId, scope, id, "",
+        var unit = new OperationRepository.Unit(id, request.actorId, scope, id, null,
             kind, (String)owner.getProperty("id"));
-        storage.operationalCommits.beginWorkflow(unit);
+        storage.operations.beginWorkflow(unit);
         state.pendingCommit = unit;
         prepareOperationalCommit(state, owner, "COMPLETED_NO_DOMAIN_WRITE", "{}");
         writeOperationalMarker(state, owner);
@@ -268,7 +278,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
             storage = new StorageManager(this, db);
             SchemaRepository.initialize(db);
             if (restoredAt != null)
-                storage.operationalState.advanceAdmission(Math.addExact(restoredAt, OperationAttemptRepository.FUTURE_SKEW), -1);
+                storage.operationalState.advanceAdmission(Math.addExact(restoredAt, OperationRepository.FUTURE_SKEW), -1);
             storage.recoverCommitBoundary();
             storage.verifyBootstrap();
             HistoryLifecycle.recover(this);
@@ -393,6 +403,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
     public static final class TxState {
         public final KernelTransaction kernel;
         public String tokenHash,namespace;
+        String requestActor;
         // These facts are populated only after the authorization fence is acquired.
         public Node protectedActor;
         public long authorizationGeneration;
@@ -412,7 +423,7 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         final java.util.concurrent.atomic.AtomicBoolean completing=new java.util.concurrent.atomic.AtomicBoolean();
         volatile Throwable completionFailure;
         String bootstrapUser;
-        OperationalCommitRepository.Unit pendingCommit;
+        OperationRepository.Unit pendingCommit;
         public final List<Runnable> afterCommit=new ArrayList<>();
         public final List<Runnable> release=new ArrayList<>();
         final Set<String> coordinationKeys=new HashSet<>();
@@ -422,12 +433,14 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         public final Set<String> requestIds=ConcurrentHashMap.newKeySet();
         public volatile boolean operationClaimed;
         Key pendingRegistration;
+        OperationBinding pendingRegistrationBinding;
         boolean registrationCancellation;
         public volatile boolean operationSettled;
-        public String operationActor,operationScope,operationId;
+        private OperationBinding operationBinding;
+        public Key operationKey() { return pendingCommit.key(); }
+        public String operationConnection() { return operationBinding.connection(); }
         public volatile long tableReadDeadline=Long.MAX_VALUE;
         public String tableReadConnection;
-        public String operationConnection;
         private final java.util.concurrent.atomic.AtomicInteger operationGate=new java.util.concurrent.atomic.AtomicInteger();
         public boolean enterOperationFinal() { return operationGate.compareAndSet(0,1); }
         public boolean operationFinal() { return operationGate.get()==1; }

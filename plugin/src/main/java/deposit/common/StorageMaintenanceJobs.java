@@ -105,7 +105,7 @@ final class StorageMaintenanceJobs {
                 String path="staging/exchange/"+RequestContext.uuid(id);
                 files.deleteOwnedStagingTree(removing?path:path+"/input");
                 boolean done=exchange.deleteMembers(id)<256;
-                if(done&&removing)done=server.storage.attempts.cleanUpload(id,true);
+                if(done&&removing)done=server.storage.operations.cleanUpload(id,true);
                 stage=stage.cleanup(stage.state(),stage.cleanupAfter(),stage.removeAfter(),!done && stage.inputCleanup(),
                     removing && done);
                 if(!"uploading".equals(stage.state())) server.stagingWriters.remove(id);
@@ -218,14 +218,14 @@ final class StorageMaintenanceJobs {
             String message="Abandoned upload ownership or reachability requires verification";
             server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),null,false,true,message),"");
             diagnostic.accept(message);
-            server.storage.attempts.cleanUpload(transfer.id(),false);
+            server.storage.operations.cleanUpload(transfer.id(),false);
             return;
         }
         String expected="staging/"+transfer.namespace()+"/"+transfer.id()+".part";
         if(transfer.stagingPath()!=null&&!expected.equals(transfer.stagingPath())) {
             String message="Abandoned upload staging ownership requires verification";
             server.storage.transfers.save(transfer.cleanup(transfer.stagingPath(),null,false,true,message),"");
-            server.storage.attempts.cleanUpload(transfer.id(),false);
+            server.storage.operations.cleanUpload(transfer.id(),false);
             diagnostic.accept(message);
             return;
         }
@@ -237,7 +237,7 @@ final class StorageMaintenanceJobs {
         if(content.get().exists(id))throw new IOException("Abandoned upload purge incomplete");
         if(transfer.admissionId()!=null)server.storage.admission.closeIfPresent(transfer.admissionId());
         server.storage.transfers.save(transfer.cleanup(null,null,true,false,null),"");
-        server.storage.attempts.cleanUpload(transfer.id(),true);
+        server.storage.operations.cleanUpload(transfer.id(),true);
         UploadBinding.forgetStaging(server,transfer.id());
     }
 
@@ -338,7 +338,7 @@ final class StorageMaintenanceJobs {
             if(transfer!=null) {
                 if(transfer.admissionId()!=null)server.storage.admission.closeIfPresent(transfer.admissionId());
                 server.storage.transfers.save(transfer.cleanup(null,null,true,false,null),"");
-                server.storage.attempts.cleanUpload(transfer.id(),true);
+                server.storage.operations.cleanUpload(transfer.id(),true);
                 UploadBinding.forgetStaging(server,transfer.id());
             }
             if(resource.completed()!=null) {
@@ -383,7 +383,7 @@ final class StorageMaintenanceJobs {
             transfer=transfers.transfer(id);
             if(transfer==null||transfer.expires()>now||transfer.stagingPath()!=null||transfer.quarantined()
                     ||transfer.deleting()!=null||!transfer.collected()&&!"finished".equals(transfer.state()))continue;
-            server.storage.attempts.cleanUpload(id,true);
+            server.storage.operations.cleanUpload(id,true);
             if(transfer.admissionId()!=null)server.storage.admission.closeIfPresent(transfer.admissionId());
             UploadBinding.forgetStaging(server,id);
             transfers.delete(id);

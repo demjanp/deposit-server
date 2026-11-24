@@ -157,7 +157,7 @@ class ImportHistoryActionTest {
         try(var tx=database.beginTx()){
             try(var namespaces=tx.findNodes(Label.label("Namespace"),"name","History Resource Clone")){assertEquals(0,namespaces.stream().count());}
             for(String label:List.of("DepositHistoryEpoch","Revision","DepositSnapshot"))try(var records=tx.findNodes(Label.label(label))){assertEquals(0,records.stream().count(),label+" must roll back with the failed clone");}
-            assertNull(server.storage.receipts.find(actor,"server",failedOperation,null));
+            assertNull(server.storage.operations.findReceipt(actor,"server",failedOperation,null));
             try(var resources=tx.findNodes(Label.label("DResource"),"filename","historical-only.bin")){assertEquals(0,resources.stream().count());}
         }
         Map<String,Object> envelope=clonePackage(UUID.randomUUID().toString(),ExchangeTestFixture.receive(server,database,actor,"server",archive));

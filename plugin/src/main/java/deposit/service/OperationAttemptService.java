@@ -2,10 +2,10 @@ package deposit.service;
 
 import deposit.common.*;
 import deposit.common.Results.*;
-import deposit.repository.OperationAttemptRepository;
-import deposit.repository.OperationAttemptRepository.Attempt;
-import deposit.repository.OperationAttemptRepository.Key;
-import deposit.repository.OperationAttemptRepository.Source;
+import deposit.repository.OperationRepository;
+import deposit.repository.OperationRepository.Attempt;
+import deposit.repository.OperationRepository.Key;
+import deposit.repository.OperationRepository.Source;
 import java.util.*;
 import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
@@ -22,12 +22,12 @@ final class OperationAttemptService extends BaseService {
     private static final Set<String> EXCHANGE_STEPS = Set.of("deposit.exchange.uploadChunk","deposit.exchange.finishUpload","deposit.exchange.abortUpload");
     private static final Set<String> SUMMARY_KEYS = Set.of("id", "namespaceId", "revisionId", "targetRevision",
         "planId", "resultId", "uploadId", "resourceId", "packageId", "tableId", "pruneId", "nextOffset", "bytes", "changed","grant","sha256","expiresAt","memberCount","member","chunkBytes","checksum","state","aborted");
-    private final OperationAttemptRepository attempts;
+    private final OperationRepository attempts;
     private final SessionActionScope scopes;
 
     OperationAttemptService(RequestContext c) {
         super(c);
-        attempts = c.server.storage.attempts;
+        attempts = c.server.storage.operations;
         scopes = new SessionActionScope(c);
     }
 
@@ -52,7 +52,7 @@ final class OperationAttemptService extends BaseService {
 
     Map<String,Object> begin(Map<String,Object> request) {
         separate();
-        String id = OperationAttemptRepository.id(request.get("operationId"));
+        String id = OperationRepository.id(request.get("operationId"));
         String scope = scope(request.get("scope"));
         String procedure = string(request.get("procedure"));
         var spec = ProcedureCatalog.spec(procedure);
@@ -90,7 +90,7 @@ final class OperationAttemptService extends BaseService {
         Long revision=scopes.operational(procedure)?null:scopes.baseline(scope);
         Long namespaceRevision=procedure.equals("deposit.delete.namespace")?scopes.baseline(namespace):null;
         attempt=new Attempt(key,procedure,hash,namespace,role,revision,namespaceRevision,source,uploadId,
-            OperationAttemptRepository.idTime(id)+OperationAttemptRepository.RETENTION,"REGISTERED",now,"none",null,null);
+            OperationRepository.idTime(id)+OperationRepository.RETENTION,"REGISTERED",now,"none",null,null);
         c.server.registerOperation(c.state,attempt,new ServerContext.OperationBinding(c.state.tokenHash,connection,bindings));
         return status(attempt,id,scope,false);
     }
@@ -103,7 +103,7 @@ final class OperationAttemptService extends BaseService {
     }
 
     void claim(String procedure, List<Object> arguments, String operationScope) {
-        String id = OperationAttemptRepository.id(c.operationId);
+        String id = OperationRepository.id(c.operationId);
         c.actionScope = operationScope;
         c.operational = scopes.operational(procedure);
         c.inputHash = fingerprint(procedure, arguments);
@@ -123,15 +123,11 @@ final class OperationAttemptService extends BaseService {
         authorize(procedure,saved.authorizationScope(),saved.role(),true);
         checkSource(saved,true);
         writer(procedure,arguments,operationScope);
-        c.state.operationConnection=connection;
-        c.state.operationActor=c.actorId;
-        c.state.operationScope=operationScope;
-        c.state.operationId=id;
         try(var claim=c.server.database().beginTx()) {
             c.server.lockAttempt(((InternalTransaction)claim).kernelTransaction(),key);
             if(!registrationLive(saved,c.server.sessionTime()))
                 c.fail("OPERATION_NOT_CLAIMABLE","Execution binding expired or changed. Inspect the operation");
-            c.server.beginOperationalCommit(c.state,c.actorId,operationScope,id,c.inputHash);
+            c.server.beginOperationalCommit(c.state,key,c.inputHash,binding);
             claim.commit();
         }
         c.expectedRevision=saved.expectedRevision();
@@ -151,7 +147,7 @@ final class OperationAttemptService extends BaseService {
         var attempt=attempts.find(key);
         if(attempt==null)c.fail("OUTCOME_UNKNOWN","Operation claim is unavailable");
         if(!"RUNNING".equals(attempt.state())||c.server.operationWorker(key)!=c.state
-                || !c.server.connectionLive(c.state.operationConnection))
+                || !c.server.connectionLive(c.state.operationConnection()))
             c.fail("CANCELLED","Operation cancelled before the commit boundary");
         String procedure=c.procedure;
         String outcome=domainWrite(procedure)?"COMMITTED":"COMPLETED_NO_DOMAIN_WRITE";
@@ -166,7 +162,7 @@ final class OperationAttemptService extends BaseService {
     }
 
     Map<String,Object> inspect(Map<String,Object> request,boolean cancel) {
-        String id=OperationAttemptRepository.id(request.get("operationId"));
+        String id=OperationRepository.id(request.get("operationId"));
         String scope=scope(request.get("scope"));
         var key=new Key(c.actorId,scope,id);
         var attempt=attempts.find(key);
@@ -179,7 +175,7 @@ final class OperationAttemptService extends BaseService {
                 long now=c.server.sessionTime();
                 if(!c.server.storage.operationalState.admit(id,now))return status(null,id,scope,false);
                 attempt=new Attempt(key,null,null,null,null,null,null,null,null,
-                    OperationAttemptRepository.idTime(id)+OperationAttemptRepository.RETENTION,
+                    OperationRepository.idTime(id)+OperationRepository.RETENTION,
                     "CANCELLED_ROLLED_BACK",now,"none",null,null);
                 c.server.registerOperation(c.state,attempt,null);
                 return status(attempt,id,scope,false);
@@ -190,7 +186,7 @@ final class OperationAttemptService extends BaseService {
             return status(null,id,scope,false);
         }
         boolean sanitized=checkAccess(attempt,scope,cancel);
-        if(cancel&&OperationAttemptRepository.open(attempt.state())) {
+        if(cancel&&OperationRepository.open(attempt.state())) {
             if(!c.state.selection)separate();
             var worker=c.server.operationWorker(key);
             if(worker!=null)worker.signalOperationCancellation();
@@ -198,7 +194,7 @@ final class OperationAttemptService extends BaseService {
             attempt=attempts.find(key);
             if(attempt==null)return status(null,id,scope,false);
             sanitized=checkAccess(attempt,scope,true);
-            if(OperationAttemptRepository.open(attempt.state())) {
+            if(OperationRepository.open(attempt.state())) {
                 worker=c.server.operationWorker(key);
                 boolean live=worker!=null&&worker.operationClaimed&&!worker.operationSettled;
                 if("REGISTERED".equals(attempt.state())) {
@@ -267,7 +263,7 @@ final class OperationAttemptService extends BaseService {
                 catch(ExceptionHandler.DepositException denied) {code="RESULT_UNAVAILABLE";}
             }
         } else if(result!=null && state.equals("COMPLETED_NO_DOMAIN_WRITE")) {
-            if(now-attempt.updated()>=OperationAttemptRepository.RETENTION) {
+            if(now-attempt.updated()>=OperationRepository.RETENTION) {
                 code="RESULT_EXPIRED";
                 result=null;
             } else if(Set.of("deposit.exchange.export","deposit.exchange.finishUpload","deposit.get.data","deposit.get.namespaceData").contains(attempt.procedure())

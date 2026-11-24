@@ -58,13 +58,13 @@ public final class OperationalStateRepository {
     }
 
     public boolean admit(String operationId, long now) {
-        long time = OperationAttemptRepository.idTime(operationId);
+        long time = OperationRepository.idTime(operationId);
         return store.write(0, db -> {
             var state = admission(db);
             if (now < state.observedTime)
                 throw ExceptionHandler.fail("OUTCOME_UNKNOWN", "Operation admission is suspended until the server clock settles");
-            if (time <= Math.max(state.rejectedThrough, now - OperationAttemptRepository.RETENTION)
-                    || time > now + OperationAttemptRepository.FUTURE_SKEW) return false;
+            if (time <= Math.max(state.rejectedThrough, now - OperationRepository.RETENTION)
+                    || time > now + OperationRepository.FUTURE_SKEW) return false;
             advance(db, state.rejectedThrough, now);
             return true;
         });

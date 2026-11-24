@@ -2,13 +2,11 @@ package deposit.common;
 
 import deposit.repository.CoreRepository;
 import deposit.repository.ResourceRepository;
-import deposit.repository.OperationAttemptRepository;
-import deposit.repository.OperationalCommitRepository;
+import deposit.repository.OperationRepository;
 import deposit.repository.OperationalStateRepository;
 import deposit.repository.ExchangeRepository;
 import deposit.repository.ExportGrantRepository;
 import deposit.repository.ImportResultStore;
-import deposit.repository.OperationReceiptRepository;
 import deposit.repository.StagedTableRepository;
 import deposit.repository.ImportPlanRepository;
 import deposit.repository.ResourceTransferStore;
@@ -34,19 +32,17 @@ public final class StorageManager implements AutoCloseable {
     public final StorageAdmission admission;
     final OperationalStore operational;
     public final OperationalStateRepository operationalState;
-    public final OperationalCommitRepository operationalCommits;
+    public final OperationRepository operations;
     public final ExchangeRepository exchange;
     public final ExportGrantRepository exportGrants;
     public final ImportResultStore importResults;
-    public final OperationReceiptRepository receipts;
-    public final OperationAttemptRepository attempts;
     public final StagedTableRepository tables;
     public final ImportPlanRepository importPlans;
     public final ResourceTransferStore transfers;
     public final PruneRepository pruning;
     private final ServerContext server;
     private final GraphDatabaseAPI db;
-    private final OperationMaintenance operations;
+    private final OperationMaintenance operationMaintenance;
     private final StorageMaintenanceJobs jobs;
     private String transferCursor="";
     private final ScheduledExecutorService worker = Executors.newScheduledThreadPool(2, r -> {
@@ -55,7 +51,7 @@ public final class StorageManager implements AutoCloseable {
     public volatile String diagnostic;
 
     public StorageManager(ServerContext server, GraphDatabaseAPI db) {
-        operations = new OperationMaintenance(server, db);
+        operationMaintenance = new OperationMaintenance(server, db);
         this.server = server;
         this.db = db;
         for (Path directory : List.of(db.databaseLayout().databaseDirectory(), db.databaseLayout().getTransactionLogsDirectory())) {
@@ -74,12 +70,10 @@ public final class StorageManager implements AutoCloseable {
             throw new IllegalStateException("Cannot initialize operational storage", e);
         }
         operationalState = new OperationalStateRepository(operational);
-        operationalCommits = new OperationalCommitRepository(operational);
+        operations = new OperationRepository(operational);
         exchange = new ExchangeRepository(operational);
         exportGrants = new ExportGrantRepository(operational);
         importResults = new ImportResultStore(operational);
-        receipts = new OperationReceiptRepository(operational);
-        attempts = new OperationAttemptRepository(operational);
         tables = new StagedTableRepository(operational);
         importPlans = new ImportPlanRepository(operational);
         transfers = new ResourceTransferStore(operational);
@@ -138,13 +132,13 @@ public final class StorageManager implements AutoCloseable {
             operationalState.settleBootstrap(bootstrap.pendingUser(), committed);
         }
 
-        for (var unit : operationalCommits.pending()) {
+        for (var unit : operations.pending()) {
             boolean committed = false;
             if (unit.prepared()) {
                 try (var tx = db.beginTx()) {
                     Node owner = tx.findNode(org.neo4j.graphdb.Label.label(unit.ownerKind()), "id", unit.ownerId());
                     if (owner == null) throw new IllegalStateException("Operational commit marker owner unavailable");
-                    Object marker = owner.getProperty(OperationalCommitRepository.MARKER, null);
+                    Object marker = owner.getProperty(OperationRepository.MARKER, null);
                     committed = unit.id().equals(marker);
                     if (!committed && !Objects.equals(unit.previousMarker(), marker))
                         throw new IllegalStateException("Operational commit marker has unexpected identity");
@@ -152,7 +146,7 @@ public final class StorageManager implements AutoCloseable {
             }
             var key=unit.key();
             boolean outputIntent=!committed&&admission.hasOutputIntent(key.actor(),key.scope(),key.id());
-            operationalCommits.settle(unit.id(),committed,server.sessionTime(),false,outputIntent);
+            operations.settle(unit.id(),committed,server.sessionTime(),false,outputIntent);
         }
     }
 
@@ -180,7 +174,7 @@ public final class StorageManager implements AutoCloseable {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(50);
         try{deposit.repository.HistoryWorkspace.recover(files.path("staging/imports"));}
         catch(java.io.IOException failure){throw new IllegalStateException("Cannot reclaim private history indexes",failure);}
-        operations.recover();
+        operationMaintenance.recover();
         try { admission.reconcile(this::reconcileReservation); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot reconcile storage reservations", e); }
         for (String id : pruning.work()) { jobs.collect(id); jobs.collect(id); }
@@ -194,7 +188,7 @@ public final class StorageManager implements AutoCloseable {
         }
         try { admission.reconcile(this::reconcileOutputIntent); }
         catch (java.io.IOException e) { throw new IllegalStateException("Cannot settle OCFL write intents", e); }
-        operations.finishCleanup();
+        operationMaintenance.finishCleanup();
         jobs.discoverOrphans();
         // Import apply publishes immutable OCFL objects before its Neo4j transaction commits.
         // Only after orphan discovery and interrupted OCFL work recovery can a missing receipt
@@ -223,8 +217,8 @@ public final class StorageManager implements AutoCloseable {
         try(var tx=db.beginTx()){
             if(exchange.hasStage(reservation.ownerId))
                 return StorageAdmission.OwnerState.uncertain();
-            var attempt=attempts.find(actor,scope,reservation.operationId);
-            if(attempt==null||OperationAttemptRepository.open(attempt.state()))
+            var attempt=operations.find(actor,scope,reservation.operationId);
+            if(attempt==null||OperationRepository.open(attempt.state()))
                 return StorageAdmission.OwnerState.uncertain();
             files.deleteOwnedStagingTree(path);
             return StorageAdmission.OwnerState.absent();
@@ -238,8 +232,8 @@ public final class StorageManager implements AutoCloseable {
                 || !reservation.ownerId.equals(RequestContext.uuid(reservation.ownerId)))
             return StorageAdmission.OwnerState.uncertain();
         try(var tx=db.beginTx()){
-            var attempt=attempts.find(actor,scope,reservation.operationId);
-            if(attempt==null||OperationAttemptRepository.open(attempt.state()))return StorageAdmission.OwnerState.uncertain();
+            var attempt=operations.find(actor,scope,reservation.operationId);
+            if(attempt==null||OperationRepository.open(attempt.state()))return StorageAdmission.OwnerState.uncertain();
             files.deleteOwnedStagingTree("staging/exports/attempt-"+reservation.ownerId);
             return StorageAdmission.OwnerState.absent();
         }
@@ -254,8 +248,8 @@ public final class StorageManager implements AutoCloseable {
             return StorageAdmission.OwnerState.uncertain();
         try(var tx=db.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
-            var attempt=attempts.find(actor,scope,reservation.operationId);
-            if(attempt==null||OperationAttemptRepository.open(attempt.state()))return StorageAdmission.OwnerState.uncertain();
+            var attempt=operations.find(actor,scope,reservation.operationId);
+            if(attempt==null||OperationRepository.open(attempt.state()))return StorageAdmission.OwnerState.uncertain();
             if(importPlans.hasPath(path))return StorageAdmission.OwnerState.uncertain();
             Files.deleteIfExists(files.path(path));
             return StorageAdmission.OwnerState.absent();
@@ -271,10 +265,10 @@ public final class StorageManager implements AutoCloseable {
         String base="staging/tables/"+reservation.ownerId;
         try(var tx=db.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
-            var attempt=attempts.find(actor,scope,reservation.operationId);
+            var attempt=operations.find(actor,scope,reservation.operationId);
             if(attempt==null)return StorageAdmission.OwnerState.uncertain();
             String state=attempt.state();
-            if(OperationAttemptRepository.open(state))return StorageAdmission.OwnerState.uncertain();
+            if(OperationRepository.open(state))return StorageAdmission.OwnerState.uncertain();
             var table=tables.table(reservation.ownerId);
             if(state.equals("COMPLETED_NO_DOMAIN_WRITE")){
                 if(table==null||!actor.equals(table.actor())||!scope.equals(table.namespace())
@@ -305,7 +299,7 @@ public final class StorageManager implements AutoCloseable {
         String resource=reservation.ownerId;
         try(var tx=db.beginTx()){
             var core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
-            var attempt=attempts.find(actor,scope,reservation.operationId);
+            var attempt=operations.find(actor,scope,reservation.operationId);
             if(attempt==null)return StorageAdmission.OwnerState.uncertain();
             String status=attempt.state();
             var resourceState=new ResourceRepository(tx,core).state(resource);
@@ -330,7 +324,7 @@ public final class StorageManager implements AutoCloseable {
             try{content.verify(expected);}
             catch(java.io.IOException corruption){
                 diagnostic="Quarantined OCFL write intent failed fixity verification";
-                attempts.cleanup(attempt,"failed");
+                operations.cleanup(attempt,"failed");
                 tx.commit();
                 return StorageAdmission.OwnerState.uncertain();
             }
@@ -426,7 +420,7 @@ public final class StorageManager implements AutoCloseable {
         try(var tx=db.beginTx()){
             CoreRepository core=new CoreRepository(tx,ZonedDateTime.now(java.time.ZoneOffset.UTC));
             var receipt=core.receipt(actor,receiptScope,reservation.operationId);
-            if(receipt==null)return core.receipt(receiptScope,reservation.operationId)==null
+            if(receipt==null)return !core.hasReceipt(receiptScope,reservation.operationId)
                 ?StorageAdmission.OwnerState.absent():StorageAdmission.OwnerState.uncertain();
             if(!receiptScope.equals(receipt.scope())
                 ||!reservation.operationId.equals(receipt.operation()))
@@ -476,7 +470,7 @@ public final class StorageManager implements AutoCloseable {
 
     private void tick() {
         try {
-            operations.tick();
+            operationMaintenance.tick();
             jobs.expireImportPlans(); jobs.expireImportResults(); jobs.expireTables();
             jobs.expireExchange();
             exportGrants.prune(server.sessionTime());
@@ -497,7 +491,7 @@ public final class StorageManager implements AutoCloseable {
             // Runtime cleanup is safe only when a durable receipt proves the import transaction committed.
             admission.reconcileSettled(reservation->Set.of("ocfl-publication","tabular-load","import-plan","export-scratch","exchange-stage").contains(reservation.ownerKind)
                 ?reconcileOutputIntent(reservation):reconcileRuntimeImportWrite(reservation));
-            operations.finishCleanup();
+            operationMaintenance.finishCleanup();
         } catch (Exception e) { diagnostic = "Resource maintenance pending: " + e.getClass().getSimpleName(); }
     }
 }

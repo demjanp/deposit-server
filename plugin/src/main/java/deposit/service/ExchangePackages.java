@@ -93,7 +93,7 @@ final class ExchangePackages extends BaseService {
         UploadBinding.requireUpload(c,stage.id(),stage.writerBound());
         if(c.state.operationClaimed)c.checkSourceAuthorization=()->UploadBinding.requireUpload(c,stage.id(),stage.writerBound());
         if(!abort) {
-            for(var attempt:c.server.storage.attempts.uploadAttempts(stage.id())) {
+            for(var attempt:c.server.storage.operations.uploadAttempts(stage.id())) {
                 if(!Objects.equals(c.operationId,attempt.key().id()) && UploadBinding.failedStep(c.server,attempt))
                     throw ExceptionHandler.fail("UPLOAD_FENCED","Exchange upload was interrupted. Start a new upload");
             }

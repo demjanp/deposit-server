@@ -9,8 +9,7 @@ import java.util.Set;
 import deposit.repository.ExchangeRepository;
 import deposit.repository.ExportGrantRepository;
 import deposit.repository.ImportResultStore;
-import deposit.repository.OperationReceiptRepository;
-import deposit.repository.OperationAttemptRepository;
+import deposit.repository.OperationRepository;
 import deposit.repository.StagedTableRepository;
 import deposit.repository.ImportPlanRepository;
 import deposit.repository.ResourceTransferStore;
@@ -21,7 +20,7 @@ import org.neo4j.storageengine.api.StoreId;
 
 /** The private database shared by Deposit's operational repositories. */
 public final class OperationalStore implements AutoCloseable {
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final Set<PosixFilePermission> PRIVATE = PosixFilePermissions.fromString("rwx------");
     private final Path path;
     private final StorageAdmission admission;
@@ -132,11 +131,10 @@ public final class OperationalStore implements AutoCloseable {
                     observed_time INTEGER NOT NULL DEFAULT -1
                 ) STRICT
                 """);
-            OperationAttemptRepository.initialize(sql);
+            OperationRepository.initialize(sql);
             ExchangeRepository.initialize(sql);
             ExportGrantRepository.initialize(sql);
             ImportResultStore.initialize(sql);
-            OperationReceiptRepository.initialize(sql);
             StagedTableRepository.initialize(sql);
             ImportPlanRepository.initialize(sql);
             ResourceTransferStore.initialize(sql);

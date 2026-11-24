@@ -379,11 +379,15 @@ public final class CoreRepository implements CoreProjectionRepository.Access {
         try(var edges=node.getRelationships()) {for(var rel:edges) {if(rel.hasProperty("id"))remove(rel,deleted);else rel.delete();}}
         node.delete();
     }
-    public OperationReceiptRepository.Receipt receipt(String scope,String operation) {return receipt(null,scope,operation);}
-    public OperationReceiptRepository.Receipt receipt(String actor,String scope,String operation) {
+    public boolean hasReceipt(String scope,String operation) {
         var internal=(InternalTransaction)tx;
         var server=ServerContext.forDatabase(internal.getDatabaseId());
-        return server.storage.receipts.find(actor,scope,operation,server.operationalUnit(internal.kernelTransaction()));
+        return server.storage.operations.hasReceipt(scope,operation,server.operationalUnit(internal.kernelTransaction()));
+    }
+    public OperationRepository.Receipt receipt(String actor,String scope,String operation) {
+        var internal=(InternalTransaction)tx;
+        var server=ServerContext.forDatabase(internal.getDatabaseId());
+        return server.storage.operations.findReceipt(actor,scope,operation,server.operationalUnit(internal.kernelTransaction()));
     }
     public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome) {
         saveReceipt(c,scope,hash,outcome,null);
@@ -391,7 +395,7 @@ public final class CoreRepository implements CoreProjectionRepository.Access {
     public void saveReceipt(RequestContext c,String scope,String hash,Outcome outcome,String deletedNamespace) {
         var owner=scope.equals("server")?find("User","id",c.actorId):namespace(scope);
         String unit=c.server.prepareWorkflowCommit(c,scope,owner);
-        c.server.storage.receipts.save(c,scope,hash,outcome,deletedNamespace,unit);
+        c.server.storage.operations.saveReceipt(c,scope,hash,outcome,deletedNamespace,unit);
     }
     public boolean hasUsers() {
         try (var users = tx.findNodes(Label.label("User"))) { return users.hasNext(); }

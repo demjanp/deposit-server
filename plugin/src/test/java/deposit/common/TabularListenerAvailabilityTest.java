@@ -102,8 +102,8 @@ class TabularListenerAvailabilityTest {
             var counts=new ArrayList<Long>();
             counts.add(resources);
             try(var sql=db.createStatement()){
-                for(String table:List.of("resource_transfers","export_grants","operation_receipts"))
-                    try(var rows=sql.executeQuery("SELECT count(*) FROM "+table)){assertTrue(rows.next());counts.add(rows.getLong(1));}
+                for(String source:List.of("resource_transfers","export_grants","operation_attempts WHERE receipt_revision IS NOT NULL"))
+                    try(var rows=sql.executeQuery("SELECT count(*) FROM "+source)){assertTrue(rows.next());counts.add(rows.getLong(1));}
             }
             return counts;
         });
@@ -147,7 +147,7 @@ class TabularListenerAvailabilityTest {
         downloads.stopAccepting();
         assertTrue(server.storage.content.exists((String)result.get("resourceId")));
         try(var tx=database.beginTx()){
-            var receipt=server.storage.receipts.find(actor,namespace,operation,null);
+            var receipt=server.storage.operations.findReceipt(actor,namespace,operation,null);
             assertNotNull(receipt);
         }
     }

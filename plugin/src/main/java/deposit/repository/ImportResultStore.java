@@ -260,19 +260,8 @@ public final class ImportResultStore {
 
     public void deleteRoot(Root result) {
         store.write(0, db -> {
-            try (var receipt = db.prepareStatement("""
-                    UPDATE operation_receipts SET result_collected=1
-                    WHERE actor_id=? AND scope=? AND operation_id=? AND import_result_id=?
-                      AND result_namespace_id=? AND result_kind=? AND unit_id IS NULL
-                    """);
-                 var delete = db.prepareStatement("DELETE FROM import_results WHERE id=? AND unit_id IS NULL")) {
-                receipt.setString(1, result.actor());
-                receipt.setString(2, "server".equals(result.scope()) ? "server" : result.namespace());
-                receipt.setString(3, result.operation());
-                receipt.setString(4, result.id());
-                receipt.setString(5, result.namespace());
-                receipt.setString(6, result.kind());
-                receipt.executeUpdate();
+            OperationRepository.markResultCollected(db,result);
+            try (var delete = db.prepareStatement("DELETE FROM import_results WHERE id=? AND unit_id IS NULL")) {
                 delete.setString(1, result.id());
                 delete.executeUpdate();
             }

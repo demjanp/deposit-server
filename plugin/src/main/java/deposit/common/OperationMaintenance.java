@@ -1,8 +1,7 @@
 package deposit.common;
 
-import deposit.repository.OperationAttemptRepository;
-import deposit.repository.OperationAttemptRepository.Key;
-import deposit.repository.OperationAttemptRepository.RetentionCursor;
+import deposit.repository.OperationRepository.Key;
+import deposit.repository.OperationRepository.RetentionCursor;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 
@@ -11,7 +10,7 @@ final class OperationMaintenance {
     private final ServerContext server;
     private final GraphDatabaseAPI database;
     private Key after;
-    private RetentionCursor attemptCursor,receiptCursor;
+    private RetentionCursor retentionCursor;
 
     OperationMaintenance(ServerContext server,GraphDatabaseAPI database) {
         this.server=server;
@@ -19,7 +18,7 @@ final class OperationMaintenance {
     }
 
     void recover() {
-        server.storage.attempts.recoverRegistrations(server.sessionTime());
+        server.storage.operations.recoverRegistrations(server.sessionTime());
         do { expireRegistrations(); } while(after!=null);
     }
 
@@ -29,20 +28,20 @@ final class OperationMaintenance {
     }
 
     private void expireRegistrations() {
-        var attempts=server.storage.attempts;
+        var attempts=server.storage.operations;
         var records=attempts.registered(after);
         long now=server.sessionTime();
         for(var attempt:records) {
             var binding=server.operationBinding(attempt.key());
             if(binding!=null && attempt.claimDeadline()>now && server.sessionLive(binding.session())
                     && server.connectionLive(binding.connection()))continue;
-            if(attempts.cancel(attempt,false,now))server.forgetOperationBinding(attempt.key());
+            if(attempts.cancel(attempt,false,now))server.forgetOperationBinding(attempt.key(),binding);
         }
         after=records.size()==128?records.getLast().key():null;
     }
 
     void finishCleanup() {
-        var attempts=server.storage.attempts;
+        var attempts=server.storage.operations;
         for(var item:attempts.cleanupCandidates()) {
             var key=item.key();
             if(!server.storage.admission.hasOutputIntent(key.actor(),key.scope(),key.id()))attempts.cleanup(item,"complete");
@@ -51,15 +50,12 @@ final class OperationMaintenance {
 
     private void collect() {
         long now=server.sessionTime();
-        var attempts=server.storage.attempts;
+        var attempts=server.storage.operations;
         try(var tx=database.beginTx()) {
             server.lockOperationAdmission(((InternalTransaction)tx).kernelTransaction());
-            var expired=attempts.expiryCandidates(now,attemptCursor);
-            var receipts=server.storage.receipts.standaloneExpiry(now-OperationAttemptRepository.RETENTION,receiptCursor);
-            attempts.collect(expired.stream().filter(item->!hasCleanup(item.key())).toList(),
-                receipts.stream().filter(item->!hasCleanup(item.cursor().key())).toList(),now);
-            attemptCursor=expired.size()==128?expired.getLast():null;
-            receiptCursor=receipts.size()==128?receipts.getLast().cursor():null;
+            var expired=attempts.expiryCandidates(now,retentionCursor);
+            attempts.collect(expired.stream().filter(item->!hasCleanup(item.key())).toList(),now);
+            retentionCursor=expired.size()==128?expired.getLast():null;
             tx.commit();
         }
     }
