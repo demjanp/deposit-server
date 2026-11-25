@@ -24,6 +24,8 @@ SELECT Specimen AS specimen
 
 A Class name selects matching Objects. A `Class.Descriptor` selects that value. Use `AS` to give a result a short name.
 
+Use `SELECT DISTINCT` to return unique projected rows. For example, `SELECT DISTINCT Specimen.Mass AS mass` collapses duplicate Mass projections.
+
 ## Filter values
 
 ```text
@@ -34,6 +36,8 @@ SELECT Specimen.Code WHERE Specimen.Mass IS NULL AND Specimen.Mass IS NOT MISSIN
 ```
 
 Use `$name` parameters and provide their values in the second procedure argument. Parameters keep values separate from query text.
+
+Comparisons support `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, and `IN`. Combine predicates with `AND`, `OR`, and `NOT`, and use parentheses to group them.
 
 `IS NULL` matches both a missing Descriptor and an explicit null value. Add `IS NOT MISSING` to select only explicit nulls. Query results include `presence` metadata so clients can distinguish a present null from a missing value.
 
@@ -60,11 +64,13 @@ The maximum path length is 10. Unbounded `*` is not supported.
 ```text
 SELECT COUNT(Specimen) AS count
 SELECT AVG(Specimen.Mass) AS mean, MAX(Specimen.Mass) AS largest
+SELECT PERCENTILE(Specimen.Mass, 0.5) AS median
+SELECT COUNT(DISTINCT Specimen.Mass) AS distinctMasses
 SELECT Context.Code AS context, COUNT(Specimen) AS specimens WHERE Specimen-foundIn->Context
 SELECT Specimen.Code AS code ORDER BY code DESC
 ```
 
-Supported aggregates are `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `STDEV` and `PERCENTILE`. Aggregate results need aliases. `COLLECT` is a separate value stream, for example `SELECT COLLECT(Specimen.Mass) AS mass`.
+Supported aggregates are `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `STDEV` and `PERCENTILE`. Aggregate results need aliases. `PERCENTILE` requires a numeric fraction from `0` to `1` as its second argument. `COLLECT` is a separate value stream, for example `SELECT COLLECT(Specimen.Mass) AS mass`.
 
 ## Names and binding
 

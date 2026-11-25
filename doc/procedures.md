@@ -209,6 +209,20 @@ Example:
 CALL deposit.create.pattern('Specimen form', {objects: {specimen: {className: 'Specimen', root: true, alwaysCreate: false, matchEmpty: false, descriptors: [{name: 'Code'}], relationships: [{label: 'foundIn', targetName: 'context'}]}, context: {className: 'Context', root: false, descriptors: [{name: 'Code'}], relationships: []}}}, {}, $token) YIELD node RETURN node;
 ```
 
+A Pattern definition contains an `objects` map keyed by role name, such as `specimen` or `context`. Each role describes an Object in the Pattern. Use the same role names in the `values` map when matching Objects or importing form data.
+
+| Role field | Meaning |
+| --- | --- |
+| `className` | Required Class name. |
+| `root` | Marks the root role. Each connected group of roles must have exactly one root, including a group with just one role. Defaults to `false`. |
+| `alwaysCreate` | Create a new Object for this role during import. Defaults to `false`. |
+| `matchEmpty` | Include empty values in matching for this role. Defaults to `false`. |
+| `comment` | Optional text. |
+| `descriptors` | List of Descriptor maps. Each requires `name` and accepts `type` and `comment`. The type, if supplied, must agree with the Class declaration. |
+| `relationships` | List of outgoing relationship maps. Each requires `label` and `targetName`, and accepts `comment`. `targetName` names another role in the `objects` map. |
+
+The two lists default to empty. Descriptor names must be unique within a role, and relationship entries must have distinct label and target pairs.
+
 ### deposit.create.relationship
 Purpose: Connect two Objects with a relationship.
 Inputs: sourceId (String), targetId (String), label (String), properties (Map<String,Object>), token (String), operationId (optional UUIDv7 string, default null).
@@ -850,6 +864,16 @@ CALL deposit.get.userToolPage(null, {pageSize: 20}, $token) YIELD data RETURN da
 
 ## Import
 
+Analysis checks the import before applying graph changes. A successful analysis without conflicts supplies a `planId`. Use `deposit.get.importPlanMetadata` to inspect its state and `deposit.get.importPlan` for the analysis details. If there are conflicts, inspect the conflict results and resolve them before analyzing again. When a response supplies a `resultId`, use `deposit.get.importResult` for collection metadata and a lease, then `deposit.get.importResultPage` or `deposit.get.importResultEntry` to read the details. Apply a ready plan on the connection that created it.
+
+`deposit.import.analyze`, `deposit.import.rows`, and `deposit.import.dataByPattern` accept these rules:
+
+| Rule | Meaning |
+| --- | --- |
+| `alwaysCreate` | A list of distinct Class names whose incoming Objects should be created instead of matched to existing Objects. |
+| `matchEmpty` | A Boolean, defaulting to `false`. When enabled, empty Descriptor values can participate in matching. Applicable Pattern roles control matching through their own `matchEmpty` setting. Blank tabular cells remain excluded from matching. |
+| `rootId` | For `deposit.import.dataByPattern` only. Bind the Pattern's root to an existing Object UUID in the active Namespace. The Pattern must have one root connected to every role, and the root must belong to the expected Class and allow reuse. |
+
 ### deposit.import.analyze
 
 
@@ -920,30 +944,49 @@ Example:
 CALL deposit.import.rows({rows: [{id: 'row-1', values: {Code: 'S-04', Mass: 5.0}}]}, {Code: {object: 'specimen', className: 'Specimen', descriptor: 'Code', type: 'String'}, Mass: {object: 'specimen', className: 'Specimen', descriptor: 'Mass', type: 'Float'}}, [], {}, $token) YIELD data RETURN data;
 ```
 
+To import a staged table, use `{tableId: $tableId}` as the source and key `targets` by the table's column names. See [Load](#load) for staging and previewing the table.
+
 ## Load
 
+Upload the input file as a [resource](#resources), then pass its `resourceId` to the loader. The response includes `tableId`, columns, row count, validity, and diagnostics. Preview the rows with `deposit.get.tablePage`. If `valid` is `false`, inspect the diagnostics and load again with corrected data or options. Use a valid `tableId` with `deposit.import.rows` or a [save procedure](#save).
+
+| Load option | Formats | Meaning |
+| --- | --- | --- |
+| `delimiter` | CSV | Single-character field separator. Defaults to a comma. |
+| `headerRow` | CSV, XLSX | One-based header row. Defaults to `1`. |
+| `sheet` | XLSX | Worksheet name. Defaults to the first worksheet. |
+| `layer` | GeoPackage | Required layer name. |
+| `geometryColumn` | GeoPackage | Required for feature layers and must match the registered geometry column. Omit for attribute layers. |
+| `columnTypes` | All | Map from column names to Deposit value types. Ordinary columns default to `String`. The registered GeoPackage geometry column uses `DGeometry`. |
+| `dateFormats` | All | Map from column names to Java date/time patterns for columns declared with a date or time type. |
+| `decimalSeparator` | All | `.` (default) or `,` for numeric text conversion. |
+
 ### deposit.load.csv
-Purpose: Load a resource into a table or inspect a package.
+Purpose: Stage a CSV resource as a table.
 Inputs: resourceId (String), formatOptions (Map<String,Object>), token (String), operationId (optional UUIDv7 string, default null).
 Access: Namespace editor.
-Example:
+Example for a CSV with columns named `Code` and `Mass`. Set `$tableId` from the first result before running the preview.
 
 ```cypher
-CALL deposit.load.csv($resourceId, {}, $token) YIELD data RETURN data;
+CALL deposit.load.csv($resourceId, {columnTypes: {Code: 'String', Mass: 'Float'}}, $token)
+YIELD data RETURN data;
+
+CALL deposit.get.tablePage($tableId, {pageSize: 20}, $token)
+YIELD data RETURN data;
 ```
 
 ### deposit.load.gpkg
-Purpose: Load a resource into a table or inspect a package.
+Purpose: Stage a GeoPackage layer as a table.
 Inputs: resourceId (String), formatOptions (Map<String,Object>), token (String), operationId (optional UUIDv7 string, default null).
 Access: Namespace editor.
-Example:
+Example for a feature layer named `specimens` with a registered geometry column named `geom`:
 
 ```cypher
-CALL deposit.load.gpkg($resourceId, {}, $token) YIELD data RETURN data;
+CALL deposit.load.gpkg($resourceId, {layer: 'specimens', geometryColumn: 'geom'}, $token) YIELD data RETURN data;
 ```
 
 ### deposit.load.xlsx
-Purpose: Load a resource into a table or inspect a package.
+Purpose: Stage an Excel worksheet as a table.
 Inputs: resourceId (String), formatOptions (Map<String,Object>), token (String), operationId (optional UUIDv7 string, default null).
 Access: Namespace editor.
 Example:
@@ -1016,7 +1059,25 @@ CALL deposit.resource.uploadChunk($uploadId, 0, 'aGVsbG8=', $token) YIELD data R
 
 For a small upload, call `beginUpload` with the filename, byte count, and whole-file SHA-256. Send each chunk in order with its byte offset and Base64 bytes, then call `finishUpload`. The calls above use the text `hello` (5 bytes). Use `abortUpload` to discard an unfinished transfer. To read a resource, call `info`, then request successive `downloadChunk` ranges until the reported byte count is reached.
 
+To open an attachment link from an exported table in a browser, see [Download attachments in a browser](#download-attachments-in-a-browser).
+
 ## Save
+
+Pass exactly one source, `{query: 'SELECT ...'}` or `{tableId: $tableId}`. Use the `parameters` argument for values referenced by a query, or `{}` for a staged table. Select scalar Descriptors when exporting a query. The result includes `resourceId`, filename, byte count, checksum, and any export warnings. Use `deposit.resource.downloadChunk` with the returned `resourceId` to retrieve the file.
+
+| Format | `formatOptions` |
+| --- | --- |
+| CSV | `filename` defaults to `export.csv`. `delimiter` defaults to a comma. |
+| XLSX | `filename` defaults to `export.xlsx`. `sheet` defaults to `Data`. |
+| GeoPackage | `filename` defaults to `export.gpkg`. `layer` defaults to `data`. An export that produces multiple GeoPackages returns a ZIP. |
+
+### Download attachments in a browser
+
+When an exported table contains file attachments (`DResource` values), the export includes links to those files. Open a link in your browser. If prompted, sign in with your Deposit username and password. Deposit returns you to the requested file and checks your current access to that resource in its Namespace.
+
+The links use `download.publicBaseUrl`. A loopback URL works on the server machine. For remote users, configure a reachable HTTPS URL before exporting. See [Installation and configuration](installation.md#configuration).
+
+To manage the browser session, open the configured base URL with `/login` appended. Choose **Log out** to end the session. Deposit administrators can also enable or disable administrative mode for that browser session on the same page.
 
 ### deposit.save.csv
 Purpose: Export query or table results as CSV.
@@ -1378,6 +1439,64 @@ Each procedure returns a `data` map. Export and each upload step have their own 
 | `deposit.exchange.graphPage` | `packageId, grant, leaseId, collection, cursor, limit, token` | Page through a graph collection. |
 | `deposit.exchange.readChunk` | `packageId, grant, leaseId, member, offset, length, token` | Read a byte range from a member. |
 | `deposit.exchange.discard` | `packageId, grant, token` | Discard a staged package. |
+
+### Export and upload options
+
+Use `null` for `rootIds` to export the active Namespace, or a nonempty list of Object UUIDs for a subgraph. For a subgraph, `maxHops` ranges from `0` to `10` and defaults to `3`. `rootClassBoundary` defaults to `true` and prevents traversal across edges between two non-root Objects of the same Class as one of the roots. Whole-Namespace Exchange exports include persistent history when available and require owner access in that case.
+
+Use the receiving Namespace UUID as the upload `scope` for an import into that Namespace. Select it before uploading and use a session with editor access. Use `server` for an upload intended for `deposit.import.cloneNamespace`.
+
+| `inputKind` | `metadata` | Upload members |
+| --- | --- | --- |
+| `zip` | `{}` | `package` contains the complete ZIP. |
+| `snapshot` | `{includeHistory: true}` or `{includeHistory: false}` | `manifest` and `graph`, plus `history` when included and `resources/<sha256>` for the resource contents. Use lowercase SHA-256 hex for each resource member name. |
+
+### Transfer a ZIP and import into an existing Namespace
+
+Run each tracked call in its own transaction. In Cypher Shell, set the parameters for each step from the preceding results using `:param`. With the source Namespace active, export it and use the returned `packageId` and `grant` to obtain a read lease:
+
+```cypher
+CALL deposit.exchange.export(null, {}, $sourceToken) YIELD data
+RETURN data.packageId, data.grant, data.bytes, data.sha256;
+
+CALL deposit.exchange.inspect($sourcePackageId, $sourceGrant, $sourceToken) YIELD data
+RETURN data.leaseId;
+```
+
+On the receiving server, log in, select the receiving Namespace, and open a ZIP upload. Keep this receiving connection for the upload and subsequent import.
+
+```cypher
+CALL deposit.exchange.beginUpload($receivingNamespaceId, 'zip', {}, $receivingToken) YIELD data
+RETURN data.uploadId;
+```
+
+Start `$offset` at `0`. Repeat the two calls below in their respective connections until the upload's `nextOffset` reaches the exported byte count. Pass each returned `bytesBase64` string directly as `$chunk` and use `nextOffset` as the next `$offset`. The example requests 64 KiB per read, and the final chunk may be shorter.
+
+```cypher
+CALL deposit.exchange.readChunk($sourcePackageId, $sourceGrant, $leaseId, 'package', $offset, 65536, $sourceToken)
+YIELD data RETURN data.bytesBase64;
+```
+
+```cypher
+CALL deposit.exchange.uploadChunk($uploadId, 'package', $offset, $chunk, $receivingToken)
+YIELD data RETURN data.nextOffset;
+```
+
+If the read lease expires while the source package is still available, call `inspect` again for a fresh lease and resume at the last confirmed offset. Use `abortUpload` to discard an unfinished upload.
+
+On the receiving connection, finish the upload and use the receiving `packageId` and `grant` to analyze the import. Inspect the analysis and apply the ready `planId` on that connection. The plan is bound to the receiving Namespace revision, so analyze again if the revision has changed.
+
+```cypher
+CALL deposit.exchange.finishUpload($uploadId, $receivingToken) YIELD data
+RETURN data.packageId, data.grant;
+
+CALL deposit.import.analyze({packageId: $receivedPackageId, grant: $receivedGrant}, {}, $receivingToken)
+YIELD data RETURN data;
+
+CALL deposit.import.apply($planId, $receivingToken) YIELD data RETURN data;
+```
+
+For a clone into a new Namespace, finish a `server`-scoped upload and pass the returned `packageId` and `grant` to `deposit.import.cloneNamespace`. Cloning requires a whole-Namespace package whose Namespace name is available on the receiving server. The actor becomes its owner.
 
 ## Result notes
 

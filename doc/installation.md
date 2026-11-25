@@ -39,6 +39,8 @@ deposit.bat status
 
 The launcher uses a dedicated virtual service account by default. Use `deposit.bat stop` to stop the service gracefully and `deposit.bat remove-service` to unregister it while retaining the data. For remote clients, configure a private Bolt interface and certificate-validating TLS before making the service reachable.
 
+Run `deposit.bat help` for the full command list. The launcher also accepts `deposit.bat install-service [dedicated-account]` to select the service identity and `deposit.bat shell [address] [username] [database]` to connect with custom settings.
+
 ## Run from a Git checkout
 
 On Windows x64, open Command Prompt at the root of a full Git checkout:
@@ -76,6 +78,8 @@ Neo4j settings belong in `conf/neo4j.conf`. Deposit settings belong in `conf/dep
 The local profile binds Bolt to loopback, enables Neo4j authentication, selects Cypher 25, and disables the Neo4j HTTP and HTTPS connectors. It does not provide a query page at `http://localhost:7474`.
 
 For remote access, configure a private Bolt interface and certificate-validating Bolt TLS, restrict inbound traffic to intended clients, and use `neo4j+s://` or `bolt+s://`. Configure the download listener with HTTPS directly or behind a trusted TLS reverse proxy. Do not expose plain HTTP credentials or trust-all Bolt clients. Loopback addresses work only on the server machine.
+
+See [Download attachments in a browser](procedures.md#download-attachments-in-a-browser) for the sign-in and download workflow.
 
 ## Startup and backup notes
 

@@ -8,6 +8,11 @@ This guide covers Deposit Server 2.x.x. Its examples use the optional operation 
 2. [Connect over Bolt, create a sample collection, and run a query](quickstart.md).
 3. Use the [procedure reference](procedures.md) and [query guide](query-language.md).
 
+- [Load and preview CSV, XLSX, or GeoPackage data](procedures.md#load), then [map and import it](procedures.md#import).
+- [Define a Pattern](procedures.md#depositcreatepattern) to match Objects or import form data.
+- [Transfer a package between servers](procedures.md#transfer-a-zip-and-import-into-an-existing-namespace).
+- [Download attachments from an exported table](procedures.md#download-attachments-in-a-browser).
+
 The quickstart creates a small sample Namespace inside the current Neo4j database. It does not install a separate database dump. Re-run it in a new Namespace to reset the sample.
 
 ## Important terms
