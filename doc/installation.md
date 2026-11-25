@@ -21,6 +21,12 @@ This distribution uses Neo4j Community 2026.05.0, Temurin JDK 21.0.12.1+1, and C
 
 Setup copies the plugins, selects Cypher 25, and configures Bolt and the Deposit download listener on loopback. Neo4j HTTP and HTTPS are disabled. The launcher records the installation paths and mode in `deposit.install.json` in the extracted Deposit directory.
 
+## Update an existing installation
+
+Extract the new Deposit ZIP into a separate directory and run `deposit.bat setup` from there with the existing Neo4j home. Setup keeps the existing data and export paths, ports, configuration, and secrets. Use the Java home for that installation and skip `init-password`.
+
+Setup warns that it will replace plugin JARs without a backup or compatibility check. Press Enter to cancel, or type `y` to proceed. Setup gracefully stops a running installation and restarts it after replacing the JARs. If the installation was stopped, start it with `deposit.bat start` from the new Deposit directory when ready.
+
 ## Windows service
 
 Stop the console instance with `deposit.bat stop` first. Open an elevated Command Prompt in the Deposit directory:

@@ -38,8 +38,9 @@ function Start-Local($State,[string]$PackageRoot) {
 }
 function Stop-Local($State,[string]$PackageRoot,[switch]$Force) {
     $file=Join-Path $State.neo4jHome 'deposit-process.json';if(!(Test-Path -LiteralPath $file)){Write-Output 'Deposit local process is not running.';return}
-    $identity=Get-Content -LiteralPath $file -Raw|ConvertFrom-Json;$proc=Get-CimInstance Win32_Process -Filter "ProcessId=$($identity.pid)"
-    if(!$proc -or !$proc.CreationDate -or !$proc.CommandLine -or !$proc.CommandLine.Contains([IO.Path]::GetFullPath($State.neo4jHome)) -or $proc.CreationDate.ToUniversalTime().ToString('o') -ne $identity.created){Fail 'The recorded PID does not identify this installation; refusing to stop it'}
+    $identity=Get-Content -LiteralPath $file -Raw|ConvertFrom-Json
+    $proc=Get-LocalNeo4jRuntime $State.neo4jHome | Where-Object ProcessId -eq $identity.pid
+    if(!$proc -or !$proc.CreationDate -or $proc.CreationDate.ToUniversalTime().ToString('o') -ne $identity.created){Fail 'The recorded PID does not identify this installation; refusing to stop it'}
     $process=Get-Process -Id $identity.pid
     [void]$process.Handle
     if($Force){Stop-Process -Id $identity.pid -Force}

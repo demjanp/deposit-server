@@ -9,9 +9,8 @@ function Read-State([string]$StatePath) {
 }
 function Save-State([string]$StatePath,$State) {
     $tmp=$StatePath+'.'+[guid]::NewGuid().ToString('N')+'.partial'
-    $backup=$StatePath+'.'+[guid]::NewGuid().ToString('N')+'.backup'
     try {
         [IO.File]::WriteAllText($tmp,($State|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
-        if(Test-Path -LiteralPath $StatePath){[IO.File]::Replace($tmp,$StatePath,$backup);Remove-Item -LiteralPath $backup -Force}else{[IO.File]::Move($tmp,$StatePath)}
-    } finally {Remove-Item -LiteralPath $tmp,$backup -Force -ErrorAction SilentlyContinue}
+        if(Test-Path -LiteralPath $StatePath){[IO.File]::Replace($tmp,$StatePath,[NullString]::Value)}else{[IO.File]::Move($tmp,$StatePath)}
+    } finally {Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
 }
