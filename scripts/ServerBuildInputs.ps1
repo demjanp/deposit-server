@@ -5,7 +5,13 @@ function Get-ServerArtifact($Artifact, [string]$Directory) {
         $partial = $file + '.' + [guid]::NewGuid().ToString('N') + '.partial'
         try {
             Write-Host "Downloading $($Artifact.file)"
-            Invoke-WebRequest -UseBasicParsing -Uri $Artifact.url -OutFile $partial
+            $curl = Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($curl) {
+                & $curl.Source --fail --location --silent --show-error --connect-timeout 30 --max-time 600 --output $partial $Artifact.url
+                if ($LASTEXITCODE -ne 0) { throw "Download failed for $($Artifact.file) (curl exit $LASTEXITCODE)." }
+            } else {
+                Invoke-WebRequest -UseBasicParsing -Uri $Artifact.url -OutFile $partial -TimeoutSec 600
+            }
             if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $Artifact.sha256) {
                 throw "Download checksum mismatch: $($Artifact.file)"
             }
