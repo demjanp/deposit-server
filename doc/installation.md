@@ -1,49 +1,56 @@
 # Installation and configuration
 
-## Supported runtime
+## Install the Windows x64 release
 
-The current Windows release uses Neo4j Community 2026.05.0, Temurin Java 21 and Cypher 25. Use the exact versions and checksums in the release's `artifacts.json` and `release-manifest.json`. Java and Neo4j are separate from the Deposit plugin package.
+Deposit Server 2.0.1 uses Neo4j Community 2026.05.0, Temurin JDK 21.0.12.1+1, and Cypher 25. The JDK and Neo4j are separate downloads.
 
-The steps below cover initial password setup, launcher commands and service configuration.
+1. Download `deposit-server-2.0.1.zip` from [GitHub Releases](https://github.com/demjanp/deposit-server/releases).
+2. Download [Temurin JDK 21.0.12.1+1 for Windows x64](https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip) and [Neo4j Community 2026.05.0 for Windows](https://dist.neo4j.org/neo4j-community-2026.05.0-windows.zip).
+3. Extract all three archives to separate directories. Use a fresh Neo4j installation. Open Command Prompt in the extracted Deposit directory containing `deposit.bat`.
+4. Set the initial Neo4j password and start Deposit. Replace the quoted paths with your Neo4j, Java, resource storage, and temporary export directories.
 
-## Install a release package
-
-1. Install the release-pinned Java and Neo4j versions in stable directories.
-2. Extract the Deposit release package to a stable directory.
-3. Set the Neo4j administrator password with Neo4j's `neo4j-admin` utility before the first start. Store the password in a protected credential store.
-4. From PowerShell, run the package launcher:
-
-   ```powershell
-   .\deposit.bat setup C:\Neo4j C:\Java\jdk-21 C:\Deposit\resources C:\Deposit\exports 7687
-   .\deposit.bat start
-   .\deposit.bat status
+   ```bat
+   deposit.bat init-password "C:\Neo4j" "C:\Java\jdk-21"
+   deposit.bat setup "C:\Neo4j" "C:\Java\jdk-21" "C:\Deposit\resources" "C:\Deposit\exports" 7687
+   deposit.bat start
+   deposit.bat status
    ```
 
-   Replace the example paths with the actual Neo4j, Java, resource and export paths. The final number is the Bolt port; it defaults to `7687`.
-5. Open a Bolt client on the server machine using `bolt://127.0.0.1:7687`.
+   The password initializer prompts interactively. Use at least eight characters without whitespace, quotes, `#`, or backslash. The final setup argument is the local Bolt port and defaults to `7687`.
+5. Follow the [quickstart](quickstart.md) to open Cypher Shell, create a Deposit administrator, and load the sample data. Use `deposit.bat stop` for a graceful stop.
 
-The launcher installs the plugin and its dependencies, enables authentication, configures resource storage and a loopback download listener, and protects `secretRoot`. Deposit uses this directory for persistent cursor and shutdown-control keys. Create the first Deposit administrator over an authenticated Bolt connection. The launcher disables Neo4j HTTP/HTTPS. It does not change firewall rules or install a Windows service. Use `.\deposit.bat stop` for a graceful stop.
+Setup copies the plugins, selects Cypher 25, and configures Bolt and the Deposit download listener on loopback. Neo4j HTTP and HTTPS are disabled. The launcher records the installation paths and mode in `deposit.install.json` in the extracted Deposit directory.
 
-For a Windows service, run `.\deposit.bat install-service` from an elevated shell. The launcher uses a dedicated Neo4j service identity by default. Before exposing the service to remote clients, configure a private Bolt interface and certificate-validating TLS. Use `.\deposit.bat remove-service` to stop and unregister it; the command does not delete the database or Deposit files. Do not use the local-console and service modes against one Neo4j installation at the same time.
+## Windows service
 
-## Run from this checkout
+Stop the console instance with `deposit.bat stop` first. Open an elevated Command Prompt in the Deposit directory:
 
-For local development on Windows x64 with PowerShell 5.1, run from the repository root:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Run_Server.ps1
+```bat
+deposit.bat install-service
+deposit.bat start
+deposit.bat status
 ```
 
-The first run downloads checksum-pinned tools, builds the plugin and prompts for the Neo4j administrator password. The runtime and data are stored under the sibling `test_harness\runs\local-server` directory. This is a local console launcher; it does not register a service. Later runs reuse the installation and do not rebuild or upgrade it.
+The launcher uses a dedicated virtual service account by default. Use `deposit.bat stop` to stop the service gracefully and `deposit.bat remove-service` to unregister it while retaining the data. For remote clients, configure a private Bolt interface and certificate-validating TLS before making the service reachable.
 
-```powershell
-# Prepare without starting; the port only applies to first setup.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Run_Server.ps1 -SetupOnly -Port 7687
+## Run from a Git checkout
 
-# Inspect or stop the local server.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Run_Server.ps1 -Action Status
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Run_Server.ps1 -Action Stop
+On Windows x64, open Command Prompt at the root of a full Git checkout:
+
+```bat
+scripts\Run_Server.bat
+scripts\Run_Shell.bat
 ```
+
+The first server run downloads the pinned tools, builds the plugin, and prompts for the initial Neo4j password. Tools and generated files go under the sibling `test_harness` directory. The persistent console installation and data live in `test_harness\runs\local-server`. Later runs reuse that installation. Open the shell after the server starts.
+
+```bat
+scripts\Run_Server.bat -SetupOnly -Port 7687
+scripts\Run_Server.bat -Action Status
+scripts\Run_Server.bat -Action Stop
+```
+
+`-Port` applies during first setup. For a custom port, give the shell launcher the matching address, for example `scripts\Run_Shell.bat -Address bolt://127.0.0.1:7688`.
 
 ## Configuration
 
@@ -68,6 +75,4 @@ Use `status`, `diagnose` and the server logs to inspect operation. `diagnose` in
 
 Stop Deposit gracefully before taking a filesystem backup. A clean stop drains transactions and maintenance, then checkpoints and closes SQLite. Back up the complete Neo4j store and transaction logs, the entire resource root (including the operational directory, OCFL, staging and storage-admission state), configuration and required secrets as one set. Preserve the service account's ownership and private permissions when copying the files.
 
-Restore the matching set while the server is stopped, using the original Neo4j store files so the persistent store identity is preserved. Set `operationRestoreTime` in `conf/deposit.properties` to the trusted UTC time of the restore before first startup. This advances the operation admission fence so pre-restore operation IDs cannot be replayed. Deposit rejects an incompatible or missing operational database and one bound to a different Neo4j store. Initialize a fresh installation for this alpha format.
-
-The Neo4j store retains scientific history. `DepositSnapshot` stores journal touches with the corresponding entity images or as a touch-only record. A `RevisionDependency` belongs to a `Revision` through `HAS_DEPENDENCY` and stores its `id`, `namespaceId`, `revisionId`, `historyEpochId` and typed historical `entityKey`.
+Restore the matching set while the server is stopped, using the original Neo4j store files so the persistent store identity is preserved. Set `operationRestoreTime` in `conf/deposit.properties` to the trusted UTC time of the restore before first startup. This advances the operation admission fence so pre-restore operation IDs cannot be replayed. Deposit requires the operational database that belongs to the restored Neo4j store.

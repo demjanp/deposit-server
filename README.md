@@ -10,7 +10,7 @@
 - **Files and spatial data.** Store file attachments using OCFL (Oxford Common File Layout) and manage spatial geometries as part of the data model.
 - **Revision history.** Optional history lets users inspect changes, undo or redo operations, and restore earlier states of a Namespace.
 - **Multi-user access.** Multiple local or remote applications can share one server. Deposit accounts have per-Namespace viewer, editor, and owner roles. The server enforces permissions, detects edit conflicts, and tracks operation outcomes.
-- **Application API.** Applications use `deposit.*` procedures over Neo4j's Bolt protocol. The [API manifest](runtime/public-api.json) lists the procedures; runtime discovery reports the version and supported features. A separate authenticated HTTP endpoint serves file downloads only.
+- **Application API.** Applications use `deposit.*` procedures over Neo4j's Bolt protocol. The [procedure reference](doc/procedures.md) lists the procedures. Runtime discovery reports the version and supported features. A separate HTTP endpoint serves file downloads.
 
 ## Platform
 
@@ -18,7 +18,7 @@ The current distribution supports Windows process and service operation. Applica
 
 ## Getting started
 
-Start with [Installation](doc/installation.md) and [Quickstart](doc/quickstart.md). For further guidance and reference, see the [User guide](doc/README.md), [Query language](doc/query-language.md), [Procedure reference](doc/procedures.md), and [Technical specification](https://github.com/demjanp/deposit-hub/blob/main/deposit-server.md).
+Download `deposit-server-2.0.1.zip` from [GitHub Releases](https://github.com/demjanp/deposit-server/releases). Follow [Installation](doc/installation.md) and the [Quickstart](doc/quickstart.md) to load and query a sample collection. The [user guide](doc/README.md) links to the procedure and query references. See the [release notes](RELEASE_NOTES.md) for the maintainer build command.
 
 ## Copyright and license
 

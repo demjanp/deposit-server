@@ -35,53 +35,7 @@ $statePath = Join-Path $package 'deposit.install.json'
 $manifest = Get-Content -LiteralPath (Join-Path $repo 'runtime\artifacts.json') -Raw | ConvertFrom-Json
 . (Join-Path $PSScriptRoot 'DepositBuildMetadata.ps1')
 
-function Get-ServerArtifact($Artifact, [string]$Directory) {
-    New-Item -ItemType Directory -Path $Directory -Force | Out-Null
-    $file = Join-Path $Directory $Artifact.file
-    if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
-        $partial = $file + '.' + [guid]::NewGuid().ToString('N') + '.partial'
-        try {
-            Write-Host "Downloading $($Artifact.file)"
-            Invoke-WebRequest -UseBasicParsing -Uri $Artifact.url -OutFile $partial
-            if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $Artifact.sha256) {
-                throw "Download checksum mismatch: $($Artifact.file)"
-            }
-            Move-Item -LiteralPath $partial -Destination $file
-        } finally { Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue }
-    }
-    if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ine $Artifact.sha256) {
-        throw "Cached artifact checksum mismatch: $file. Remove this file and retry."
-    }
-    return $file
-}
-
-function Initialize-ServerTools {
-    $tools = Join-Path $root 'tools'
-    New-Item -ItemType Directory -Path $tools -Force | Out-Null
-    foreach ($id in @('temurin','neo4j','maven')) {
-        $artifact = $manifest.artifacts | Where-Object id -eq $id
-        $relative = switch ($id) {
-            temurin { $manifest.javaHome }
-            neo4j { $manifest.neo4jHome }
-            maven { 'tools/' + ($artifact.file -replace '-bin\.zip$','') }
-        }
-        $toolHome = Join-Path $root $relative
-        $required = switch ($id) {
-            temurin { @('bin\java.exe','bin\javac.exe') }
-            neo4j { @('bin\neo4j.bat','bin\neo4j-admin.bat') }
-            maven { @('bin\mvn.cmd') }
-        }
-        if (@($required | Where-Object { !(Test-Path -LiteralPath (Join-Path $toolHome $_) -PathType Leaf) }).Count) {
-            $archive = Get-ServerArtifact $artifact (Join-Path $root 'cache')
-            Expand-Archive -LiteralPath $archive -DestinationPath $tools -Force
-        }
-        foreach ($name in $required) {
-            if (!(Test-Path -LiteralPath (Join-Path $toolHome $name) -PathType Leaf)) {
-                throw "Runtime extraction did not yield $id file $name"
-            }
-        }
-    }
-}
+. (Join-Path $PSScriptRoot 'ServerBuildInputs.ps1')
 
 function Invoke-ServerLauncher([string]$Command, [string[]]$Values = @()) {
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'deposit.ps1') $Command @Values
@@ -98,15 +52,11 @@ function Set-ServerPluginFiles([string]$Directory, [string[]]$Files) {
     foreach ($file in $Files) { Copy-Item -LiteralPath $file -Destination $Directory -Force }
 }
 
-$saved = @{}
-foreach ($key in @('JAVA_HOME','NEO4J_HOME','NEO4J_CONF','PATH','MAVEN_USER_HOME','MAVEN_OPTS','TEMP','TMP')) {
-    $saved[$key] = [Environment]::GetEnvironmentVariable($key,'Process')
-}
 $lock = $null
 try {
     New-Item -ItemType Directory -Path $localRoot -Force | Out-Null
     try { $lock = [IO.File]::Open((Join-Path $localRoot 'launcher.lock'),'OpenOrCreate','ReadWrite','None') }
-    catch { throw 'Another Run_Server.ps1 invocation is using this installation.' }
+    catch { throw 'Another Run_Server.bat invocation is using this installation.' }
 
     if (Test-Path -LiteralPath $statePath -PathType Leaf) {
         # Preserve the installed version across checkout updates, including the
@@ -114,9 +64,9 @@ try {
         $manifest = Get-Content -LiteralPath (Join-Path $package 'artifacts.json') -Raw | ConvertFrom-Json
     }
     if ($Action -ne 'Run') {
-        if (!(Test-Path -LiteralPath $statePath -PathType Leaf)) { throw 'No local server is configured. Run Run_Server.ps1 first.' }
+        if (!(Test-Path -LiteralPath $statePath -PathType Leaf)) { throw 'No local server is configured. Run Run_Server.bat first.' }
     } else {
-        Initialize-ServerTools
+        Initialize-ServerTools $manifest $root
     }
 
     if (!(Test-Path -LiteralPath $statePath -PathType Leaf)) {
@@ -125,48 +75,23 @@ try {
         if (Test-Path -LiteralPath $installation) {
             throw "Incomplete setup at $installation. Preserve or move it aside before retrying; no existing files were removed."
         }
-        $env:JAVA_HOME = Join-Path $root $manifest.javaHome
-        $env:MAVEN_USER_HOME = Join-Path $root 'maven-user'
-        $env:PATH = (Join-Path $env:JAVA_HOME 'bin') + ';' + $env:PATH
-        $env:TEMP = Join-Path $localRoot 'tmp'
-        $env:TMP = $env:TEMP
-        New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
+        $javaHome = Join-Path $root $manifest.javaHome
 
-        $jars = @()
-        foreach ($id in @('apoc','spatial','bcrypt-provider')) {
-            $jars += Get-ServerArtifact ($manifest.artifacts | Where-Object id -eq $id) (Join-Path $root 'cache')
-        }
-        foreach ($dependency in @(
-            @{ File=$manifest.dependencyLock; Pom='spatial-dependencies.pom.xml'; Cache='spatial-dependencies' },
-            @{ File=$manifest.ocflDependencyLock; Pom='ocfl-dependencies.pom.xml'; Cache='ocfl-dependencies' },
-            @{ File=$manifest.formatDependencyLock; Pom='format-dependencies.pom.xml'; Cache='format-dependencies' }
-        )) {
-            $dependencyLock = Get-Content -LiteralPath (Join-Path "$repo\runtime" $dependency.File) -Raw | ConvertFrom-Json
-            if ((Get-FileHash -LiteralPath (Join-Path "$repo\runtime" $dependency.Pom) -Algorithm SHA256).Hash -ine $dependencyLock.sourcePomSha256) {
-                throw "Dependency lock does not match $($dependency.Pom)"
-            }
-            foreach ($artifact in $dependencyLock.dependencies) {
-                if ($artifact.ship) {
-                    $jars += Get-ServerArtifact $artifact (Join-Path "$root\cache" $dependency.Cache)
-                } elseif ($dependency.Cache -ne 'spatial-dependencies') {
-                    # Spatial's approved lock deliberately uses newer Neo4j
-                    # replacements; only the other locks require identical JARs.
-                    $provided = Join-Path (Join-Path $root $manifest.neo4jHome) "lib\$($artifact.file)"
-                    if ((Get-FileHash -LiteralPath $provided -Algorithm SHA256).Hash -ine $artifact.sha256) {
-                        throw "Pinned Neo4j dependency differs: $($artifact.file)"
-                    }
-                }
-            }
-        }
+        $jars = Get-ServerPluginDependencies $manifest $root $repo
         $mavenArtifact = $manifest.artifacts | Where-Object id -eq 'maven'
         $maven = Join-Path $root ('tools/' + ($mavenArtifact.file -replace '-bin\.zip$','') + '/bin/mvn.cmd')
         $spatial = $manifest.artifacts | Where-Object id -eq 'spatial'
         Write-Host 'Building Deposit server (first setup only)...'
+        $previousJava = $env:JAVA_HOME
         Push-Location $repo
         try {
+            $env:JAVA_HOME = $javaHome
             & $maven --batch-mode --no-transfer-progress "-Dmaven.repo.local=$root\maven-repository" "-Ddeposit.test.root=$localRoot" "-Dspatial.jar=$root\cache\$($spatial.file)" -pl plugin -am package -DskipTests
             if ($LASTEXITCODE -ne 0) { throw "Deposit build failed with code $LASTEXITCODE" }
-        } finally { Pop-Location }
+        } finally {
+            $env:JAVA_HOME = $previousJava
+            Pop-Location
+        }
         $build = Get-DepositBuildMetadata $repo $localRoot
         $plugin = Join-Path $localRoot "build\deposit-plugin\target\$($build.PluginFile)"
         if ((Get-DepositJarVersion $plugin) -cne $build.Version) { throw 'Built plugin version differs from build metadata' }
@@ -184,31 +109,13 @@ try {
                 Get-Content -LiteralPath $DpApiCredentialFile -Raw | ConvertTo-SecureString -ErrorAction Stop
             } catch { throw 'Unable to decrypt the supplied test credential as the current Windows user' }
         } else { Read-Host 'Choose the Neo4j administrator password (at least 8 characters)' -AsSecureString }
-        $passwordPointer = [IntPtr]::Zero
-        $argumentFile = Join-Path $localRoot 'private\initial-password.args'
         try {
-            $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($password)
-            $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
-            # Picocli @files split on whitespace and interpret quotes/comments.
-            if ($plainPassword.Length -lt 8 -or $plainPassword -match '[\s"''#\\]') {
-                throw 'Use at least 8 characters without whitespace, quotes, # or backslash.'
-            }
             . (Join-Path $PSScriptRoot 'Credentials.ps1')
-            New-Item -ItemType Directory -Path (Split-Path $argumentFile -Parent) -Force | Out-Null
-            Set-OwnerOnlyDirectory (Split-Path $argumentFile -Parent)
-            [IO.File]::WriteAllText($argumentFile,"dbms`nset-initial-password`n$plainPassword`n",(New-Object Text.UTF8Encoding($false)))
-            Copy-Item -LiteralPath (Join-Path $root $manifest.neo4jHome) -Destination $installation -Recurse
-            $env:NEO4J_HOME = $installation
-            $env:NEO4J_CONF = Join-Path $installation 'conf'
-            & (Join-Path $installation 'bin\neo4j-admin.bat') "@$argumentFile"
-            if ($LASTEXITCODE -ne 0) { throw 'Setting the initial Neo4j administrator password failed' }
+            Set-InitialNeo4jPassword $installation $javaHome $password (Join-Path $root $manifest.neo4jHome)
         } finally {
-            Remove-Item -LiteralPath $argumentFile -Force -ErrorAction SilentlyContinue
-            $plainPassword = $null
-            if ($passwordPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer) }
-            if ($password) { $password.Dispose() }
+            $password.Dispose()
         }
-        Invoke-ServerLauncher 'setup' @($installation,$env:JAVA_HOME,(Join-Path $localRoot 'resources'),(Join-Path $localRoot 'exports'),[string]$Port)
+        Invoke-ServerLauncher 'setup' @($installation,$javaHome,(Join-Path $localRoot 'resources'),(Join-Path $localRoot 'exports'),[string]$Port)
     }
 
     $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
@@ -219,12 +126,11 @@ try {
         if (!$SetupOnly) { Invoke-ServerLauncher 'start' }
         Write-Host "Installation: $installation"
         Write-Host "Logs: $installation\logs"
-        Write-Host "Stop with: & '$PSCommandPath' -Action Stop"
+        Write-Host "Stop with: scripts\Run_Server.bat -Action Stop"
     } else {
         & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'deposit.ps1') ($Action.ToLowerInvariant())
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 } finally {
     if ($lock) { $lock.Dispose() }
-    foreach ($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key,$saved[$key],'Process') }
 }

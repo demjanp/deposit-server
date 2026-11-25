@@ -2,10 +2,24 @@ function Set-RuntimeEnvironment($State) {
     $env:JAVA_HOME=$State.javaHome;$env:NEO4J_HOME=$State.neo4jHome;$env:NEO4J_CONF=Join-Path $State.neo4jHome 'conf'
     $env:PATH=(Join-Path $State.javaHome 'bin')+';'+$env:PATH
 }
+function Invoke-DepositShell($State, [string]$Address = 'bolt://127.0.0.1:7687', [string]$Username = 'neo4j', [string]$Database = 'neo4j') {
+    $shell = Join-Path $State.neo4jHome 'bin\cypher-shell.bat'
+    $java = Join-Path $State.javaHome 'bin\java.exe'
+    if (!(Test-Path -LiteralPath $shell -PathType Leaf) -or !(Test-Path -LiteralPath $java -PathType Leaf)) {
+        throw 'The recorded Cypher Shell or Java installation is missing its launcher.'
+    }
+    $previousJava = $env:JAVACMD
+    try {
+        # The upstream batch launcher expands JAVACMD without adding quotes.
+        $env:JAVACMD = '"' + $java + '"'
+        & $shell -a $Address -u $Username -d $Database --history disable
+    } finally {
+        $env:JAVACMD = $previousJava
+    }
+}
 function Start-Local($State,[string]$PackageRoot) {
     Test-NoConflictingRuntime $State.neo4jHome
     if(Get-Service -Name $State.serviceName -ErrorAction SilentlyContinue){Fail 'This installation has a registered Windows service. Use its service mode or remove the service first.'}
-    Set-RuntimeEnvironment $State
     $worker=Join-Path $PackageRoot 'helpers\deposit-worker.ps1';$logs=Join-Path $State.neo4jHome 'logs';New-Item -ItemType Directory -Path $logs -Force|Out-Null
     $out=Join-Path $logs 'deposit-console.out.log';$err=Join-Path $logs 'deposit-console.err.log'
     $log=Join-Path $logs 'neo4j.log';$oldLength=if(Test-Path -LiteralPath $log){(Get-Item -LiteralPath $log).Length}else{0}

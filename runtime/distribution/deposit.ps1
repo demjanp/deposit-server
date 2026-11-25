@@ -42,7 +42,10 @@ function Fail([string]$Message) { throw $Message }
 
 function Show-Help { @'
 Deposit Windows launcher
+  deposit.bat init-password <neo4j-home> <java-home>
   deposit.bat setup <neo4j-home> <java-home> <data-root> <export-root> [bolt-port]
+  deposit.bat shell [address] [username] [database]
+  deposit.bat operation-id
   deposit.bat start | status | stop | diagnose
   deposit.bat install-service [dedicated-account]
   deposit.bat remove-service
@@ -54,7 +57,30 @@ requires an elevated shell and uses a dedicated virtual service account by defau
 try {
     switch($Command.ToLowerInvariant()){
         'help' {Show-Help;exit 0}
+        'operation-id' {
+            if ($Arguments.Count) { throw 'Usage: deposit.bat operation-id' }
+            $time = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString('x12')
+            $random = [guid]::NewGuid().ToString('D')
+            # The timestamp replaces the first 48 bits. Preserve the random UUID's variant.
+            '{0}-{1}-7{2}-{3}' -f $time.Substring(0, 8), $time.Substring(8), $random.Substring(15, 3), $random.Substring(19)
+            exit 0
+        }
+        'init-password' {
+            if ($Arguments.Count -ne 2) { throw 'Usage: deposit.bat init-password <neo4j-home> <java-home>' }
+            . (Join-Path $script:PackageRoot 'helpers\Credentials.ps1')
+            $password = Read-Host 'Choose the Neo4j administrator password (at least 8 characters)' -AsSecureString
+            try {
+                Set-InitialNeo4jPassword ([IO.Path]::GetFullPath($Arguments[0])) ([IO.Path]::GetFullPath($Arguments[1])) $password
+            } finally { $password.Dispose() }
+            exit 0
+        }
         'setup' {Setup $Arguments $script:PackageRoot $script:StatePath $script:Manifest;exit 0}
+        'shell' {
+            if ($Arguments.Count -gt 3) { throw 'Usage: deposit.bat shell [address] [username] [database]' }
+            $state = Read-State $script:StatePath
+            Invoke-DepositShell $state @Arguments
+            exit $LASTEXITCODE
+        }
         'start' {$state=Read-State $script:StatePath;if($state.mode -eq 'service'){Service 'start' $state $script:StatePath $script:PackageRoot $Arguments}else{Start-Local $state $script:PackageRoot};exit 0}
         'stop' {$state=Read-State $script:StatePath;if($state.mode -eq 'service'){Service 'stop' $state $script:StatePath $script:PackageRoot $Arguments}else{Stop-Local $state $script:PackageRoot};exit 0}
         'status' {$state=Read-State $script:StatePath;Status $state $script:StatePath $script:PackageRoot;exit 0}

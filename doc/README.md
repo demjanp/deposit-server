@@ -1,6 +1,6 @@
 # Deposit Server user guide
 
-Deposit Server adds Deposit procedures to Neo4j. Use a Bolt client to call them. This guide covers the Windows release and the server checkout's local launcher.
+Deposit Server adds Deposit procedures to Neo4j. Download `deposit-server-2.0.1.zip` from [GitHub Releases](https://github.com/demjanp/deposit-server/releases) for the Windows launcher and sample data. The installation guide also covers the local launcher in a Git checkout.
 
 ## Start here
 

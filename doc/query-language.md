@@ -80,6 +80,6 @@ Selected Objects must be connected by explicit relationship predicates or the qu
 
 ## Large results
 
-`deposit.get.query` streams results. Use `deposit.get.queryPage` for cursor paging. A page request contains the query, parameters, options and optional page size/cursor. The default page size is 200; the maximum is 1,000. Cursors bind to the actor, Namespace, query and revision. After a revision conflict, refresh and start a new page request.
+`deposit.get.query` streams results. Use `deposit.get.queryPage` for cursor paging. Pass the same query, parameters, and options when requesting the next page and supply the cursor from the previous response. The default page size is 200 and the maximum is 1,000. Cursors bind to the actor, Namespace, query, and revision. After a revision conflict, refresh and start a new page request.
 
 See the [procedure reference](procedures.md) for exact procedure signatures and call templates.
