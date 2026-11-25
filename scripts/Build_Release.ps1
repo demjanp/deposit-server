@@ -41,7 +41,7 @@ $previousJava = $env:JAVA_HOME
 Push-Location $repo
 try {
     $env:JAVA_HOME = Join-Path $root $manifest.javaHome
-    & $maven --batch-mode --no-transfer-progress "-Dmaven.repo.local=$root\maven-repository" "-Ddeposit.test.root=$buildRoot" "-Dspatial.jar=$cache\$($spatial.file)" -pl plugin -am package -Dmaven.test.skip=true
+    & $maven --batch-mode --no-transfer-progress "-Dmaven.repo.local=$root\maven-repository" "-Ddeposit.test.root=$buildRoot" "-Dspatial.jar=$cache\$($spatial.file)" -pl plugin -am package "-Dmaven.test.skip=true"
     if ($LASTEXITCODE -ne 0) { throw "Maven packaging failed with exit code $LASTEXITCODE." }
 } finally {
     $env:JAVA_HOME = $previousJava

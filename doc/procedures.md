@@ -20,7 +20,7 @@ the Namespace UUID for Namespace scope.
 CALL deposit.action.begin($operationId, $namespaceId, 'deposit.set.class',
   [{name: 'Specimen'}, {comment: 'Example'}], $token) YIELD data RETURN data;
 CALL deposit.set.class({name: 'Specimen'}, {comment: 'Example'}, $operationId, $token)
-  YIELD data RETURN data;
+  YIELD node RETURN node;
 ```
 
 Inspect the original attempt with `deposit.get.operation(operationId, scope, token)`. On a separate
@@ -968,10 +968,10 @@ Access: Namespace editor.
 Example:
 
 ```cypher
-CALL deposit.resource.uploadChunk($uploadId, 0, 'aGVsbG8=', '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824', $operationId, $token) YIELD data RETURN data;
+CALL deposit.resource.uploadChunk($uploadId, 0, 'aGVsbG8=', $operationId, $token) YIELD data RETURN data;
 ```
 
-For a small upload, call `beginUpload` with the filename, byte count and whole-file SHA-256; send each chunk with its byte offset, base64 bytes and chunk SHA-256; then call `finishUpload`. The calls above use the text `hello` (5 bytes). For large or binary files, calculate hashes and base64 outside Cypher and send chunks in order. Use `abortUpload` to discard an unfinished transfer. To read a resource, call `info`, then request successive `downloadChunk` ranges until the reported byte count is reached.
+For a small upload, call `beginUpload` with the filename, byte count, and whole-file SHA-256. Send each chunk in order with its byte offset and Base64 bytes, then call `finishUpload`. The calls above use the text `hello` (5 bytes). Use `abortUpload` to discard an unfinished transfer. To read a resource, call `info`, then request successive `downloadChunk` ranges until the reported byte count is reached.
 
 ## Save
 
