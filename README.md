@@ -22,7 +22,17 @@ To run from this checkout, follow the [checkout installation instructions](doc/i
 
 For a Windows release, download the Deposit Server 2.x.x ZIP and follow the installation guide and quickstart included in the archive. [GitHub Releases](https://github.com/demjanp/deposit-server/releases)
 
-See the [user guide](doc/README.md) for the full documentation and the [release notes](RELEASE_NOTES.md) for the maintainer build command.
+See the [user guide](doc/README.md) for the full documentation and the [release notes](RELEASE_NOTES.md) for Windows distribution details.
+
+## Build the release ZIP
+
+On Windows x64, open Command Prompt at the root of a clean, full Git checkout. Check out the release commit with exactly one stable version tag. Use a working directory outside the checkout.
+
+```bat
+scripts\Build_Release.bat -WorkRoot "C:\DepositBuild"
+```
+
+The builder fetches the pinned build inputs, compiles the server plugin, and writes `deposit-server-2.x.x.zip` to the working directory using the version from the Git tag. It skips tests and reuses cached downloads on subsequent builds. The output ZIP must not already exist.
 
 ## Copyright and license
 
