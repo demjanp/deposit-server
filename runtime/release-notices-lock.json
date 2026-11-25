@@ -194,11 +194,11 @@
       "supplemental": [
         {
           "path": "LICENSE",
-          "sha256": "b53ff95308a5f767d8c87503cc12e3a09666121104fbc15f1b0e2086c375c98f",
+          "sha256": "ceba3e963f8af1fd11b4397f0330dd7b89c88c9499a002297f4cdc91702d25db",
           "kind": "projectLicenseText",
           "source": {
             "url": "repository:LICENSE",
-            "sha256": "b53ff95308a5f767d8c87503cc12e3a09666121104fbc15f1b0e2086c375c98f"
+            "sha256": "ceba3e963f8af1fd11b4397f0330dd7b89c88c9499a002297f4cdc91702d25db"
           }
         }
       ]
