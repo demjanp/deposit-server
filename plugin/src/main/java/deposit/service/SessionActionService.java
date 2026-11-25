@@ -12,25 +12,24 @@ public final class SessionActionService extends BaseService {
     final SessionActionScope scopeRules;
     private final SessionDiagnostics diagnostics;
     private static final Set<String> OPERATION_CONTROLS=Set.of("deposit.action.begin","deposit.action.cancel","deposit.get.operation");
-    private boolean enforceAttempt;
     public SessionActionService(RequestContext c){super(c);scopeRules=new SessionActionScope(c);diagnostics=new SessionDiagnostics(c);}
     private boolean cancellation(String p){return Set.of("deposit.utils.cancel","deposit.utils.cancelRequest","deposit.get.requests","deposit.utils.logout").contains(p);}
-    public void beginPublic(String procedure,List<Object> arguments,String operationId){
+    public void beginPublic(String procedure,List<Object> arguments,Object operationId){
         // A native entity returned by the action can be serialized in the same
         // transaction while it is still readable. The serializer authenticates
         // the same session and checks the entity's scope as on any other call.
         if(c.state.operationClaimed && !(c.state.operationFinal() && operationId==null && procedure.equals("deposit.utils.toData")))
             c.fail("VALIDATION_FAILED","An operation must execute in a separate transaction");
-        enforceAttempt=true;
-        c.operationId=operationId;
         c.uploadContinuation=OperationAttemptService.uploadContinuation(procedure,arguments);
-        begin(procedure,arguments);
+        begin(procedure,arguments,operationId,true);
     }
     public void begin(String procedure,List<Object> arguments){
+        begin(procedure,arguments,null,false);
+    }
+    private void begin(String procedure,List<Object> arguments,Object operationId,boolean enforceAttempt){
         c.publicCall=true;c.procedure=procedure;
         var spec=ProcedureCatalog.spec(procedure);
-        boolean action=spec.action();
-        if(procedure.equals("deposit.admin.pruneResources"))action=Boolean.FALSE.equals(ValueCodec.map(arguments.getFirst()).get("dryRun"));
+        boolean action=OperationAttemptService.tracked(procedure,arguments);
         if(Set.of("deposit.utils.login","deposit.utils.bootstrap").contains(procedure)){
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);return;
         }
@@ -59,14 +58,18 @@ public final class SessionActionService extends BaseService {
         if(Set.of("deposit.set.activeNamespace","deposit.set.administrativeMode").contains(procedure))lease();
 
         if(!action){
-            if(enforceAttempt&&c.operationId!=null)c.fail("VALIDATION_FAILED","Procedure does not accept an operation ID");
+            if(operationId!=null)c.fail("VALIDATION_FAILED","Procedure does not accept an operation ID");
             c.request=new ArgumentService(c,new LinkedHashMap<>(),false).request(procedure,arguments);return;
         }
         if(c.state.mutation||c.state.selection)c.fail("VALIDATION_FAILED","Only one mutation is allowed per transaction; use batch");
         lease();
         if(enforceAttempt){
-            new OperationAttemptService(c).claim(procedure,arguments,scopeRules.scope(procedure,arguments));
+            var attempts=new OperationAttemptService(c);
+            String scope=scopeRules.scope(procedure,arguments);
+            if(operationId==null)attempts.claimAutomatic(procedure,arguments,scope);
+            else attempts.claim(procedure,arguments,scope,operationId);
             synchronized(c.session){c.session.lastOperation=c.operationId;c.session.lastScope=c.actionScope;}
+            c.state.kernel.assertOpen();
             return;
         }
         c.inputHash=fingerprint(procedure,arguments);

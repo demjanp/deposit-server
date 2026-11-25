@@ -177,18 +177,40 @@ class OperationAttemptTest {
     @Test void registeredCypherProceduresProvideIndependentStatus() {
         Actor a=actor();
         String id=operationId(clock.get());
-        var parameters=Json.map("id",id,"scope",a.namespace,"name","Cypher "+id,"patch",Map.of(),"token",a.token,
-            "procedure","deposit.create.class","arguments",List.of("Cypher "+id,Map.of()));
+        var parameters=Json.map("id",id,"scope",a.namespace,"name","Specimen","patch",Map.of(),"token",a.token,
+            "procedure","deposit.create.class","arguments",List.of("Specimen",Map.of()));
         assertEquals("REGISTERED",state(ValueCodec.map(cypher(a.execution,
             "CALL deposit.action.begin($id,$scope,$procedure,$arguments,$token) YIELD data RETURN data",parameters).get("data"))));
         var result=ValueCodec.map(cypher(a.execution,"""
-            CALL deposit.create.class($name,$patch,$id,$token) YIELD node
+            CALL deposit.create.class($name,$patch,$token,$id) YIELD node
             CALL deposit.utils.toData(node,$token) YIELD data
             RETURN data
             """,parameters).get("data"));
-        assertEquals("Cypher "+id,result.get("name"));
+        assertEquals("Specimen",result.get("name"));
         assertEquals("COMMITTED",state(ValueCodec.map(cypher(a.control,
             "CALL deposit.get.operation($id,$scope,$token) YIELD data RETURN data",parameters).get("data"))));
+
+        var color=cypher(a.execution,"""
+            CALL deposit.create.classDescriptor('Specimen', 'Color', 'String', {}, $token) YIELD node
+            RETURN node.name AS name, node.type AS type
+            """,parameters);
+        assertEquals(Map.of("name","Color","type","String"),color);
+        String omitted=lastOperationId(a);
+        assertNotEquals(id,omitted);
+        var committed=status(a,omitted,a.namespace);
+        assertEquals("COMMITTED",state(committed));
+        assertEquals(a.namespace,committed.get("scope"));
+        assertEquals("deposit.create.classDescriptor",committed.get("procedure"));
+
+        var texture=cypher(a.execution,"""
+            CALL deposit.create.classDescriptor('Specimen', 'Texture', 'String', {}, $token, null) YIELD node
+            CALL deposit.utils.toData(node,$token) YIELD data
+            RETURN data.name AS name, data.type AS type
+            """,parameters);
+        assertEquals(Map.of("name","Texture","type","String"),texture);
+        String explicitNull=lastOperationId(a);
+        assertNotEquals(omitted,explicitNull);
+        assertEquals("COMMITTED",state(status(a,explicitNull,a.namespace)));
     }
 
     @Test void sessionPreflightAndRegistrationUseTheSameBaseline() {
@@ -216,6 +238,102 @@ class OperationAttemptTest {
         var conflict=assertThrows(RuntimeException.class,()->call(actor,actor.execution,procedure,args,id));
         assertTrue(conflict.getMessage().contains("REVISION_CONFLICT"),conflict.toString());
         assertEquals("FAILED_ROLLED_BACK",state(status(actor,id,actor.namespace)));
+
+        // The session has observed revision 1. A second writer advances it without refreshing this session.
+        tracked(writer,actor.namespace,"deposit.create.class",List.of("Second intervening class",Map.of()));
+        assertCypherError("REVISION_CONFLICT",()->cypher(actor.execution,"""
+            CALL deposit.create.class('Stale automatic class', {}, $token) YIELD node RETURN node.id AS id
+            """,parameters));
+        String automatic=lastOperationId(actor);
+        assertNotEquals(id,automatic);
+        assertEquals("FAILED_ROLLED_BACK",state(status(actor,automatic,actor.namespace)));
+    }
+
+    @Test void invalidCredentialsAndExplicitIdsCannotAdmitAnAttempt() {
+        Actor actor=actor();
+        String query="CALL deposit.create.class('Rejected class', {}, %s) YIELD node RETURN node.id AS id";
+        assertThrows(org.neo4j.graphdb.QueryExecutionException.class,()->cypher(actor.execution,
+            "CALL deposit.create.class('Rejected class', {}) YIELD node RETURN node.id AS id",Map.of()));
+        assertCypherError("AUTH_REQUIRED",()->cypher(actor.execution,query.formatted("null"),Map.of()));
+        assertCypherError("AUTH_FAILED",()->cypher(actor.execution,query.formatted("$token"),Map.of("token","invalid")));
+        for(Object id:List.of("","invalid","null",42L,UUID.randomUUID().toString())) {
+            assertCypherError("VALIDATION_FAILED",()->cypher(actor.execution,query.formatted("$token,$id"),
+                Map.of("token",actor.token,"id",id)));
+        }
+        String unregistered=operationId(clock.get());
+        assertCypherError("NOT_FOUND",()->cypher(actor.execution,query.formatted("$token,$id"),
+            Map.of("token",actor.token,"id",unregistered)));
+        assertEquals("OUTCOME_UNKNOWN",state(status(actor,unregistered,actor.namespace)));
+        assertEquals("none",call(actor,actor.control,"deposit.get.lastOperation",List.of(),null).get("state"));
+        try(var tx=database.beginTx()) {
+            assertTrue(new CoreRepository(tx,ZonedDateTime.now()).nodes("Class",Map.of("namespaceId",actor.namespace)).isEmpty());
+        }
+    }
+
+    @Test void automaticAnalysisResultUsesClaimIdentityAndRollsBackWithItsTransaction() {
+        Actor actor=actor();
+        var parameters=Map.<String,Object>of("token",actor.token);
+        String query="""
+            CALL deposit.import.rows({rows: [{id: 'sample', values: {code: 'X'}}]},
+                {code: {object: 'item', className: 'Specimen', descriptor: 'Code', type: 'String'}}, [], {}, $token)
+            YIELD data RETURN data
+            """;
+        var result=ValueCodec.map(cypher(actor.execution,query,parameters).get("data"));
+        String id=lastOperationId(actor);
+        assertEquals(id,result.get("operationId"));
+        var outcome=status(actor,id,actor.namespace);
+        assertEquals("COMPLETED_NO_DOMAIN_WRITE",state(outcome));
+        assertEquals(actor.namespace,outcome.get("scope"));
+        assertEquals(result.get("resultId"),ValueCodec.map(outcome.get("result")).get("resultId"));
+        assertEquals(id,server.storage.importResults.root((String)result.get("resultId"),null).operation());
+
+        Map<String,Object> rolledBack;
+        try(var tx=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,actor.execution.info())) {
+            try(var rows=tx.execute("CYPHER 25 "+query,parameters)) {
+                rolledBack=ValueCodec.map(rows.next().get("data"));
+                assertFalse(rows.hasNext());
+            }
+            tx.rollback();
+        }
+        String rolledBackId=lastOperationId(actor);
+        assertNotEquals(id,rolledBackId);
+        assertEquals(rolledBackId,rolledBack.get("operationId"));
+        var rolledBackOutcome=status(actor,rolledBackId,actor.namespace);
+        assertEquals("FAILED_ROLLED_BACK",state(rolledBackOutcome));
+        assertNull(rolledBackOutcome.get("result"));
+        assertNull(server.storage.importResults.root((String)rolledBack.get("resultId"),null));
+        assertNull(server.storage.importPlans.plan((String)rolledBack.get("planId")));
+    }
+
+    @Test void conditionalPruneTracksOnlyRealJobs() {
+        Actor actor=actor();
+        try(var tx=database.beginTx()) {
+            var core=new CoreRepository(tx,ZonedDateTime.now());
+            core.find("User","id",actor.id).setProperty("serverRole","administrator");
+            tx.commit();
+        }
+        String procedure="deposit.admin.pruneResources";
+        String id=operationId(clock.get());
+        var parameters=Map.<String,Object>of("token",actor.token,"id",id);
+        String query="CALL deposit.admin.pruneResources(%s, $token%s) YIELD data RETURN data";
+        assertNull(ValueCodec.map(cypher(actor.execution,query.formatted("{}",""),parameters).get("data")).get("pruneId"));
+        assertNull(ValueCodec.map(cypher(actor.execution,query.formatted("{dryRun:true}",", null"),parameters).get("data")).get("pruneId"));
+        assertCypherError("VALIDATION_FAILED",()->cypher(actor.execution,query.formatted("{}",", $id"),parameters));
+        assertDepositError("VALIDATION_FAILED",()->begin(actor,id,actor.namespace,procedure,List.of(Map.of())));
+        assertEquals("none",call(actor,actor.control,"deposit.get.lastOperation",List.of(),null).get("state"));
+
+        var result=ValueCodec.map(cypher(actor.execution,query.formatted("{scope:'all', dryRun:false}",""),parameters).get("data"));
+        String automatic=lastOperationId(actor);
+        var status=status(actor,automatic,"server");
+        assertEquals("COMMITTED",state(status));
+        String job=(String)result.get("pruneId");
+        assertNotEquals(automatic,job);
+        assertEquals(job,ValueCodec.map(status.get("result")).get("pruneId"));
+        assertEquals(job,call(actor,actor.control,"deposit.admin.pruneResourcesStatus",List.of(job),null).get("pruneId"));
+
+        assertEquals("REGISTERED",state(begin(actor,id,actor.namespace,procedure,List.of(Map.of("dryRun",false)))));
+        cypher(actor.execution,query.formatted("{dryRun:false}",", $id"),parameters);
+        assertEquals("COMMITTED",state(status(actor,id,actor.namespace)));
     }
 
     @Test void checkedCompositionDetachesPagesAndRejectsAnInterveningCommit() throws Exception {
@@ -375,11 +493,21 @@ class OperationAttemptTest {
         assertEquals("REGISTERED",state(begin(a,id,a.namespace,"deposit.create.class",arguments)));
         var parameters=Json.map("id",id,"name",arguments.getFirst(),"patch",Map.of(),"token",a.token);
         assertThrows(RuntimeException.class,()->cypher(a.execution,"""
-            CALL deposit.create.class($name,$patch,$id,$token) YIELD node
+            CALL deposit.create.class($name,$patch,$token,$id) YIELD node
             CALL deposit.get.session($token) YIELD data
             RETURN node.id AS id,data
             """,parameters));
         assertEquals("FAILED_ROLLED_BACK",state(status(a,id,a.namespace)));
+
+        assertCypherError("VALIDATION_FAILED",()->cypher(a.execution,"""
+            CALL deposit.create.class('First automatic class', {}, $token) YIELD node AS first
+            CALL deposit.create.class('Second automatic class', {}, $token) YIELD node AS second
+            RETURN first.id AS firstId,second.id AS secondId
+            """,parameters));
+        assertEquals("FAILED_ROLLED_BACK",state(status(a,lastOperationId(a),a.namespace)));
+        try(var tx=database.beginTx()) {
+            assertTrue(new CoreRepository(tx,ZonedDateTime.now()).nodes("Class",Map.of("namespaceId",a.namespace)).isEmpty());
+        }
     }
 
     @Test void publicStoragePressureReportsBackpressureAndRollback() {
@@ -393,7 +521,7 @@ class OperationAttemptTest {
         });
         try {
             var failure=assertThrows(RuntimeException.class,()->cypher(a.execution,
-                "CALL deposit.create.class($name,$patch,$id,$token) YIELD node RETURN node.id AS id",
+                "CALL deposit.create.class($name,$patch,$token,$id) YIELD node RETURN node.id AS id",
                 Json.map("id",id,"name",name,"patch",Map.of(),"token",a.token)));
             assertTrue(failure.getMessage().contains("LIMIT_EXCEEDED"),failure.getMessage());
             assertTrue(failure.getMessage().contains("Storage admission is busy"),failure.getMessage());
@@ -405,22 +533,28 @@ class OperationAttemptTest {
 
     @Test void cancellationBeforeTheFinalGateRollsBackTheGraph() throws Exception {
         Actor a=actor();
-        String id=operationId(clock.get()), procedure="deposit.create.class";
-        var args=List.<Object>of("Cancelled "+id,Map.of());
-        begin(a,id,a.namespace,procedure,args);
+        String id, procedure="deposit.create.class";
+        var args=List.<Object>of("Cancelled automatic class",Map.of());
         var reached=new CountDownLatch(1);
         var release=new CountDownLatch(1);
         server.storageObserverForTesting(point->{if(point.equals("operation-before-final-fence")){reached.countDown();waitFor(release);}});
         try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
-            var run=executor.submit(()->call(a,a.execution,procedure,args,id));
+            var run=executor.submit(()->call(a,a.execution,procedure,args,null));
             try {
                 assertTrue(reached.await(10,TimeUnit.SECONDS));
+                id=lastOperationId(a);
                 assertEquals("RUNNING",state(status(a,id,a.namespace)));
+                var attempt=server.storage.operations.find(a.id,a.namespace,id);
+                var worker=server.operationWorker(attempt.key());
+                assertNotNull(worker);
+                assertEquals(attempt.unit(),worker.pendingCommit.id());
+                assertNull(worker.pendingRegistration);
                 assertEquals("CANCEL_REQUESTED",state(call(a,a.control,"deposit.action.cancel",List.of(id,a.namespace),null)));
             } finally { release.countDown(); }
             assertThrows(ExecutionException.class,()->run.get(10,TimeUnit.SECONDS));
         } finally { server.storageObserverForTesting(point->{}); }
         assertEquals("CANCELLED_ROLLED_BACK",state(status(a,id,a.namespace)));
+        assertNull(server.operationWorker(new OperationRepository.Key(a.id,a.namespace,id)));
         assertNull(server.storage.operations.completion(a.id, a.namespace, id));
         try (var tx=database.beginTx()) {
             var core = new CoreRepository(tx, ZonedDateTime.now());
@@ -497,6 +631,7 @@ class OperationAttemptTest {
             run.get(10,TimeUnit.SECONDS);
             assertEquals("COMMITTED",state(cancel.get(10,TimeUnit.SECONDS)));
         }
+        assertDepositError("OPERATION_NOT_CLAIMABLE",()->call(a,a.execution,procedure,args,id));
     }
 
     @Test void cancellationWhileWaitingForNamespaceLockExcludesDelayedExecution() throws Exception {
@@ -839,15 +974,17 @@ class OperationAttemptTest {
         String upload=(String)result.get("uploadId");
         byte[] first={1};
         var part=List.<Object>of(upload,0L,Base64.getEncoder().encodeToString(first));
-        String step=operationId(clock.get());
-        begin(a,step,a.namespace,chunk,part);
-        assertEquals(1L,call(a,a.execution,chunk,part,step).get("nextOffset"));
+        assertEquals(1L,call(a,a.execution,chunk,part,null).get("nextOffset"));
+        String step=lastOperationId(a);
+        assertNotEquals(upload,step);
+        assertEquals(upload,server.storage.operations.find(a.id,a.namespace,step).uploadId());
         connections.remove(a.execution);
         var newConnection=addConnection();
         var replacement=new Actor(a.id,a.token,a.namespace,newConnection,a.control);
         byte[] second={2};
         var append=List.<Object>of(upload,1L,Base64.getEncoder().encodeToString(second));
         assertThrows(ExceptionHandler.DepositException.class,()->begin(replacement,operationId(clock.get()),a.namespace,chunk,append));
+        assertDepositError("UPLOAD_FENCED",()->call(replacement,newConnection,chunk,append,null));
         String newId=operationId(clock.get());
         begin(replacement,newId,a.namespace,begin,args);
         assertEquals(0L,call(replacement,newConnection,begin,args,newId).get("nextOffset"));
@@ -1382,6 +1519,11 @@ class OperationAttemptTest {
     private static void assertDepositError(String code,org.junit.jupiter.api.function.Executable action) {
         var failure=assertThrows(ExceptionHandler.DepositException.class,action);
         assertEquals(code,Json.read(failure.getMessage().substring("DEPOSIT_ERROR ".length())).get("code"));
+    }
+
+    private static void assertCypherError(String code,org.junit.jupiter.api.function.Executable action) {
+        var failure=assertThrows(org.neo4j.graphdb.QueryExecutionException.class,action);
+        assertTrue(failure.getMessage().contains("\"code\":\""+code+"\""),failure::getMessage);
     }
 
     private static Map<String,Object> selector(Object id) {return Map.of("id",id);}
@@ -2144,7 +2286,7 @@ class OperationAttemptTest {
             var core=new CoreRepository(blocker,ZonedDateTime.now());
             core.lockNamespace(receiver.namespace);
             var waiting=workers.submit(()->cypher(receiver.execution,
-                "CALL deposit.import.apply($plan,$operation,$token) YIELD data RETURN data",
+                "CALL deposit.import.apply($plan,$token,$operation) YIELD data RETURN data",
                 Map.of("plan",waitingPlan,"operation",waitingOperation,"token",receiver.token)));
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
             while(!"RUNNING".equals(status(receiver,waitingOperation,receiver.namespace).get("state"))
@@ -2476,6 +2618,12 @@ class OperationAttemptTest {
     }
     private Map<String,Object> status(Actor actor,String id,String scope) {
         return call(actor,actor.control,"deposit.get.operation",List.of(id,scope),null);
+    }
+    private String lastOperationId(Actor actor) {
+        var last=call(actor,actor.control,"deposit.get.lastOperation",List.of(),null);
+        String id=OperationRepository.id(last.get("operationId"));
+        assertEquals(clock.get(),OperationRepository.idTime(id));
+        return id;
     }
     private Map<String,Object> cypher(Connection connection,String query,Map<String,Object> parameters) {
         try(var tx=database.beginTransaction(KernelTransaction.Type.EXPLICIT,LoginContext.AUTH_DISABLED,connection.info())){

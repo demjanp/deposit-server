@@ -113,23 +113,35 @@ public final class OperationRepository {
     }
 
     public void register(Attempt attempt) {
+        insertAttempt(attempt,null);
+    }
+
+    public void beginFresh(Attempt attempt,Unit unit) {
+        insertAttempt(attempt,unit);
+    }
+
+    private void insertAttempt(Attempt attempt,Unit unit) {
+        String insertion="""
+            INSERT INTO operation_attempts (actor_id,scope,operation_id,procedure,input_hash,
+                authorization_scope,role,expected_revision,namespace_revision,source_package_id,source_grant_id,
+                receiving_upload,upload_id,claim_deadline,id_time,state,updated_at,control_pending,unit_id,owner_kind,owner_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(actor_id,scope,operation_id)
+            """;
+        String conflict=unit!=null?"DO NOTHING":"""
+            DO UPDATE SET
+              receipt_hash=CASE WHEN input_hash IS NOT excluded.input_hash THEN input_hash END,
+              procedure=excluded.procedure,input_hash=excluded.input_hash,
+              authorization_scope=excluded.authorization_scope,role=excluded.role,
+              expected_revision=excluded.expected_revision,namespace_revision=excluded.namespace_revision,
+              source_package_id=excluded.source_package_id,source_grant_id=excluded.source_grant_id,
+              receiving_upload=excluded.receiving_upload,upload_id=excluded.upload_id,
+              claim_deadline=excluded.claim_deadline,state=excluded.state,updated_at=excluded.updated_at,
+              control_pending=excluded.control_pending
+            WHERE state IS NULL
+            """;
         store.write(0,db -> {
-            try(var insert=db.prepareStatement("""
-                    INSERT INTO operation_attempts (actor_id,scope,operation_id,procedure,input_hash,
-                        authorization_scope,role,expected_revision,namespace_revision,source_package_id,source_grant_id,
-                        receiving_upload,upload_id,claim_deadline,id_time,state,updated_at,control_pending)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
-                    ON CONFLICT(actor_id,scope,operation_id) DO UPDATE SET
-                      receipt_hash=CASE WHEN input_hash IS NOT excluded.input_hash THEN input_hash END,
-                      procedure=excluded.procedure,input_hash=excluded.input_hash,
-                      authorization_scope=excluded.authorization_scope,role=excluded.role,
-                      expected_revision=excluded.expected_revision,namespace_revision=excluded.namespace_revision,
-                      source_package_id=excluded.source_package_id,source_grant_id=excluded.source_grant_id,
-                      receiving_upload=excluded.receiving_upload,upload_id=excluded.upload_id,
-                      claim_deadline=excluded.claim_deadline,state=excluded.state,updated_at=excluded.updated_at,
-                      control_pending=excluded.control_pending
-                    WHERE state IS NULL
-                    """)) {
+            try(var insert=db.prepareStatement(insertion+conflict)) {
                 bindKey(insert,1,attempt.key());
                 insert.setString(4,attempt.procedure());
                 insert.setString(5,attempt.inputHash());
@@ -146,8 +158,14 @@ public final class OperationRepository {
                 insert.setLong(15,idTime(attempt.key().id()));
                 insert.setString(16,attempt.state());
                 insert.setLong(17,attempt.updated());
+                insert.setInt(18,unit==null?1:0);
+                insert.setString(19,unit==null?null:unit.id());
+                insert.setString(20,unit==null?null:unit.ownerKind());
+                insert.setString(21,unit==null?null:unit.ownerId());
                 if(insert.executeUpdate()!=1)
-                    throw ExceptionHandler.fail("OUTCOME_UNKNOWN","Operation registration is awaiting settlement");
+                    throw unit==null
+                        ? ExceptionHandler.fail("OUTCOME_UNKNOWN","Operation registration is awaiting settlement")
+                        : ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Generated operation ID is already in use");
             }
             return null;
         });

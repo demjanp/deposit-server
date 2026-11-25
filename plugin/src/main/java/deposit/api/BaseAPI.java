@@ -11,7 +11,7 @@ public abstract class BaseAPI {
     protected Stream<Object> invokePublic(String token,String procedure,List<Object> arguments) {
         return invokePublic(token,procedure,arguments,null);
     }
-    protected Stream<Object> invokePublic(String token,String procedure,List<Object> arguments,String operationId) {
+    protected Stream<Object> invokePublic(String token,String procedure,List<Object> arguments,Object operationId) {
         return invoke(token==null?Map.of():Map.of("token",token),c->{
             c.nativeResultsOnly=true;
             var actions=new deposit.service.SessionActionService(c);

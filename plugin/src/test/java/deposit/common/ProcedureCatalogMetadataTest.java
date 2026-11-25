@@ -78,6 +78,7 @@ class ProcedureCatalogMetadataTest {
             if (i == tokenIndex) {
                 assertEquals("token", binding.value(), name);
                 assertEquals(String.class, parameter.getType(), name);
+                assertEquals(Name.DEFAULT_VALUE, binding.defaultValue(), name + " token must be required");
             } else {
                 var arg = args.get(domainIndex++);
                 assertEquals(arg.required("name").asText(), binding.value(), name + " argument " + i);
@@ -178,8 +179,12 @@ class ProcedureCatalogMetadataTest {
         }
         assertEquals(bindings, implementation.bindings(), name + " ordered bindings");
         if (implementation.action()) {
-            assertEquals(bindings.size()+1, entry.required("tokenIndex").intValue(), name);
-            assertEquals("operationId", entry.required("args").get(bindings.size()).required("name").asText(), name);
+            var args=entry.required("args");
+            assertEquals(bindings.size()+1, args.size(), name);
+            assertEquals(bindings.size(), entry.required("tokenIndex").intValue(), name);
+            var operationId=args.get(bindings.size());
+            assertEquals("operationId", operationId.required("name").asText(), name);
+            assertTrue(operationId.required("default").isNull(), name);
             assertTrue(entry.required("cancellable").booleanValue(), name);
             assertEquals(name.equals("deposit.admin.pruneResources")?"conditional":"always", entry.required("tracked").asText(), name);
         }

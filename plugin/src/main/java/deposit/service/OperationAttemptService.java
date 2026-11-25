@@ -6,6 +6,7 @@ import deposit.repository.OperationRepository;
 import deposit.repository.OperationRepository.Attempt;
 import deposit.repository.OperationRepository.Key;
 import deposit.repository.OperationRepository.Source;
+import java.nio.ByteBuffer;
 import java.util.*;
 import org.neo4j.graphdb.Node;
 import org.neo4j.kernel.impl.coreapi.InternalTransaction;
@@ -61,11 +62,8 @@ final class OperationAttemptService extends BaseService {
         @SuppressWarnings("unchecked") List<Object> arguments = (List<Object>) raw;
         if (!tracked(procedure, arguments)) c.fail("VALIDATION_FAILED", "Procedure does not accept an operation");
         if (!scope.equals(scopes.scope(procedure, arguments))) c.fail("SCOPE_MISMATCH", "Procedure scope changed");
-        String namespace = procedure.equals("deposit.delete.namespace") ? scopes.active() : scope;
-        String role = EXPORTS.contains(procedure) ? scopes.exportRole(procedure, arguments)
-            : procedure.equals("deposit.admin.pruneResources") ? "viewer"
-            : procedure.equals("deposit.delete.namespace") || OWNER.contains(procedure) || batchNeedsOwner(procedure,arguments)
-                ? "owner" : "editor";
+        String namespace = authorizationScope(procedure, scope);
+        String role = requiredRole(procedure, arguments);
         authorize(procedure, namespace, role, false);
         String hash = fingerprint(procedure, arguments);
         c.server.lockOperationAdmission(c.state.kernel);
@@ -79,20 +77,78 @@ final class OperationAttemptService extends BaseService {
             return status(attempt,id,scope,false);
         }
         long now=c.server.sessionTime();
-        if(!c.server.storage.operationalState.admit(id,now))
-            c.fail("OPERATION_ID_EXPIRED","Operation ID is outside its admission window");
+        admit(id,now);
+        var prepared=prepare(key,procedure,arguments,hash,namespace,role,"REGISTERED",now);
+        c.server.registerOperation(c.state,prepared.attempt(),prepared.binding());
+        return status(prepared.attempt(),id,scope,false);
+    }
+
+    void claimAutomatic(String procedure,List<Object> arguments,String scope) {
+        String namespace=authorizationScope(procedure,scope);
+        String role=requiredRole(procedure,arguments);
+        authorize(procedure,namespace,role,true);
+        long now=c.server.sessionTime();
+        c.operationId=newOperationId(now);
+        c.actionScope=scope;
+        c.operational=scopes.operational(procedure);
+        c.inputHash=fingerprint(procedure,arguments);
+        var key=new Key(c.actorId,scope,c.operationId);
+        var prepared=prepare(key,procedure,arguments,c.inputHash,namespace,role,"RUNNING",now);
+        try(var claim=c.server.database().beginTx()) {
+            var kernel=((InternalTransaction)claim).kernelTransaction();
+            c.server.lockOperationAdmission(kernel);
+            c.server.lockAttempt(kernel,key);
+            c.state.kernel.assertOpen();
+            if(!c.server.sessionLive(prepared.binding().session()) || !c.server.connectionLive(prepared.binding().connection()))
+                c.fail("AUTH_FAILED","A live session and Bolt execution connection are required");
+            admit(key.id(),c.server.sessionTime());
+            c.server.beginFreshOperationalCommit(c.state,prepared.attempt(),prepared.binding());
+            claim.commit();
+        }
+        c.expectedRevision=prepared.attempt().expectedRevision();
+        c.request=prepared.request();
+        if(procedure.equals("deposit.delete.namespace"))c.request.put("expectedNamespaceRevision",prepared.attempt().namespaceRevision());
+    }
+
+    private record Prepared(Attempt attempt,ServerContext.OperationBinding binding,Map<String,Object> request) {}
+
+    private Prepared prepare(Key key,String procedure,List<Object> arguments,String hash,String namespace,String role,
+            String state,long now) {
         String connection=connection();
         if(!c.server.connectionLive(connection))c.fail("AUTH_FAILED","A live Bolt execution connection is required");
+        String scope=key.scope();
         String uploadId=writer(procedure,arguments,scope);
         Map<String,Object> bindings=new LinkedHashMap<>();
         Map<String,Object> resolved=new ArgumentService(c,bindings,false).request(procedure,arguments);
         Source source=bindSource(procedure,scope,resolved);
         Long revision=scopes.operational(procedure)?null:scopes.baseline(scope);
         Long namespaceRevision=procedure.equals("deposit.delete.namespace")?scopes.baseline(namespace):null;
-        attempt=new Attempt(key,procedure,hash,namespace,role,revision,namespaceRevision,source,uploadId,
-            OperationRepository.idTime(id)+OperationRepository.RETENTION,"REGISTERED",now,"none",null,null);
-        c.server.registerOperation(c.state,attempt,new ServerContext.OperationBinding(c.state.tokenHash,connection,bindings));
-        return status(attempt,id,scope,false);
+        var attempt=new Attempt(key,procedure,hash,namespace,role,revision,namespaceRevision,source,uploadId,
+            OperationRepository.idTime(key.id())+OperationRepository.RETENTION,state,now,"none",null,null);
+        return new Prepared(attempt,new ServerContext.OperationBinding(c.state.tokenHash,connection,bindings),resolved);
+    }
+
+    private void admit(String id,long now) {
+        if(!c.server.storage.operationalState.admit(id,now))
+            c.fail("OPERATION_ID_EXPIRED","Operation ID is outside its admission window");
+    }
+
+    private static String newOperationId(long now) {
+        var random=ByteBuffer.wrap(ServerContext.randomBytes(10));
+        long timeAndVersion=(now<<16) | 0x7000L | (random.getShort() & 0xfffL);
+        long variantAndRandom=(random.getLong() & 0x3fffffffffffffffL) | Long.MIN_VALUE;
+        return OperationRepository.id(new UUID(timeAndVersion,variantAndRandom).toString());
+    }
+
+    private String authorizationScope(String procedure,String scope) {
+        return procedure.equals("deposit.delete.namespace") ? scopes.active() : scope;
+    }
+
+    private String requiredRole(String procedure,List<Object> arguments) {
+        return EXPORTS.contains(procedure) ? scopes.exportRole(procedure, arguments)
+            : procedure.equals("deposit.admin.pruneResources") ? "viewer"
+            : procedure.equals("deposit.delete.namespace") || OWNER.contains(procedure) || batchNeedsOwner(procedure,arguments)
+                ? "owner" : "editor";
     }
 
     private static boolean batchNeedsOwner(String procedure,List<Object> arguments) {
@@ -102,8 +158,9 @@ final class OperationAttemptService extends BaseService {
             && "owner".equals(DomainService.commandRole(route)));
     }
 
-    void claim(String procedure, List<Object> arguments, String operationScope) {
-        String id = OperationRepository.id(c.operationId);
+    void claim(String procedure, List<Object> arguments, String operationScope, Object operationId) {
+        String id = OperationRepository.id(operationId);
+        c.operationId = id;
         c.actionScope = operationScope;
         c.operational = scopes.operational(procedure);
         c.inputHash = fingerprint(procedure, arguments);

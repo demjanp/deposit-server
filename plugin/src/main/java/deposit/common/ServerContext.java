@@ -209,19 +209,33 @@ public final class ServerContext implements TransactionExecutionMonitor, org.neo
         storage.operationalState.beginBootstrap(user);
     }
     public void beginOperationalCommit(TxState state,Key key,String inputHash,OperationBinding binding) {
-        boolean serverScope=key.scope().equals("server");
-        var unit=new OperationRepository.Unit(UUID.randomUUID().toString(),key.actor(),key.scope(),key.id(),inputHash,
-            serverScope?"User":"Namespace",serverScope?key.actor():key.scope());
+        var unit=operationUnit(key,inputHash);
         activeOperations.compute(key,(ignored,entry)->{
             if(entry!=null&&entry.worker()!=null)
                 throw ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Operation already has a worker");
             if(entry==null||entry.binding()!=binding||!storage.operations.begin(unit,sessionTime()))
                 throw ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Registration expired or changed. Inspect the operation");
-            state.pendingCommit=unit;
-            state.operationBinding=binding;
-            state.operationClaimed=true;
-            return new ActiveOperation(binding,state);
+            return claimWorker(state,unit,binding);
         });
+    }
+    public void beginFreshOperationalCommit(TxState state,Attempt attempt,OperationBinding binding) {
+        var unit=operationUnit(attempt.key(),attempt.inputHash());
+        activeOperations.compute(attempt.key(),(key,entry)->{
+            if(entry!=null)throw ExceptionHandler.fail("OPERATION_NOT_CLAIMABLE","Generated operation ID is already in use");
+            storage.operations.beginFresh(attempt,unit);
+            return claimWorker(state,unit,binding);
+        });
+    }
+    private static OperationRepository.Unit operationUnit(Key key,String inputHash) {
+        boolean serverScope=key.scope().equals("server");
+        return new OperationRepository.Unit(UUID.randomUUID().toString(),key.actor(),key.scope(),key.id(),inputHash,
+            serverScope?"User":"Namespace",serverScope?key.actor():key.scope());
+    }
+    private static ActiveOperation claimWorker(TxState state,OperationRepository.Unit unit,OperationBinding binding) {
+        state.pendingCommit=unit;
+        state.operationBinding=binding;
+        state.operationClaimed=true;
+        return new ActiveOperation(binding,state);
     }
     public void prepareOperationalCommit(TxState state, Node owner, String outcome, String result) {
         var unit = state.pendingCommit;
