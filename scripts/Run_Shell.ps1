@@ -13,7 +13,7 @@ Neo4j account used for the Bolt connection. Defaults to neo4j.
 .PARAMETER Database
 Neo4j database to open. Defaults to neo4j.
 .PARAMETER OperationId
-Print a fresh UUIDv7 for use in a Deposit procedure call.
+Print a fresh UUIDv7 for an explicit Deposit operation registration.
 #>
 [CmdletBinding()]
 param(

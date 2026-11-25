@@ -58,20 +58,10 @@ Tokens expire and are invalidated by a server restart. Log in again when needed.
 
 ## 3. Create a sample Namespace
 
-In another Command Prompt in the extracted Deposit directory, generate a fresh UUIDv7:
-
-```bat
-deposit.bat operation-id
-```
-
-From a checkout, use `scripts\Run_Shell.bat -OperationId` from the repository root. In Cypher Shell, set `$operationId` to the returned value with `:param {operationId: 'paste-the-uuid-here'}`.
 In the same Cypher Shell session, run each statement as a separate transaction:
 
 ```cypher
-CALL deposit.action.begin($operationId, 'server', 'deposit.create.namespace',
-  ['Deposit sample', {historyMode: 'disabled'}], $token) YIELD data RETURN data;
-
-CALL deposit.create.namespace('Deposit sample', {historyMode: 'disabled'}, $operationId, $token) YIELD node
+CALL deposit.create.namespace('Deposit sample', {historyMode: 'disabled'}, $token) YIELD node
 RETURN node.id AS namespaceId, node.name AS namespace;
 
 CALL deposit.set.activeNamespace('Deposit sample', $token) YIELD node
@@ -82,13 +72,15 @@ The Namespace is the sample collection. The user who creates it becomes its owne
 
 ## 4. Load the sample graph
 
-Set `$namespaceId` to the UUID returned by Namespace creation. Repeat the UUIDv7 command from step 3 to get a fresh value for `$operationId`. With Cypher Shell started from the extracted Deposit directory or checkout root, run:
+With Cypher Shell started from the extracted Deposit directory or checkout root, run:
 
 ```text
 :source doc/sample-data/seed.cypher
 ```
 
 Keep the same Cypher Shell session with the `token` parameter set. The script uses `deposit.apply.batch` to create the classes, objects, descriptors and relationships in one atomic action. It creates three specimens and one context. Two specimens are related to that context; the third has no Mass value or context relationship.
+
+The Server tracks each write automatically. For known-ID lookup and cancellation, see [explicit registered attempts](procedures.md#explicit-registered-attempts).
 
 To repeat the sample, choose a different Namespace name when creating and selecting the Namespace, then source the script again.
 
