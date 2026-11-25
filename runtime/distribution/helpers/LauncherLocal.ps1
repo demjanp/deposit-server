@@ -2,6 +2,13 @@ function Set-RuntimeEnvironment($State) {
     $env:JAVA_HOME=$State.javaHome;$env:NEO4J_HOME=$State.neo4jHome;$env:NEO4J_CONF=Join-Path $State.neo4jHome 'conf'
     $env:PATH=(Join-Path $State.javaHome 'bin')+';'+$env:PATH
 }
+function New-DepositOperationId {
+    $time = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString('x12')
+    $random = [guid]::NewGuid().ToString('D')
+    # The timestamp replaces the first 48 bits. Preserve the random UUID's variant.
+    '{0}-{1}-7{2}-{3}' -f $time.Substring(0, 8), $time.Substring(8), $random.Substring(15, 3), $random.Substring(19)
+}
+
 function Invoke-DepositShell($State, [string]$Address = 'bolt://127.0.0.1:7687', [string]$Username = 'neo4j', [string]$Database = 'neo4j') {
     $shell = Join-Path $State.neo4jHome 'bin\cypher-shell.bat'
     $java = Join-Path $State.javaHome 'bin\java.exe'

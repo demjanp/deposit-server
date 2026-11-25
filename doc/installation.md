@@ -42,7 +42,7 @@ scripts\Run_Server.bat
 scripts\Run_Shell.bat
 ```
 
-The first server run downloads the pinned tools, builds the plugin, and prompts for the initial Neo4j password. Tools and generated files go under the sibling `test_harness` directory. The persistent console installation and data live in `test_harness\runs\local-server`. Later runs reuse that installation. Open the shell after the server starts.
+The first run downloads the pinned tools, builds the plugin, and prompts for the initial Neo4j password. The launcher creates a working directory next to the checkout and prints the installation and log paths. Later runs reuse that installation. Open the shell after the server starts.
 
 ```bat
 scripts\Run_Server.bat -SetupOnly -Port 7687

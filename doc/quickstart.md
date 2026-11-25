@@ -10,7 +10,7 @@ In Command Prompt, from the extracted Deposit directory, run:
 deposit.bat shell
 ```
 
-The launcher selects the Java and Neo4j paths recorded during setup. Cypher Shell prompts for the Neo4j password. If you configured a different Bolt port, pass the matching address, for example `deposit.bat shell bolt://127.0.0.1:7688`. For a checkout installation, run `scripts\Run_Shell.bat` from the checkout root.
+The launcher selects the Java and Neo4j paths recorded during setup. Cypher Shell prompts for the Neo4j password. If you configured a different Bolt port, pass the matching address, for example `deposit.bat shell bolt://127.0.0.1:7688`. From a checkout, run `scripts\Run_Shell.bat` from the repository root. For a custom port, use `scripts\Run_Shell.bat -Address bolt://127.0.0.1:7688`.
 
 The Neo4j username and password authenticate the Bolt connection. Deposit procedures use a separate Deposit login and token.
 
@@ -64,7 +64,7 @@ In another Command Prompt in the extracted Deposit directory, generate a fresh U
 deposit.bat operation-id
 ```
 
-For a checkout installation, run `..\test_harness\runs\local-server\distribution\deposit.bat operation-id` from the checkout root. In Cypher Shell, set `$operationId` to the returned value with `:param {operationId: 'paste-the-uuid-here'}`.
+From a checkout, use `scripts\Run_Shell.bat -OperationId` from the repository root. In Cypher Shell, set `$operationId` to the returned value with `:param {operationId: 'paste-the-uuid-here'}`.
 In the same Cypher Shell session, run each statement as a separate transaction:
 
 ```cypher
@@ -82,7 +82,7 @@ The Namespace is the sample collection. The user who creates it becomes its owne
 
 ## 4. Load the sample graph
 
-Set `$namespaceId` to the UUID returned by Namespace creation and run `deposit.bat operation-id` again to get a fresh value for `$operationId`. With Cypher Shell started from the extracted Deposit directory or checkout root, run:
+Set `$namespaceId` to the UUID returned by Namespace creation. Repeat the UUIDv7 command from step 3 to get a fresh value for `$operationId`. With Cypher Shell started from the extracted Deposit directory or checkout root, run:
 
 ```text
 :source doc/sample-data/seed.cypher

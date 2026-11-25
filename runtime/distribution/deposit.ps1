@@ -59,10 +59,7 @@ try {
         'help' {Show-Help;exit 0}
         'operation-id' {
             if ($Arguments.Count) { throw 'Usage: deposit.bat operation-id' }
-            $time = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString('x12')
-            $random = [guid]::NewGuid().ToString('D')
-            # The timestamp replaces the first 48 bits. Preserve the random UUID's variant.
-            '{0}-{1}-7{2}-{3}' -f $time.Substring(0, 8), $time.Substring(8), $random.Substring(15, 3), $random.Substring(19)
+            New-DepositOperationId
             exit 0
         }
         'init-password' {
