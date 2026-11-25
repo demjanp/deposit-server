@@ -34,8 +34,22 @@ scripts\Build_Release.bat -WorkRoot "C:\DepositBuild"
 
 The builder fetches the pinned build inputs, compiles the server plugin, and writes `deposit-server-2.x.x.zip` to the working directory using the version from the Git tag. It skips tests and reuses cached downloads on subsequent builds. The output ZIP must not already exist.
 
-## Copyright and license
+## Citation
 
-Copyright © 2026 Peter Demján.
+Please use this citation when referencing the software.
 
-Distributed under the MIT License.
+> Demján, P. (2026). *deposit-server* [Computer software]. [GitHub repository](https://github.com/demjanp/deposit-server).
+
+## Acknowledgements
+
+Development of this software was supported by OP RDE, MEYS, under the project "Ready for the Future: Understanding the Long-Term Resilience of Human Culture (RES-HUM)", Reg. No. CZ.02.01.01/00/22_008/0004593.
+
+## Contact:
+
+Peter Demján ([peter.demjan@gmail.com](mailto:peter.demjan@gmail.com))
+
+Institute of Archaeology of the Czech Academy of Sciences, Prague, v.v.i.
+
+## License
+
+Distributed under the [MIT License](https://opensource.org/license/mit). See the repository’s [LICENSE](LICENSE) file.
