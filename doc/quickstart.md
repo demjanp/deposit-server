@@ -1,6 +1,6 @@
 # Quickstart
 
-Follow [Installation](installation.md) and start the server first. This quickstart creates a Deposit user, a sample Namespace, and a small `Specimen` and `Context` graph.
+Follow [Installation](installation.md) and start the server first. This quickstart uses optional operation IDs in Cypher. For a packaged release, use the quickstart bundled with your installation. The sample creates a Deposit user, a Namespace, and a small `Specimen` and `Context` graph.
 
 ## 1. Connect over Bolt
 
@@ -80,7 +80,7 @@ With Cypher Shell started from the extracted Deposit directory or checkout root,
 
 Keep the same Cypher Shell session with the `token` parameter set. The script uses `deposit.apply.batch` to create the classes, objects, descriptors and relationships in one atomic action. It creates three specimens and one context. Two specimens are related to that context; the third has no Mass value or context relationship.
 
-The Server tracks each write automatically. For known-ID lookup and cancellation, see [explicit registered attempts](procedures.md#explicit-registered-attempts).
+Deposit generates an operation ID for Namespace creation and another for the batch. To choose the ID before submitting a call, see [explicit registered attempts](procedures.md#explicit-registered-attempts).
 
 To repeat the sample, choose a different Namespace name when creating and selecting the Namespace, then source the script again.
 

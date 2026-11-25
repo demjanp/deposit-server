@@ -2,9 +2,9 @@
 
 ## Install the Windows x64 release
 
-Deposit Server 2.0.1 uses Neo4j Community 2026.05.0, Temurin JDK 21.0.12.1+1, and Cypher 25. The JDK and Neo4j are separate downloads.
+This distribution uses Neo4j Community 2026.05.0, Temurin JDK 21.0.12.1+1, and Cypher 25. The JDK and Neo4j are separate downloads.
 
-1. Download `deposit-server-2.0.1.zip` from [GitHub Releases](https://github.com/demjanp/deposit-server/releases).
+1. Download the `deposit-server-2.x.x.zip` archive for your release. [GitHub Releases](https://github.com/demjanp/deposit-server/releases)
 2. Download [Temurin JDK 21.0.12.1+1 for Windows x64](https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip) and [Neo4j Community 2026.05.0 for Windows](https://dist.neo4j.org/neo4j-community-2026.05.0-windows.zip).
 3. Extract all three archives to separate directories. Use a fresh Neo4j installation. Open Command Prompt in the extracted Deposit directory containing `deposit.bat`.
 4. Set the initial Neo4j password and start Deposit. Replace the quoted paths with your Neo4j, Java, resource storage, and temporary export directories.
@@ -17,7 +17,7 @@ Deposit Server 2.0.1 uses Neo4j Community 2026.05.0, Temurin JDK 21.0.12.1+1, an
    ```
 
    The password initializer prompts interactively. Use at least eight characters without whitespace, quotes, `#`, or backslash. The final setup argument is the local Bolt port and defaults to `7687`.
-5. Follow the [quickstart](quickstart.md) to open Cypher Shell, create a Deposit administrator, and load the sample data. Use `deposit.bat stop` for a graceful stop.
+5. Open `doc/quickstart.md` from the extracted ZIP to connect with Cypher Shell, create a Deposit administrator, and load the sample data. Use `deposit.bat stop` for a graceful stop.
 
 Setup copies the plugins, selects Cypher 25, and configures Bolt and the Deposit download listener on loopback. Neo4j HTTP and HTTPS are disabled. The launcher records the installation paths and mode in `deposit.install.json` in the extracted Deposit directory.
 
@@ -51,6 +51,8 @@ scripts\Run_Server.bat -Action Stop
 ```
 
 `-Port` applies during first setup. For a custom port, give the shell launcher the matching address, for example `scripts\Run_Shell.bat -Address bolt://127.0.0.1:7688`.
+
+Use the [quickstart](quickstart.md) in this checkout to load the sample data.
 
 ## Configuration
 

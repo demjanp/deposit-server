@@ -1,6 +1,6 @@
 ﻿# Procedure reference
 
-The [public API catalog](../runtime/public-api.json) lists argument order, scopes, and result columns. The server plugin embeds a copy. Start with the [quickstart](quickstart.md) and its [sample seed script](sample-data/seed.cypher).
+This reference uses optional operation IDs in Cypher. For a packaged release, use the reference bundled with your installation. In the source checkout, the public API catalog at `runtime/public-api.json` lists argument order, scopes, and result columns. The server plugin embeds a copy. Start with the [quickstart](quickstart.md) and its [sample seed script](sample-data/seed.cypher).
 
 Examples use Cypher Shell parameters. Set token from the login result. The quickstart seed creates `Specimen` and `Context` classes and prints object IDs; assign those IDs to `$specimenId` and `$contextId` when needed. Other IDs come from the procedure that creates or returns them. Examples that use a `$name` parameter expect you to set it with Cypher Shell `:param` first. Use a disposable Namespace when trying mutations.
 
@@ -11,7 +11,8 @@ Use SHOW PROCEDURES YIELD name WHERE name STARTS WITH 'deposit.' RETURN name ORD
 ## Tracked operations
 
 Use one authenticated call for ordinary execution. The Server creates a tracked
-attempt with a fresh UUIDv7 when the final operation ID is omitted or null.
+attempt with a fresh UUIDv7 when the final operation ID is omitted or `null`.
+Run each tracked call in its own transaction. Use `deposit.apply.batch` to group supported edits atomically under one operation ID.
 Select the correct Namespace and use a current observed revision where required.
 With editor access and an existing Specimen class, run:
 
@@ -547,7 +548,7 @@ Inputs: resultId (String), leaseId (String), collection (String), key (String), 
 Returns one row with a `data` map.
 
 ### deposit.get.lastOperation
-Purpose: Show the last operation result known to this session. This is diagnostic and does not identify an uncertain request.
+Purpose: Inspect the most recent tracked attempt claimed by this session, including its `operationId`, `scope`, and `state`. After a lost response, use the observation only if you can reliably match it to the original request.
 Inputs: token (String).
 Access: Authenticated Deposit session; this session’s actor only.
 Example:

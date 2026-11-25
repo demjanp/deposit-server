@@ -1,6 +1,6 @@
 # Deposit Server user guide
 
-Deposit Server adds Deposit procedures to Neo4j. Download `deposit-server-2.0.1.zip` from [GitHub Releases](https://github.com/demjanp/deposit-server/releases) for the Windows launcher and sample data. The installation guide also covers the local launcher in a Git checkout.
+This guide covers Deposit Server 2.x.x. Its examples use the optional operation ID signatures in the current checkout. For a packaged release, use the guide included in the archive to match the installed plugin. [GitHub Releases](https://github.com/demjanp/deposit-server/releases)
 
 ## Start here
 

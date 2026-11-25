@@ -18,7 +18,11 @@ The current distribution supports Windows process and service operation. Applica
 
 ## Getting started
 
-Download `deposit-server-2.0.1.zip` from [GitHub Releases](https://github.com/demjanp/deposit-server/releases). Follow [Installation](doc/installation.md) and the [Quickstart](doc/quickstart.md) to load and query a sample collection. The [user guide](doc/README.md) links to the procedure and query references. See the [release notes](RELEASE_NOTES.md) for the maintainer build command.
+To run from this checkout, follow the [checkout installation instructions](doc/installation.md#run-from-a-git-checkout) and the [quickstart](doc/quickstart.md). Tracked Cypher procedures accept calls with just the domain arguments and Deposit token. The server generates the operation ID when you omit it. See [tracked operations](doc/procedures.md#tracked-operations) for explicit registration and outcome lookup.
+
+For a Windows release, download the Deposit Server 2.x.x ZIP and follow the installation guide and quickstart included in the archive. [GitHub Releases](https://github.com/demjanp/deposit-server/releases)
+
+See the [user guide](doc/README.md) for the full documentation and the [release notes](RELEASE_NOTES.md) for the maintainer build command.
 
 ## Copyright and license
 
